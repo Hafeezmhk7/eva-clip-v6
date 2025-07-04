@@ -18,6 +18,7 @@ import sys
 import os
 import torch
 from transformers import CLIPProcessor, CLIPModel, AutoModel, CLIPImageProcessor
+import timm
 import pickle
 from tqdm import tqdm
 
@@ -27,11 +28,14 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))  # Go up to
 from src.data_hand.dataset import BLIP3oWebDataset
 
 def load_clip_model(device):
-    """Load CLIP ViT-L/14 model"""
+    """Load CLIP ViT-L/14 model with memory optimization"""
     print("📦 Loading CLIP ViT-L/14...")
     
     processor = CLIPProcessor.from_pretrained("openai/clip-vit-large-patch14")
-    model = CLIPModel.from_pretrained("openai/clip-vit-large-patch14")
+    model = CLIPModel.from_pretrained(
+        "openai/clip-vit-large-patch14",
+        torch_dtype=torch.float16 if device.type == 'cuda' else torch.float32  # Memory optimization
+    )
     model.to(device)
     model.eval()
     
@@ -42,40 +46,25 @@ def load_eva_clip_model(device):
     """Load EVA-CLIP model"""
     print("📦 Loading EVA-CLIP...")
     
-    try:
-        # Try to load BAAI/EVA-CLIP-8B first (newer, better performance)
-        print("   Attempting to load BAAI/EVA-CLIP-8B...")
-        eva_model_name = "BAAI/EVA-CLIP-8B"
-        
-        # Use AutoModel for EVA-CLIP
-        eva_model = AutoModel.from_pretrained(eva_model_name, trust_remote_code=True)
-        eva_processor = CLIPImageProcessor.from_pretrained("openai/clip-vit-large-patch14")
-        
-        eva_model.to(device)
-        eva_model.eval()
-        
-        print("✅ EVA-CLIP-8B loaded successfully")
-        return eva_processor, eva_model
-        
-    except Exception as e:
-        print(f"⚠️ Failed to load BAAI/EVA-CLIP-8B: {e}")
-        print("   Trying QuanSun/EVA-CLIP as fallback...")
-        
+    # Check if we're on CPU and warn about large models
+    if device.type == 'cpu':
+        print("⚠️ WARNING: Running on CPU - using smaller EVA model for speed")
         try:
-            # Fallback to QuanSun model
-            eva_model_name = "QuanSun/EVA-CLIP" 
+            # Use smaller QuanSun model for CPU
+            print("   Loading QuanSun/EVA-CLIP (smaller, CPU-friendly)...")
+            eva_model_name = "QuanSun/EVA-CLIP"
             eva_model = AutoModel.from_pretrained(eva_model_name, trust_remote_code=True)
             eva_processor = CLIPImageProcessor.from_pretrained("openai/clip-vit-large-patch14")
             
             eva_model.to(device)
             eva_model.eval()
             
-            print("✅ QuanSun/EVA-CLIP loaded successfully")
+            print("✅ QuanSun/EVA-CLIP loaded successfully (CPU-optimized)")
             return eva_processor, eva_model
             
-        except Exception as e2:
-            print(f"❌ Failed to load any EVA-CLIP model: {e2}")
-            print("🔧 Using CLIP ViT-L/14 as fallback for EVA-CLIP")
+        except Exception as e:
+            print(f"⚠️ Failed to load QuanSun/EVA-CLIP: {e}")
+            print("🔧 Using CLIP ViT-L/14 as fallback")
             
             # Fallback: use regular CLIP
             fallback_processor = CLIPProcessor.from_pretrained("openai/clip-vit-large-patch14")
@@ -84,6 +73,51 @@ def load_eva_clip_model(device):
             fallback_model.eval()
             
             return fallback_processor, fallback_model
+    
+    else:
+        # GPU available - use the big model
+        try:
+            # Try to load BAAI/EVA-CLIP-8B (newer, better performance)
+            print("   Attempting to load BAAI/EVA-CLIP-8B...")
+            eva_model_name = "BAAI/EVA-CLIP-8B"
+            
+            # Use AutoModel for EVA-CLIP
+            eva_model = AutoModel.from_pretrained(eva_model_name, trust_remote_code=True)
+            eva_processor = CLIPImageProcessor.from_pretrained("openai/clip-vit-large-patch14")
+            
+            eva_model.to(device)
+            eva_model.eval()
+            
+            print("✅ EVA-CLIP-8B loaded successfully")
+            return eva_processor, eva_model
+            
+        except Exception as e:
+            print(f"⚠️ Failed to load BAAI/EVA-CLIP-8B: {e}")
+            print("   Trying QuanSun/EVA-CLIP as fallback...")
+            
+            try:
+                # Fallback to QuanSun model
+                eva_model_name = "QuanSun/EVA-CLIP" 
+                eva_model = AutoModel.from_pretrained(eva_model_name, trust_remote_code=True)
+                eva_processor = CLIPImageProcessor.from_pretrained("openai/clip-vit-large-patch14")
+                
+                eva_model.to(device)
+                eva_model.eval()
+                
+                print("✅ QuanSun/EVA-CLIP loaded successfully")
+                return eva_processor, eva_model
+                
+            except Exception as e2:
+                print(f"❌ Failed to load any EVA-CLIP model: {e2}")
+                print("🔧 Using CLIP ViT-L/14 as fallback for EVA-CLIP")
+                
+                # Fallback: use regular CLIP
+                fallback_processor = CLIPProcessor.from_pretrained("openai/clip-vit-large-patch14")
+                fallback_model = CLIPModel.from_pretrained("openai/clip-vit-large-patch14")
+                fallback_model.to(device)
+                fallback_model.eval()
+                
+                return fallback_processor, fallback_model
 
 def extract_clip_embeddings(images, processor, model, device):
     """Extract CLIP embeddings from PIL images"""
@@ -165,9 +199,16 @@ def main():
     print("🚀 Simple Embedding Extraction")
     print("=" * 50)
     
-    # Setup
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print(f"🔧 Using device: {device}")
+    # Setup - Force CUDA if available
+    if torch.cuda.is_available():
+        device = torch.device('cuda')
+        print(f"🔧 Using device: {device} (GPU detected)")
+        print(f"   🎮 GPU: {torch.cuda.get_device_name(0)}")
+        print(f"   💾 GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
+    else:
+        device = torch.device('cpu')
+        print(f"🔧 Using device: {device} (No GPU available)")
+        print(f"⚠️ Warning: EVA-CLIP-8B will be very slow on CPU!")
     
     # Load models
     print("\n📦 Loading models...")
@@ -188,17 +229,42 @@ def main():
     model = load_clip_model(device)
     eva_processor, eva_model = load_eva_clip_model(device)
     
-    # Load dataset
+    # Load dataset with error handling
     print("\n📂 Loading dataset...")
     tar_paths = ["./data/00000.tar"]
-    dataset = BLIP3oWebDataset(
-        tar_paths=tar_paths,
-        batch_size=32,  # Process 32 images at a time
-        shuffle=False,  # Don't shuffle for consistent results
-        num_workers=2
-    )
     
-    dataloader = dataset.get_dataloader()
+    try:
+        dataset = BLIP3oWebDataset(
+            tar_paths=tar_paths,
+            batch_size=16,  # Reduced from 32 for GPU memory conservation
+            shuffle=False,  # Don't shuffle for consistent results
+            num_workers=0   # Use single-threaded processing to avoid worker conflicts
+        )
+        
+        dataloader = dataset.get_dataloader()
+        
+        # Test the dataloader with one sample
+        print("🧪 Testing dataloader...")
+        test_batch = next(iter(dataloader))
+        print(f"✅ Dataloader working - first batch has {len(test_batch['image'])} images")
+        
+        # Reset dataloader
+        dataloader = dataset.get_dataloader()
+        
+    except Exception as e:
+        print(f"❌ Error creating dataset: {e}")
+        print("💡 This might be a WebDataset worker issue. Trying single-threaded fallback...")
+        
+        # Try with absolutely minimal settings
+        dataset = BLIP3oWebDataset(
+            tar_paths=tar_paths,
+            batch_size=8,   # Even smaller batch
+            shuffle=False,
+            num_workers=0   # Definitely single-threaded
+        )
+        dataloader = dataset.get_dataloader()
+        
+        print("✅ Fallback dataset created successfully")
     
     # Extract embeddings
     print("\n🧠 Extracting embeddings...")
@@ -232,6 +298,11 @@ def main():
         # Print progress
         if batch_idx % 10 == 0:
             print(f"   Processed {total_samples} samples...")
+            
+            # Clean GPU memory periodically
+            if device.type == 'cuda' and batch_idx % 20 == 0:
+                torch.cuda.empty_cache()
+                print(f"   🔧 GPU memory: {torch.cuda.memory_allocated(device) / 1e9:.2f} GB")
     
     # Combine all embeddings
     print(f"\n📊 Combining {total_samples} embeddings...")
@@ -279,6 +350,11 @@ def main():
     print(f"📁 Your embeddings are saved in: {output_file}")
     print(f"🔢 Total samples processed: {total_samples}")
     
+    # Final memory cleanup
+    if device.type == 'cuda':
+        torch.cuda.empty_cache()
+        print(f"🔧 Final GPU memory usage: {torch.cuda.memory_allocated(device) / 1e9:.2f} GB")
+    
     print(f"\n💡 Next steps:")
     print(f"   1. ✅ EVA-CLIP and CLIP embeddings extracted!")
     print(f"   2. Test the saved embeddings")
@@ -286,4 +362,10 @@ def main():
     print(f"   4. Train EVA→CLIP flow matching pipeline")
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        print(f"❌ Fatal error: {e}")
+        import traceback
+        traceback.print_exc()
+        exit(1)
