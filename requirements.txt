@@ -1,0 +1,30 @@
+# EVA-CLIP Flow Matching Project Requirements
+# Phase 1: Dataset Loading and Feature Extraction
+#
+# SETUP INSTRUCTIONS:
+# 1. Create virtual environment: python3 -m venv eva_clip_env
+# 2. Activate environment: source eva_clip_env/bin/activate  
+# 3. Install requirements: pip install -r requirements.txt
+# 4. Test setup: python -c "import torch; print('✅ Setup complete!')"
+
+# Core PyTorch framework
+torch>=2.5.1
+torchvision>=0.20.1
+numpy>=1.26.0  # Updated for Python 3.12 compatibility
+
+# Hugging Face ecosystem for models and datasets
+transformers>=4.30.0
+datasets>=2.10.0
+huggingface_hub>=0.15.0
+
+# Data handling and processing
+webdataset>=0.2.0
+pillow>=9.0.0
+tqdm==4.65.0
+
+# TODO: Will add these in future phases:
+# accelerate==0.31.0          # Phase 2: Training acceleration
+# wandb==0.19.0               # Phase 3: Experiment tracking
+# einops==0.8.0               # Phase 2: Tensor operations for flow matching
+# gin_config==0.5.0           # Phase 2: Configuration management
+# sentence_transformers==3.3.1 # Phase 4: Evaluation metrics
