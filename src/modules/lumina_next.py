@@ -1,6 +1,8 @@
+# lumina_next.py
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from typing import Optional
 
 class TimestepEmbedder(nn.Module):
     """Embeds timesteps into vector representations"""
@@ -21,8 +23,51 @@ class TimestepEmbedder(nn.Module):
         emb = torch.cat([torch.sin(emb), torch.cos(emb)], dim=-1)
         return self.proj(emb)
 
+class LuminaDiTBlock(nn.Module):
+    """Transformer block with self-attention and cross-attention"""
+    def __init__(self, dim, num_heads, mlp_ratio=4.0, cross_dim=None):
+        super().__init__()
+        self.norm1 = nn.LayerNorm(dim)
+        self.self_attn = nn.MultiheadAttention(dim, num_heads, batch_first=True)
+        
+        # Cross-attention layer
+        self.norm2 = nn.LayerNorm(dim)
+        self.cross_attn = nn.MultiheadAttention(
+            embed_dim=dim,
+            kdim=cross_dim or dim,
+            vdim=cross_dim or dim,
+            num_heads=num_heads,
+            batch_first=True
+        )
+        
+        # MLP
+        self.norm3 = nn.LayerNorm(dim)
+        self.mlp = nn.Sequential(
+            nn.Linear(dim, int(dim * mlp_ratio)),
+            nn.GELU(),
+            nn.Linear(int(dim * mlp_ratio), dim),
+        )
+
+    def forward(self, x, cond):
+        # Self-attention
+        x_norm1 = self.norm1(x)
+        x = x + self.self_attn(x_norm1, x_norm1, x_norm1)[0]
+        
+        # Cross-attention with conditioning
+        x_norm2 = self.norm2(x)
+        x = x + self.cross_attn(
+            query=x_norm2,
+            key=cond,
+            value=cond
+        )[0]
+        
+        # MLP
+        x_norm3 = self.norm3(x)
+        x = x + self.mlp(x_norm3)
+        return x
+
 class LuminaDiT(nn.Module):
-    """Flow Matching DiT for EVA→CLIP embedding translation"""
+    """Flow Matching DiT for EVA→CLIP embedding translation with cross-attention"""
     def __init__(self, 
         input_dim=768,        # CLIP embedding size
         cond_dim=768,         # EVA embedding size
@@ -43,7 +88,12 @@ class LuminaDiT(nn.Module):
         
         # Transformer blocks
         self.blocks = nn.ModuleList([
-            self._build_block(dim, num_heads, mlp_ratio) for _ in range(depth)
+            LuminaDiTBlock(
+                dim=dim,
+                num_heads=num_heads,
+                mlp_ratio=mlp_ratio,
+                cross_dim=dim
+            ) for _ in range(depth)
         ])
         
         # Output layers
@@ -53,16 +103,6 @@ class LuminaDiT(nn.Module):
         # Initialize weights
         self.apply(self._init_weights)
         
-    def _build_block(self, dim, num_heads, mlp_ratio):
-        return nn.TransformerEncoderLayer(
-            d_model=dim,
-            nhead=num_heads,
-            dim_feedforward=int(dim * mlp_ratio),
-            activation=F.gelu,
-            batch_first=True,
-            norm_first=True
-        )
-
     def _init_weights(self, module):
         if isinstance(module, nn.Linear):
             nn.init.xavier_uniform_(module.weight)
@@ -82,16 +122,16 @@ class LuminaDiT(nn.Module):
         cond = cond.to(dtype)
         
         # Project inputs
-        x = self.input_proj(x)
-        c = self.cond_proj(cond) + self.t_embedder(t)
+        x = self.input_proj(x).unsqueeze(1)  # [B, 1, dim]
         
-        # Combine conditioning
-        x = x + c.unsqueeze(1)  # Add as sequence element
+        # Project conditioning and add timestep embedding
+        cond = self.cond_proj(cond) + self.t_embedder(t)
+        cond = cond.unsqueeze(1)  # [B, 1, dim]
         
-        # Process through transformer
+        # Process through transformer blocks
         for block in self.blocks:
-            x = block(x)
+            x = block(x, cond)
             
         # Output projection
         x = self.norm_out(x)
-        return self.output_proj(x.mean(dim=1))  # Pool sequence
+        return self.output_proj(x.squeeze(1))  # [B, input_dim]
