@@ -2,4 +2,4 @@ data/
 slurm_out/
 *.tar
 *.pyc
-__pycache__/
+__pycache__/data/00000.tar
