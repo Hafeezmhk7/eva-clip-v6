@@ -1,13 +1,13 @@
 """
 Core Dataset Module for BLIP3o WebDataset Loading
-Place this file in: src/data/dataset.py
+Place this file in: src/data_hand/dataset.py
 
 This module handles:
 ✅ Create WebDataset from TAR (no extraction)
 ✅ Create DataLoader from WebDataset  
 ✅ Load images through DataLoader
 
-Next phase will add: EVA-CLIP and CLIP embedding computation
+FIXED: WebDataset worker/shard mismatch issue
 """
 
 import torch
@@ -45,7 +45,20 @@ class BLIP3oWebDataset:
         self.tar_paths = tar_paths
         self.batch_size = batch_size
         self.shuffle = shuffle
-        self.num_workers = num_workers
+        
+        # FIX: Adjust num_workers based on number of shards
+        # WebDataset requires num_workers <= number of shards
+        max_workers = len(tar_paths)
+        if num_workers > max_workers:
+            print(f"⚠️ Reducing num_workers from {num_workers} to {max_workers} (max shards)")
+            self.num_workers = max_workers
+        else:
+            self.num_workers = num_workers
+        
+        # For single shard, use 0 workers to avoid WebDataset issues
+        if len(tar_paths) == 1:
+            print(f"📝 Single shard detected, using num_workers=0 for stability")
+            self.num_workers = 0
         
         # Verify TAR files exist
         self._verify_tar_files()
@@ -140,16 +153,16 @@ class BLIP3oWebDataset:
         """
         print(f"🔄 Creating WebDataset from {len(self.tar_paths)} TAR files...")
         
-        # Create WebDataset
+        # FIX: Add empty_check=False to prevent shard/worker mismatch error
         if self.shuffle:
             # Shuffle shards and samples
-            dataset = (wds.WebDataset(self.tar_paths, shardshuffle=True)
+            dataset = (wds.WebDataset(self.tar_paths, shardshuffle=True, empty_check=False)
                       .shuffle(1000)  # Shuffle buffer size
                       .map(self._decode_sample)
                       .select(lambda x: x is not None))  # Filter out failed samples
         else:
             # No shuffling
-            dataset = (wds.WebDataset(self.tar_paths, shardshuffle=False)
+            dataset = (wds.WebDataset(self.tar_paths, shardshuffle=False, empty_check=False)
                       .map(self._decode_sample)
                       .select(lambda x: x is not None))
         
@@ -263,7 +276,7 @@ def test_dataset():
             tar_paths=tar_paths,
             batch_size=4,
             shuffle=True,
-            num_workers=2
+            num_workers=2  # Will automatically be adjusted to 0 for single shard
         )
         
         # Test DataLoader
