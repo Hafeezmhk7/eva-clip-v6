@@ -3,10 +3,10 @@ Simple Embedding Extraction Script
 Place this file as: extract_embeddings.py (in project root)
 
 This script does:
-✅ Load images from your dataset.py
-✅ Extract EVA-CLIP embeddings (REAL implementation!)
-✅ Extract CLIP ViT-L/14 embeddings
-✅ Save them to files
+1. Load images from your dataset.py
+2. Extract EVA-CLIP embeddings (REAL implementation!)
+3. Extract CLIP ViT-L/14 embeddings
+4. Save them to files
 
 Ready for flow matching training!
 
@@ -39,7 +39,7 @@ def load_clip_model(device):
     model.to(device)
     model.eval()
     
-    print("✅ CLIP ViT-L/14 loaded")
+    print(" CLIP ViT-L/14 loaded")
     return processor, model
 
 def load_eva_clip_model(device):
@@ -49,30 +49,17 @@ def load_eva_clip_model(device):
     # Check if we're on CPU and warn about large models
     if device.type == 'cpu':
         print("⚠️ WARNING: Running on CPU - using smaller EVA model for speed")
-        try:
-            # Use smaller QuanSun model for CPU
-            print("   Loading QuanSun/EVA-CLIP (smaller, CPU-friendly)...")
-            eva_model_name = "QuanSun/EVA-CLIP"
-            eva_model = AutoModel.from_pretrained(eva_model_name, trust_remote_code=True)
-            eva_processor = CLIPImageProcessor.from_pretrained("openai/clip-vit-large-patch14")
-            
-            eva_model.to(device)
-            eva_model.eval()
-            
-            print("✅ QuanSun/EVA-CLIP loaded successfully (CPU-optimized)")
-            return eva_processor, eva_model
-            
-        except Exception as e:
-            print(f"⚠️ Failed to load QuanSun/EVA-CLIP: {e}")
-            print("🔧 Using CLIP ViT-L/14 as fallback")
-            
-            # Fallback: use regular CLIP
-            fallback_processor = CLIPProcessor.from_pretrained("openai/clip-vit-large-patch14")
-            fallback_model = CLIPModel.from_pretrained("openai/clip-vit-large-patch14")
-            fallback_model.to(device)
-            fallback_model.eval()
-            
-            return fallback_processor, fallback_model
+        # Use smaller QuanSun model for CPU
+        print("   Loading QuanSun/EVA-CLIP (smaller, CPU-friendly)...")
+        eva_model_name = "QuanSun/EVA-CLIP"
+        eva_model = AutoModel.from_pretrained(eva_model_name, trust_remote_code=True)
+        eva_processor = CLIPImageProcessor.from_pretrained("openai/clip-vit-large-patch14")
+        
+        eva_model.to(device)
+        eva_model.eval()
+        
+        print(" QuanSun/EVA-CLIP loaded successfully (CPU-optimized)")
+        return eva_processor, eva_model
     
     else:
         # GPU available - use the big model
@@ -95,51 +82,32 @@ def load_eva_clip_model(device):
             print(f"⚠️ Failed to load BAAI/EVA-CLIP-8B: {e}")
             print("   Trying QuanSun/EVA-CLIP as fallback...")
             
-            try:
-                # Fallback to QuanSun model
-                eva_model_name = "QuanSun/EVA-CLIP" 
-                eva_model = AutoModel.from_pretrained(eva_model_name, trust_remote_code=True)
-                eva_processor = CLIPImageProcessor.from_pretrained("openai/clip-vit-large-patch14")
-                
-                eva_model.to(device)
-                eva_model.eval()
-                
-                print("✅ QuanSun/EVA-CLIP loaded successfully")
-                return eva_processor, eva_model
-                
-            except Exception as e2:
-                print(f"❌ Failed to load any EVA-CLIP model: {e2}")
-                print("🔧 Using CLIP ViT-L/14 as fallback for EVA-CLIP")
-                
-                # Fallback: use regular CLIP
-                fallback_processor = CLIPProcessor.from_pretrained("openai/clip-vit-large-patch14")
-                fallback_model = CLIPModel.from_pretrained("openai/clip-vit-large-patch14")
-                fallback_model.to(device)
-                fallback_model.eval()
-                
-                return fallback_processor, fallback_model
+            # Fallback to QuanSun model
+            eva_model_name = "QuanSun/EVA-CLIP" 
+            eva_model = AutoModel.from_pretrained(eva_model_name, trust_remote_code=True)
+            eva_processor = CLIPImageProcessor.from_pretrained("openai/clip-vit-large-patch14")
+            
+            eva_model.to(device)
+            eva_model.eval()
+            
+            print("✅ QuanSun/EVA-CLIP loaded successfully")
+            return eva_processor, eva_model
 
 def extract_clip_embeddings(images, processor, model, device):
     """Extract CLIP embeddings from PIL images"""
     embeddings = []
     
     for img in images:
-        try:
-            # Process image
-            inputs = processor(images=img, return_tensors="pt")
-            inputs = {k: v.to(device) for k, v in inputs.items()}
-            
-            # Get embeddings
-            with torch.no_grad():
-                features = model.get_image_features(**inputs)
-                # Normalize
-                features = features / features.norm(p=2, dim=-1, keepdim=True)
-                embeddings.append(features.squeeze().cpu())
+        # Process image
+        inputs = processor(images=img, return_tensors="pt")
+        inputs = {k: v.to(device) for k, v in inputs.items()}
         
-        except Exception as e:
-            print(f"⚠️ Error processing image: {e}")
-            # Fallback: zero embedding
-            embeddings.append(torch.zeros(768))
+        # Get embeddings
+        with torch.no_grad():
+            features = model.get_image_features(**inputs)
+            # Normalize
+            features = features / features.norm(p=2, dim=-1, keepdim=True)
+            embeddings.append(features.squeeze().cpu())
     
     return torch.stack(embeddings)
 
@@ -153,44 +121,26 @@ def extract_eva_embeddings(images, processor, model, device):
     embeddings = []
     
     for img in images:
-        try:
-            # Check if we're using EVA-CLIP or fallback CLIP
-            if hasattr(model, 'get_image_features'):
-                # Using regular CLIP as fallback
-                inputs = processor(images=img, return_tensors="pt")
-                inputs = {k: v.to(device) for k, v in inputs.items()}
-                
-                with torch.no_grad():
-                    features = model.get_image_features(**inputs)
-                    # Normalize
-                    features = features / features.norm(p=2, dim=-1, keepdim=True)
-                    embeddings.append(features.squeeze().cpu())
-                    
-            else:
-                # Using actual EVA-CLIP model
-                inputs = processor(images=img, return_tensors="pt")
-                pixel_values = inputs['pixel_values'].to(device)
-                
-                with torch.no_grad():
-                    # EVA-CLIP models typically have encode_image method
-                    if hasattr(model, 'encode_image'):
-                        features = model.encode_image(pixel_values)
-                    elif hasattr(model, 'vision_model'):
-                        # Alternative method for some EVA-CLIP variants
-                        features = model.vision_model(pixel_values)[1]  # pooled output
-                    else:
-                        # Generic forward pass
-                        outputs = model(pixel_values=pixel_values)
-                        features = outputs.image_embeds if hasattr(outputs, 'image_embeds') else outputs.last_hidden_state.mean(dim=1)
-                    
-                    # Normalize
-                    features = features / features.norm(p=2, dim=-1, keepdim=True)
-                    embeddings.append(features.squeeze().cpu())
+
+        # Using actual EVA-CLIP model
+        inputs = processor(images=img, return_tensors="pt")
+        pixel_values = inputs['pixel_values'].to(device)
         
-        except Exception as e:
-            print(f"⚠️ Error processing image with EVA-CLIP: {e}")
-            # Fallback: zero embedding
-            embeddings.append(torch.zeros(768))
+        with torch.no_grad():
+            # EVA-CLIP models typically have encode_image method
+            if hasattr(model, 'encode_image'):
+                features = model.encode_image(pixel_values)
+            elif hasattr(model, 'vision_model'):
+                # Alternative method for some EVA-CLIP variants
+                features = model.vision_model(pixel_values)[1]  # pooled output
+            else:
+                # Generic forward pass
+                outputs = model(pixel_values=pixel_values)
+                features = outputs.image_embeds if hasattr(outputs, 'image_embeds') else outputs.last_hidden_state.mean(dim=1)
+            
+            # Normalize
+            features = features / features.norm(p=2, dim=-1, keepdim=True)
+            embeddings.append(features.squeeze().cpu())
     
     return torch.stack(embeddings)
 

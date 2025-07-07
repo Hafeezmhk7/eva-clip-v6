@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 """
 Enhanced Training Script for EVA-CLIP to CLIP Flow Matching
 Fixed autocast implementation for PyTorch 2.3+
@@ -47,7 +46,6 @@ def setup_wandb(args):
     return run
 
 def load_model(args, input_dim, cond_dim, device):
-    """Smart model loading with embedding translation optimization"""
     print(f"🏗️ Initializing LuminaDiT for Embedding Translation...")
     
     # Set default num_kv_heads if not specified
@@ -61,7 +59,7 @@ def load_model(args, input_dim, cond_dim, device):
     
     print(f"   🧮 Using num_heads={args.num_heads}, num_kv_heads={args.num_kv_heads}")
     
-    # Check if user wants to force original model or if enhanced should be used
+    # Check if we wants to force original model or if enhanced should be used
     if args.force_original:
         print(f"   🎯 Force Original mode: Using Original LuminaDiT")
         print(f"   💡 Recommended for embedding translation tasks")
@@ -79,48 +77,39 @@ def load_model(args, input_dim, cond_dim, device):
     
     if use_enhanced:
         # Try Enhanced LuminaDiT with improved architecture
-        try:
-            from src.modules.lumina_next import EnhancedLuminaDiT
-            
-            model = EnhancedLuminaDiT(
-                input_dim=input_dim,
-                cond_dim=cond_dim,
-                dim=args.dim,
-                depth=args.depth,
-                num_heads=args.num_heads,
-                num_kv_heads=args.num_kv_heads
-            ).to(device)
-            
-            model_type = "Enhanced"
-            print(f"   ✅ Using Enhanced LuminaDiT with Time RoPE")
-            print(f"   🔄 Grouped Query Attention: {args.num_heads}/{args.num_kv_heads} heads")
-            print(f"   🥪 Sandwich normalization enabled")
-            print(f"   🔄 Time RoPE for temporal modeling")
-            
-        except Exception as e:
-            print(f"   ⚠️ Enhanced model failed: {e}")
-            print(f"   🔄 Falling back to Original LuminaDiT")
-            use_enhanced = False
+        from src.modules.lumina_next import EnhancedLuminaDiT
+        
+        model = EnhancedLuminaDiT(
+            input_dim=input_dim,
+            cond_dim=cond_dim,
+            dim=args.dim,
+            depth=args.depth,
+            num_heads=args.num_heads,
+            num_kv_heads=args.num_kv_heads
+        ).to(device)
+        
+        model_type = "Enhanced"
+        print(f"   ✅ Using Enhanced LuminaDiT with Time RoPE")
+        print(f"   🔄 Grouped Query Attention: {args.num_heads}/{args.num_kv_heads} heads")
+        print(f"   🥪 Sandwich normalization enabled")
+        print(f"   🔄 Time RoPE for temporal modeling")
     
     if not use_enhanced:
         # Use Original LuminaDiT
-        try:
-            from src.modules.lumina_next import LuminaDiT
-            model = LuminaDiT(
-                input_dim=input_dim,
-                cond_dim=cond_dim,
-                dim=args.dim,
-                depth=args.depth,
-                num_heads=args.num_heads
-            ).to(device)
-            
-            model_type = "Original"
-            print(f"   ✅ Using Original LuminaDiT")
-            print(f"   🎯 Optimized for embedding-to-embedding translation")
-            print(f"   🚫 No spatial assumptions, clean semantic mapping")
-            
-        except Exception as e:
-            raise RuntimeError(f"Failed to load Original LuminaDiT: {e}")
+        
+        from src.modules.lumina_next import LuminaDiT
+        model = LuminaDiT(
+            input_dim=input_dim,
+            cond_dim=cond_dim,
+            dim=args.dim,
+            depth=args.depth,
+            num_heads=args.num_heads
+        ).to(device)
+        
+        model_type = "Original"
+        print(f"   ✅ Using Original LuminaDiT")
+        print(f"   🎯 Optimized for embedding-to-embedding translation")
+        print(f"   🚫 No spatial assumptions, clean semantic mapping")
     
     return model, model_type
 

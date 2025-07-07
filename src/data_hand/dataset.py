@@ -3,9 +3,9 @@ Core Dataset Module for BLIP3o WebDataset Loading
 Place this file in: src/data_hand/dataset.py
 
 This module handles:
-✅ Create WebDataset from TAR (no extraction)
-✅ Create DataLoader from WebDataset  
-✅ Load images through DataLoader
+1. Create WebDataset from TAR (no extraction)
+2.  Create DataLoader from WebDataset  
+3.  Load images through DataLoader
 
 FIXED: WebDataset worker/shard mismatch issue
 """
@@ -50,14 +50,14 @@ class BLIP3oWebDataset:
         # WebDataset requires num_workers <= number of shards
         max_workers = len(tar_paths)
         if num_workers > max_workers:
-            print(f"⚠️ Reducing num_workers from {num_workers} to {max_workers} (max shards)")
+            print(f" Reducing num_workers from {num_workers} to {max_workers} (max shards)")
             self.num_workers = max_workers
         else:
             self.num_workers = num_workers
         
         # For single shard, use 0 workers to avoid WebDataset issues
         if len(tar_paths) == 1:
-            print(f"📝 Single shard detected, using num_workers=0 for stability")
+            print(f" Single shard detected, using num_workers=0 for stability")
             self.num_workers = 0
         
         # Verify TAR files exist
@@ -69,11 +69,11 @@ class BLIP3oWebDataset:
         # Create DataLoader
         self.dataloader = self._create_dataloader()
         
-        print(f"✅ BLIP3oWebDataset initialized")
-        print(f"   📁 TAR files: {len(self.tar_paths)}")
-        print(f"   🔀 Shuffle: {self.shuffle}")
-        print(f"   📦 Batch size: {self.batch_size}")
-        print(f"   👥 Workers: {self.num_workers}")
+        print(f" BLIP3oWebDataset initialized")
+        print(f"    TAR files: {len(self.tar_paths)}")
+        print(f"    Shuffle: {self.shuffle}")
+        print(f"    Batch size: {self.batch_size}")
+        print(f"    Workers: {self.num_workers}")
     
     def _verify_tar_files(self):
         """Verify that all TAR files exist"""
@@ -83,7 +83,7 @@ class BLIP3oWebDataset:
                 missing_files.append(tar_path)
         
         if missing_files:
-            print(f"❌ Missing TAR files:")
+            print(f" Missing TAR files:")
             for file_path in missing_files:
                 print(f"   • {file_path}")
             raise FileNotFoundError(f"Missing {len(missing_files)} TAR files")
@@ -93,7 +93,7 @@ class BLIP3oWebDataset:
         for tar_path in self.tar_paths:
             size_mb = os.path.getsize(tar_path) / (1024 * 1024)
             total_size_mb += size_mb
-            print(f"📁 {tar_path}: {size_mb:.1f} MB")
+            print(f" {tar_path}: {size_mb:.1f} MB")
         
         print(f"📊 Total dataset size: {total_size_mb:.1f} MB")
     
@@ -118,7 +118,7 @@ class BLIP3oWebDataset:
                     break
             
             if image_data is None:
-                print(f"⚠️ No image found in sample {sample.get('__key__', 'unknown')}")
+                print(f" No image found in sample {sample.get('__key__', 'unknown')}")
                 return None
             
             # Decode image
@@ -141,7 +141,7 @@ class BLIP3oWebDataset:
             }
             
         except Exception as e:
-            print(f"❌ Error decoding sample {sample.get('__key__', 'unknown')}: {e}")
+            print(f" Error decoding sample {sample.get('__key__', 'unknown')}: {e}")
             return None
     
     def _create_webdataset(self) -> wds.WebDataset:
@@ -151,7 +151,7 @@ class BLIP3oWebDataset:
         Returns:
             Configured WebDataset
         """
-        print(f"🔄 Creating WebDataset from {len(self.tar_paths)} TAR files...")
+        print(f" Creating WebDataset from {len(self.tar_paths)} TAR files...")
         
         # FIX: Add empty_check=False to prevent shard/worker mismatch error
         if self.shuffle:
@@ -166,7 +166,7 @@ class BLIP3oWebDataset:
                       .map(self._decode_sample)
                       .select(lambda x: x is not None))
         
-        print(f"✅ WebDataset created successfully")
+        print(f" WebDataset created successfully")
         return dataset
     
     def _custom_collate_fn(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -206,7 +206,7 @@ class BLIP3oWebDataset:
         Returns:
             Configured DataLoader
         """
-        print(f"🔄 Creating DataLoader...")
+        print(f" Creating DataLoader...")
         
         # WebDataset implements IterableDataset, so we can use it directly
         # Use custom collate function to handle PIL Images
@@ -218,7 +218,7 @@ class BLIP3oWebDataset:
             # Note: shuffle is handled by WebDataset, not DataLoader
         )
         
-        print(f"✅ DataLoader created successfully")
+        print(f" DataLoader created successfully")
         return dataloader
     
     def get_dataloader(self) -> DataLoader:
@@ -235,7 +235,7 @@ class BLIP3oWebDataset:
         Returns:
             List of decoded samples
         """
-        print(f"🔍 Sampling {num_samples} examples from dataset...")
+        print(f" Sampling {num_samples} examples from dataset...")
         
         samples = []
         count = 0
@@ -264,7 +264,7 @@ class BLIP3oWebDataset:
 
 def test_dataset():
     """Test function to verify the dataset works"""
-    print("🧪 Testing BLIP3oWebDataset...")
+    print(" Testing BLIP3oWebDataset...")
     print("=" * 60)
     
     # Test with your downloaded shard
@@ -280,21 +280,21 @@ def test_dataset():
         )
         
         # Test DataLoader
-        print(f"\n🔄 Testing DataLoader...")
+        print(f"\n Testing DataLoader...")
         dataloader = dataset.get_dataloader()
         
         # Load one batch
         batch = next(iter(dataloader))
         
-        print(f"✅ Batch loaded successfully!")
-        print(f"   📦 Batch size: {len(batch['image'])}")
-        print(f"   🖼️ Image type: {type(batch['image'][0])}")
-        print(f"   🖼️ Image list type: {type(batch['image'])}")
-        print(f"   💬 Caption type: {type(batch['caption'][0])}")
-        print(f"   💬 Caption list type: {type(batch['caption'])}")
+        print(f" Batch loaded successfully!")
+        print(f"    Batch size: {len(batch['image'])}")
+        print(f"    Image type: {type(batch['image'][0])}")
+        print(f"    Image list type: {type(batch['image'])}")
+        print(f"    Caption type: {type(batch['caption'][0])}")
+        print(f"    Caption list type: {type(batch['caption'])}")
         
         # Show sample details
-        print(f"\n📋 Sample details:")
+        print(f"\n Sample details:")
         for i in range(min(2, len(batch['image']))):  # Show first 2 samples
             img = batch['image'][i]
             caption = batch['caption'][i]
@@ -302,27 +302,27 @@ def test_dataset():
             size = batch['image_size'][i]
             
             print(f"   Sample {i+1}:")
-            print(f"     🔑 Key: {key}")
-            print(f"     📏 Size: {size}")
-            print(f"     🖼️ PIL Image: {img.size} pixels")
-            print(f"     💬 Caption: {caption[:50]}{'...' if len(caption) > 50 else ''}")
+            print(f"      Key: {key}")
+            print(f"      Size: {size}")
+            print(f"      PIL Image: {img.size} pixels")
+            print(f"      Caption: {caption[:50]}{'...' if len(caption) > 50 else ''}")
         
         # Test sampling function
-        print(f"\n🔍 Testing sample function...")
+        print(f"\n Testing sample function...")
         samples = dataset.sample_data(num_samples=3)
         
-        print(f"✅ Sampled {len(samples)} examples")
+        print(f" Sampled {len(samples)} examples")
         for i, sample in enumerate(samples):
             print(f"   Example {i+1}: {sample['key']} - {sample['caption'][:30]}...")
         
-        print(f"\n🎉 All tests passed!")
-        print(f"✅ WebDataset is working correctly")
-        print(f"📊 Ready to add embedding computation in next phase")
-        print(f"\n💡 Learning note: Fixed PIL Image collate issue!")
+        print(f"\n All tests passed!")
+        print(f" WebDataset is working correctly")
+        print(f" Ready to add embedding computation in next phase")
+        print(f"\n Learning note: Fixed PIL Image collate issue!")
         print(f"   PyTorch DataLoader needs custom collate_fn for PIL Images")
         
     except Exception as e:
-        print(f"❌ Test failed: {e}")
+        print(f" Test failed: {e}")
         import traceback
         traceback.print_exc()
 

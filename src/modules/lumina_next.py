@@ -2,7 +2,6 @@
 """
 Enhanced Lumina-Next Implementation with BLIP3-o Improvements
 Contains both Enhanced (Time RoPE) and Original LuminaDiT models
-Fixed for embedding translation tasks
 """
 import torch
 import torch.nn as nn
@@ -169,8 +168,29 @@ class SwiGLU(nn.Module):
         gate, linear = x.chunk(2, dim=-1)
         return F.silu(gate) * linear
 
+
+class TimestepEmbedder(nn.Module):
+    """Embeds timesteps into vector representations (fallback for non-Time RoPE)"""
+    def __init__(self, dim):
+        super().__init__()
+        self.dim = dim
+        self.proj = nn.Sequential(
+            nn.Linear(dim, dim * 4),
+            nn.SiLU(),
+            nn.Linear(dim * 4, dim),
+        )
+
+    def forward(self, t):
+        half_dim = self.dim // 2
+        emb = torch.log(torch.tensor(10000.0)) / (half_dim - 1)
+        emb = torch.exp(torch.arange(half_dim, device=t.device) * -emb)
+        emb = t[:, None] * emb[None, :]
+        emb = torch.cat([torch.sin(emb), torch.cos(emb)], dim=-1)
+        return self.proj(emb)
+
+# ENHANCED VERSION - Use this for tasks that benefit from temporal modeling
 class EnhancedDiTBlock(nn.Module):
-    """Enhanced Transformer block with Time RoPE, sandwich normalization, and KQ-norm"""
+    """Enhanced Transformer block with Time RoPE, sandwich norm, KQ-norm"""
     def __init__(self, dim: int, num_heads: int, num_kv_heads: Optional[int] = None, 
                  mlp_ratio: float = 4.0, cross_dim: Optional[int] = None, use_kq_norm: bool = True):
         super().__init__()
@@ -229,29 +249,9 @@ class EnhancedDiTBlock(nn.Module):
         x = x + self.norm3_post(mlp_out)
         
         return x
-
-class TimestepEmbedder(nn.Module):
-    """Embeds timesteps into vector representations (fallback for non-Time RoPE)"""
-    def __init__(self, dim):
-        super().__init__()
-        self.dim = dim
-        self.proj = nn.Sequential(
-            nn.Linear(dim, dim * 4),
-            nn.SiLU(),
-            nn.Linear(dim * 4, dim),
-        )
-
-    def forward(self, t):
-        half_dim = self.dim // 2
-        emb = torch.log(torch.tensor(10000.0)) / (half_dim - 1)
-        emb = torch.exp(torch.arange(half_dim, device=t.device) * -emb)
-        emb = t[:, None] * emb[None, :]
-        emb = torch.cat([torch.sin(emb), torch.cos(emb)], dim=-1)
-        return self.proj(emb)
-
-# ENHANCED VERSION - Use this for tasks that benefit from temporal modeling
+    
 class EnhancedLuminaDiT(nn.Module):
-    """Enhanced Flow Matching DiT with Time RoPE and BLIP3-o improvements"""
+    """Enhanced Flow Matching DiT using EnhancedDiTBlock components"""
     def __init__(self, 
         input_dim: int = 768,        # CLIP embedding size
         cond_dim: int = 768,         # EVA embedding size
@@ -336,7 +336,7 @@ class EnhancedLuminaDiT(nn.Module):
         return self.output_proj(x.squeeze(1))  # [B, input_dim]
 
 # ORIGINAL VERSION - Recommended for embedding translation tasks
-class LuminaDiTBlock(nn.Module):
+class DiTBlock(nn.Module):
     """Original transformer block with self-attention and cross-attention"""
     def __init__(self, dim, num_heads, mlp_ratio=4.0, cross_dim=None):
         super().__init__()
@@ -380,7 +380,7 @@ class LuminaDiTBlock(nn.Module):
         return x
 
 class LuminaDiT(nn.Module):
-    """Original Flow Matching DiT for EVA→CLIP embedding translation with cross-attention"""
+    """Original Flow Matching DiT using DiTBlock components"""
     def __init__(self, 
         input_dim=768,        # CLIP embedding size
         cond_dim=768,         # EVA embedding size
@@ -401,7 +401,7 @@ class LuminaDiT(nn.Module):
         
         # Transformer blocks
         self.blocks = nn.ModuleList([
-            LuminaDiTBlock(
+            DiTBlock(
                 dim=dim,
                 num_heads=num_heads,
                 mlp_ratio=mlp_ratio,

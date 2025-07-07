@@ -43,23 +43,23 @@ def download_blip3o_shard(shard_idx=0, data_dir=None, force_download=False):
     repo_id = "BLIP3o/BLIP3o-Pretrain-Short-Caption"
     shard_filename = f"{shard_idx:05d}.tar"
     
-    print(f"🚀 Downloading BLIP3o Short Caption Dataset")
-    print(f"📦 Repository: {repo_id}")
-    print(f"📄 Shard: {shard_filename} (shard {shard_idx})")
-    print(f"📁 Destination: {data_dir}")
+    print(f"Downloading BLIP3o Short Caption Dataset")
+    print(f"Repository: {repo_id}")
+    print(f"Shard: {shard_filename} (shard {shard_idx})")
+    print(f"Destination: {data_dir}")
     print("=" * 60)
     
     # Check if file already exists
     local_file_path = data_dir / shard_filename
     if local_file_path.exists() and not force_download:
         file_size_gb = local_file_path.stat().st_size / (1024**3)
-        print(f"✅ File already exists: {local_file_path}")
-        print(f"📊 Size: {file_size_gb:.2f} GB")
-        print("💡 Use --force to re-download")
+        print(f"File already exists: {local_file_path}")
+        print(f"Size: {file_size_gb:.2f} GB")
+        print("Use --force to re-download")
         return str(local_file_path)
     
     try:
-        print(f"🔄 Starting download...")
+        print(f"Starting download...")
         
         # Download using HuggingFace Hub
         downloaded_path = hf_hub_download(
@@ -73,34 +73,34 @@ def download_blip3o_shard(shard_idx=0, data_dir=None, force_download=False):
         # Verify download
         if os.path.exists(downloaded_path):
             file_size_gb = os.path.getsize(downloaded_path) / (1024**3)
-            print(f"✅ Download successful!")
-            print(f"📁 File path: {downloaded_path}")
-            print(f"📊 File size: {file_size_gb:.2f} GB")
+            print(f" Download successful!")
+            print(f" File path: {downloaded_path}")
+            print(f" File size: {file_size_gb:.2f} GB")
             
             # Estimate number of samples
             estimated_samples = int(file_size_gb * 400000 / 1.0)  # Rough estimate
-            print(f"📈 Estimated samples: ~{estimated_samples:,}")
+            print(f" Estimated samples: ~{estimated_samples:,}")
             
             return downloaded_path
         else:
-            print(f"❌ Download failed: File not found at {downloaded_path}")
+            print(f" Download failed: File not found at {downloaded_path}")
             return None
             
     except Exception as e:
-        print(f"❌ Download error: {e}")
-        print(f"💡 Make sure you have internet connection and sufficient disk space")
+        print(f" Download error: {e}")
+        print(f" Make sure you have internet connection and sufficient disk space")
         return None
 
 def list_available_files(repo_id="BLIP3o/BLIP3o-Pretrain-Short-Caption"):
     """List all available files in the repository"""
     try:
-        print(f"📋 Available files in {repo_id}:")
+        print(f" Available files in {repo_id}:")
         files = list_repo_files(repo_id, repo_type="dataset")
         
         tar_files = [f for f in files if f.endswith('.tar')]
         tar_files.sort()
         
-        print(f"🗂️ Found {len(tar_files)} tar files:")
+        print(f" Found {len(tar_files)} tar files:")
         for i, filename in enumerate(tar_files):
             shard_num = filename.replace('.tar', '')
             print(f"  {i:2d}. {filename} (shard {int(shard_num)})")
@@ -108,22 +108,22 @@ def list_available_files(repo_id="BLIP3o/BLIP3o-Pretrain-Short-Caption"):
         return tar_files
         
     except Exception as e:
-        print(f"❌ Error listing files: {e}")
+        print(f" Error listing files: {e}")
         return []
 
 def verify_download(file_path):
     """Verify the downloaded file"""
     if not os.path.exists(file_path):
-        print(f"❌ File not found: {file_path}")
+        print(f" File not found: {file_path}")
         return False
     
     file_size = os.path.getsize(file_path)
     if file_size < 1024 * 1024:  # Less than 1MB is suspicious
-        print(f"⚠️ File seems too small: {file_size} bytes")
+        print(f" File seems too small: {file_size} bytes")
         return False
     
-    print(f"✅ File verification passed")
-    print(f"📊 Size: {file_size / (1024**3):.2f} GB")
+    print(f" File verification passed")
+    print(f" Size: {file_size / (1024**3):.2f} GB")
     return True
 
 def main():
@@ -191,12 +191,12 @@ Examples:
     )
     
     if downloaded_path:
-        print(f"\n🎉 Success! Ready for next steps:")
+        print(f"\n Success! Ready for next steps:")
         print(f"  1. Cache features: python scripts/cache_features.py --shards {args.shard}")
         print(f"  2. Test dataset: python src/data/dataset.py")
         print(f"  3. Start training pipeline development")
     else:
-        print(f"\n❌ Download failed. Please check the error messages above.")
+        print(f"\n Download failed. Please check the error messages above.")
         sys.exit(1)
 
 if __name__ == "__main__":
