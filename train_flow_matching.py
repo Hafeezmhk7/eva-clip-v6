@@ -38,15 +38,15 @@ def setup_wandb(args):
         notes="EVA-CLIP to CLIP alignment using flow matching with BLIP3-o inspired improvements"
     )
     
-    print(f"📊 Weights & Biases initialized:")
-    print(f"   🏷️ Project: unified_3D")
-    print(f"   🏃 Experiment: {experiment_name}")
-    print(f"   🔗 URL: {wandb.run.url}")
+    print(f" Weights & Biases initialized:")
+    print(f"    Project: unified_3D")
+    print(f"    Experiment: {experiment_name}")
+    print(f"    URL: {wandb.run.url}")
     
     return run
 
 def load_model(args, input_dim, cond_dim, device):
-    print(f"🏗️ Initializing LuminaDiT for Embedding Translation...")
+    print(f" Initializing LuminaDiT for Embedding Translation...")
     
     # Set default num_kv_heads if not specified
     if args.num_kv_heads is None:
@@ -57,23 +57,23 @@ def load_model(args, input_dim, cond_dim, device):
         if args.num_kv_heads is None:
             args.num_kv_heads = 1
     
-    print(f"   🧮 Using num_heads={args.num_heads}, num_kv_heads={args.num_kv_heads}")
+    print(f"  Using num_heads={args.num_heads}, num_kv_heads={args.num_kv_heads}")
     
     # Check if we wants to force original model or if enhanced should be used
     if args.force_original:
-        print(f"   🎯 Force Original mode: Using Original LuminaDiT")
-        print(f"   💡 Recommended for embedding translation tasks")
+        print(f"    Force Original mode: Using Original LuminaDiT")
+        print(f"    Recommended for embedding translation tasks")
         use_enhanced = False
     else:
         # Auto-select based on dimension and task
         use_enhanced = args.dim % 6 == 0 and not args.embedding_task
         if use_enhanced:
-            print(f"   ✅ Using Enhanced LuminaDiT (dim={args.dim} compatible with Time RoPE)")
-            print(f"   ⚠️  Note: Enhanced model may not be optimal for embedding translation")
+            print(f"    Using Enhanced LuminaDiT (dim={args.dim} compatible with Time RoPE)")
+            print(f"     Note: Enhanced model may not be optimal for embedding translation")
         else:
             if args.dim % 6 != 0:
-                print(f"   ⚠️ Dimension {args.dim} not compatible with 3D RoPE")
-            print(f"   🎯 Using Original LuminaDiT (better for embedding tasks)")
+                print(f"    Dimension {args.dim} not compatible with 3D RoPE")
+            print(f"    Using Original LuminaDiT (better for embedding tasks)")
     
     if use_enhanced:
         # Try Enhanced LuminaDiT with improved architecture
@@ -89,10 +89,10 @@ def load_model(args, input_dim, cond_dim, device):
         ).to(device)
         
         model_type = "Enhanced"
-        print(f"   ✅ Using Enhanced LuminaDiT with Time RoPE")
-        print(f"   🔄 Grouped Query Attention: {args.num_heads}/{args.num_kv_heads} heads")
-        print(f"   🥪 Sandwich normalization enabled")
-        print(f"   🔄 Time RoPE for temporal modeling")
+        print(f"    Using Enhanced LuminaDiT with Time RoPE")
+        print(f"    Grouped Query Attention: {args.num_heads}/{args.num_kv_heads} heads")
+        print(f"    Sandwich normalization enabled")
+        print(f"    Time RoPE for temporal modeling")
     
     if not use_enhanced:
         # Use Original LuminaDiT
@@ -107,9 +107,9 @@ def load_model(args, input_dim, cond_dim, device):
         ).to(device)
         
         model_type = "Original"
-        print(f"   ✅ Using Original LuminaDiT")
-        print(f"   🎯 Optimized for embedding-to-embedding translation")
-        print(f"   🚫 No spatial assumptions, clean semantic mapping")
+        print(f"    Using Original LuminaDiT")
+        print(f"    Optimized for embedding-to-embedding translation")
+        print(f"    No spatial assumptions, clean semantic mapping")
     
     return model, model_type
 
@@ -117,11 +117,11 @@ def safe_save_model(state, path):
     """Robust model saving with error handling and retry"""
     try:
         torch.save(state, path)
-        print(f"💾 Saved model to {path}")
+        print(f" Saved model to {path}")
         return True
     except Exception as e:
-        print(f"❌ Error saving model: {e}")
-        print("🔄 Attempting minimal save...")
+        print(f" Error saving model: {e}")
+        print(" Attempting minimal save...")
         
         try:
             # Save only essential components
@@ -133,21 +133,21 @@ def safe_save_model(state, path):
                 'val_alignment': state.get('val_alignment', 0)
             }
             torch.save(minimal_state, path)
-            print(f"💾 Minimal model saved to {path}")
+            print(f" Minimal model saved to {path}")
             return True
         except Exception as e2:
-            print(f"❌ Critical error saving model: {e2}")
+            print(f" Critical error saving model: {e2}")
             traceback.print_exc()
             return False
 
 def main(args):
     # Setup device
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print(f"🚀 Using device: {device}")
+    print(f" Using device: {device}")
     
     if torch.cuda.is_available():
-        print(f"   🎮 GPU: {torch.cuda.get_device_name(0)}")
-        print(f"   💾 GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
+        print(f"    GPU: {torch.cuda.get_device_name(0)}")
+        print(f"    GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
     
     # Initialize mixed precision scaler
     scaler = None
@@ -162,7 +162,7 @@ def main(args):
             except:
                 pass
     
-    print(f"   ⚡ Mixed Precision: {'Enabled' if scaler else 'Disabled'}")
+    print(f"  Mixed Precision: {'Enabled' if scaler else 'Disabled'}")
     
     # Initialize autocast context
     autocast = None
@@ -181,7 +181,7 @@ def main(args):
     wandb_run = setup_wandb(args)
     
     # Load dataset
-    print(f"📂 Loading dataset from {args.embedding_path}")
+    print(f" Loading dataset from {args.embedding_path}")
     dataset = EmbeddingDataset(args.embedding_path)
     
     # Split dataset into train/val (90/10 split)
@@ -205,8 +205,8 @@ def main(args):
         pin_memory=True
     )
     
-    print(f"   📊 Train samples: {len(train_dataset)}")
-    print(f"   📊 Val samples: {len(val_dataset)}")
+    print(f"    Train samples: {len(train_dataset)}")
+    print(f"    Val samples: {len(val_dataset)}")
     
     # Initialize model with smart selection
     model, model_type = load_model(
@@ -221,10 +221,10 @@ def main(args):
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     model_size_mb = total_params * 4 / 1e6
     
-    print(f"   🔢 Total parameters: {total_params:,}")
-    print(f"   🎯 Trainable parameters: {trainable_params:,}")
-    print(f"   💾 Model size: {model_size_mb:.1f} MB")
-    print(f"   🏗️ Model type: {model_type}")
+    print(f"    Total parameters: {total_params:,}")
+    print(f"    Trainable parameters: {trainable_params:,}")
+    print(f"    Model size: {model_size_mb:.1f} MB")
+    print(f"    Model type: {model_type}")
     
     # Enhanced loss function with stability improvements
     criterion = FlowMatchingLoss(
@@ -286,14 +286,14 @@ def main(args):
         # Watch model for gradient tracking
         wandb.watch(model, log="all", log_freq=100)
     
-    print(f"⚙️ Training Configuration:")
-    print(f"   📈 Learning rate: {args.lr}")
-    print(f"   🔄 Epochs: {args.epochs}")
-    print(f"   📦 Batch size: {args.batch_size}")
-    print(f"   🏗️ Model: {model_type} LuminaDiT")
-    print(f"   📊 Loss type: {args.loss_type}")
-    print(f"   📈 Scheduler: {args.scheduler}")
-    print(f"   📊 W&B Logging: {'Enabled' if args.use_wandb else 'Disabled'}")
+    print(f" Training Configuration:")
+    print(f"    Learning rate: {args.lr}")
+    print(f"    Epochs: {args.epochs}")
+    print(f"    Batch size: {args.batch_size}")
+    print(f"    Model: {model_type} LuminaDiT")
+    print(f"    Loss type: {args.loss_type}")
+    print(f"    Scheduler: {args.scheduler}")
+    print(f"    W&B Logging: {'Enabled' if args.use_wandb else 'Disabled'}")
     
     # Training loop with BLIP3-o improvements
     best_val_loss = float('inf')
@@ -430,8 +430,8 @@ def main(args):
             
             model.train()
             
-            print(f"   📊 Val loss: {val_loss:.4f}")
-            print(f"   🎯 Val alignment: {val_alignment:.4f}")
+            print(f"    Val loss: {val_loss:.4f}")
+            print(f"    Val alignment: {val_alignment:.4f}")
             
             # Update plateau scheduler with validation loss
             if args.scheduler == 'plateau':
@@ -465,7 +465,7 @@ def main(args):
             if val_alignment > best_alignment:
                 best_alignment = val_alignment
                 stagnation_counter = 0
-                print(f"   ✅ New best alignment: {best_alignment:.4f}")
+                print(f"    New best alignment: {best_alignment:.4f}")
                 
                 state = {
                     'epoch': epoch + 1,
@@ -481,12 +481,12 @@ def main(args):
                 # Use safe saving method
                 save_path = os.path.join(args.save_dir, 'best_alignment_model.pt')
                 if not safe_save_model(state, save_path):
-                    print("❌ Could not save best alignment model!")
+                    print(" Could not save best alignment model!")
             
             # Also save best loss model
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
-                print(f"   ✅ New best validation loss: {best_val_loss:.4f}")
+                print(f"    New best validation loss: {best_val_loss:.4f}")
                 
                 state = {
                     'epoch': epoch + 1,
@@ -501,11 +501,11 @@ def main(args):
                 
                 save_path = os.path.join(args.save_dir, 'best_loss_model.pt')
                 if not safe_save_model(state, save_path):
-                    print("❌ Could not save best loss model!")
+                    print(" Could not save best loss model!")
             else:
                 stagnation_counter += 1
                 if stagnation_counter >= args.early_stopping_patience:
-                    print(f"🛑 Early stopping: No improvement for {stagnation_counter} validation cycles")
+                    print(f" Early stopping: No improvement for {stagnation_counter} validation cycles")
                     break
         
         # Save checkpoint
@@ -523,16 +523,16 @@ def main(args):
             
             ckpt_path = os.path.join(args.save_dir, f"lumina_epoch{epoch+1}.pt")
             if safe_save_model(state, ckpt_path):
-                print(f"💾 Saved checkpoint to {ckpt_path}")
+                print(f" Saved checkpoint to {ckpt_path}")
     
     # Training completion
     total_training_time = time.time() - training_start_time
     
-    print(f"\n🎉 Training completed!")
-    print(f"📊 Best validation loss: {best_val_loss:.4f}")
-    print(f"🎯 Best alignment: {best_alignment:.4f}")
-    print(f"⏱️ Total training time: {total_training_time/3600:.2f} hours")
-    print(f"🏗️ Model type used: {model_type}")
+    print(f"\n Training completed!")
+    print(f" Best validation loss: {best_val_loss:.4f}")
+    print(f" Best alignment: {best_alignment:.4f}")
+    print(f"⏱ Total training time: {total_training_time/3600:.2f} hours")
+    print(f" Model type used: {model_type}")
     
     # Final wandb logging and cleanup
     if args.use_wandb:
@@ -568,9 +568,9 @@ def main(args):
         )
         wandb.log({"summary/training_summary": summary_table})
         
-        print(f"📊 Experiment logged to: {wandb.run.url}")
+        print(f" Experiment logged to: {wandb.run.url}")
         wandb.finish()
-        print(f"✅ Weights & Biases session closed.")
+        print(f" Weights & Biases session closed.")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="EVA-CLIP to CLIP Flow Matching Training")
@@ -638,16 +638,16 @@ if __name__ == "__main__":
     with open(os.path.join(args.save_dir, 'args.json'), 'w') as f:
         json.dump(vars(args), f, indent=2)
     
-    print(f"🏃 Starting EVA-CLIP to CLIP Flow Matching Training")
+    print(f" Starting EVA-CLIP to CLIP Flow Matching Training")
     print(f"=" * 70)
-    print(f"📁 Save directory: {args.save_dir}")
-    print(f"📊 W&B Logging: {'Enabled' if args.use_wandb else 'Disabled'}")
-    print(f"🎯 Force Original: {'Yes' if args.force_original else 'Auto-select'}")
-    print(f"📊 Loss Type: {args.loss_type}")
-    print(f"📈 Scheduler: {args.scheduler}")
+    print(f" Save directory: {args.save_dir}")
+    print(f" W&B Logging: {'Enabled' if args.use_wandb else 'Disabled'}")
+    print(f" Force Original: {'Yes' if args.force_original else 'Auto-select'}")
+    print(f" Loss Type: {args.loss_type}")
+    print(f" Scheduler: {args.scheduler}")
     if args.use_wandb:
-        print(f"   🏷️ Project: unified_3D")
-        print(f"   🧪 Experiment: alignment_of_eva_clip")
+        print(f"    Project: unified_3D")
+        print(f"    Experiment: alignment_of_eva_clip")
     print(f"=" * 70)
     
     main(args)

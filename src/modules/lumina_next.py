@@ -293,12 +293,12 @@ class EnhancedLuminaDiT(nn.Module):
         # Initialize weights
         self.apply(self._init_weights)
         
-        print(f"🚀 Enhanced LuminaDiT initialized:")
-        print(f"   📐 Architecture: {depth} blocks, {num_heads} heads, {dim} dim")
-        print(f"   🔄 Time RoPE: Enabled for temporal modeling")  
-        print(f"   🥪 Sandwich norm: Enabled for training stability")
-        print(f"   ⚡ Grouped QA: {num_heads}/{num_kv_heads or num_heads} heads")
-        print(f"   🔒 KQ-Norm: {'Enabled' if use_kq_norm else 'Disabled'}")
+        print(f" Enhanced LuminaDiT initialized:")
+        print(f"    Architecture: {depth} blocks, {num_heads} heads, {dim} dim")
+        print(f"    Time RoPE: Enabled for temporal modeling")  
+        print(f"    Sandwich norm: Enabled for training stability")
+        print(f"    Grouped QA: {num_heads}/{num_kv_heads or num_heads} heads")
+        print(f"    KQ-Norm: {'Enabled' if use_kq_norm else 'Disabled'}")
         
     def _init_weights(self, module):
         """Initialize weights with proper scaling"""
@@ -416,11 +416,11 @@ class LuminaDiT(nn.Module):
         # Initialize weights
         self.apply(self._init_weights)
         
-        print(f"🚀 Original LuminaDiT initialized:")
-        print(f"   📐 Architecture: {depth} blocks, {num_heads} heads, {dim} dim")
-        print(f"   🎯 Optimized for embedding translation tasks")
-        print(f"   🚫 No spatial assumptions, clean semantic mapping")
-        print(f"   ✅ Proven stable for EVA-CLIP → CLIP L-14 alignment")
+        print(f" Original LuminaDiT initialized:")
+        print(f"    Architecture: {depth} blocks, {num_heads} heads, {dim} dim")
+        print(f"    Optimized for embedding translation tasks")
+        print(f"    No spatial assumptions, clean semantic mapping")
+        print(f"    Proven stable for EVA-CLIP → CLIP L-14 alignment")
         
     def _init_weights(self, module):
         if isinstance(module, nn.Linear):
