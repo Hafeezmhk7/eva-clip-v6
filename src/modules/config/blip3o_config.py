@@ -14,7 +14,7 @@ class BLIP3oDiTConfig(PretrainedConfig):
     This configuration follows the exact BLIP3-o architecture:
     - Uses NextDiT backbone (Lumina-Next)
     - Cross-attention with EVA-CLIP conditioning
-    - Generates 768-dim CLIP embeddings from 1280-dim EVA-CLIP
+    - Generates 1024-dim CLIP embeddings from 4096-dim EVA-CLIP
     - 64 tokens (8x8 grid) input/output format
     """
     
@@ -26,10 +26,10 @@ class BLIP3oDiTConfig(PretrainedConfig):
         input_size: int = 8,                    # 8x8 grid = 64 tokens
         patch_size: int = 1,                    # Already tokenized features
         
-        # Model dimensions
-        in_channels: int = 1024,                 # CLIP feature dimension
+        # Model dimensions - CORRECT for your extracted embeddings
+        in_channels: int = 1024,                # CLIP feature dimension (ViT-L/14)
         dim: int = 1792,                        # Hidden dimension (from BLIP3-o)
-        eva_embedding_size: int = 4096,         # EVA-CLIP conditioning dimension
+        eva_embedding_size: int = 4096,         # EVA-CLIP conditioning dimension (EVA-CLIP-8B)
         
         # Transformer architecture
         n_layers: int = 24,                     # Number of transformer layers
@@ -80,8 +80,8 @@ class BLIP3oDiTConfig(PretrainedConfig):
         assert self.dim % self.n_heads == 0, f"Hidden dim {self.dim} must be divisible by num_heads {self.n_heads}"
         assert self.learn_sigma is False, "BLIP3-o uses flow matching, which doesn't require sigma learning"
         assert self.input_size * self.input_size == 64, f"Input size {self.input_size}x{self.input_size} must equal 64 tokens"
-        assert self.in_channels == 1024, "BLIP3-o generates 768-dim CLIP embeddings"
-        assert self.eva_embedding_size == 4096, "EVA-CLIP conditioning should be 1280-dim"
+        assert self.in_channels == 1024, "CLIP embeddings are 1024-dim (ViT-L/14)"
+        assert self.eva_embedding_size == 4096, "EVA-CLIP conditioning is 4096-dim (EVA-CLIP-8B)"
 
 
 class FlowMatchingConfig:
@@ -97,9 +97,9 @@ class FlowMatchingConfig:
         sigma_max: float = 1.0,                 # Maximum noise level
         prediction_type: str = "v_prediction",  # "v_prediction" or "epsilon"
         
-        # Training parameters
-        clip_dim: int = 1024,                    # CLIP embedding dimension
-        eva_dim: int = 4096,                    # EVA-CLIP dimension
+        # Training parameters - CORRECT for your extracted embeddings
+        clip_dim: int = 1024,                   # CLIP embedding dimension (ViT-L/14)
+        eva_dim: int = 4096,                    # EVA-CLIP dimension (EVA-CLIP-8B)
         
         # Regularization
         regularization_weight: float = 0.0,    # Additional regularization
@@ -118,6 +118,8 @@ class FlowMatchingConfig:
         # Validate
         assert prediction_type in ["v_prediction", "epsilon"], f"Invalid prediction type: {prediction_type}"
         assert 0 <= sigma_min < sigma_max, "Invalid sigma range"
+        assert clip_dim == 1024, "CLIP dimension must be 1024 (ViT-L/14) for your embeddings"
+        assert eva_dim == 4096, "EVA-CLIP dimension must be 4096 (EVA-CLIP-8B) for your embeddings"
 
 
 class TrainingConfig:
@@ -192,13 +194,13 @@ class TrainingConfig:
 
 
 def get_default_blip3o_config() -> BLIP3oDiTConfig:
-    """Get default BLIP3-o configuration matching the paper."""
+    """Get default BLIP3-o configuration matching your extracted embeddings."""
     return BLIP3oDiTConfig(
         input_size=8,                    # 8x8 = 64 tokens
         patch_size=1,                    # Pre-tokenized
-        in_channels=1024,                 # CLIP dimension
+        in_channels=1024,                # CLIP dimension (ViT-L/14)
         dim=1792,                        # Hidden dimension from paper
-        eva_embedding_size=4096,         # EVA-CLIP dimension
+        eva_embedding_size=4096,         # EVA-CLIP dimension (EVA-CLIP-8B)
         n_layers=24,                     # Transformer layers
         n_heads=28,                      # Attention heads
         n_kv_heads=28,                   # KV heads
@@ -211,13 +213,13 @@ def get_default_blip3o_config() -> BLIP3oDiTConfig:
 
 
 def get_default_flow_matching_config() -> FlowMatchingConfig:
-    """Get default flow matching configuration for BLIP3-o."""
+    """Get default flow matching configuration for your embeddings."""
     return FlowMatchingConfig(
         sigma_min=1e-4,
         sigma_max=1.0,
         prediction_type="v_prediction",  # BLIP3-o uses v-prediction
-        clip_dim=1024,
-        eva_dim=4096,
+        clip_dim=1024,                   # CLIP dimension (ViT-L/14)
+        eva_dim=4096,                    # EVA-CLIP dimension (EVA-CLIP-8B)
         regularization_weight=0.0,
         schedule_type="linear",
     )

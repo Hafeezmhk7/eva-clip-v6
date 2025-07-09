@@ -20,8 +20,8 @@ class BLIP3oEmbeddingDataset(Dataset):
     
     Loads pre-extracted EVA-CLIP and CLIP embeddings in 64-token format
     for flow matching training. The dataset handles:
-    - EVA-CLIP embeddings (1280-dim, 64 tokens) as conditioning
-    - CLIP embeddings (768-dim, 64 tokens) as targets
+    - EVA-CLIP embeddings (4096-dim, 64 tokens) as conditioning
+    - CLIP embeddings (1024-dim, 64 tokens) as targets
     - Proper normalization and preprocessing
     - Memory-efficient loading
     """
@@ -37,6 +37,9 @@ class BLIP3oEmbeddingDataset(Dataset):
         split: str = "train",
         eval_split_ratio: float = 0.1,
         random_seed: int = 42,
+        # Allow configuration of expected dimensions
+        expected_eva_dim: Optional[int] = None,
+        expected_clip_dim: Optional[int] = None,
     ):
         """
         Initialize the BLIP3-o embedding dataset.
@@ -51,6 +54,8 @@ class BLIP3oEmbeddingDataset(Dataset):
             split: Dataset split ("train" or "eval")
             eval_split_ratio: Ratio of data to use for evaluation
             random_seed: Random seed for reproducible splitting
+            expected_eva_dim: Expected EVA embedding dimension (auto-detected if None)
+            expected_clip_dim: Expected CLIP embedding dimension (auto-detected if None)
         """
         self.embeddings_path = Path(embeddings_path)
         self.subset_size = subset_size
@@ -61,6 +66,8 @@ class BLIP3oEmbeddingDataset(Dataset):
         self.split = split
         self.eval_split_ratio = eval_split_ratio
         self.random_seed = random_seed
+        self.expected_eva_dim = expected_eva_dim
+        self.expected_clip_dim = expected_clip_dim
         
         # Load and process the embeddings
         self._load_embeddings()
@@ -93,8 +100,8 @@ class BLIP3oEmbeddingDataset(Dataset):
                 "Make sure you're using the BLIP3-o compatible embeddings."
             )
         
-        self.eva_embeddings = data['eva_blip3o_embeddings']    # [N, 64, 1280]
-        self.clip_embeddings = data['clip_blip3o_embeddings']  # [N, 64, 768]
+        self.eva_embeddings = data['eva_blip3o_embeddings']    # [N, 64, 4096]
+        self.clip_embeddings = data['clip_blip3o_embeddings']  # [N, 64, 1024]
         self.captions = data.get('captions', [])
         self.keys = data.get('keys', [])
         self.config = data.get('config', {})
@@ -143,11 +150,23 @@ class BLIP3oEmbeddingDataset(Dataset):
         if clip_shape[1] != 64:
             raise ValueError(f"CLIP embeddings should have 64 tokens, got {clip_shape[1]}")
         
-        # Check feature dimensions
-        if eva_shape[2] != 1280:
-            raise ValueError(f"EVA embeddings should be 1280-dim, got {eva_shape[2]}")
-        if clip_shape[2] != 768:
-            raise ValueError(f"CLIP embeddings should be 768-dim, got {clip_shape[2]}")
+        # Auto-detect dimensions if not specified
+        actual_eva_dim = eva_shape[2]
+        actual_clip_dim = clip_shape[2]
+        
+        if self.expected_eva_dim is None:
+            self.expected_eva_dim = actual_eva_dim
+            logger.info(f"Auto-detected EVA dimension: {actual_eva_dim}")
+        else:
+            if actual_eva_dim != self.expected_eva_dim:
+                raise ValueError(f"EVA embeddings should be {self.expected_eva_dim}-dim, got {actual_eva_dim}")
+        
+        if self.expected_clip_dim is None:
+            self.expected_clip_dim = actual_clip_dim
+            logger.info(f"Auto-detected CLIP dimension: {actual_clip_dim}")
+        else:
+            if actual_clip_dim != self.expected_clip_dim:
+                raise ValueError(f"CLIP embeddings should be {self.expected_clip_dim}-dim, got {actual_clip_dim}")
         
         logger.info(f"Validated embeddings: EVA {eva_shape}, CLIP {clip_shape}")
     
@@ -243,15 +262,15 @@ class BLIP3oEmbeddingDataset(Dataset):
         
         Returns:
             Dictionary containing:
-            - eva_embeddings: [64, 1280] EVA-CLIP conditioning
-            - clip_embeddings: [64, 768] CLIP targets
+            - eva_embeddings: [64, EVA_DIM] EVA-CLIP conditioning
+            - clip_embeddings: [64, CLIP_DIM] CLIP targets
             - caption: Text caption (if available)
             - key: Unique identifier (if available)
             - index: Dataset index
         """
         item = {
-            'eva_embeddings': self.eva_embeddings[idx],      # [64, 1280]
-            'clip_embeddings': self.clip_embeddings[idx],    # [64, 768]
+            'eva_embeddings': self.eva_embeddings[idx],      # [64, EVA_DIM]
+            'clip_embeddings': self.clip_embeddings[idx],    # [64, CLIP_DIM]
             'index': idx,
         }
         
@@ -320,8 +339,8 @@ def blip3o_collate_fn(batch: List[Dict[str, Any]]) -> Dict[str, Any]:
     keys = [item['key'] for item in batch]
     
     return {
-        'eva_embeddings': eva_embeddings,      # [B, 64, 1280]
-        'clip_embeddings': clip_embeddings,    # [B, 64, 768]
+        'eva_embeddings': eva_embeddings,      # [B, 64, EVA_DIM]
+        'clip_embeddings': clip_embeddings,    # [B, 64, CLIP_DIM]
         'captions': captions,                  # List[str]
         'keys': keys,                          # List[str]
         'indices': indices,                    # [B]
@@ -338,6 +357,8 @@ def create_blip3o_dataloader(
     normalize_embeddings: bool = True,
     eval_split_ratio: float = 0.1,
     pin_memory: bool = None,
+    expected_eva_dim: Optional[int] = None,
+    expected_clip_dim: Optional[int] = None,
     **kwargs
 ) -> DataLoader:
     """
@@ -353,6 +374,8 @@ def create_blip3o_dataloader(
         normalize_embeddings: Whether to normalize embeddings
         eval_split_ratio: Ratio for train/eval split
         pin_memory: Whether to pin memory (auto-detected if None)
+        expected_eva_dim: Expected EVA embedding dimension
+        expected_clip_dim: Expected CLIP embedding dimension
         **kwargs: Additional DataLoader arguments
         
     Returns:
@@ -369,6 +392,8 @@ def create_blip3o_dataloader(
         normalize_embeddings=normalize_embeddings,
         split=split,
         eval_split_ratio=eval_split_ratio,
+        expected_eva_dim=expected_eva_dim,
+        expected_clip_dim=expected_clip_dim,
     )
     
     # Create dataloader
@@ -394,6 +419,8 @@ def create_blip3o_dataloaders(
     subset_size: Optional[int] = None,
     normalize_embeddings: bool = True,
     eval_split_ratio: float = 0.1,
+    expected_eva_dim: Optional[int] = None,
+    expected_clip_dim: Optional[int] = None,
     **kwargs
 ) -> Tuple[DataLoader, Optional[DataLoader]]:
     """
@@ -416,6 +443,8 @@ def create_blip3o_dataloaders(
         subset_size=subset_size,
         normalize_embeddings=normalize_embeddings,
         eval_split_ratio=eval_split_ratio,
+        expected_eva_dim=expected_eva_dim,
+        expected_clip_dim=expected_clip_dim,
         **kwargs
     )
     
@@ -431,6 +460,8 @@ def create_blip3o_dataloaders(
             subset_size=subset_size,
             normalize_embeddings=normalize_embeddings,
             eval_split_ratio=eval_split_ratio,
+            expected_eva_dim=expected_eva_dim,
+            expected_clip_dim=expected_clip_dim,
             **kwargs
         )
     
@@ -442,11 +473,33 @@ def test_blip3o_dataset(embeddings_path: Union[str, Path]):
     print("Testing BLIP3-o dataset...")
     
     try:
-        # Create dataset
+        # Load embeddings to check dimensions first
+        with open(embeddings_path, 'rb') as f:
+            data = pickle.load(f)
+        
+        eva_embeddings = data['eva_blip3o_embeddings']
+        clip_embeddings = data['clip_blip3o_embeddings']
+        
+        # Auto-detect dimensions
+        if hasattr(eva_embeddings, 'shape'):
+            eva_dim = eva_embeddings.shape[-1]
+        else:
+            eva_dim = len(eva_embeddings[0][0]) if eva_embeddings else 4096
+            
+        if hasattr(clip_embeddings, 'shape'):
+            clip_dim = clip_embeddings.shape[-1]
+        else:
+            clip_dim = len(clip_embeddings[0][0]) if clip_embeddings else 1024
+        
+        print(f"Detected dimensions: EVA={eva_dim}, CLIP={clip_dim}")
+        
+        # Create dataset with auto-detected dimensions
         dataset = BLIP3oEmbeddingDataset(
             embeddings_path=embeddings_path,
             subset_size=100,  # Small subset for testing
-            split="all"
+            split="all",
+            expected_eva_dim=eva_dim,    # Use detected dimensions
+            expected_clip_dim=clip_dim,  # Use detected dimensions
         )
         
         # Print statistics
@@ -474,7 +527,9 @@ def test_blip3o_dataset(embeddings_path: Union[str, Path]):
             batch_size=8,
             subset_size=50,
             num_workers=0,  # Avoid multiprocessing in testing
-            split="all"
+            split="all",
+            expected_eva_dim=eva_dim,
+            expected_clip_dim=clip_dim,
         )
         
         batch = next(iter(dataloader))
@@ -490,7 +545,9 @@ def test_blip3o_dataset(embeddings_path: Union[str, Path]):
             batch_size=8,
             subset_size=50,
             num_workers=0,
-            eval_split_ratio=0.2
+            eval_split_ratio=0.2,
+            expected_eva_dim=eva_dim,
+            expected_clip_dim=clip_dim,
         )
         
         train_batch = next(iter(train_loader))
