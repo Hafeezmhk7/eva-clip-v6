@@ -189,8 +189,8 @@ Key BLIP3-o DiT parameters:
 - `model_dim`: Hidden dimension (default: 1792)
 - `num_layers`: Transformer layers (default: 24) 
 - `num_heads`: Attention heads (default: 28)
-- `eva_embedding_size`: EVA-CLIP dimension (1280, fixed)
-- `in_channels`: CLIP dimension (768, fixed)
+- `eva_embedding_size`: EVA-CLIP dimension (4096, fixed)
+- `in_channels`: CLIP dimension (1024, fixed)
 
 ### Flow Matching
 
