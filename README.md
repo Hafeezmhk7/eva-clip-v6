@@ -60,6 +60,30 @@ flowchart TD
     J --> K[EVA BLIP3-o Tokens\n8x8=64 tokens\n4096-dim]
 ```
 
+## blip3o dit architecture
+```mermaid
+    A[Noisy CLIP Tokens\n64x1024] --> B[Token Embedding\n1024→768]
+    C[Timestep] --> D[Timestep Embedding\n128→768]
+    E[EVA Tokens\n64x4096] --> F[Linear Projection\n4096→768]
+    
+    B --> G[DiT Block 1]
+    D --> G
+    F --> G
+    
+    G --> H[DiT Block 2]
+    H --> I[DiT Block ...]
+    I --> J[DiT Block N]
+    
+    J --> K[LayerNorm]
+    K --> L[Output Projection\n768→1024]
+    L --> M[Velocity Prediction\n64x1024]
+    
+    style G fill:#e6f7ff,stroke:#1890ff
+    style H fill:#e6f7ff,stroke:#1890ff
+    style I fill:#e6f7ff,stroke:#1890ff
+    style J fill:#e6f7ff,stroke:#1890ff
+```
+
 ## 🛠️ Installation
 
 1. **Clone and setup environment:**
