@@ -60,13 +60,6 @@ pip install -r requirements.txt
 ```
 
 
-
-## 📊 Data Preparation
-
-Sure! Here's a revised version of your **📊 Data Preparation** section for the README, incorporating the correct sequence and file paths:
-
----
-
 ## 📊 Data Preparation
 
 To prepare the data, follow these steps:
