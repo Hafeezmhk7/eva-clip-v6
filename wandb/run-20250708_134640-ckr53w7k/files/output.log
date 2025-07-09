@@ -1,0 +1,384 @@
+🔄 Weights & Biases initialized:
+    Project: unified_3D
+    Experiment: alignment_of_eva_clip_20250708_134640
+    URL: https://wandb.ai/RecSys-UvA/unified_3D/runs/ckr53w7k
+📚 Loading dataset from embeddings/blip3o_embeddings.pkl
+    Train samples: 2381
+    Val samples: 265
+🚀 Initializing DiT Model for EVA-CLIP → CLIP Translation...
+    Input (CLIP L-14): 768D
+    Condition (EVA-CLIP): 1280D
+    Architecture: enhanced
+    🎯 Attention config: 16 heads, 8 KV heads
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+🚀 Enhanced LuminaDiT (Lumina-Next + Context Drop) initialized:
+    Architecture: 24 blocks, 16 heads, 1024 dim
+    Input: CLIP L-14 (768D) → EVA-CLIP (1280D)
+    AdaLN-Zero: Enabled for proper time conditioning
+    Grouped QA: 16/8 heads
+    KQ-Norm: Enabled
+    Context Drop: Enabled
+    Drop Ratio: 0.25
+    Zero-init: Enabled for training stability
+    SwiGLU: Modern transformer activation
+    ✨ Using Enhanced DiT Architecture (Lumina-Next)
+    🔄 AdaLN-Zero: Enabled for proper time conditioning
+    🎯 Grouped Query Attention: 16/8 heads
+    🛡️ KQ-Norm: Enabled for training stability
+    🔧 Zero-init: Enabled for output projections
+    🚀 SwiGLU: Modern transformer activation
+📊 Model Statistics:
+    Total parameters: 464,493,312
+    Trainable parameters: 464,493,312
+    Model size: 1858.0 MB
+    Model type: Enhanced_LuminaNext
+🚀 Enhanced Flow Matching Loss initialized:
+    Loss type: huber
+    Sigmoid scheduling: Enabled
+    Embedding task optimizations: Enabled
+    Stability weight: 0.1
+🎯 Training Configuration:
+    Learning rate: 0.0002
+    Epochs: 100
+    Batch size: 64
+    DiT Architecture: enhanced
+    Model Implementation: Enhanced_LuminaNext
+    Loss type: huber
+    Scheduler: cosine_restarts
+    W&B Logging: Enabled
+Epoch 1/100:  21%|██        | 8/38 [00:02<00:05,  5.64it/s, loss=1.2212, avg_loss=1.3135, align=0.010, lr=2.00e-04, arch=enhanced]Exception ignored in: <generator object tqdm.__iter__ at 0x14b2218de440>Exception ignored in sys.unraisablehook: <built-in function unraisablehook>

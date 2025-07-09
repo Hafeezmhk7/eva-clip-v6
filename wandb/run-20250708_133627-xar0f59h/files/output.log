@@ -1,0 +1,84 @@
+🔄 Weights & Biases initialized:
+    Project: unified_3D
+    Experiment: alignment_of_eva_clip_20250708_133626
+    URL: https://wandb.ai/RecSys-UvA/unified_3D/runs/xar0f59h
+📚 Loading dataset from embeddings/blip3o_embeddings.pkl
+    Train samples: 2381
+    Val samples: 265
+🚀 Initializing DiT Model for EVA-CLIP → CLIP Translation...
+    Input (CLIP L-14): 768D
+    Condition (EVA-CLIP): 1280D
+    Architecture: enhanced
+    🎯 Attention config: 16 heads, 8 KV heads
+🚀 Enhanced LuminaDiT (Lumina-Next) initialized:
+    Architecture: 24 blocks, 16 heads, 1024 dim
+    Input: CLIP L-14 (768D) → EVA-CLIP (1280D)
+    AdaLN-Zero: Enabled for proper time conditioning
+    Grouped QA: 16/8 heads
+    KQ-Norm: Enabled
+    Zero-init: Enabled for training stability
+    SwiGLU: Modern transformer activation
+    ✨ Using Enhanced DiT Architecture (Lumina-Next)
+    🔄 AdaLN-Zero: Enabled for proper time conditioning
+    🎯 Grouped Query Attention: 16/8 heads
+    🛡️ KQ-Norm: Enabled for training stability
+    🔧 Zero-init: Enabled for output projections
+    🚀 SwiGLU: Modern transformer activation
+📊 Model Statistics:
+    Total parameters: 464,493,312
+    Trainable parameters: 464,493,312
+    Model size: 1858.0 MB
+    Model type: Enhanced_LuminaNext
+🚀 Enhanced Flow Matching Loss initialized:
+    Loss type: huber
+    Sigmoid scheduling: Enabled
+    Embedding task optimizations: Enabled
+    Stability weight: 0.1
+🎯 Training Configuration:
+    Learning rate: 0.0002
+    Epochs: 100
+    Batch size: 64
+    DiT Architecture: enhanced
+    Model Implementation: Enhanced_LuminaNext
+    Loss type: huber
+    Scheduler: cosine_restarts
+    W&B Logging: Enabled
+Epoch 1/100: 100%|██████████| 38/38 [00:06<00:00,  5.54it/s, loss=1.1186, avg_loss=1.2544, align=0.029, lr=2.00e-04, arch=enhanced]
+Epoch 2/100: 100%|██████████| 38/38 [00:05<00:00,  6.45it/s, loss=1.5562, avg_loss=1.3572, align=0.059, lr=1.98e-04, arch=enhanced]
+
+🧪 Running validation...
+    Val loss: 1.2523
+    Val alignment: 0.0388
+    🎯 New best alignment: 0.0388
+❌ Error saving model: [enforce fail at inline_container.cc:659] . unexpected pos 1861451392 vs 1861451280
+🔄 Attempting minimal save...
+💾 Minimal model saved to checkpoints_enhanced/best_alignment_model.pt
+    📉 New best validation loss: 1.2523
+❌ Error saving model: [enforce fail at inline_container.cc:659] . unexpected pos 1861451392 vs 1861451280
+🔄 Attempting minimal save...
+💾 Minimal model saved to checkpoints_enhanced/best_loss_model.pt
+Epoch 3/100: 100%|██████████| 38/38 [00:08<00:00,  4.57it/s, loss=0.9276, avg_loss=1.1422, align=0.036, lr=1.92e-04, arch=enhanced]
+Epoch 4/100: 100%|██████████| 38/38 [00:05<00:00,  6.41it/s, loss=0.8685, avg_loss=0.8959, align=-0.005, lr=1.82e-04, arch=enhanced]
+
+🧪 Running validation...
+    Val loss: 0.8797
+    Val alignment: 0.0050
+    📉 New best validation loss: 0.8797
+❌ Error saving model: [enforce fail at inline_container.cc:659] . unexpected pos 1861451392 vs 1861451280
+🔄 Attempting minimal save...
+💾 Minimal model saved to checkpoints_enhanced/best_loss_model.pt
+Epoch 5/100: 100%|██████████| 38/38 [00:07<00:00,  5.21it/s, loss=0.8452, avg_loss=0.8567, align=-0.000, lr=1.69e-04, arch=enhanced]
+❌ Error saving model: [enforce fail at inline_container.cc:659] . unexpected pos 5571315712 vs 5571315608
+🔄 Attempting minimal save...
+💥 Critical error saving model: 'model_state_dict'
+Traceback (most recent call last):
+  File "/home/scur2711/.conda/envs/eva_clip_env/lib/python3.13/site-packages/torch/serialization.py", line 965, in save
+    _save(
+    ~~~~~^
+        obj,
+        ^^^^
+    ...<3 lines>...
+        _disable_byteorder_record,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^

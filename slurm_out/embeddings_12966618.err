@@ -1,66 +1,0 @@
-============================================================================================== 
-Warning! Mixing Conda and module environments may lead to corruption of the
-user environment. 
-We do not recommend users mixing those two environments unless absolutely
-necessary. Note that 
-SURF does not provide any support for Conda environment.
-For more information, please refer to our software policy page:
-https://servicedesk.surf.nl/wiki/display/WIKI/Software+policy+Snellius#SoftwarepolicySnellius-UseofAnacondaandMinicondaenvironmentsonSnellius 
-
-Remember that many packages have already been installed on the system and can
-be loaded using 
-the 'module load <package__name>' command. If you are uncertain if a package is
-already available 
-on the system, please use 'module avail' or 'module spider' to search for it.
-============================================================================================== 
-  File "<string>", line 1
-    import torch; print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else \"No GPU\")
-                                                                                         ^
-SyntaxError: unexpected character after line continuation character
-Using a slow image processor as `use_fast` is unset and a slow processor was saved with this model. `use_fast=True` will be the default behavior in v4.52, even if the model was saved with a slow processor. This will result in minor differences in outputs. You'll still be able to use a slow processor with `use_fast=False`.
-Loading checkpoint shards:   0%|          | 0/4 [00:00<?, ?it/s]Loading checkpoint shards:  25%|██▌       | 1/4 [00:00<00:02,  1.00it/s]Loading checkpoint shards:  50%|█████     | 2/4 [00:01<00:01,  1.78it/s]Loading checkpoint shards:  75%|███████▌  | 3/4 [00:01<00:00,  2.39it/s]Loading checkpoint shards: 100%|██████████| 4/4 [00:01<00:00,  2.53it/s]
-Loading checkpoint shards:   0%|          | 0/4 [00:00<?, ?it/s]Loading checkpoint shards:  25%|██▌       | 1/4 [00:00<00:02,  1.44it/s]Loading checkpoint shards:  50%|█████     | 2/4 [00:00<00:00,  2.39it/s]Loading checkpoint shards:  75%|███████▌  | 3/4 [00:01<00:00,  3.13it/s]Loading checkpoint shards: 100%|██████████| 4/4 [00:01<00:00,  3.36it/s]
-Processing batches: 0it [00:00, ?it/s]Processing batches: 1it [00:06,  6.30s/it]Processing batches: 1it [00:06,  6.30s/it]
-Traceback (most recent call last):
-  File "/gpfs/home1/scur2711/eva-clip-flow-matching/src/modules/extract_embeddings.py", line 289, in <module>
-    main()
-    ~~~~^^
-  File "/gpfs/home1/scur2711/eva-clip-flow-matching/src/modules/extract_embeddings.py", line 213, in main
-    for batch_idx, batch in enumerate(tqdm(dataloader, desc="Processing batches")):
-                            ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/scur2711/.conda/envs/eva_clip_env/lib/python3.13/site-packages/tqdm/std.py", line 1178, in __iter__
-    for obj in iterable:
-               ^^^^^^^^
-  File "/home/scur2711/.conda/envs/eva_clip_env/lib/python3.13/site-packages/torch/utils/data/dataloader.py", line 733, in __next__
-    data = self._next_data()
-  File "/home/scur2711/.conda/envs/eva_clip_env/lib/python3.13/site-packages/torch/utils/data/dataloader.py", line 1488, in _next_data
-    return self._process_data(data, worker_id)
-           ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
-  File "/home/scur2711/.conda/envs/eva_clip_env/lib/python3.13/site-packages/torch/utils/data/dataloader.py", line 1550, in _process_data
-    data.reraise()
-    ~~~~~~~~~~~~^^
-  File "/home/scur2711/.conda/envs/eva_clip_env/lib/python3.13/site-packages/torch/_utils.py", line 750, in reraise
-    raise exception
-ValueError: Caught ValueError in DataLoader worker process 1.
-Original Traceback (most recent call last):
-  File "/home/scur2711/.conda/envs/eva_clip_env/lib/python3.13/site-packages/torch/utils/data/_utils/worker.py", line 349, in _worker_loop
-    data = fetcher.fetch(index)  # type: ignore[possibly-undefined]
-  File "/home/scur2711/.conda/envs/eva_clip_env/lib/python3.13/site-packages/torch/utils/data/_utils/fetch.py", line 33, in fetch
-    data.append(next(self.dataset_iter))
-                ~~~~^^^^^^^^^^^^^^^^^^^
-  File "/home/scur2711/.conda/envs/eva_clip_env/lib/python3.13/site-packages/webdataset/pipeline.py", line 105, in iterator
-    for sample in self.iterator1():
-                  ~~~~~~~~~~~~~~^^
-  File "/home/scur2711/.conda/envs/eva_clip_env/lib/python3.13/site-packages/webdataset/filters.py", line 429, in _select
-    for sample in data:
-                  ^^^^
-  File "/home/scur2711/.conda/envs/eva_clip_env/lib/python3.13/site-packages/webdataset/filters.py", line 520, in _map
-    for sample in data:
-                  ^^^^
-  File "/home/scur2711/.conda/envs/eva_clip_env/lib/python3.13/site-packages/webdataset/compat.py", line 318, in check_empty
-    raise ValueError(
-    ...<2 lines>...
-    )
-ValueError: No samples found in dataset; perhaps you have fewer shards than workers.
-Turn off using empty_check=False in the WebDataset constructor.
-

@@ -32,16 +32,11 @@ module load CUDA/12.6.0
 source activate eva_clip_env
 
 
-python train_flow_matching.py \
-  --embedding_path embeddings/blip3o_embeddings.pkl \
-  --save_dir checkpoints_original \
-  --batch_size 64 \
-  --dim 1024 \
-  --depth 24 \
-  --num_heads 16 \
-  --num_kv_heads 8 \
-  --lr 2e-4 \
-  --epochs 100 \
-  --force_original \
-  --loss_type huber \
-  --scheduler cosine_restarts
+python train_blip3o_dit.py \
+  --embeddings_path path/to/blip3o_grid_embeddings.pkl \
+  --output_dir ./checkpoints/blip3o-dit \
+  --num_epochs 10 \
+  --batch_size 32 \
+  --learning_rate 1e-4 \
+  --gradient_checkpointing \
+  --fp16

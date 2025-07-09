@@ -1,0 +1,731 @@
+🔄 Weights & Biases initialized:
+    Project: unified_3D
+    Experiment: alignment_of_eva_clip_20250708_134838
+    URL: https://wandb.ai/RecSys-UvA/unified_3D/runs/cw3q27s1
+📚 Loading dataset from embeddings/blip3o_embeddings.pkl
+    Train samples: 2381
+    Val samples: 265
+🚀 Initializing DiT Model for EVA-CLIP → CLIP Translation...
+    Input (CLIP L-14): 768D
+    Condition (EVA-CLIP): 1280D
+    Architecture: enhanced
+    🎯 Attention config: 16 heads, 8 KV heads
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+    🎯 Time-Aware Context Drop initialized:
+        Drop ratio: 0.25
+        Training only: True
+        Min context length: 1
+    ⚡ Grouped Query Attention with Context Drop:
+        Heads: 16/8
+        Context drop ratio: 0.25
+🚀 Enhanced LuminaDiT (Lumina-Next + Context Drop) initialized:
+    Architecture: 24 blocks, 16 heads, 1024 dim
+    Input: CLIP L-14 (768D) → EVA-CLIP (1280D)
+    AdaLN-Zero: Enabled for proper time conditioning
+    Grouped QA: 16/8 heads
+    KQ-Norm: Enabled
+    Context Drop: Enabled
+    Drop Ratio: 0.25
+    Zero-init: Enabled for training stability
+    SwiGLU: Modern transformer activation
+    ✨ Using Enhanced DiT Architecture (Lumina-Next)
+    🔄 AdaLN-Zero: Enabled for proper time conditioning
+    🎯 Grouped Query Attention: 16/8 heads
+    🛡️ KQ-Norm: Enabled for training stability
+    🔧 Zero-init: Enabled for output projections
+    🚀 SwiGLU: Modern transformer activation
+📊 Model Statistics:
+    Total parameters: 464,493,312
+    Trainable parameters: 464,493,312
+    Model size: 1858.0 MB
+    Model type: Enhanced_LuminaNext
+🚀 Enhanced Flow Matching Loss initialized:
+    Loss type: huber
+    Sigmoid scheduling: Enabled
+    Embedding task optimizations: Enabled
+    Stability weight: 0.1
+🎯 Training Configuration:
+    Learning rate: 0.0002
+    Epochs: 100
+    Batch size: 64
+    DiT Architecture: enhanced
+    Model Implementation: Enhanced_LuminaNext
+    Loss type: huber
+    Scheduler: cosine_restarts
+    W&B Logging: Enabled
+Epoch 1/100: 100%|██████████| 38/38 [00:06<00:00,  5.73it/s, loss=1.1382, avg_loss=1.3073, align=0.040, lr=2.00e-04, arch=enhanced]
+Epoch 2/100: 100%|██████████| 38/38 [00:06<00:00,  6.33it/s, loss=1.1063, avg_loss=1.2500, align=0.024, lr=1.98e-04, arch=enhanced]
+
+🧪 Running validation...
+    Val loss: 1.2082
+    Val alignment: 0.0327
+    🎯 New best alignment: 0.0327
+💾 Saved model to checkpoints_enhanced/best_alignment_model.pt
+    📉 New best validation loss: 1.2082
+💾 Saved model to checkpoints_enhanced/best_loss_model.pt
+Epoch 3/100: 100%|██████████| 38/38 [00:08<00:00,  4.64it/s, loss=1.0610, avg_loss=1.0915, align=0.034, lr=1.92e-04, arch=enhanced]
+Epoch 4/100: 100%|██████████| 38/38 [00:06<00:00,  6.28it/s, loss=0.9177, avg_loss=0.9239, align=0.012, lr=1.82e-04, arch=enhanced]
+
+🧪 Running validation...
+    Val loss: 0.8775
+    Val alignment: 0.0123
+    📉 New best validation loss: 0.8775
+💾 Saved model to checkpoints_enhanced/best_loss_model.pt
+Epoch 5/100: 100%|██████████| 38/38 [00:07<00:00,  5.16it/s, loss=0.9232, avg_loss=0.8601, align=0.006, lr=1.69e-04, arch=enhanced] 
+💾 Saved model to checkpoints_enhanced/lumina_epoch5.pt
+💾 Saved checkpoint to checkpoints_enhanced/lumina_epoch5.pt
+Epoch 6/100: 100%|██████████| 38/38 [00:06<00:00,  6.01it/s, loss=0.8397, avg_loss=0.8463, align=-0.001, lr=1.52e-04, arch=enhanced]
+
+🧪 Running validation...
+    Val loss: 0.8316
+    Val alignment: 0.0114
+    📉 New best validation loss: 0.8316
+💾 Saved model to checkpoints_enhanced/best_loss_model.pt
+Epoch 7/100: 100%|██████████| 38/38 [00:06<00:00,  6.28it/s, loss=0.8226, avg_loss=0.8347, align=0.020, lr=1.34e-04, arch=enhanced] 
+Epoch 8/100: 100%|██████████| 38/38 [00:07<00:00,  4.99it/s, loss=0.8153, avg_loss=0.8295, align=0.023, lr=1.15e-04, arch=enhanced] 
+
+🧪 Running validation...
+    Val loss: 0.8412
+    Val alignment: 0.0136
+Epoch 9/100: 100%|██████████| 38/38 [00:06<00:00,  6.26it/s, loss=0.8653, avg_loss=0.8259, align=0.016, lr=9.51e-05, arch=enhanced]
+Epoch 10/100: 100%|██████████| 38/38 [00:07<00:00,  5.14it/s, loss=0.8143, avg_loss=0.8159, align=0.032, lr=7.56e-05, arch=enhanced]
+
+🧪 Running validation...
+    Val loss: 0.8101
+    Val alignment: 0.0230
+    📉 New best validation loss: 0.8101
+💾 Saved model to checkpoints_enhanced/best_loss_model.pt
+💾 Saved model to checkpoints_enhanced/lumina_epoch10.pt
+💾 Saved checkpoint to checkpoints_enhanced/lumina_epoch10.pt
+Epoch 11/100: 100%|██████████| 38/38 [00:06<00:00,  6.00it/s, loss=0.8214, avg_loss=0.8081, align=0.025, lr=5.75e-05, arch=enhanced]
+Epoch 12/100: 100%|██████████| 38/38 [00:06<00:00,  6.27it/s, loss=0.8015, avg_loss=0.8041, align=0.019, lr=4.14e-05, arch=enhanced]
+
+🧪 Running validation...
+    Val loss: 0.8077
+    Val alignment: 0.0268
+    📉 New best validation loss: 0.8077
+💾 Saved model to checkpoints_enhanced/best_loss_model.pt
+Epoch 13/100: 100%|██████████| 38/38 [00:07<00:00,  5.03it/s, loss=0.7995, avg_loss=0.8014, align=0.040, lr=2.81e-05, arch=enhanced]
+Epoch 14/100: 100%|██████████| 38/38 [00:06<00:00,  5.86it/s, loss=0.7952, avg_loss=0.7996, align=0.049, lr=1.82e-05, arch=enhanced]
+
+🧪 Running validation...
+    Val loss: 0.7986
+    Val alignment: 0.0378
+    🎯 New best alignment: 0.0378
+💾 Saved model to checkpoints_enhanced/best_alignment_model.pt
+    📉 New best validation loss: 0.7986
+💾 Saved model to checkpoints_enhanced/best_loss_model.pt
+Epoch 15/100: 100%|██████████| 38/38 [00:07<00:00,  5.01it/s, loss=0.7898, avg_loss=0.7968, align=0.049, lr=1.21e-05, arch=enhanced]
+💾 Saved model to checkpoints_enhanced/lumina_epoch15.pt
+💾 Saved checkpoint to checkpoints_enhanced/lumina_epoch15.pt
+Epoch 16/100: 100%|██████████| 38/38 [00:06<00:00,  5.84it/s, loss=0.8112, avg_loss=0.8114, align=0.046, lr=2.00e-04, arch=enhanced]
+
+🧪 Running validation...
+    Val loss: 0.8234
+    Val alignment: 0.0298
+Epoch 17/100: 100%|██████████| 38/38 [00:06<00:00,  6.13it/s, loss=0.8193, avg_loss=0.8149, align=0.015, lr=1.98e-04, arch=enhanced]
+Epoch 18/100: 100%|██████████| 38/38 [00:07<00:00,  5.04it/s, loss=0.8117, avg_loss=0.8157, align=0.026, lr=1.92e-04, arch=enhanced]
+
+🧪 Running validation...
+    Val loss: 0.8238
+    Val alignment: 0.0399
+    🎯 New best alignment: 0.0399
+💾 Saved model to checkpoints_enhanced/best_alignment_model.pt
+Epoch 19/100: 100%|██████████| 38/38 [00:06<00:00,  5.86it/s, loss=0.8150, avg_loss=0.8181, align=0.056, lr=1.82e-04, arch=enhanced]
+Epoch 20/100: 100%|██████████| 38/38 [00:07<00:00,  5.04it/s, loss=0.8140, avg_loss=0.8109, align=0.044, lr=1.69e-04, arch=enhanced]
+
+🧪 Running validation...
+    Val loss: 0.8182
+    Val alignment: 0.0388
+💾 Saved model to checkpoints_enhanced/lumina_epoch20.pt
+💾 Saved checkpoint to checkpoints_enhanced/lumina_epoch20.pt
+Epoch 21/100: 100%|██████████| 38/38 [00:06<00:00,  6.08it/s, loss=0.8132, avg_loss=0.8100, align=0.056, lr=1.52e-04, arch=enhanced]
+Epoch 22/100: 100%|██████████| 38/38 [00:06<00:00,  5.86it/s, loss=0.8056, avg_loss=0.8023, align=0.030, lr=1.34e-04, arch=enhanced]
+
+🧪 Running validation...
+    Val loss: 0.7967
+    Val alignment: 0.0501
+    🎯 New best alignment: 0.0501
+💾 Saved model to checkpoints_enhanced/best_alignment_model.pt
+    📉 New best validation loss: 0.7967
+💾 Saved model to checkpoints_enhanced/best_loss_model.pt
+Epoch 23/100: 100%|██████████| 38/38 [00:07<00:00,  5.01it/s, loss=0.8006, avg_loss=0.7939, align=0.047, lr=1.15e-04, arch=enhanced]
+Epoch 24/100: 100%|██████████| 38/38 [00:06<00:00,  5.85it/s, loss=0.7766, avg_loss=0.7904, align=0.084, lr=9.51e-05, arch=enhanced]
+
+🧪 Running validation...
+    Val loss: 0.7929
+    Val alignment: 0.0841
+    🎯 New best alignment: 0.0841
+💾 Saved model to checkpoints_enhanced/best_alignment_model.pt
+    📉 New best validation loss: 0.7929
+💾 Saved model to checkpoints_enhanced/best_loss_model.pt
+Epoch 25/100: 100%|██████████| 38/38 [00:07<00:00,  4.80it/s, loss=0.7649, avg_loss=0.7775, align=0.103, lr=7.56e-05, arch=enhanced]
+💾 Saved model to checkpoints_enhanced/lumina_epoch25.pt
+💾 Saved checkpoint to checkpoints_enhanced/lumina_epoch25.pt
+Epoch 26/100: 100%|██████████| 38/38 [00:06<00:00,  6.07it/s, loss=0.7630, avg_loss=0.7684, align=0.112, lr=5.75e-05, arch=enhanced]
+
+🧪 Running validation...
+    Val loss: 0.7659
+    Val alignment: 0.1180
+    🎯 New best alignment: 0.1180
+💾 Saved model to checkpoints_enhanced/best_alignment_model.pt
+    📉 New best validation loss: 0.7659
+💾 Saved model to checkpoints_enhanced/best_loss_model.pt
+Epoch 27/100: 100%|██████████| 38/38 [00:06<00:00,  5.83it/s, loss=0.7601, avg_loss=0.7601, align=0.135, lr=4.14e-05, arch=enhanced]
+Epoch 28/100: 100%|██████████| 38/38 [00:07<00:00,  5.03it/s, loss=0.7604, avg_loss=0.7541, align=0.140, lr=2.81e-05, arch=enhanced]
+
+🧪 Running validation...
+    Val loss: 0.7527
+    Val alignment: 0.1455
+    🎯 New best alignment: 0.1455
+💾 Saved model to checkpoints_enhanced/best_alignment_model.pt
+    📉 New best validation loss: 0.7527
+💾 Saved model to checkpoints_enhanced/best_loss_model.pt
+Epoch 29/100: 100%|██████████| 38/38 [00:06<00:00,  5.86it/s, loss=0.7569, avg_loss=0.7503, align=0.138, lr=1.82e-05, arch=enhanced]
+Epoch 30/100: 100%|██████████| 38/38 [00:07<00:00,  5.04it/s, loss=0.7599, avg_loss=0.7485, align=0.157, lr=1.21e-05, arch=enhanced]
+
+🧪 Running validation...
+    Val loss: 0.7487
+    Val alignment: 0.1574
+    🎯 New best alignment: 0.1574
+💾 Saved model to checkpoints_enhanced/best_alignment_model.pt
+    📉 New best validation loss: 0.7487
+💾 Saved model to checkpoints_enhanced/best_loss_model.pt
+❌ Error saving model: [enforce fail at inline_container.cc:659] . unexpected pos 1578208000 vs 1578207888
+🔄 Attempting minimal save...
+💥 Critical error saving model: 'model_state_dict'
+Traceback (most recent call last):
+  File "/home/scur2711/.conda/envs/eva_clip_env/lib/python3.13/site-packages/torch/serialization.py", line 965, in save
+    _save(
+    ~~~~~^
+        obj,
+        ^^^^
+    ...<3 lines>...
+        _disable_byteorder_record,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/scur2711/.conda/envs/eva_clip_env/lib/python3.13/site-packages/torch/serialization.py", line 1266, in _save
+    zip_file.write_record(name, storage, num_bytes)
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: [enforce fail at inline_container.cc:857] . PytorchStreamWriter failed writing file data/489: file write failed
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/gpfs/home1/scur2711/eva-clip-flow-matching/eva-clip-v3/train_flow_matching.py", line 126, in safe_save_model
+    torch.save(state, path)
+    ~~~~~~~~~~^^^^^^^^^^^^^
+  File "/home/scur2711/.conda/envs/eva_clip_env/lib/python3.13/site-packages/torch/serialization.py", line 964, in save
+    with _open_zipfile_writer(f) as opened_zipfile:
+         ~~~~~~~~~~~~~~~~~~~~^^^
+  File "/home/scur2711/.conda/envs/eva_clip_env/lib/python3.13/site-packages/torch/serialization.py", line 798, in __exit__
+    self.file_like.write_end_of_file()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+RuntimeError: [enforce fail at inline_container.cc:659] . unexpected pos 1578208000 vs 1578207888
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/gpfs/home1/scur2711/eva-clip-flow-matching/eva-clip-v3/train_flow_matching.py", line 136, in safe_save_model
+    'model_state_dict': state['model_state_dict'],
+                        ~~~~~^^^^^^^^^^^^^^^^^^^^
+KeyError: 'model_state_dict'
+Epoch 31/100: 100%|██████████| 38/38 [00:06<00:00,  6.30it/s, loss=0.7435, avg_loss=0.7538, align=0.173, lr=2.00e-04, arch=enhanced]
+Epoch 32/100: 100%|██████████| 38/38 [00:08<00:00,  4.46it/s, loss=0.7448, avg_loss=0.7497, align=0.181, lr=1.98e-04, arch=enhanced]
+
+🧪 Running validation...
+    Val loss: 0.7305
+    Val alignment: 0.1952
+    🎯 New best alignment: 0.1952
+❌ Error saving model: [enforce fail at inline_container.cc:659] . unexpected pos 5571318400 vs 5571318296
+🔄 Attempting minimal save...
+💾 Minimal model saved to checkpoints_enhanced/best_alignment_model.pt
+    📉 New best validation loss: 0.7305
+💾 Saved model to checkpoints_enhanced/best_loss_model.pt
+Epoch 33/100: 100%|██████████| 38/38 [00:07<00:00,  5.12it/s, loss=0.7244, avg_loss=0.7297, align=0.210, lr=1.92e-04, arch=enhanced]
+Epoch 34/100: 100%|██████████| 38/38 [00:06<00:00,  6.28it/s, loss=0.7193, avg_loss=0.7209, align=0.231, lr=1.82e-04, arch=enhanced]
+
+🧪 Running validation...
+    Val loss: 0.7247
+    Val alignment: 0.2348
+    🎯 New best alignment: 0.2348
+❌ Error saving model: [enforce fail at inline_container.cc:659] . unexpected pos 5571318400 vs 5571318296
+🔄 Attempting minimal save...
+💾 Minimal model saved to checkpoints_enhanced/best_alignment_model.pt
+    📉 New best validation loss: 0.7247
+💾 Saved model to checkpoints_enhanced/best_loss_model.pt
+Epoch 35/100: 100%|██████████| 38/38 [00:07<00:00,  4.93it/s, loss=0.7136, avg_loss=0.7112, align=0.265, lr=1.69e-04, arch=enhanced]
+❌ Error saving model: [enforce fail at inline_container.cc:659] . unexpected pos 3688099840 vs 3688099728
+🔄 Attempting minimal save...
+💥 Critical error saving model: 'model_state_dict'
+Traceback (most recent call last):
+  File "/home/scur2711/.conda/envs/eva_clip_env/lib/python3.13/site-packages/torch/serialization.py", line 965, in save
+    _save(
+    ~~~~~^
+        obj,
+        ^^^^
+    ...<3 lines>...
+        _disable_byteorder_record,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/scur2711/.conda/envs/eva_clip_env/lib/python3.13/site-packages/torch/serialization.py", line 1266, in _save
+    zip_file.write_record(name, storage, num_bytes)
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: [enforce fail at inline_container.cc:857] . PytorchStreamWriter failed writing file data/1411: file write failed
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/gpfs/home1/scur2711/eva-clip-flow-matching/eva-clip-v3/train_flow_matching.py", line 126, in safe_save_model
+    torch.save(state, path)
+    ~~~~~~~~~~^^^^^^^^^^^^^
+  File "/home/scur2711/.conda/envs/eva_clip_env/lib/python3.13/site-packages/torch/serialization.py", line 964, in save
+    with _open_zipfile_writer(f) as opened_zipfile:
+         ~~~~~~~~~~~~~~~~~~~~^^^
+  File "/home/scur2711/.conda/envs/eva_clip_env/lib/python3.13/site-packages/torch/serialization.py", line 798, in __exit__
+    self.file_like.write_end_of_file()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+RuntimeError: [enforce fail at inline_container.cc:659] . unexpected pos 3688099840 vs 3688099728
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/gpfs/home1/scur2711/eva-clip-flow-matching/eva-clip-v3/train_flow_matching.py", line 136, in safe_save_model
+    'model_state_dict': state['model_state_dict'],
+                        ~~~~~^^^^^^^^^^^^^^^^^^^^
+KeyError: 'model_state_dict'
+Epoch 36/100: 100%|██████████| 38/38 [00:06<00:00,  6.24it/s, loss=0.6959, avg_loss=0.7016, align=0.275, lr=1.52e-04, arch=enhanced]
+
+🧪 Running validation...
+    Val loss: 0.6927
+    Val alignment: 0.2794
+    🎯 New best alignment: 0.2794
+❌ Error saving model: [enforce fail at inline_container.cc:659] . unexpected pos 1864608640 vs 1864608532
+🔄 Attempting minimal save...
+💾 Minimal model saved to checkpoints_enhanced/best_alignment_model.pt
+    📉 New best validation loss: 0.6927
+❌ Error saving model: [enforce fail at inline_container.cc:659] . unexpected pos 5571318400 vs 5571318296
+🔄 Attempting minimal save...
+💾 Minimal model saved to checkpoints_enhanced/best_loss_model.pt
+Epoch 37/100: 100%|██████████| 38/38 [00:06<00:00,  5.99it/s, loss=0.6844, avg_loss=0.6899, align=0.294, lr=1.34e-04, arch=enhanced]
+Epoch 38/100: 100%|██████████| 38/38 [00:07<00:00,  5.15it/s, loss=0.6736, avg_loss=0.6785, align=0.319, lr=1.15e-04, arch=enhanced]
+
+🧪 Running validation...
+    Val loss: 0.6887
+    Val alignment: 0.3123
+    🎯 New best alignment: 0.3123
+❌ Error saving model: [enforce fail at inline_container.cc:659] . unexpected pos 5571318400 vs 5571318296
+🔄 Attempting minimal save...
+💾 Minimal model saved to checkpoints_enhanced/best_alignment_model.pt
+    📉 New best validation loss: 0.6887
+❌ Error saving model: [enforce fail at inline_container.cc:659] . unexpected pos 5571318400 vs 5571318296
+🔄 Attempting minimal save...
+💾 Minimal model saved to checkpoints_enhanced/best_loss_model.pt
+Epoch 39/100: 100%|██████████| 38/38 [00:06<00:00,  6.25it/s, loss=0.6768, avg_loss=0.6729, align=0.328, lr=9.51e-05, arch=enhanced]
+Epoch 40/100: 100%|██████████| 38/38 [00:07<00:00,  4.92it/s, loss=0.6510, avg_loss=0.6625, align=0.353, lr=7.56e-05, arch=enhanced]
+
+🧪 Running validation...
+    Val loss: 0.6561
+    Val alignment: 0.3455
+    🎯 New best alignment: 0.3455
+❌ Error saving model: [enforce fail at inline_container.cc:659] . unexpected pos 5571318400 vs 5571318296
+🔄 Attempting minimal save...
+💾 Minimal model saved to checkpoints_enhanced/best_alignment_model.pt
+    📉 New best validation loss: 0.6561
+❌ Error saving model: [enforce fail at inline_container.cc:659] . unexpected pos 5571318400 vs 5571318296
+🔄 Attempting minimal save...
+💾 Minimal model saved to checkpoints_enhanced/best_loss_model.pt
+❌ Error saving model: [enforce fail at inline_container.cc:659] . unexpected pos 3688099840 vs 3688099728
+🔄 Attempting minimal save...
+💥 Critical error saving model: 'model_state_dict'
+Traceback (most recent call last):
+  File "/home/scur2711/.conda/envs/eva_clip_env/lib/python3.13/site-packages/torch/serialization.py", line 965, in save
+    _save(
+    ~~~~~^
+        obj,
+        ^^^^
+    ...<3 lines>...
+        _disable_byteorder_record,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/scur2711/.conda/envs/eva_clip_env/lib/python3.13/site-packages/torch/serialization.py", line 1266, in _save
+    zip_file.write_record(name, storage, num_bytes)
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: [enforce fail at inline_container.cc:857] . PytorchStreamWriter failed writing file data/1411: file write failed
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/gpfs/home1/scur2711/eva-clip-flow-matching/eva-clip-v3/train_flow_matching.py", line 126, in safe_save_model
+    torch.save(state, path)
+    ~~~~~~~~~~^^^^^^^^^^^^^
+  File "/home/scur2711/.conda/envs/eva_clip_env/lib/python3.13/site-packages/torch/serialization.py", line 964, in save
+    with _open_zipfile_writer(f) as opened_zipfile:
+         ~~~~~~~~~~~~~~~~~~~~^^^
+  File "/home/scur2711/.conda/envs/eva_clip_env/lib/python3.13/site-packages/torch/serialization.py", line 798, in __exit__
+    self.file_like.write_end_of_file()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+RuntimeError: [enforce fail at inline_container.cc:659] . unexpected pos 3688099840 vs 3688099728
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/gpfs/home1/scur2711/eva-clip-flow-matching/eva-clip-v3/train_flow_matching.py", line 136, in safe_save_model
+    'model_state_dict': state['model_state_dict'],
+                        ~~~~~^^^^^^^^^^^^^^^^^^^^
+KeyError: 'model_state_dict'
+Epoch 41/100: 100%|██████████| 38/38 [00:06<00:00,  6.26it/s, loss=0.6665, avg_loss=0.6569, align=0.344, lr=5.75e-05, arch=enhanced]
+Epoch 42/100: 100%|██████████| 38/38 [00:06<00:00,  6.26it/s, loss=0.6548, avg_loss=0.6512, align=0.369, lr=4.14e-05, arch=enhanced]
+
+🧪 Running validation...
+    Val loss: 0.6475
+    Val alignment: 0.3549
+    🎯 New best alignment: 0.3549
+❌ Error saving model: [enforce fail at inline_container.cc:659] . unexpected pos 1861454080 vs 1861453968
+🔄 Attempting minimal save...
+💾 Minimal model saved to checkpoints_enhanced/best_alignment_model.pt
+    📉 New best validation loss: 0.6475
+❌ Error saving model: [enforce fail at inline_container.cc:659] . unexpected pos 1861454080 vs 1861453968
+🔄 Attempting minimal save...
+💾 Minimal model saved to checkpoints_enhanced/best_loss_model.pt
+Epoch 43/100: 100%|██████████| 38/38 [00:06<00:00,  5.89it/s, loss=0.6489, avg_loss=0.6474, align=0.355, lr=2.81e-05, arch=enhanced]
+Epoch 44/100: 100%|██████████| 38/38 [00:06<00:00,  6.27it/s, loss=0.6551, avg_loss=0.6435, align=0.364, lr=1.82e-05, arch=enhanced]
+
+🧪 Running validation...
+    Val loss: 0.6414
+    Val alignment: 0.3674
+    🎯 New best alignment: 0.3674
+❌ Error saving model: [enforce fail at inline_container.cc:659] . unexpected pos 1861454080 vs 1861453968
+🔄 Attempting minimal save...
+💾 Minimal model saved to checkpoints_enhanced/best_alignment_model.pt

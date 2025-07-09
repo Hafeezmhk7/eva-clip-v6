@@ -1,0 +1,173 @@
+_wandb:
+    value:
+        cli_version: 0.21.0
+        e:
+            zmndaglwp8t2z2i5da19mbtujrl4vfic:
+                args:
+                    - --embedding_path
+                    - embeddings/blip3o_embeddings.pkl
+                    - --save_dir
+                    - checkpoints_enhanced
+                    - --batch_size
+                    - "64"
+                    - --dim
+                    - "1024"
+                    - --depth
+                    - "24"
+                    - --num_heads
+                    - "16"
+                    - --num_kv_heads
+                    - "8"
+                    - --lr
+                    - "2e-4"
+                    - --epochs
+                    - "100"
+                    - --architecture
+                    - enhanced
+                    - --loss_type
+                    - huber
+                    - --scheduler
+                    - cosine_restarts
+                codePath: train_flow_matching.py
+                codePathLocal: train_flow_matching.py
+                cpu_count: 64
+                cpu_count_logical: 64
+                cudaVersion: "12.7"
+                disk:
+                    /:
+                        total: "405463027712"
+                        used: "6088912896"
+                email: hafeezmhk6@gmail.com
+                executable: /home/scur2711/.conda/envs/eva_clip_env/bin/python
+                git:
+                    commit: 64d688a0203ef132303509d1d64daa27dc5cc44c
+                    remote: https://github.com/Hafeezmhk7/eva-clip-v3.git
+                gpu: NVIDIA H100
+                gpu_count: 1
+                gpu_nvidia:
+                    - architecture: Hopper
+                      cudaCores: 16896
+                      memoryTotal: "100485038080"
+                      name: NVIDIA H100
+                      uuid: GPU-c1355810-748f-7c0d-2cbe-90d6b4e1e288
+                host: gcn139.local.snellius.surf.nl
+                memory:
+                    total: "811322200064"
+                os: Linux-5.14.0-427.42.1.el9_4.x86_64-x86_64-with-glibc2.34
+                program: /gpfs/home1/scur2711/eva-clip-flow-matching/eva-clip-v3/train_flow_matching.py
+                python: CPython 3.13.5
+                root: /gpfs/home1/scur2711/eva-clip-flow-matching/eva-clip-v3
+                slurm:
+                    cluster_name: snellius
+                    conf: /var/spool/slurm/slurmd/conf-cache/slurm.conf
+                    cpus_on_node: "16"
+                    cpus_per_task: "8"
+                    eclibr: "0"
+                    ecplug: "1"
+                    erlast: sbatch
+                    ersbac: "1"
+                    export_env: ALL
+                    get_user_env: "1"
+                    gpus: "1"
+                    gpus_on_node: "1"
+                    gtids: "0"
+                    job_account: gpuuva053
+                    job_cpus_per_node: "16"
+                    job_end_time: "1752061580"
+                    job_gid: "67000"
+                    job_gpus: "2"
+                    job_id: "13055032"
+                    job_name: lumina_train
+                    job_nodelist: gcn139
+                    job_num_nodes: "1"
+                    job_partition: gpu_h100
+                    job_qos: normal
+                    job_start_time: "1751975180"
+                    job_uid: "67524"
+                    job_user: scur2711
+                    jobid: "13055032"
+                    localid: "0"
+                    mem_per_node: "65536"
+                    nnodes: "1"
+                    nodeid: "0"
+                    nodelist: gcn139
+                    nprocs: "1"
+                    ntasks: "1"
+                    ntasks_per_node: "1"
+                    oom_kill_step: "0"
+                    prio_process: "0"
+                    procid: "0"
+                    script_context: prolog_task
+                    step_gres: gres/cpu:0
+                    submit_dir: /gpfs/home1/scur2711/eva-clip-flow-matching/eva-clip-v3
+                    submit_host: int6.local.snellius.surf.nl
+                    task_pid: "489821"
+                    tasks_per_node: "1"
+                    topology_addr: root.ibsw42.gcn139
+                    topology_addr_pattern: switch.switch.node
+                    tres_per_task: cpu=8
+                startedAt: "2025-07-08T11:46:40.944577Z"
+                writerId: zmndaglwp8t2z2i5da19mbtujrl4vfic
+        m: []
+        python_version: 3.13.5
+        t:
+            "1":
+                - 1
+                - 11
+                - 41
+                - 49
+                - 63
+            "2":
+                - 1
+                - 11
+                - 41
+                - 49
+                - 63
+            "3":
+                - 1
+                - 13
+                - 15
+                - 16
+            "4": 3.13.5
+            "5": 0.21.0
+            "6": 4.53.1
+            "12": 0.21.0
+            "13": linux-x86_64
+architecture:
+    value: enhanced
+batch_size:
+    value: 64
+depth:
+    value: 24
+dim:
+    value: 1024
+early_stopping_patience:
+    value: 10
+embedding_path:
+    value: embeddings/blip3o_embeddings.pkl
+embedding_task:
+    value: true
+epochs:
+    value: 100
+loss_type:
+    value: huber
+lr:
+    value: 0.0002
+no_wandb:
+    value: false
+num_heads:
+    value: 16
+num_kv_heads:
+    value: 8
+save_dir:
+    value: checkpoints_enhanced
+save_interval:
+    value: 5
+scheduler:
+    value: cosine_restarts
+stability_weight:
+    value: 0.1
+use_wandb:
+    value: true
+weight_decay:
+    value: 1e-05
