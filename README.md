@@ -58,6 +58,7 @@ flowchart TD
     H --> I[Feature Grid\n16x16x4096]
     I --> J[2x2 Avg Pooling]
     J --> K[EVA BLIP3-o Tokens\n8x8=64 tokens\n4096-dim]
+```
 
 ## 🛠️ Installation
 
