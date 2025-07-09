@@ -107,18 +107,6 @@ python train_blip3o_dit.py \
   --learning_rate 1e-4
 ```
 
-
-
-
-### Debug Mode
-
-For quick testing with reduced data:
-```bash
-python train_blip3o_dit.py \
-  --embeddings_path path/to/blip3o_grid_embeddings.pkl \
-  --output_dir ./debug \
-  --debug
-```
 ### Model Architecture
 
 Key BLIP3-o DiT parameters:
