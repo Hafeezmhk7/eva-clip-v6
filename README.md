@@ -85,6 +85,46 @@ flowchart LR
     style J fill:#e6f7ff,stroke:#1890ff
 ```
 
+## DiT Block
+```mermaid
+flowchart TB
+    subgraph DiTBlock["DiT Block (Detailed)"]
+        direction TB
+        A[Input Features] --> Norm1[LayerNorm]
+        Norm1 --> SA[Self-Attention\nwith 3D RoPE]
+        SA --> Add1[&oplus;]
+        A --> Add1
+        
+        Add1 --> Norm2[LayerNorm]
+        Norm2 --> CA[Cross-Attention\nwith EVA]
+        CA --> Add2[&oplus;]
+        Add1 --> Add2
+        
+        Add2 --> Norm3[LayerNorm]
+        Norm3 --> FFN[Feed-Forward Network]
+        FFN --> Add3[&oplus;]
+        Add2 --> Add3
+        
+        Add3 --> Output[Output]
+    end
+    
+    Timestep[Timestep Embedding] --> TimeProj[Time Projection\n768→4608]
+    TimeProj --> Chunk[Split into 6 chunks]
+    
+    Chunk -->|Scale MSA| Norm1
+    Chunk -->|Gate MSA| Add1
+    Chunk -->|Scale Cross| Norm2
+    Chunk -->|Gate Cross| Add2
+    Chunk -->|Scale MLP| Norm3
+    Chunk -->|Gate MLP| Add3
+    
+    EVA[Projected EVA Tokens] --> CA
+    
+    style SA fill:#f0f9ff,stroke:#91d5ff
+    style CA fill:#f0f9ff,stroke:#91d5ff
+    style FFN fill:#f0f9ff,stroke:#91d5ff
+```
+
 ## 🛠️ Installation
 
 1. **Clone and setup environment:**
