@@ -43,6 +43,21 @@ blip3o-dit/
 └── README.md                          # This file
 ```
 
+## 📁 Flow Chart
+flowchart TD
+    A[Input Image\n3x224x224] --> B[CLIP ViT-L/14]
+    A --> C[EVA-CLIP-8B]
+    
+    B --> D[Patch Extraction\n16x16=256 patches]
+    D --> E[Feature Grid\n16x16x1024]
+    E --> F[2x2 Avg Pooling]
+    F --> G[CLIP BLIP3-o Tokens\n8x8=64 tokens\n1024-dim]
+    
+    C --> H[Patch Extraction\n16x16=256 patches]
+    H --> I[Feature Grid\n16x16x4096]
+    I --> J[2x2 Avg Pooling]
+    J --> K[EVA BLIP3-o Tokens\n8x8=64 tokens\n4096-dim]
+
 ## 🛠️ Installation
 
 1. **Clone and setup environment:**
