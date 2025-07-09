@@ -62,6 +62,7 @@ flowchart TD
 
 ## blip3o dit architecture
 ```mermaid
+flowchart LR
     A[Noisy CLIP Tokens\n64x1024] --> B[Token Embedding\n1024→768]
     C[Timestep] --> D[Timestep Embedding\n128→768]
     E[EVA Tokens\n64x4096] --> F[Linear Projection\n4096→768]
