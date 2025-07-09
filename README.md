@@ -63,9 +63,9 @@ flowchart TD
 ## blip3o dit architecture
 ```mermaid
 flowchart LR
-    A[Noisy CLIP Tokens\n64x1024] --> B[Token Embedding\n1024→768]
-    C[Timestep] --> D[Timestep Embedding\n128→768]
-    E[EVA Tokens\n64x4096] --> F[Linear Projection\n4096→768]
+    A[Noisy CLIP Tokens\n64x1024] --> B[Token Embedding\n1024→1792]
+    C[Timestep] --> D[Timestep Embedding\n896→1792]
+    E[EVA Tokens\n64x4096] --> F[Linear Projection\n4096→1792]
     
     B --> G[DiT Block 1]
     D --> G
@@ -76,13 +76,8 @@ flowchart LR
     I --> J[DiT Block N]
     
     J --> K[LayerNorm]
-    K --> L[Output Projection\n768→1024]
+    K --> L[Output Projection\n1792→1024]
     L --> M[Velocity Prediction\n64x1024]
-    
-    style G fill:#e6f7ff,stroke:#1890ff
-    style H fill:#e6f7ff,stroke:#1890ff
-    style I fill:#e6f7ff,stroke:#1890ff
-    style J fill:#e6f7ff,stroke:#1890ff
 ```
 
 ## DiT Block
