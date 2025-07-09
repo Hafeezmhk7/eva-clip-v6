@@ -103,7 +103,7 @@ flowchart TB
         Add3 --> Output[Output]
     end
     
-    Timestep[Timestep Embedding] --> TimeProj[Time Projection\n768→4608]
+    Timestep[Timestep Embedding] --> TimeProj[Time Projection\n1792→10752]
     TimeProj --> Chunk[Split into 6 chunks]
     
     Chunk -->|Scale MSA| Norm1
