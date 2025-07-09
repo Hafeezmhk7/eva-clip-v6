@@ -7,10 +7,9 @@ A PyTorch implementation of the BLIP3-o Diffusion Transformer architecture with 
 This repository implements:
 - **BLIP3-o DiT Model**: NextDiT-based architecture for embedding generation
 - **Flow Matching Training**: Velocity prediction with optimal transport paths  
-- **EVA-CLIP → CLIP**: Maps 1280-dim EVA features to 768-dim CLIP embeddings
+- **EVA-CLIP → CLIP**: Maps 4096-dim EVA features to 1024-dim CLIP embeddings
 - **64-Token Format**: Compatible with 8×8 grid embeddings
 - **HuggingFace Integration**: Custom trainer with full training pipeline
-- **Production Ready**: Distributed training, mixed precision, checkpointing
 
 ## 📁 Project Structure
 
