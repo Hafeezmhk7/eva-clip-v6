@@ -63,15 +63,41 @@ pip install -r requirements.txt
 
 ## 📊 Data Preparation
 
-First, extract your EVA-CLIP and CLIP embeddings using your existing `extract_embeddings_production.py`:
+Sure! Here's a revised version of your **📊 Data Preparation** section for the README, incorporating the correct sequence and file paths:
 
-```bash
-python extract_embeddings_g.py
-```
+---
 
-This should create `embeddings/blip3o_grid_embeddings.pkl` with:
-- `eva_blip3o_embeddings`: [N, 64, 1280] - EVA-CLIP conditioning
-- `clip_blip3o_embeddings`: [N, 64, 768] - CLIP targets
+## 📊 Data Preparation
+
+To prepare the data, follow these steps:
+
+1. **Download the Dataset**
+
+   Start by downloading the required `.tar` files using the `download_data.py` script located in `src/data_hand`:
+
+   ```bash
+   python src/data_hand/download_data.py
+   ```
+
+2. **Extract Grid Embeddings**
+
+   Finally, extract the EVA-CLIP and CLIP grid embeddings using the `extract_embeddings_g.py` script from `src/module`:
+
+   ```bash
+   python src/module/extract_embeddings_g.py
+   ```
+
+   > ⚠️ **Note**: This step is GPU-intensive. It's recommended to run it via a job script on a cluster or machine with GPU support.
+
+This will generate a file at `embeddings/blip3o_grid_embeddings.pkl` containing:
+
+* `eva_blip3o_embeddings`: shape `[N, 64, 1280]` — EVA-CLIP conditioning embeddings
+* `clip_blip3o_embeddings`: shape `[N, 64, 768]` — CLIP target embeddings
+
+---
+
+
+
 
 
 
