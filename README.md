@@ -43,7 +43,8 @@ blip3o-dit/
 └── README.md                          # This file
 ```
 
-## 📁 Flow Chart
+## Embedding Extraction Flow
+```mermaid
 flowchart TD
     A[Input Image\n3x224x224] --> B[CLIP ViT-L/14]
     A --> C[EVA-CLIP-8B]
