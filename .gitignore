@@ -4,3 +4,5 @@ slurm_out/
 *.pyc
 *jar
 __pycache__/data/00000.tar
+embeddings/fixed_grid_embeddings.pkl
+*.pkl
