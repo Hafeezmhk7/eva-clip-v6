@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --partition=gpu_h100
-#SBATCH --gpus=1
+#SBATCH --gpus=2
 #SBATCH --job-name=lumina_train
 #SBATCH --time=24:00:00          # Increased for training
 #SBATCH --output=./slurm_out/train_%j.out

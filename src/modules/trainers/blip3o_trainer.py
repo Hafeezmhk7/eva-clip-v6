@@ -1,6 +1,7 @@
 """
 Custom HuggingFace Trainer for BLIP3-o DiT training with flow matching.
 Implements exact BLIP3-o training methodology with flow matching loss.
+FIXED: Updated for compatibility with newer transformers versions.
 """
 
 import torch
@@ -528,6 +529,7 @@ def create_blip3o_training_args(
 ) -> TrainingArguments:
     """
     Create TrainingArguments optimized for BLIP3-o DiT training.
+    FIXED: Updated for compatibility with newer transformers versions.
     
     Args:
         output_dir: Output directory for checkpoints and logs
@@ -553,6 +555,14 @@ def create_blip3o_training_args(
     Returns:
         TrainingArguments configured for BLIP3-o training
     """
+    # Determine evaluation strategy based on eval_steps
+    if eval_steps > 0:
+        eval_strategy = "steps"
+        eval_steps_value = eval_steps
+    else:
+        eval_strategy = "no"
+        eval_steps_value = None
+    
     return TrainingArguments(
         output_dir=output_dir,
         num_train_epochs=num_train_epochs,
@@ -563,8 +573,8 @@ def create_blip3o_training_args(
         warmup_steps=warmup_steps,
         logging_steps=logging_steps,
         save_steps=save_steps,
-        eval_steps=eval_steps,
-        evaluation_strategy="steps" if eval_steps > 0 else "no",
+        eval_strategy=eval_strategy,  # FIXED: was evaluation_strategy
+        eval_steps=eval_steps_value,
         save_strategy="steps",
         gradient_accumulation_steps=gradient_accumulation_steps,
         fp16=fp16 and not bf16,  # Don't use both fp16 and bf16
@@ -578,5 +588,7 @@ def create_blip3o_training_args(
         prediction_loss_only=False,  # We want to compute custom metrics
         report_to=["wandb"] if wandb.run is not None else [],
         run_name=f"blip3o-dit-{output_dir.split('/')[-1]}" if wandb.run is not None else None,
+        # Additional compatibility fixes
+        push_to_hub=False,  # Avoid any hub-related issues
         **kwargs
     )

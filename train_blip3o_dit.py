@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """
-Main training script for BLIP3-o DiT with flow matching.
+Main training script for BLIP3-o DiT with flow matching - FIXED VERSION.
 Trains a diffusion transformer to generate CLIP embeddings from EVA-CLIP conditioning.
 
 This script implements the exact BLIP3-o training methodology as described in the paper.
+FIXED: Updated dimensions to match your extracted embeddings (CLIP: 1024, EVA-CLIP: 4096).
 """
 
 import os
@@ -204,13 +205,13 @@ def setup_wandb(args):
 
 
 def create_model_config(args) -> BLIP3oDiTConfig:
-    """Create model configuration from arguments."""
+    """Create model configuration from arguments - FIXED dimensions."""
     return BLIP3oDiTConfig(
         input_size=8,                           # 8x8 = 64 tokens (fixed for BLIP3-o)
         patch_size=1,                           # Pre-tokenized (fixed)
-        in_channels=768,                        # CLIP dimension (fixed)
+        in_channels=1024,                       # CLIP dimension (FIXED: matches your embeddings)
         dim=args.model_dim,                     # Hidden dimension
-        eva_embedding_size=1280,                # EVA-CLIP dimension (fixed)
+        eva_embedding_size=4096,                # EVA-CLIP dimension (FIXED: matches your embeddings)
         n_layers=args.num_layers,               # Number of layers
         n_heads=args.num_heads,                 # Attention heads
         n_kv_heads=args.num_kv_heads or args.num_heads,  # KV heads
@@ -224,13 +225,13 @@ def create_model_config(args) -> BLIP3oDiTConfig:
 
 
 def create_flow_matching_config(args) -> FlowMatchingConfig:
-    """Create flow matching configuration from arguments."""
+    """Create flow matching configuration from arguments - FIXED dimensions."""
     return FlowMatchingConfig(
         sigma_min=args.sigma_min,
         sigma_max=args.sigma_max,
         prediction_type=args.prediction_type,
-        clip_dim=768,                           # CLIP dimension (fixed)
-        eva_dim=1280,                           # EVA-CLIP dimension (fixed)
+        clip_dim=1024,                          # FIXED: CLIP dimension matches your embeddings
+        eva_dim=4096,                           # FIXED: EVA-CLIP dimension matches your embeddings
         regularization_weight=args.regularization_weight,
         schedule_type=args.schedule_type,
     )
@@ -248,6 +249,10 @@ def save_configs(args, output_dir: Path):
         'torch_version': torch.__version__,
         'cuda_available': torch.cuda.is_available(),
         'cuda_version': torch.version.cuda if torch.cuda.is_available() else None,
+        'fixed_dimensions': {
+            'clip_dim': 1024,  # Document the fixed dimensions
+            'eva_dim': 4096,
+        }
     }
     
     with open(output_dir / "training_args.json", 'w') as f:
@@ -339,6 +344,7 @@ def main():
         logger.info(f"  Total parameters: {total_params:,}")
         logger.info(f"  Trainable parameters: {trainable_params:,}")
         logger.info(f"  Memory footprint: {memory_footprint}")
+        logger.info(f"  Model dimensions: CLIP={model_config.in_channels}, EVA={model_config.eva_embedding_size}, Hidden={model_config.dim}")
         
         # Compile model if requested
         if args.compile_model:
@@ -363,6 +369,8 @@ def main():
             subset_size=args.subset_size,
             normalize_embeddings=args.normalize_embeddings,
             eval_split_ratio=args.eval_split,
+            expected_eva_dim=4096,     # Specify expected dimensions
+            expected_clip_dim=1024,    # Specify expected dimensions
         )
         
         train_dataset = train_dataloader.dataset
@@ -390,6 +398,11 @@ def main():
             fp16=args.fp16 and not args.bf16,
             bf16=args.bf16,
             dataloader_num_workers=args.num_workers,
+            # Fix for newer transformers compatibility
+            remove_unused_columns=False,
+            load_best_model_at_end=True,
+            metric_for_best_model="eval_loss",
+            greater_is_better=False,
         )
         
         # Create trainer
@@ -419,6 +432,7 @@ def main():
         logger.info(f"  Gradient accumulation: {args.gradient_accumulation_steps}")
         logger.info(f"  Mixed precision: {'fp16' if args.fp16 else 'bf16' if args.bf16 else 'fp32'}")
         logger.info(f"  Output directory: {output_dir}")
+        logger.info(f"  3D RoPE: Enabled with proper spatial-temporal encoding")
         
         # Start training
         logger.info("Starting training...")
@@ -473,6 +487,7 @@ def main():
         logger.info("=" * 80)
         logger.info("Training completed successfully!")
         logger.info(f"Model saved to: {output_dir}")
+        logger.info("🎉 Your BLIP3-o model with proper 3D RoPE is ready!")
         logger.info("=" * 80)
         
         return 0

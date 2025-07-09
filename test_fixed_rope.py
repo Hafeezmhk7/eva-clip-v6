@@ -19,14 +19,14 @@ def test_3d_rope_utilities():
     # Import the utility functions
     from src.modules.models.blip3o_dit import get_3d_rotary_pos_embed, apply_rotary_pos_emb
     
-    # Test 3D RoPE creation
-    embed_dim = 64  # Must be divisible by 4
+    # Test 3D RoPE creation - FIXED: use head_dim (64), not full model dim
+    head_dim = 64   # Head dimension, must be divisible by 4
     grid_size = 8   # 8x8 = 64 tokens
     
-    cos_emb, sin_emb = get_3d_rotary_pos_embed(embed_dim, grid_size)
+    cos_emb, sin_emb = get_3d_rotary_pos_embed(head_dim, grid_size)
     
     print(f"   ✅ Created 3D RoPE embeddings:")
-    print(f"      cos_emb shape: {cos_emb.shape}")  # Should be [1, 64, 32]
+    print(f"      cos_emb shape: {cos_emb.shape}")  # Should be [1, 64, 32] (where 32 = head_dim//2)
     print(f"      sin_emb shape: {sin_emb.shape}")  # Should be [1, 64, 32]
     
     # Test RoPE application
@@ -43,6 +43,12 @@ def test_3d_rope_utilities():
     print(f"   ✅ Applied RoPE to Q, K:")
     print(f"      q_rot shape: {q_rot.shape}")  # Should be [2, 64, 8, 64]
     print(f"      k_rot shape: {k_rot.shape}")  # Should be [2, 64, 8, 64]
+    
+    # Verify no dimension mismatches
+    assert q_rot.shape == q.shape, f"Q shape mismatch: {q_rot.shape} vs {q.shape}"
+    assert k_rot.shape == k.shape, f"K shape mismatch: {k_rot.shape} vs {k.shape}"
+    
+    print(f"   ✅ Dimension validation passed")
     
     return True
 
@@ -271,7 +277,7 @@ def test_with_loss():
 
 def main():
     """Main test function."""
-    print("🚀 BLIP3-o FIXED Implementation Test")
+    print("🚀 BLIP3-o FIXED Implementation Test (v2)")
     print("=" * 60)
     
     tests = [
@@ -312,6 +318,10 @@ def main():
         print("   4. No more fallback needed - proper 3D RoPE is implemented!")
     else:
         print("❌ Some tests failed. Please check the error messages above.")
+        print("\n🔧 If you're still seeing dimension errors:")
+        print("   1. Make sure head_dim is divisible by 4")
+        print("   2. Check that RoPE embed_dim matches head_dim") 
+        print("   3. Verify tensor shapes in apply_rotary_pos_emb")
         return 1
     
     return 0

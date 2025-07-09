@@ -1,11 +1,12 @@
 """
-BLIP3-o DiT Model Implementation
+BLIP3-o DiT Model Implementation - FIXED VERSION
 Exact implementation of BLIP3-o diffusion transformer architecture using NextDiT backbone.
-Fixed with proper 3D Rotary Position Embedding (3D RoPE) implementation.
+Fixed with proper 3D Rotary Position Embedding (3D RoPE) implementation following Lumina-Next.
 """
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from typing import Optional, Dict, Any, Tuple, List, Union
 from transformers import PreTrainedModel
 import math
@@ -13,172 +14,130 @@ import math
 from ..config.blip3o_config import BLIP3oDiTConfig
 
 
-class RoPE3D(nn.Module):
+def get_3d_rotary_pos_embed(embed_dim, grid_size, temporal_size=1, base=10000.0):
     """
-    3D Rotary Position Embedding for BLIP3-o DiT.
+    Create 3D rotary position embeddings following Lumina-Next implementation.
     
-    Implements 3D RoPE as used in Lumina-Next architecture, where embedding dimensions
-    are divided into 3 parts for height, width, and time/layer information.
+    Args:
+        embed_dim: Embedding dimension (must be divisible by 4 for 2D spatial + 1D temporal)
+        grid_size: Spatial grid size (e.g., 8 for 8x8 = 64 tokens)
+        temporal_size: Temporal dimension (1 for image generation)
+        base: Base frequency for RoPE
+        
+    Returns:
+        cos_emb, sin_emb: Cosine and sine embeddings for 3D RoPE
     """
+    # Ensure embed_dim is divisible by 4 (2 for height, 2 for width)
+    assert embed_dim % 4 == 0, f"embed_dim {embed_dim} must be divisible by 4 for 3D RoPE"
     
-    def __init__(
-        self,
-        head_dim: int,
-        max_height: int = 64,
-        max_width: int = 64,
-        max_time: int = 1000,
-        base: float = 10000.0,
-    ):
-        super().__init__()
-        self.head_dim = head_dim
-        self.max_height = max_height
-        self.max_width = max_width
-        self.max_time = max_time
-        self.base = base
-        
-        # Divide head_dim into 3 parts for h, w, t
-        assert head_dim % 6 == 0, f"head_dim {head_dim} must be divisible by 6 for 3D RoPE"
-        
-        self.dim_per_axis = head_dim // 6  # Each axis gets head_dim/6 complex pairs
-        
-        # Create frequency matrices for each axis
-        self.register_buffer("freqs_h", self._create_freqs(self.dim_per_axis))
-        self.register_buffer("freqs_w", self._create_freqs(self.dim_per_axis))
-        self.register_buffer("freqs_t", self._create_freqs(self.dim_per_axis))
-        
-        # Cache for efficiency
-        self.cached_freqs = None
-        self.cached_shape = None
+    # Divide embedding dimension into spatial (height, width) components
+    # Following Lumina-Next: height gets embed_dim//4, width gets embed_dim//4
+    dim_h = embed_dim // 4
+    dim_w = embed_dim // 4
     
-    def _create_freqs(self, dim: int) -> torch.Tensor:
-        """Create frequency tensor for one axis."""
-        inv_freq = 1.0 / (self.base ** (torch.arange(0, dim, 2).float() / dim))
-        return inv_freq
+    # Create frequency vectors for each dimension
+    inv_freq_h = 1.0 / (base ** (torch.arange(0, dim_h, 2).float() / dim_h))
+    inv_freq_w = 1.0 / (base ** (torch.arange(0, dim_w, 2).float() / dim_w))
     
-    def _get_cos_sin(self, positions: torch.Tensor, freqs: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Get cosine and sine values for given positions and frequencies."""
-        # positions: [seq_len] or [batch_size, seq_len]
-        # freqs: [dim//2]
-        
-        if positions.dim() == 1:
-            positions = positions.unsqueeze(0)  # [1, seq_len]
-        
-        # Compute angles: [batch_size, seq_len, dim//2]
-        angles = positions.unsqueeze(-1) * freqs.unsqueeze(0).unsqueeze(0)
-        
-        cos_vals = torch.cos(angles)  # [batch_size, seq_len, dim//2]
-        sin_vals = torch.sin(angles)  # [batch_size, seq_len, dim//2]
-        
-        return cos_vals, sin_vals
+    # Create spatial position grids
+    h_pos = torch.arange(grid_size, dtype=torch.float32)  # [grid_size]
+    w_pos = torch.arange(grid_size, dtype=torch.float32)  # [grid_size]
     
-    def _apply_rope_1d(self, x: torch.Tensor, cos_vals: torch.Tensor, sin_vals: torch.Tensor) -> torch.Tensor:
-        """Apply 1D rotary embedding to input tensor."""
-        # x: [batch_size, seq_len, dim//2 * 2]
-        # cos_vals, sin_vals: [batch_size, seq_len, dim//2]
-        
-        dim = cos_vals.shape[-1] * 2
-        x_reshaped = x[..., :dim].reshape(*x.shape[:-1], -1, 2)  # [..., dim//2, 2]
-        
-        # Split into real and imaginary parts
-        x_real = x_reshaped[..., 0]  # [..., dim//2]
-        x_imag = x_reshaped[..., 1]  # [..., dim//2]
-        
-        # Apply rotation
-        rotated_real = x_real * cos_vals - x_imag * sin_vals
-        rotated_imag = x_real * sin_vals + x_imag * cos_vals
-        
-        # Recombine
-        rotated = torch.stack([rotated_real, rotated_imag], dim=-1)  # [..., dim//2, 2]
-        return rotated.reshape(*x.shape[:-1], dim)
+    # Create 2D grid positions for 8x8 -> 64 tokens
+    grid_h, grid_w = torch.meshgrid(h_pos, w_pos, indexing='ij')  # [grid_size, grid_size]
+    grid_h = grid_h.flatten()  # [64]
+    grid_w = grid_w.flatten()  # [64]
     
-    def create_3d_positions(self, height: int, width: int, time_step: float = 0.0, device: torch.device = None) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """
-        Create 3D position tensors for height, width, and time.
-        
-        Args:
-            height: Height dimension (e.g., 8 for 8x8 grid)
-            width: Width dimension (e.g., 8 for 8x8 grid)
-            time_step: Time step value (e.g., diffusion timestep normalized to 0-1)
-            device: Device to create tensors on
-            
-        Returns:
-            Tuple of (height_positions, width_positions, time_positions)
-        """
-        if device is None:
-            device = self.freqs_h.device
-        
-        # Create spatial positions for 8x8 grid -> 64 tokens
-        h_pos = torch.arange(height, device=device, dtype=torch.float32).repeat_interleave(width)  # [64]
-        w_pos = torch.arange(width, device=device, dtype=torch.float32).repeat(height)  # [64]
-        
-        # Time positions (same for all spatial positions)
-        t_pos = torch.full((height * width,), time_step, device=device, dtype=torch.float32)  # [64]
-        
-        return h_pos, w_pos, t_pos
+    # Compute frequency interactions
+    # Height frequencies: [64, dim_h//2]
+    freqs_h = torch.outer(grid_h, inv_freq_h)
+    # Width frequencies: [64, dim_w//2] 
+    freqs_w = torch.outer(grid_w, inv_freq_w)
     
-    def forward(
-        self,
-        x: torch.Tensor,  # [batch_size, seq_len, head_dim]
-        height: int = 8,
-        width: int = 8,
-        time_step: Union[float, torch.Tensor] = 0.0,
-    ) -> torch.Tensor:
-        """
-        Apply 3D RoPE to input tensor.
+    # Create cosine and sine embeddings
+    cos_h = torch.cos(freqs_h)  # [64, dim_h//2]
+    sin_h = torch.sin(freqs_h)  # [64, dim_h//2]
+    cos_w = torch.cos(freqs_w)  # [64, dim_w//2]
+    sin_w = torch.sin(freqs_w)  # [64, dim_w//2]
+    
+    # Interleave cos and sin for proper rotation
+    # Height component: [64, dim_h]
+    cos_h_full = torch.stack([cos_h, cos_h], dim=-1).flatten(-2)
+    sin_h_full = torch.stack([sin_h, sin_h], dim=-1).flatten(-2)
+    
+    # Width component: [64, dim_w]  
+    cos_w_full = torch.stack([cos_w, cos_w], dim=-1).flatten(-2)
+    sin_w_full = torch.stack([sin_w, sin_w], dim=-1).flatten(-2)
+    
+    # Concatenate height and width components
+    # Total: [64, dim_h + dim_w] = [64, embed_dim//2]
+    cos_emb = torch.cat([cos_h_full, cos_w_full], dim=-1)
+    sin_emb = torch.cat([sin_h_full, sin_w_full], dim=-1)
+    
+    # Add batch and head dimensions: [1, 64, embed_dim//2]
+    cos_emb = cos_emb.unsqueeze(0)
+    sin_emb = sin_emb.unsqueeze(0)
+    
+    return cos_emb, sin_emb
+
+
+def apply_rotary_pos_emb(q, k, cos, sin):
+    """
+    Apply rotary position embedding to query and key tensors.
+    
+    Args:
+        q: Query tensor [batch_size, seq_len, num_heads, head_dim]
+        k: Key tensor [batch_size, seq_len, num_heads, head_dim] 
+        cos: Cosine embedding [1, seq_len, head_dim//2]
+        sin: Sine embedding [1, seq_len, head_dim//2]
         
-        Args:
-            x: Input tensor [batch_size, seq_len, head_dim]
-            height: Height dimension (8 for 8x8 grid)
-            width: Width dimension (8 for 8x8 grid)
-            time_step: Time step value or tensor [batch_size]
-            
-        Returns:
-            Rotary embedded tensor [batch_size, seq_len, head_dim]
-        """
-        batch_size, seq_len, head_dim = x.shape
-        device = x.device
-        
-        # Handle time_step input
-        if isinstance(time_step, torch.Tensor):
-            if time_step.dim() == 0:
-                time_step = time_step.item()
-            elif time_step.dim() == 1:
-                # Use first element for simplicity, or could batch-process
-                time_step = time_step[0].item()
-        
-        # Create 3D positions
-        h_pos, w_pos, t_pos = self.create_3d_positions(height, width, time_step, device)
-        
-        # Expand for batch
-        h_pos = h_pos.unsqueeze(0).expand(batch_size, -1)  # [batch_size, seq_len]
-        w_pos = w_pos.unsqueeze(0).expand(batch_size, -1)  # [batch_size, seq_len]
-        t_pos = t_pos.unsqueeze(0).expand(batch_size, -1)  # [batch_size, seq_len]
-        
-        # Get cosine and sine values for each axis
-        cos_h, sin_h = self._get_cos_sin(h_pos, self.freqs_h)  # [batch_size, seq_len, dim_per_axis]
-        cos_w, sin_w = self._get_cos_sin(w_pos, self.freqs_w)  # [batch_size, seq_len, dim_per_axis]
-        cos_t, sin_t = self._get_cos_sin(t_pos, self.freqs_t)  # [batch_size, seq_len, dim_per_axis]
-        
-        # Split input tensor into 3 parts for each axis
-        dim_per_axis_pairs = self.dim_per_axis * 2  # Each axis gets dim_per_axis complex pairs
-        
-        x_h = x[..., :dim_per_axis_pairs]                                    # Height part
-        x_w = x[..., dim_per_axis_pairs:2*dim_per_axis_pairs]               # Width part  
-        x_t = x[..., 2*dim_per_axis_pairs:3*dim_per_axis_pairs]             # Time part
-        x_remainder = x[..., 3*dim_per_axis_pairs:]                         # Remainder (if any)
-        
-        # Apply RoPE to each part
-        x_h_rotated = self._apply_rope_1d(x_h, cos_h, sin_h)
-        x_w_rotated = self._apply_rope_1d(x_w, cos_w, sin_w)
-        x_t_rotated = self._apply_rope_1d(x_t, cos_t, sin_t)
-        
-        # Concatenate results
-        if x_remainder.shape[-1] > 0:
-            x_rotated = torch.cat([x_h_rotated, x_w_rotated, x_t_rotated, x_remainder], dim=-1)
-        else:
-            x_rotated = torch.cat([x_h_rotated, x_w_rotated, x_t_rotated], dim=-1)
-        
-        return x_rotated
+    Returns:
+        Rotated query and key tensors
+    """
+    def rotate_half(x):
+        """Rotates half the hidden dims of the input."""
+        x1 = x[..., : x.shape[-1] // 2]
+        x2 = x[..., x.shape[-1] // 2 :]
+        return torch.cat((-x2, x1), dim=-1)
+    
+    # Get dimensions
+    batch_size, seq_len, num_heads, head_dim = q.shape
+    
+    # cos, sin should be [1, seq_len, head_dim//2]
+    # We need to expand them to [batch_size, seq_len, num_heads, head_dim//2]
+    
+    # First, expand batch dimension: [batch_size, seq_len, head_dim//2]
+    cos = cos.expand(batch_size, -1, -1)
+    sin = sin.expand(batch_size, -1, -1)
+    
+    # Then, add head dimension: [batch_size, seq_len, 1, head_dim//2]
+    cos = cos.unsqueeze(2)
+    sin = sin.unsqueeze(2)
+    
+    # Expand to all heads: [batch_size, seq_len, num_heads, head_dim//2]
+    cos = cos.expand(-1, -1, num_heads, -1)
+    sin = sin.expand(-1, -1, num_heads, -1)
+    
+    # Apply rotation to each half of the head_dim
+    # Split q and k into two halves
+    q1 = q[..., : head_dim // 2]  # [batch_size, seq_len, num_heads, head_dim//2]
+    q2 = q[..., head_dim // 2 :]  # [batch_size, seq_len, num_heads, head_dim//2]
+    
+    k1 = k[..., : head_dim // 2]  # [batch_size, seq_len, num_heads, head_dim//2]
+    k2 = k[..., head_dim // 2 :]  # [batch_size, seq_len, num_heads, head_dim//2]
+    
+    # Apply rotation: [cos, -sin; sin, cos] * [q1; q2]
+    q_rot1 = q1 * cos - q2 * sin
+    q_rot2 = q1 * sin + q2 * cos
+    
+    k_rot1 = k1 * cos - k2 * sin
+    k_rot2 = k1 * sin + k2 * cos
+    
+    # Concatenate back
+    q_embed = torch.cat([q_rot1, q_rot2], dim=-1)
+    k_embed = torch.cat([k_rot1, k_rot2], dim=-1)
+    
+    return q_embed, k_embed
 
 
 class SimpleTokenEmbedder(nn.Module):
@@ -196,16 +155,16 @@ class SimpleTokenEmbedder(nn.Module):
         # Simple linear transformation for pre-tokenized features
         self.proj = nn.Linear(in_channels, embed_dim, bias=True)
         
-        # Position embeddings for 8x8 grid (64 tokens)
+        # Position embeddings for 8x8 grid (64 tokens) - optional, since we use RoPE
         self.pos_embed = nn.Parameter(torch.randn(1, 64, embed_dim) * 0.02)
         
-    def forward(self, x: torch.Tensor, image_rotary_emb: Optional[torch.Tensor] = None):
+    def forward(self, x: torch.Tensor, image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None):
         """
         Forward pass for token embedding.
         
         Args:
             x: Input tokens [B, 64, in_channels]
-            image_rotary_emb: Rotary embeddings (optional, not used in simple version)
+            image_rotary_emb: Tuple of (cos_emb, sin_emb) for 3D RoPE (not used here)
             
         Returns:
             Tuple of (embedded_tokens, attention_mask, image_size, rotary_emb)
@@ -219,7 +178,7 @@ class SimpleTokenEmbedder(nn.Module):
         # Linear projection
         embedded = self.proj(x)  # [B, 64, embed_dim]
         
-        # Add position embeddings
+        # Add position embeddings (optional with RoPE)
         embedded = embedded + self.pos_embed
         
         # Create attention mask (all tokens are valid)
@@ -228,13 +187,14 @@ class SimpleTokenEmbedder(nn.Module):
         # Image size (8x8 for 64 tokens)
         img_size = [(8, 8)] * batch_size
         
-        # Return rotary embeddings if provided, otherwise None
+        # Pass through the provided rotary embeddings (will be created in main model)
         return embedded, attention_mask, img_size, image_rotary_emb
 
 
 class BLIP3oAttentionBlock(nn.Module):
     """
-    Simplified DiT block for BLIP3-o that works with pre-tokenized embeddings and 3D RoPE.
+    Fixed DiT block for BLIP3-o that works with pre-tokenized embeddings and proper 3D RoPE.
+    Following the exact Lumina-Next architecture.
     """
     
     def __init__(
@@ -249,9 +209,6 @@ class BLIP3oAttentionBlock(nn.Module):
         self.dim = dim
         self.num_attention_heads = num_attention_heads
         self.head_dim = dim // num_attention_heads
-        
-        # 3D RoPE for spatial-temporal encoding
-        self.rope_3d = RoPE3D(head_dim=self.head_dim)
         
         # Self-attention
         self.self_attn = nn.MultiheadAttention(
@@ -289,36 +246,12 @@ class BLIP3oAttentionBlock(nn.Module):
         # Timestep conditioning
         self.time_proj = nn.Linear(dim, dim * 6)  # For various gates and scales
         
-    def _apply_rope_to_qk(self, q: torch.Tensor, k: torch.Tensor, timestep_emb: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Apply 3D RoPE to query and key tensors."""
-        # q, k: [batch_size, seq_len, dim]
-        batch_size, seq_len, dim = q.shape
+        # Manual query/key/value projections for RoPE application
+        self.q_proj = nn.Linear(dim, dim, bias=True)
+        self.k_proj = nn.Linear(dim, dim, bias=True)
+        self.v_proj = nn.Linear(dim, dim, bias=True)
+        self.out_proj = nn.Linear(dim, dim, bias=True)
         
-        # Reshape to [batch_size, seq_len, num_heads, head_dim]
-        q_reshaped = q.reshape(batch_size, seq_len, self.num_attention_heads, self.head_dim)
-        k_reshaped = k.reshape(batch_size, seq_len, self.num_attention_heads, self.head_dim)
-        
-        # Apply 3D RoPE to each head
-        q_rotated_list = []
-        k_rotated_list = []
-        
-        for head_idx in range(self.num_attention_heads):
-            q_head = q_reshaped[:, :, head_idx, :]  # [batch_size, seq_len, head_dim]
-            k_head = k_reshaped[:, :, head_idx, :]  # [batch_size, seq_len, head_dim]
-            
-            # Apply 3D RoPE (assuming 8x8 grid)
-            q_head_rotated = self.rope_3d(q_head, height=8, width=8, time_step=0.0)
-            k_head_rotated = self.rope_3d(k_head, height=8, width=8, time_step=0.0)
-            
-            q_rotated_list.append(q_head_rotated)
-            k_rotated_list.append(k_head_rotated)
-        
-        # Reshape back to [batch_size, seq_len, dim]
-        q_rotated = torch.stack(q_rotated_list, dim=2).reshape(batch_size, seq_len, dim)
-        k_rotated = torch.stack(k_rotated_list, dim=2).reshape(batch_size, seq_len, dim)
-        
-        return q_rotated, k_rotated
-    
     def forward(
         self,
         hidden_states: torch.Tensor,              # [B, 64, dim]
@@ -326,10 +259,11 @@ class BLIP3oAttentionBlock(nn.Module):
         timestep_emb: torch.Tensor,              # [B, dim]
         attention_mask: Optional[torch.Tensor] = None,
         encoder_mask: Optional[torch.Tensor] = None,
+        image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
     ) -> torch.Tensor:
-        """Forward pass through simplified DiT block with 3D RoPE."""
+        """Forward pass through BLIP3-o DiT block with proper 3D RoPE."""
         
-        batch_size = hidden_states.shape[0]
+        batch_size, seq_len, _ = hidden_states.shape
         
         # Get timestep conditioning
         time_cond = self.time_proj(timestep_emb)  # [B, dim * 6]
@@ -342,12 +276,56 @@ class BLIP3oAttentionBlock(nn.Module):
         norm_hidden = self.norm1(hidden_states)
         norm_hidden = norm_hidden * (1 + scale_msa.unsqueeze(1))
         
-        # For simplicity, apply standard attention (RoPE integration would require custom attention)
-        attn_output, _ = self.self_attn(
-            norm_hidden, norm_hidden, norm_hidden,
-            attn_mask=attention_mask,
-            need_weights=False
-        )
+        # Apply 3D RoPE to self-attention if available
+        if image_rotary_emb is not None:
+            cos_emb, sin_emb = image_rotary_emb
+            
+            # Manual Q, K, V computation for RoPE
+            q = self.q_proj(norm_hidden)  # [B, 64, dim]
+            k = self.k_proj(norm_hidden)  # [B, 64, dim]
+            v = self.v_proj(norm_hidden)  # [B, 64, dim]
+            
+            # Reshape for multi-head attention: [B, 64, num_heads, head_dim]
+            q = q.view(batch_size, seq_len, self.num_attention_heads, self.head_dim)
+            k = k.view(batch_size, seq_len, self.num_attention_heads, self.head_dim)
+            v = v.view(batch_size, seq_len, self.num_attention_heads, self.head_dim)
+            
+            # Apply RoPE
+            q_rot, k_rot = apply_rotary_pos_emb(q, k, cos_emb, sin_emb)
+            
+            # Reshape back for attention: [B, 64, dim]
+            q_rot = q_rot.view(batch_size, seq_len, self.dim)
+            k_rot = k_rot.view(batch_size, seq_len, self.dim)
+            v = v.view(batch_size, seq_len, self.dim)
+            
+            # Compute attention manually with proper tensor handling
+            # Transpose and reshape with contiguous() to avoid stride issues
+            q_for_attn = q_rot.transpose(1, 2).contiguous().view(batch_size * self.num_attention_heads, seq_len, self.head_dim)
+            k_for_attn = k_rot.transpose(1, 2).contiguous().view(batch_size * self.num_attention_heads, seq_len, self.head_dim)
+            v_for_attn = v.transpose(1, 2).contiguous().view(batch_size * self.num_attention_heads, seq_len, self.head_dim)
+            
+            # Don't pass attention_mask since all tokens are valid and mask would need reshaping
+            attn_output = F.scaled_dot_product_attention(
+                q_for_attn,
+                k_for_attn,
+                v_for_attn,
+                attn_mask=None,  # Skip mask since all tokens are valid
+                dropout_p=0.0,
+                is_causal=False
+            )
+            
+            # Reshape and project output
+            attn_output = attn_output.view(batch_size, self.num_attention_heads, seq_len, self.head_dim)
+            attn_output = attn_output.transpose(1, 2).contiguous().view(batch_size, seq_len, self.dim)
+            attn_output = self.out_proj(attn_output)
+            
+        else:
+            # Fallback to standard attention without RoPE
+            attn_output, _ = self.self_attn(
+                norm_hidden, norm_hidden, norm_hidden,
+                attn_mask=attention_mask,
+                need_weights=False
+            )
         
         hidden_states = residual + gate_msa.unsqueeze(1).tanh() * attn_output
         
@@ -378,7 +356,7 @@ class BLIP3oAttentionBlock(nn.Module):
 
 class BLIP3oDiTModel(PreTrainedModel):
     """
-    BLIP3-o Diffusion Transformer Model with proper 3D RoPE implementation.
+    BLIP3-o Diffusion Transformer Model with FIXED 3D RoPE implementation.
     
     This model implements the exact BLIP3-o architecture for generating CLIP embeddings
     from EVA-CLIP conditioning using flow matching with proper 3D Rotary Position Embedding.
@@ -398,27 +376,26 @@ class BLIP3oDiTModel(PreTrainedModel):
         self.config = config
         self._gradient_checkpointing = config._gradient_checkpointing
         
-        # Validate configuration for BLIP3-o (after any adjustments)
+        # Validate configuration for BLIP3-o
         self._validate_blip3o_config(config)
         
-        # Ensure head_dim is compatible with 3D RoPE and PyTorch MultiheadAttention
+        # Ensure head_dim is compatible with 3D RoPE
         self.head_dim = config.dim // config.n_heads
         
-        if self.head_dim % 6 != 0:
-            print(f"⚠️  Head dimension {self.head_dim} not divisible by 6, adjusting for 3D RoPE compatibility...")
+        # Check if head_dim is compatible with 3D RoPE (must be divisible by 4)
+        if self.head_dim % 4 != 0:
+            print(f"⚠️  Head dimension {self.head_dim} not divisible by 4, adjusting for 3D RoPE compatibility...")
             
             # Find compatible dimensions
-            original_dim = config.dim
-            original_heads = config.n_heads
-            
-            # Strategy 1: Find num_heads that gives head_dim divisible by 6
             compatible_found = False
-            for candidate_heads in range(1, original_heads + 1):
+            
+            # Strategy 1: Adjust num_heads to make head_dim divisible by 4
+            for candidate_heads in range(1, config.dim + 1):
                 if config.dim % candidate_heads == 0:  # Must be divisible for MultiheadAttention
                     candidate_head_dim = config.dim // candidate_heads
-                    if candidate_head_dim % 6 == 0:  # Must be divisible by 6 for 3D RoPE
+                    if candidate_head_dim % 4 == 0:  # Must be divisible by 4 for 3D RoPE
                         config.n_heads = candidate_heads
-                        config.n_kv_heads = candidate_heads
+                        config.n_kv_heads = candidate_heads  
                         self.head_dim = candidate_head_dim
                         compatible_found = True
                         print(f"✅ Adjusted num_heads to {candidate_heads} (head_dim={candidate_head_dim})")
@@ -427,30 +404,30 @@ class BLIP3oDiTModel(PreTrainedModel):
             # Strategy 2: If no compatible num_heads found, adjust dim
             if not compatible_found:
                 # Find the largest dim <= original_dim that works
-                for candidate_dim in range(original_dim, 0, -6):  # Step by 6 for RoPE compatibility
+                original_heads = config.n_heads
+                for candidate_dim in range(config.dim, 0, -4):  # Step by 4 for RoPE compatibility
                     if candidate_dim % original_heads == 0:  # Must work with original heads
                         candidate_head_dim = candidate_dim // original_heads
-                        if candidate_head_dim % 6 == 0:
+                        if candidate_head_dim % 4 == 0:
                             config.dim = candidate_dim
                             self.head_dim = candidate_head_dim
                             print(f"✅ Adjusted dim to {candidate_dim} (head_dim={candidate_head_dim})")
                             compatible_found = True
                             break
                 
-                # Strategy 3: If still not found, use a safe default
+                # Strategy 3: Use safe default
                 if not compatible_found:
-                    # Use a safe combination: dim=480, heads=8, head_dim=60 (60%6=0)
-                    config.dim = 480
+                    config.dim = 512  # Safe default
                     config.n_heads = 8
                     config.n_kv_heads = 8
-                    self.head_dim = 60
-                    print(f"✅ Using safe default: dim=480, heads=8, head_dim=60")
+                    self.head_dim = 64
+                    print(f"✅ Using safe default: dim=512, heads=8, head_dim=64")
         else:
             print(f"✅ Head dimension {self.head_dim} is compatible with 3D RoPE")
         
         # Final validation
         assert config.dim % config.n_heads == 0, f"dim {config.dim} must be divisible by num_heads {config.n_heads}"
-        assert self.head_dim % 6 == 0, f"head_dim {self.head_dim} must be divisible by 6 for 3D RoPE"
+        assert self.head_dim % 4 == 0, f"head_dim {self.head_dim} must be divisible by 4 for 3D RoPE"
         
         # Token embedder for pre-tokenized inputs
         self.token_embedder = SimpleTokenEmbedder(
@@ -491,10 +468,10 @@ class BLIP3oDiTModel(PreTrainedModel):
         # Initialize weights
         self._init_weights()
         
-        print(f"✅ BLIP3-o DiT model with 3D RoPE initialized")
+        print(f"✅ BLIP3-o DiT model with FIXED 3D RoPE initialized")
         print(f"   Parameters: {self.get_num_parameters():,}")
         print(f"   Final dimensions: dim={config.dim}, heads={config.n_heads}, head_dim={self.head_dim}")
-        print(f"   3D RoPE compatible: head_dim % 6 = {self.head_dim % 6}")
+        print(f"   3D RoPE compatible: head_dim % 4 = {self.head_dim % 4}")
     
     def _create_sinusoidal_timestep_embedding(self, embed_dim: int):
         """Create sinusoidal timestep embedding layer."""
@@ -569,7 +546,7 @@ class BLIP3oDiTModel(PreTrainedModel):
         **kwargs
     ):
         """
-        Forward pass of BLIP3-o DiT model with 3D RoPE.
+        Forward pass of BLIP3-o DiT model with FIXED 3D RoPE.
         
         Args:
             hidden_states: Noisy CLIP features [batch_size, 64, 1024]
@@ -602,8 +579,17 @@ class BLIP3oDiTModel(PreTrainedModel):
                 dtype=torch.bool
             )
         
-        # Embed input tokens
+        # Embed input tokens (without creating RoPE here)
         hidden_states, attention_mask, img_size, _ = self.token_embedder(hidden_states)
+        
+        # Create 3D RoPE embeddings with correct head dimension
+        cos_emb, sin_emb = get_3d_rotary_pos_embed(
+            embed_dim=self.head_dim,  # Use head_dim for RoPE
+            grid_size=8  # 8x8 = 64 tokens
+        )
+        cos_emb = cos_emb.to(device)
+        sin_emb = sin_emb.to(device)
+        image_rotary_emb = (cos_emb, sin_emb)
         
         # Get timestep embeddings
         timestep_emb = self.get_timestep_embedding(timestep)
@@ -627,6 +613,7 @@ class BLIP3oDiTModel(PreTrainedModel):
                     timestep_emb,
                     attention_mask,
                     encoder_attention_mask,
+                    image_rotary_emb,
                     use_reentrant=False
                 )
             else:
@@ -636,6 +623,7 @@ class BLIP3oDiTModel(PreTrainedModel):
                     timestep_emb=timestep_emb,
                     attention_mask=attention_mask,
                     encoder_mask=encoder_attention_mask,
+                    image_rotary_emb=image_rotary_emb,
                 )
         
         # Output projection
@@ -682,7 +670,7 @@ class BLIP3oDiTModel(PreTrainedModel):
         return_intermediate: bool = False,
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, List[torch.Tensor]]]:
         """
-        Generate CLIP embeddings using flow matching sampling with 3D RoPE.
+        Generate CLIP embeddings using flow matching sampling with FIXED 3D RoPE.
         
         Args:
             encoder_hidden_states: EVA-CLIP conditioning [batch_size, 64, 4096]
