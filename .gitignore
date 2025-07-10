@@ -1,8 +1,14 @@
 data/
+debug_checkpoints/
+production_checkpoints/
+checkpoints/
 slurm_out/
+wandb/
 *.tar
 *.pyc
 *jar
 __pycache__/data/00000.tar
-embeddings/fixed_grid_embeddings.pkl
+embeddings/
 *.pkl
+wandb/
+*.wandb

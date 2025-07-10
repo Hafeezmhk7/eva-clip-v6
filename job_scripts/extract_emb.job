@@ -1,29 +1,25 @@
 #!/bin/bash
 #SBATCH --partition=gpu_h100
 #SBATCH --gpus=1
-#SBATCH --job-name=eva_clip_embeddings
-#SBATCH --time=02:00:00
+#SBATCH --job-name=blip3o_embeddings
+#SBATCH --time=06:00:00
 #SBATCH --output=./slurm_out/embeddings_%j.out
 #SBATCH --error=./slurm_out/embeddings_%j.err
-#SBATCH --mem=32GB
+#SBATCH --mem=48GB
 #SBATCH --cpus-per-task=8
 
-# Exit if an error occurs
-set -e
-
-echo "🚀 Starting EVA-CLIP Embedding Extraction Job"
-echo "=============================================="
+echo "🚀 Starting BLIP3-o Embedding Extraction (Fixed Version)"
+echo "========================================================"
 echo "Job ID: $SLURM_JOB_ID"
 echo "Node: $SLURMD_NODENAME"
 echo "Date: $(date)"
 echo "Working directory: $(pwd)"
 
 # Create output directory if it doesn't exist
-mkdir -p slurm_out
-mkdir -p embeddings
+mkdir -p slurm_out embeddings
 
-# Load modules
-echo "📦 Loading modules..."
+# Load modules (following Snellius recommendations)
+echo "📦 Loading system modules..."
 module purge
 module load 2024
 module load Miniconda3/24.7.1-0
@@ -33,32 +29,164 @@ module load CUDA/12.6.0
 echo "🐍 Activating conda environment..."
 source activate eva_clip_env
 
-
-# Show memory and disk usage
+# Show system information
 echo "💾 System resources:"
 echo "   CPU cores: $SLURM_CPUS_PER_TASK"
 echo "   Memory: $SLURM_MEM_PER_NODE MB"
+echo "   GPU: $(nvidia-smi --query-gpu=name --format=csv,noheader,nounits)"
+echo "   GPU Memory: $(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits) MB"
 echo "   Available disk: $(df -h . | tail -1 | awk '{print $4}')"
+
+# Set memory optimizations
+export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
+
+# Check if checkpoint exists
+if [ -f "embeddings/extraction_checkpoint.pkl" ]; then
+    echo "🔄 Checkpoint found - extraction will resume from previous state"
+    ls -lh embeddings/extraction_checkpoint.pkl
+else
+    echo "🆕 No checkpoint found - starting fresh extraction"
+fi
+
+# Check disk space before starting
+echo ""
+echo "📊 Pre-extraction disk check:"
+df -h . | head -2
+
+available_gb=$(df . | tail -1 | awk '{print int($4/1024/1024)}')
+if [ "$available_gb" -lt 2 ]; then
+    echo "⚠️  WARNING: Less than 2GB available disk space!"
+    echo "🧹 Running quick cleanup..."
+    
+    # Quick cleanup
+    rm -rf ~/.cache/* 2>/dev/null
+    if command -v conda >/dev/null 2>&1; then
+        conda clean --all -y >/dev/null 2>&1
+    fi
+    
+    echo "📊 Disk space after cleanup:"
+    df -h . | head -2
+fi
 
 # Run the embedding extraction
 echo ""
 echo "🧠 Starting embedding extraction..."
-echo "=============================================="
+echo "========================================"
 
+# Monitor memory usage
+monitor_memory() {
+    echo "📊 Memory status:"
+    echo "   System memory: $(free -h | grep '^Mem:' | awk '{print $3 "/" $2}')"
+    if nvidia-smi > /dev/null 2>&1; then
+        echo "   GPU memory: $(nvidia-smi --query-gpu=memory.used,memory.total --format=csv,noheader,nounits | awk -F', ' '{print $1 " MB / " $2 " MB"}')"
+    fi
+}
+
+# Initial memory check
+monitor_memory
+
+# Run the extraction script
 python src/modules/extract_embeddings_g.py
 
-# Check if extraction was successful
-if [ $? -eq 0 ]; then
-    echo ""
+# Check exit status
+EXTRACTION_EXIT_CODE=$?
+
+echo ""
+if [ $EXTRACTION_EXIT_CODE -eq 0 ]; then
     echo "✅ Embedding extraction completed successfully!"
     echo "📁 Output files:"
     ls -lh embeddings/
-    echo "📊 Total size: $(du -sh embeddings/ | cut -f1)"
+    echo ""
+    
+    # Verify the output file
+    if [ -f "embeddings/blip3o_grid_embeddings.pkl" ]; then
+        echo "✅ Final embeddings file created successfully"
+        echo "📊 File size: $(du -sh embeddings/blip3o_grid_embeddings.pkl | cut -f1)"
+        
+        # Test loading the file
+        echo "🧪 Testing file integrity..."
+        python -c "
+import pickle
+try:
+    with open('embeddings/blip3o_grid_embeddings.pkl', 'rb') as f:
+        data = pickle.load(f)
+    print(f'✅ File loads successfully with {data[\"total_samples\"]} samples')
+    print(f'📐 CLIP shape: {data[\"clip_blip3o_embeddings\"].shape}')
+    print(f'📐 EVA shape: {data[\"eva_blip3o_embeddings\"].shape}')
+    print(f'📝 Sample caption: {data[\"captions\"][0][:50]}...')
+except Exception as e:
+    print(f'❌ File integrity test failed: {e}')
+    exit(1)
+"
+        
+        if [ $? -eq 0 ]; then
+            echo "✅ File integrity verified!"
+            
+            # Clean up checkpoint
+            if [ -f "embeddings/extraction_checkpoint.pkl" ]; then
+                echo "🗑️  Cleaning up checkpoint file..."
+                rm embeddings/extraction_checkpoint.pkl
+            fi
+            
+        else
+            echo "❌ File integrity check failed!"
+            exit 1
+        fi
+        
+    else
+        echo "❌ Final embeddings file not found!"
+        exit 1
+    fi
+    
 else
-    echo "❌ Embedding extraction failed!"
+    echo "❌ Embedding extraction failed with exit code: $EXTRACTION_EXIT_CODE"
+    
+    # Check for common issues
+    if [ $EXTRACTION_EXIT_CODE -eq 1 ]; then
+        echo "🔍 Checking for common issues..."
+        
+        # Check disk space
+        available_kb=$(df . | tail -1 | awk '{print $4}')
+        if [ "$available_kb" -lt 1000000 ]; then  # Less than 1GB
+            echo "💾 LIKELY CAUSE: Insufficient disk space"
+            echo "   Available: $(df -h . | tail -1 | awk '{print $4}')"
+            echo "   Try running: bash scripts/quick_cleanup.sh"
+        fi
+        
+        # Check for checkpoint
+        if [ -f "embeddings/extraction_checkpoint.pkl" ]; then
+            echo "💾 Progress checkpoint exists:"
+            ls -lh embeddings/extraction_checkpoint.pkl
+            echo "   You can resume extraction after freeing up space"
+        fi
+    fi
+    
+    # Show memory status for debugging
+    echo ""
+    echo "🔍 Final system status:"
+    monitor_memory
+    df -h . | head -2
+    
     exit 1
 fi
+
+# Final status
+echo ""
+echo "📊 Final system status:"
+monitor_memory
+df -h . | head -2
 
 echo ""
 echo "🎉 Job completed at: $(date)"
 echo "⏱️ Total runtime: $SECONDS seconds"
+
+# Success message with next steps
+if [ -f "embeddings/blip3o_grid_embeddings.pkl" ]; then
+    echo ""
+    echo "🚀 SUCCESS! Ready for training:"
+    echo "  python train_blip3o_dit.py \\"
+    echo "    --embeddings_path embeddings/blip3o_grid_embeddings.pkl \\"
+    echo "    --output_dir ./checkpoints/blip3o-dit \\"
+    echo "    --batch_size 32 \\"
+    echo "    --num_epochs 10"
+fi

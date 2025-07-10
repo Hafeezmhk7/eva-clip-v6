@@ -1,343 +1,316 @@
-#!/usr/bin/env python3
 """
-Test script to check if your embeddings file is compatible with BLIP3-o training.
+Debug script to test embedding extraction setup and identify issues
+Run this before the full extraction to catch problems early
 """
 
-import pickle
-import numpy as np
+import sys
+import os
 import torch
-import torch.nn.functional as F
+import psutil
+from pathlib import Path
+import argparse
 
-def test_embeddings_file(embeddings_path):
-    """Test if embeddings file has the right format."""
-    print(f"🧪 Testing embeddings file: {embeddings_path}")
-    print("=" * 60)
+def setup_paths():
+    """Setup paths for project structure"""
+    script_dir = Path(__file__).parent
+    project_root = script_dir.parent.parent
+    
+    # Add import paths
+    sys.path.insert(0, str(project_root))
+    sys.path.insert(0, str(project_root / "src"))
+    sys.path.insert(0, str(project_root / "src" / "data_hand"))
+    
+    return project_root
+
+def check_system_resources():
+    """Check available system resources"""
+    print("🔍 System Resource Check")
+    print("=" * 40)
+    
+    # CPU
+    cpu_count = psutil.cpu_count()
+    memory = psutil.virtual_memory()
+    print(f"💻 CPU cores: {cpu_count}")
+    print(f"💾 RAM: {memory.total / (1024**3):.1f} GB total, {memory.available / (1024**3):.1f} GB available")
+    
+    # GPU
+    if torch.cuda.is_available():
+        gpu_count = torch.cuda.device_count()
+        print(f"🖥️ GPUs: {gpu_count}")
+        for i in range(gpu_count):
+            props = torch.cuda.get_device_properties(i)
+            memory_gb = props.total_memory / (1024**3)
+            print(f"   GPU {i}: {props.name} - {memory_gb:.1f} GB")
+            
+        # Current GPU memory
+        current_gpu = torch.cuda.current_device()
+        allocated = torch.cuda.memory_allocated(current_gpu) / (1024**3)
+        cached = torch.cuda.memory_reserved(current_gpu) / (1024**3)
+        print(f"   Current usage: {allocated:.2f} GB allocated, {cached:.2f} GB cached")
+    else:
+        print("❌ No CUDA available")
+        return False
+    
+    print("")
+    return True
+
+def test_dataset_loading(data_file, batch_size=2):
+    """Test if dataset can be loaded"""
+    print("📂 Dataset Loading Test")
+    print("=" * 40)
     
     try:
-        # Load the file
-        with open(embeddings_path, 'rb') as f:
-            data = pickle.load(f)
+        from src.data_hand.dataset import BLIP3oWebDataset
         
-        print("✅ File loaded successfully!")
-        print(f"📊 Keys in data: {list(data.keys())}")
-        
-        # Check for required keys
-        required_keys = ['eva_blip3o_embeddings', 'clip_blip3o_embeddings']
-        alternative_keys = {
-            'eva_blip3o_embeddings': ['eva_grid_embeddings', 'eva_embeddings', 'eva_blip3o_embeddings'],
-            'clip_blip3o_embeddings': ['clip_grid_embeddings', 'clip_embeddings', 'clip_blip3o_embeddings']
-        }
-        
-        eva_embeddings = None
-        clip_embeddings = None
-        
-        # PRIORITIZE the BLIP3-o compatible 64-token versions
-        eva_priority_keys = ['eva_blip3o_embeddings', 'eva_embeddings', 'eva_grid_embeddings']
-        clip_priority_keys = ['clip_blip3o_embeddings', 'clip_embeddings', 'clip_grid_embeddings']
-        
-        # Find EVA embeddings (prioritize 64-token version)
-        for key in eva_priority_keys:
-            if key in data:
-                eva_embeddings = data[key]
-                print(f"📍 Found EVA embeddings with key: '{key}'")
-                if key == 'eva_blip3o_embeddings':
-                    print("   ✅ Using BLIP3-o compatible 64-token version")
-                elif key == 'eva_grid_embeddings':
-                    print("   ⚠️  Using 16x16 grid version - will need conversion")
-                break
-        
-        # Find CLIP embeddings (prioritize 64-token version)
-        for key in clip_priority_keys:
-            if key in data:
-                clip_embeddings = data[key]
-                print(f"📍 Found CLIP embeddings with key: '{key}'")
-                if key == 'clip_blip3o_embeddings':
-                    print("   ✅ Using BLIP3-o compatible 64-token version")
-                elif key == 'clip_grid_embeddings':
-                    print("   ⚠️  Using 16x16 grid version - will need conversion")
-                break
-        
-        if eva_embeddings is None:
-            print("❌ No EVA embeddings found!")
-            print(f"   Looking for keys: {alternative_keys['eva_blip3o_embeddings']}")
-            return False
-            
-        if clip_embeddings is None:
-            print("❌ No CLIP embeddings found!")
-            print(f"   Looking for keys: {alternative_keys['clip_blip3o_embeddings']}")
+        if not data_file.exists():
+            print(f"❌ Data file not found: {data_file}")
             return False
         
-        # Convert to tensors if needed
-        if isinstance(eva_embeddings, np.ndarray):
-            eva_embeddings = torch.from_numpy(eva_embeddings)
-        if isinstance(clip_embeddings, np.ndarray):
-            clip_embeddings = torch.from_numpy(clip_embeddings)
+        print(f"📁 Testing data file: {data_file}")
+        print(f"📊 File size: {data_file.stat().st_size / (1024**2):.1f} MB")
         
-        # Check shapes
-        print(f"📐 EVA embeddings shape: {eva_embeddings.shape}")
-        print(f"📐 CLIP embeddings shape: {clip_embeddings.shape}")
+        # Create dataset
+        dataset = BLIP3oWebDataset(
+            tar_paths=[str(data_file)],
+            batch_size=batch_size,
+            shuffle=False,
+            num_workers=0
+        )
         
-        # Validate shapes
-        eva_shape = eva_embeddings.shape
-        clip_shape = clip_embeddings.shape
+        dataloader = dataset.get_dataloader()
+        print(f"✅ Dataset created successfully")
         
-        issues = []
+        # Test loading one batch
+        print("🧪 Testing batch loading...")
+        batch = next(iter(dataloader))
         
-        # Check if we have the same number of samples
-        if eva_shape[0] != clip_shape[0]:
-            issues.append(f"❌ Sample count mismatch: EVA {eva_shape[0]} vs CLIP {clip_shape[0]}")
-        else:
-            print(f"✅ Sample count matches: {eva_shape[0]} samples")
+        print(f"✅ Batch loaded successfully")
+        print(f"   Batch size: {len(batch['image'])}")
+        print(f"   Sample keys: {batch['key'][:2]}")
+        print(f"   Image sizes: {[img.size for img in batch['image'][:2]]}")
         
-        # Check EVA dimensions
-        if len(eva_shape) == 3:
-            if eva_shape[1] == 64 and eva_shape[2] == 1280:
-                print("✅ EVA embeddings have correct BLIP3-o format: [N, 64, 1280]")
-            elif eva_shape[1] == 64:
-                print(f"⚠️  EVA embeddings have 64 tokens but wrong dimension: [N, 64, {eva_shape[2]}] (expected 1280)")
-                print("   This might be due to model version differences")
-            else:
-                issues.append(f"❌ EVA shape should be [N, 64, 1280], got [N, {eva_shape[1]}, {eva_shape[2]}]")
-        elif len(eva_shape) == 4:
-            print(f"⚠️  EVA embeddings are in 16x16 grid format: [N, 16, 16, {eva_shape[3]}]")
-            print("   Can be converted to BLIP3-o format using 2x2 pooling")
-            if eva_shape[3] != 1280:
-                print(f"   ⚠️  Dimension is {eva_shape[3]} instead of expected 1280")
-        else:
-            issues.append(f"❌ EVA embeddings should be 3D [N, 64, 1280] or 4D [N, 16, 16, 1280], got {len(eva_shape)}D")
+        return True
         
-        # Check CLIP dimensions
-        if len(clip_shape) == 3:
-            if clip_shape[1] == 64 and clip_shape[2] == 768:
-                print("✅ CLIP embeddings have correct BLIP3-o format: [N, 64, 768]")
-            elif clip_shape[1] == 64:
-                print(f"⚠️  CLIP embeddings have 64 tokens but wrong dimension: [N, 64, {clip_shape[2]}] (expected 768)")
-                print("   This might be due to model version differences")
-            else:
-                issues.append(f"❌ CLIP shape should be [N, 64, 768], got [N, {clip_shape[1]}, {clip_shape[2]}]")
-        elif len(clip_shape) == 4:
-            print(f"⚠️  CLIP embeddings are in 16x16 grid format: [N, 16, 16, {clip_shape[3]}]")
-            print("   Can be converted to BLIP3-o format using 2x2 pooling")
-            if clip_shape[3] != 768:
-                print(f"   ⚠️  Dimension is {clip_shape[3]} instead of expected 768")
-        else:
-            issues.append(f"❌ CLIP embeddings should be 3D [N, 64, 768] or 4D [N, 16, 16, 768], got {len(clip_shape)}D")
-        
-        # Check data statistics
-        print(f"📈 EVA embeddings stats:")
-        print(f"   Mean: {eva_embeddings.mean().item():.4f}")
-        print(f"   Std: {eva_embeddings.std().item():.4f}")
-        print(f"   Min: {eva_embeddings.min().item():.4f}")
-        print(f"   Max: {eva_embeddings.max().item():.4f}")
-        
-        print(f"📈 CLIP embeddings stats:")
-        print(f"   Mean: {clip_embeddings.mean().item():.4f}")
-        print(f"   Std: {clip_embeddings.std().item():.4f}")
-        print(f"   Min: {clip_embeddings.min().item():.4f}")
-        print(f"   Max: {clip_embeddings.max().item():.4f}")
-        
-        # Check other metadata
-        if 'captions' in data:
-            print(f"📝 Found {len(data['captions'])} captions")
-        if 'keys' in data:
-            print(f"🔑 Found {len(data['keys'])} keys")
-        
-        print("=" * 60)
-        
-        # Check if we have BLIP3-o versions available
-        has_blip3o_versions = 'eva_blip3o_embeddings' in data and 'clip_blip3o_embeddings' in data
-        if has_blip3o_versions:
-            print("📋 IMPORTANT: Your file contains BOTH 16x16 grids AND 64-token versions!")
-            print("   The test picked up the 16x16 versions, but 64-token versions exist:")
-            if 'eva_blip3o_embeddings' in data:
-                blip3o_eva_shape = data['eva_blip3o_embeddings'].shape if hasattr(data['eva_blip3o_embeddings'], 'shape') else np.array(data['eva_blip3o_embeddings']).shape
-                print(f"   EVA BLIP3-o shape: {blip3o_eva_shape}")
-            if 'clip_blip3o_embeddings' in data:
-                blip3o_clip_shape = data['clip_blip3o_embeddings'].shape if hasattr(data['clip_blip3o_embeddings'], 'shape') else np.array(data['clip_blip3o_embeddings']).shape
-                print(f"   CLIP BLIP3-o shape: {blip3o_clip_shape}")
-        
-        if issues:
-            print("⚠️  ISSUES FOUND:")
-            for issue in issues:
-                print(f"   {issue}")
-            
-            if has_blip3o_versions:
-                print("\n🎯 GOOD NEWS: You have BLIP3-o compatible versions!")
-                print("   The compatible file creation will use those instead.")
-            
-            print("\n💡 SUGGESTED FIXES:")
-            print("   1. Create a compatible file with proper keys and format")
-            print("   2. Run with --debug mode first to test with current data")
-            print("   3. Check your embedding extraction model versions")
-            
-            # Specific dimension issue warnings
-            if eva_shape[-1] != 1280:
-                print(f"   4. ⚠️  EVA dimension is {eva_shape[-1]} instead of 1280")
-                print("      - Check if you're using EVA-CLIP-8B (should be 1280)")
-                print("      - Current dimension suggests a different EVA model")
-                
-            if clip_shape[-1] != 768:
-                print(f"   5. ⚠️  CLIP dimension is {clip_shape[-1]} instead of 768") 
-                print("      - Check if you're using CLIP ViT-L/14 (should be 768)")
-                print("      - Current dimension suggests a different CLIP model")
-            
-            return False
-        else:
-            print("🎉 SUCCESS! Your embeddings file is compatible with BLIP3-o training!")
-            print(f"✅ Ready to train with {eva_shape[0]} samples")
-            return True
-            
     except Exception as e:
-        print(f"❌ Error loading embeddings file: {e}")
+        print(f"❌ Dataset loading failed: {e}")
         import traceback
-        print("Full error:")
         traceback.print_exc()
         return False
 
-def create_compatible_embeddings_file(input_path, output_path):
-    """Create a compatible embeddings file if needed."""
-    print(f"🔧 Creating compatible embeddings file...")
+def test_model_loading(device, test_eva=True):
+    """Test if models can be loaded without OOM"""
+    print("🤖 Model Loading Test")
+    print("=" * 40)
     
-    with open(input_path, 'rb') as f:
-        data = pickle.load(f)
+    def print_memory():
+        if torch.cuda.is_available():
+            allocated = torch.cuda.memory_allocated() / (1024**3)
+            cached = torch.cuda.memory_reserved() / (1024**3)
+            print(f"   GPU Memory: {allocated:.2f} GB allocated, {cached:.2f} GB cached")
     
-    # Create new data structure
-    new_data = {}
-    
-    # Function to pool 16x16 grids to 8x8 (64 tokens)
-    def pool_to_64_tokens(grid_embeddings):
-        """Pool 16x16 grids to 8x8 (64 tokens) using 2x2 average pooling"""
-        if isinstance(grid_embeddings, np.ndarray):
-            grid_embeddings = torch.from_numpy(grid_embeddings)
+    try:
+        # Test CLIP loading
+        print("📦 Testing CLIP ViT-L/14...")
+        print_memory()
         
-        if len(grid_embeddings.shape) == 4:  # [N, 16, 16, D]
-            batch_size, grid_h, grid_w, hidden_dim = grid_embeddings.shape
+        from transformers import CLIPProcessor, CLIPModel
+        
+        clip_processor = CLIPProcessor.from_pretrained("openai/clip-vit-large-patch14")
+        clip_model = CLIPModel.from_pretrained(
+            "openai/clip-vit-large-patch14",
+            torch_dtype=torch.float16
+        ).to(device)
+        
+        print("✅ CLIP loaded successfully")
+        print_memory()
+        
+        # Clear CLIP
+        del clip_model, clip_processor
+        torch.cuda.empty_cache()
+        
+        if test_eva:
+            # Test EVA loading
+            print("📦 Testing EVA-CLIP-8B...")
+            print_memory()
             
-            if grid_h == 16 and grid_w == 16:
-                # 2x2 average pooling: 16x16 -> 8x8
-                grid_for_pooling = grid_embeddings.permute(0, 3, 1, 2)  # [B, D, 16, 16]
-                pooled = torch.nn.functional.avg_pool2d(grid_for_pooling, kernel_size=2, stride=2)  # [B, D, 8, 8]
-                result = pooled.permute(0, 2, 3, 1).reshape(batch_size, 64, hidden_dim)  # [B, 64, D]
-                return result
-            elif grid_h * grid_w == 64:
-                return grid_embeddings.reshape(batch_size, 64, hidden_dim)
-        elif len(grid_embeddings.shape) == 3:  # Already [N, 64, D]
-            return grid_embeddings
+            from transformers import AutoModel
+            
+            eva_model = AutoModel.from_pretrained(
+                "BAAI/EVA-CLIP-8B", 
+                trust_remote_code=True,
+                torch_dtype=torch.float16
+            ).to(device)
+            
+            print("✅ EVA-CLIP loaded successfully")
+            print_memory()
+            
+            # Clear EVA
+            del eva_model
+            torch.cuda.empty_cache()
         
-        return grid_embeddings
+        return True
+        
+    except Exception as e:
+        print(f"❌ Model loading failed: {e}")
+        if "out of memory" in str(e).lower():
+            print("💡 Suggestions:")
+            print("   - Increase GPU memory allocation")
+            print("   - Use CPU for EVA model (slower but uses less GPU memory)")
+            print("   - Process models one at a time")
+        return False
+
+def test_feature_extraction(data_file, device, num_samples=2):
+    """Test feature extraction on a small batch"""
+    print("🧠 Feature Extraction Test")
+    print("=" * 40)
     
-    # Find and convert embeddings
-    eva_embeddings = None
-    clip_embeddings = None
+    try:
+        # Load dataset
+        from src.data_hand.dataset import BLIP3oWebDataset
+        
+        dataset = BLIP3oWebDataset(
+            tar_paths=[str(data_file)],
+            batch_size=num_samples,
+            shuffle=False,
+            num_workers=0
+        )
+        
+        dataloader = dataset.get_dataloader()
+        batch = next(iter(dataloader))
+        images = batch['image'][:num_samples]  # Take only 2 samples
+        
+        print(f"🖼️ Testing with {len(images)} images")
+        
+        # Test CLIP extraction
+        print("📊 Testing CLIP feature extraction...")
+        from transformers import CLIPProcessor, CLIPModel
+        
+        clip_processor = CLIPProcessor.from_pretrained("openai/clip-vit-large-patch14")
+        clip_model = CLIPModel.from_pretrained(
+            "openai/clip-vit-large-patch14",
+            torch_dtype=torch.float16
+        ).to(device)
+        
+        # Extract features for one image
+        img = images[0]
+        inputs = clip_processor(images=img, return_tensors="pt")
+        inputs = {k: v.to(device).half() if v.dtype == torch.float32 else v.to(device) 
+                 for k, v in inputs.items()}
+        
+        with torch.no_grad():
+            vision_outputs = clip_model.vision_model(
+                pixel_values=inputs['pixel_values'],
+                output_hidden_states=True,
+                return_dict=True
+            )
+            
+            patch_embeddings = vision_outputs.last_hidden_state[:, 1:, :]
+            print(f"✅ CLIP features extracted: {patch_embeddings.shape}")
+        
+        # Clean up
+        del clip_model, clip_processor, inputs, vision_outputs, patch_embeddings
+        torch.cuda.empty_cache()
+        
+        print("✅ Feature extraction test passed")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Feature extraction failed: {e}")
+        if "out of memory" in str(e).lower():
+            print("💡 GPU memory insufficient for feature extraction")
+            print("   Try reducing batch size or using smaller models")
+        return False
+
+def run_comprehensive_test(data_file, device="cuda", test_extraction=True):
+    """Run all tests"""
+    print("🧪 Comprehensive Debug Test")
+    print("=" * 60)
     
-    # Check if we already have the BLIP3-o compatible versions
-    if 'eva_blip3o_embeddings' in data and 'clip_blip3o_embeddings' in data:
-        print("✅ BLIP3-o compatible embeddings already exist")
-        eva_embeddings = data['eva_blip3o_embeddings']
-        clip_embeddings = data['clip_blip3o_embeddings']
+    tests_passed = 0
+    total_tests = 4
+    
+    # Test 1: System resources
+    if check_system_resources():
+        tests_passed += 1
+        print("✅ System resources OK\n")
     else:
-        print("🔄 Converting grid embeddings to BLIP3-o format...")
-        
-        # Find EVA embeddings and convert
-        eva_keys = ['eva_grid_embeddings', 'eva_embeddings', 'eva_features']
-        for key in eva_keys:
-            if key in data:
-                print(f"   Converting EVA from key: '{key}'")
-                eva_embeddings = pool_to_64_tokens(data[key])
-                break
-        
-        # Find CLIP embeddings and convert
-        clip_keys = ['clip_grid_embeddings', 'clip_embeddings', 'clip_features']
-        for key in clip_keys:
-            if key in data:
-                print(f"   Converting CLIP from key: '{key}'")
-                clip_embeddings = pool_to_64_tokens(data[key])
-                break
+        print("❌ System resources insufficient\n")
     
-    if eva_embeddings is None or clip_embeddings is None:
-        raise ValueError("Could not find EVA or CLIP embeddings in the data")
+    # Test 2: Dataset loading
+    if test_dataset_loading(data_file):
+        tests_passed += 1
+        print("✅ Dataset loading OK\n")
+    else:
+        print("❌ Dataset loading failed\n")
+        return False
     
-    # Store in new format with correct keys
-    new_data['eva_blip3o_embeddings'] = eva_embeddings
-    new_data['clip_blip3o_embeddings'] = clip_embeddings
+    # Test 3: Model loading
+    device_obj = torch.device(device)
+    if test_model_loading(device_obj, test_eva=True):
+        tests_passed += 1
+        print("✅ Model loading OK\n")
+    else:
+        print("❌ Model loading failed\n")
+        print("🔄 Trying without EVA-CLIP...")
+        if test_model_loading(device_obj, test_eva=False):
+            print("⚠️ CLIP works but EVA-CLIP fails\n")
+        else:
+            print("❌ Even CLIP loading fails\n")
+            return False
     
-    # Copy other metadata
-    for key in ['captions', 'keys', 'config', 'total_samples']:
-        if key in data:
-            new_data[key] = data[key]
+    # Test 4: Feature extraction
+    if test_extraction and test_feature_extraction(data_file, device_obj):
+        tests_passed += 1
+        print("✅ Feature extraction OK\n")
+    else:
+        print("❌ Feature extraction failed\n")
     
-    # Add default metadata if missing
-    num_samples = eva_embeddings.shape[0]
-    if 'captions' not in new_data:
-        new_data['captions'] = [f"sample_{i}" for i in range(num_samples)]
+    print("📊 Test Results")
+    print("=" * 30)
+    print(f"Tests passed: {tests_passed}/{total_tests}")
     
-    if 'keys' not in new_data:
-        new_data['keys'] = [f"key_{i}" for i in range(num_samples)]
+    if tests_passed == total_tests:
+        print("🎉 All tests passed! Ready for full extraction")
+        print("\n💡 Recommended settings:")
+        print("   --batch_size 4")
+        print("   --save_every 25")
+        return True
+    elif tests_passed >= 2:
+        print("⚠️ Some tests failed but basic functionality works")
+        print("\n💡 Recommended settings:")
+        print("   --batch_size 2")
+        print("   --save_every 10")
+        print("   Consider using more memory or smaller models")
+        return True
+    else:
+        print("❌ Critical issues found. Fix before proceeding.")
+        return False
+
+def main():
+    """Main debug function"""
+    parser = argparse.ArgumentParser(description="Debug embedding extraction setup")
+    parser.add_argument("--data_file", type=str, default="data/00000.tar", help="Path to data file")
+    parser.add_argument("--device", type=str, default="cuda", help="Device to use")
+    parser.add_argument("--skip_extraction", action="store_true", help="Skip feature extraction test")
     
-    if 'total_samples' not in new_data:
-        new_data['total_samples'] = num_samples
+    args = parser.parse_args()
     
-    # Update config
-    if 'config' not in new_data:
-        new_data['config'] = {}
+    project_root = setup_paths()
+    data_file = project_root / args.data_file
     
-    new_data['config'].update({
-        'eva_dim': eva_embeddings.shape[-1],
-        'clip_dim': clip_embeddings.shape[-1],
-        'blip3o_tokens': 64,
-        'converted_from_grids': True,
-    })
+    success = run_comprehensive_test(
+        data_file=data_file,
+        device=args.device,
+        test_extraction=not args.skip_extraction
+    )
     
-    # Save compatible file
-    with open(output_path, 'wb') as f:
-        pickle.dump(new_data, f)
+    if success:
+        print("\n🚀 Ready to run optimized extraction:")
+        print("python src/modules/optimized_extract_embeddings.py")
+    else:
+        print("\n🛠️ Fix the issues above before running extraction")
     
-    print(f"✅ Compatible embeddings saved to: {output_path}")
-    print(f"   EVA shape: {eva_embeddings.shape}")
-    print(f"   CLIP shape: {clip_embeddings.shape}")
-    
-    return output_path
+    return 0 if success else 1
 
 if __name__ == "__main__":
-    import sys
-    import os
-    
-    # Test your embeddings file - try common locations
-    possible_paths = [
-        "embeddings/fixed_grid_embeddings.pkl",
-        "data/embeddings/fixed_grid_embeddings.pkl", 
-        "embeddings/blip3o_grid_embeddings.pkl",
-        "data/embeddings/blip3o_grid_embeddings.pkl"
-    ]
-    
-    embeddings_path = None
-    
-    if len(sys.argv) > 1:
-        embeddings_path = sys.argv[1]
-    else:
-        # Auto-detect embeddings file
-        for path in possible_paths:
-            if os.path.exists(path):
-                embeddings_path = path
-                print(f"🔍 Found embeddings file: {path}")
-                break
-        
-        if embeddings_path is None:
-            print("❌ No embeddings file found in common locations:")
-            for path in possible_paths:
-                print(f"   - {path}")
-            print("\nUsage: python test_embeddings.py <path_to_embeddings.pkl>")
-            sys.exit(1)
-    
-    print(f"Testing embeddings file: {embeddings_path}")
-    
-    success = test_embeddings_file(embeddings_path)
-    
-    if not success:
-        print("\n🔧 Would you like to try creating a compatible file? (y/n)")
-        response = input().lower()
-        if response == 'y':
-            output_path = embeddings_path.replace('.pkl', '_compatible.pkl')
-            create_compatible_embeddings_file(embeddings_path, output_path)
-            print(f"\n🧪 Testing the new compatible file...")
-            test_embeddings_file(output_path)
+    sys.exit(main())

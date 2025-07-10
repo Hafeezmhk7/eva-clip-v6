@@ -18,8 +18,32 @@ import json
 from datetime import datetime
 import traceback
 
+# Add this right after your imports in train_blip3o_dit.py
+
+# TEMPORARY FIX: Patch for transformers compatibility
+def patch_trainer_for_compatibility():
+    """Fix compute_loss method signature for newer transformers versions"""
+    from src.modules.trainers.blip3o_trainer import BLIP3oTrainer
+    
+    # Store original method
+    original_compute_loss = BLIP3oTrainer.compute_loss
+    
+    # Create new method that accepts the extra parameter
+    def patched_compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
+        # Just ignore num_items_in_batch and call original method
+        return original_compute_loss(self, model, inputs, return_outputs)
+    
+    # Replace the method
+    BLIP3oTrainer.compute_loss = patched_compute_loss
+    print("✅ Applied transformers compatibility patch")
+
+# Apply the patch immediately
+patch_trainer_for_compatibility()
+
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
+
+
 
 from src.modules.config.blip3o_config import (
     BLIP3oDiTConfig, 

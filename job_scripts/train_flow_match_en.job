@@ -1,26 +1,26 @@
 #!/bin/bash
 #SBATCH --partition=gpu_h100
 #SBATCH --gpus=1
-#SBATCH --job-name=lumina_train
-#SBATCH --time=24:00:00          # Increased for training
+#SBATCH --job-name=lumina_train_10epochs
+#SBATCH --time=24:00:00
 #SBATCH --output=./slurm_out/train_%j.out
 #SBATCH --error=./slurm_out/train_%j.err
-#SBATCH --mem=64GB               # Increased memory
+#SBATCH --mem=64GB
 #SBATCH --cpus-per-task=8
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 
-echo "🚀 Starting Lumina-DiT Training Job"
+echo "🚀 Starting BLIP3-o DiT Training Job - 10 Epochs"
 echo "=============================================="
 echo "Job ID: $SLURM_JOB_ID"
-echo "Node: $SLURMD_NODENAME"
+echo "Node: $SLURMD_NODENAME" 
 echo "Date: $(date)"
 echo "Working directory: $(pwd)"
 echo "CUDA Visible Devices: $CUDA_VISIBLE_DEVICES"
 
 # Create output directories
 mkdir -p slurm_out
-mkdir -p checkpoints
+mkdir -p production_checkpoints
 
 # Load modules
 module purge
@@ -31,17 +31,17 @@ module load CUDA/12.6.0
 # Activate conda environment
 source activate eva_clip_env
 
-
-python train_flow_matching.py \
-  --embedding_path embeddings/blip3o_embeddings.pkl \
-  --save_dir checkpoints_enhanced \
-  --batch_size 64 \
-  --dim 1024 \
-  --depth 24 \
-  --num_heads 16 \
-  --num_kv_heads 8 \
-  --lr 2e-4 \
-  --epochs 100 \
-  --architecture enhanced \
-  --loss_type huber \
-  --scheduler cosine_restarts
+python train_blip3o_dit.py \
+  --embeddings_path embeddings/fixed_grid_embeddings.pkl \
+  --output_dir ./production_checkpoints \
+  --batch_size 32 \
+  --num_epochs 10 \
+  --device cuda \
+  --fp16 \
+  --compile_model \
+  --gradient_checkpointing \
+  --learning_rate 5e-5 \
+  --warmup_steps 20 \
+  --logging_steps 1 \
+  --save_steps 30 \
+  --eval_steps 10

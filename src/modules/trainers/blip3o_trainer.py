@@ -16,6 +16,7 @@ import json
 import numpy as np
 import math
 from collections import defaultdict
+from typing import Dict, Any, Optional, Union, Tuple, List
 
 from ..models.blip3o_dit import BLIP3oDiTModel
 from ..losses.flow_matching_loss import BLIP3oFlowMatchingLoss
@@ -103,7 +104,8 @@ class BLIP3oTrainer(Trainer):
         self,
         model: BLIP3oDiTModel,
         inputs: Dict[str, Any],
-        return_outputs: bool = False
+        return_outputs: bool = False,
+        num_items_in_batch: Optional[int] = None,  # NEW: Add this parameter for newer transformers compatibility
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, Any]]:
         """
         Compute flow matching loss for BLIP3-o training.
@@ -119,13 +121,14 @@ class BLIP3oTrainer(Trainer):
             model: The BLIP3oDiTModel
             inputs: Batch inputs from dataloader
             return_outputs: Whether to return model outputs
+            num_items_in_batch: Number of items in batch (for newer transformers compatibility)
             
         Returns:
             Loss tensor, optionally with additional outputs
         """
         # Extract inputs from batch
-        eva_embeddings = inputs['eva_embeddings']      # [B, 64, 1280]
-        clip_embeddings = inputs['clip_embeddings']    # [B, 64, 768]
+        eva_embeddings = inputs['eva_embeddings']      # [B, 64, 4096]
+        clip_embeddings = inputs['clip_embeddings']    # [B, 64, 1024]
         
         batch_size = eva_embeddings.shape[0]
         device = eva_embeddings.device
@@ -490,18 +493,40 @@ class BLIP3oTrainer(Trainer):
         dataloader = super().get_train_dataloader()
         
         logger.info(f"Training dataloader: {len(dataloader)} batches")
-        logger.info(f"Batch size: {dataloader.batch_size}")
-        logger.info(f"Total training samples per epoch: {len(dataloader) * dataloader.batch_size}")
+        
+        # Handle case where batch_size might be None (common with custom datasets)
+        batch_size = getattr(dataloader, 'batch_size', None)
+        if batch_size is None:
+            # Fall back to training arguments
+            batch_size = self.args.per_device_train_batch_size
+            logger.info(f"Batch size: {batch_size} (from training args)")
+        else:
+            logger.info(f"Batch size: {batch_size}")
+        
+        # Calculate total samples if we have a valid batch size
+        if batch_size is not None:
+            total_samples = len(dataloader) * batch_size
+            logger.info(f"Total training samples per epoch: {total_samples}")
+        else:
+            logger.info("Unable to determine total training samples (batch_size unknown)")
         
         return dataloader
-    
+
     def get_eval_dataloader(self, eval_dataset=None):
         """Get evaluation dataloader with logging."""
         dataloader = super().get_eval_dataloader(eval_dataset)
         
         if dataloader is not None:
             logger.info(f"Evaluation dataloader: {len(dataloader)} batches")
-            logger.info(f"Eval batch size: {dataloader.batch_size}")
+            
+            # Handle case where batch_size might be None
+            batch_size = getattr(dataloader, 'batch_size', None)
+            if batch_size is None:
+                # Fall back to training arguments
+                batch_size = self.args.per_device_eval_batch_size
+                logger.info(f"Eval batch size: {batch_size} (from training args)")
+            else:
+                logger.info(f"Eval batch size: {batch_size}")
         
         return dataloader
 
