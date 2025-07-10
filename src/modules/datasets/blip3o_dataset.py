@@ -1,6 +1,7 @@
 """
-Dataset implementation for BLIP3-o embedding training.
+UPDATED Dataset implementation for BLIP3-o embedding training with 256 tokens.
 Handles loading and preprocessing of EVA-CLIP and CLIP embeddings for flow matching.
+CHANGES: Updated from 64 tokens to 256 tokens (16x16 grid instead of 8x8)
 """
 
 import torch
@@ -16,12 +17,12 @@ logger = logging.getLogger(__name__)
 
 class BLIP3oEmbeddingDataset(Dataset):
     """
-    Dataset class for BLIP3-o embedding training.
+    UPDATED Dataset class for BLIP3-o embedding training with 256 tokens.
     
-    Loads pre-extracted EVA-CLIP and CLIP embeddings in 64-token format
+    Loads pre-extracted EVA-CLIP and CLIP embeddings in 256-token format
     for flow matching training. The dataset handles:
-    - EVA-CLIP embeddings (4096-dim, 64 tokens) as conditioning
-    - CLIP embeddings (1024-dim, 64 tokens) as targets
+    - EVA-CLIP embeddings (4096-dim, 256 tokens) as conditioning
+    - CLIP embeddings (1024-dim, 256 tokens) as targets
     - Proper normalization and preprocessing
     - Memory-efficient loading
     """
@@ -40,6 +41,8 @@ class BLIP3oEmbeddingDataset(Dataset):
         # Allow configuration of expected dimensions
         expected_eva_dim: Optional[int] = None,
         expected_clip_dim: Optional[int] = None,
+        # UPDATED: Expected token count
+        expected_tokens: int = 256,  # UPDATED: 256 tokens instead of 64
     ):
         """
         Initialize the BLIP3-o embedding dataset.
@@ -56,6 +59,7 @@ class BLIP3oEmbeddingDataset(Dataset):
             random_seed: Random seed for reproducible splitting
             expected_eva_dim: Expected EVA embedding dimension (auto-detected if None)
             expected_clip_dim: Expected CLIP embedding dimension (auto-detected if None)
+            expected_tokens: Expected number of tokens (256 for 16x16 grid)
         """
         self.embeddings_path = Path(embeddings_path)
         self.subset_size = subset_size
@@ -68,6 +72,7 @@ class BLIP3oEmbeddingDataset(Dataset):
         self.random_seed = random_seed
         self.expected_eva_dim = expected_eva_dim
         self.expected_clip_dim = expected_clip_dim
+        self.expected_tokens = expected_tokens  # UPDATED: 256 tokens
         
         # Load and process the embeddings
         self._load_embeddings()
@@ -93,18 +98,23 @@ class BLIP3oEmbeddingDataset(Dataset):
         except Exception as e:
             raise RuntimeError(f"Failed to load embeddings: {e}")
         
-        # Extract embeddings - ensure we use the 64-token BLIP3-o format
+        # Extract embeddings - ensure we use the 256-token BLIP3-o format
         if 'eva_blip3o_embeddings' not in data or 'clip_blip3o_embeddings' not in data:
             raise ValueError(
                 "Expected 'eva_blip3o_embeddings' and 'clip_blip3o_embeddings' in data. "
-                "Make sure you're using the BLIP3-o compatible embeddings."
+                "Make sure you're using the BLIP3-o compatible embeddings with 256 tokens."
             )
         
-        self.eva_embeddings = data['eva_blip3o_embeddings']    # [N, 64, 4096]
-        self.clip_embeddings = data['clip_blip3o_embeddings']  # [N, 64, 1024]
+        self.eva_embeddings = data['eva_blip3o_embeddings']    # [N, 256, 4096]
+        self.clip_embeddings = data['clip_blip3o_embeddings']  # [N, 256, 1024]
         self.captions = data.get('captions', [])
         self.keys = data.get('keys', [])
         self.config = data.get('config', {})
+        
+        # Check format version
+        format_version = self.config.get('format_version', 'unknown')
+        if '256' not in format_version:
+            logger.warning(f"Format version '{format_version}' may not be 256-token compatible")
         
         # Convert to torch tensors
         self.eva_embeddings = self._to_torch_tensor(self.eva_embeddings)
@@ -134,7 +144,7 @@ class BLIP3oEmbeddingDataset(Dataset):
             return torch.tensor(data, dtype=torch.float32)
     
     def _validate_embeddings(self):
-        """Validate embedding shapes and consistency."""
+        """Validate embedding shapes and consistency for 256 tokens."""
         eva_shape = self.eva_embeddings.shape
         clip_shape = self.clip_embeddings.shape
         
@@ -144,11 +154,11 @@ class BLIP3oEmbeddingDataset(Dataset):
                 f"Mismatch in number of samples: EVA {eva_shape[0]} vs CLIP {clip_shape[0]}"
             )
         
-        # Check token dimension (should be 64)
-        if eva_shape[1] != 64:
-            raise ValueError(f"EVA embeddings should have 64 tokens, got {eva_shape[1]}")
-        if clip_shape[1] != 64:
-            raise ValueError(f"CLIP embeddings should have 64 tokens, got {clip_shape[1]}")
+        # UPDATED: Check token dimension (should be 256)
+        if eva_shape[1] != self.expected_tokens:
+            raise ValueError(f"EVA embeddings should have {self.expected_tokens} tokens, got {eva_shape[1]}")
+        if clip_shape[1] != self.expected_tokens:
+            raise ValueError(f"CLIP embeddings should have {self.expected_tokens} tokens, got {clip_shape[1]}")
         
         # Auto-detect dimensions if not specified
         actual_eva_dim = eva_shape[2]
@@ -169,6 +179,7 @@ class BLIP3oEmbeddingDataset(Dataset):
                 raise ValueError(f"CLIP embeddings should be {self.expected_clip_dim}-dim, got {actual_clip_dim}")
         
         logger.info(f"Validated embeddings: EVA {eva_shape}, CLIP {clip_shape}")
+        logger.info(f"✅ Using 256 tokens (16x16 grid) - NO POOLING")
     
     def _normalize_embeddings(self, embeddings: torch.Tensor) -> torch.Tensor:
         """
@@ -252,6 +263,7 @@ class BLIP3oEmbeddingDataset(Dataset):
         logger.info(f"CLIP embeddings shape: {self.clip_embeddings.shape}")
         logger.info(f"Split: {self.split}")
         logger.info(f"Normalization - EVA: {self.eva_normalize}, CLIP: {self.clip_normalize}")
+        logger.info(f"✅ Using {self.expected_tokens} tokens (16x16 grid)")
     
     def __len__(self) -> int:
         return len(self.eva_embeddings)
@@ -262,15 +274,15 @@ class BLIP3oEmbeddingDataset(Dataset):
         
         Returns:
             Dictionary containing:
-            - eva_embeddings: [64, EVA_DIM] EVA-CLIP conditioning
-            - clip_embeddings: [64, CLIP_DIM] CLIP targets
+            - eva_embeddings: [256, EVA_DIM] EVA-CLIP conditioning (UPDATED: 256 tokens)
+            - clip_embeddings: [256, CLIP_DIM] CLIP targets (UPDATED: 256 tokens)
             - caption: Text caption (if available)
             - key: Unique identifier (if available)
             - index: Dataset index
         """
         item = {
-            'eva_embeddings': self.eva_embeddings[idx],      # [64, EVA_DIM]
-            'clip_embeddings': self.clip_embeddings[idx],    # [64, CLIP_DIM]
+            'eva_embeddings': self.eva_embeddings[idx],      # [256, EVA_DIM]
+            'clip_embeddings': self.clip_embeddings[idx],    # [256, CLIP_DIM]
             'index': idx,
         }
         
@@ -294,7 +306,7 @@ class BLIP3oEmbeddingDataset(Dataset):
         
         return {
             'num_samples': len(self),
-            'num_tokens': self.eva_embeddings.shape[1],
+            'num_tokens': self.eva_embeddings.shape[1],  # Should be 256
             'eva_dim': self.eva_embeddings.shape[-1],
             'clip_dim': self.clip_embeddings.shape[-1],
             'eva_stats': {
@@ -315,13 +327,16 @@ class BLIP3oEmbeddingDataset(Dataset):
             'normalized': {
                 'eva': self.eva_normalize,
                 'clip': self.clip_normalize,
-            }
+            },
+            'format_version': self.config.get('format_version', 'unknown'),
+            'grid_size': '16x16',  # UPDATED
+            'tokens': self.expected_tokens,  # UPDATED: 256
         }
 
 
 def blip3o_collate_fn(batch: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
-    Custom collate function for BLIP3-o batching.
+    Custom collate function for BLIP3-o batching with 256 tokens.
     
     Args:
         batch: List of dataset items
@@ -339,8 +354,8 @@ def blip3o_collate_fn(batch: List[Dict[str, Any]]) -> Dict[str, Any]:
     keys = [item['key'] for item in batch]
     
     return {
-        'eva_embeddings': eva_embeddings,      # [B, 64, EVA_DIM]
-        'clip_embeddings': clip_embeddings,    # [B, 64, CLIP_DIM]
+        'eva_embeddings': eva_embeddings,      # [B, 256, EVA_DIM]
+        'clip_embeddings': clip_embeddings,    # [B, 256, CLIP_DIM]
         'captions': captions,                  # List[str]
         'keys': keys,                          # List[str]
         'indices': indices,                    # [B]
@@ -359,10 +374,11 @@ def create_blip3o_dataloader(
     pin_memory: bool = None,
     expected_eva_dim: Optional[int] = None,
     expected_clip_dim: Optional[int] = None,
+    expected_tokens: int = 256,  # UPDATED: 256 tokens
     **kwargs
 ) -> DataLoader:
     """
-    Create a DataLoader for BLIP3-o training.
+    Create a DataLoader for BLIP3-o training with 256 tokens.
     
     Args:
         embeddings_path: Path to embeddings pickle file
@@ -376,6 +392,7 @@ def create_blip3o_dataloader(
         pin_memory: Whether to pin memory (auto-detected if None)
         expected_eva_dim: Expected EVA embedding dimension
         expected_clip_dim: Expected CLIP embedding dimension
+        expected_tokens: Expected number of tokens (256 for 16x16 grid)
         **kwargs: Additional DataLoader arguments
         
     Returns:
@@ -394,6 +411,7 @@ def create_blip3o_dataloader(
         eval_split_ratio=eval_split_ratio,
         expected_eva_dim=expected_eva_dim,
         expected_clip_dim=expected_clip_dim,
+        expected_tokens=expected_tokens,  # UPDATED: 256 tokens
     )
     
     # Create dataloader
@@ -421,10 +439,11 @@ def create_blip3o_dataloaders(
     eval_split_ratio: float = 0.1,
     expected_eva_dim: Optional[int] = None,
     expected_clip_dim: Optional[int] = None,
+    expected_tokens: int = 256,  # UPDATED: 256 tokens
     **kwargs
 ) -> Tuple[DataLoader, Optional[DataLoader]]:
     """
-    Create both training and evaluation dataloaders.
+    Create both training and evaluation dataloaders with 256 tokens.
     
     Returns:
         Tuple of (train_dataloader, eval_dataloader)
@@ -445,6 +464,7 @@ def create_blip3o_dataloaders(
         eval_split_ratio=eval_split_ratio,
         expected_eva_dim=expected_eva_dim,
         expected_clip_dim=expected_clip_dim,
+        expected_tokens=expected_tokens,  # UPDATED: 256 tokens
         **kwargs
     )
     
@@ -462,6 +482,7 @@ def create_blip3o_dataloaders(
             eval_split_ratio=eval_split_ratio,
             expected_eva_dim=expected_eva_dim,
             expected_clip_dim=expected_clip_dim,
+            expected_tokens=expected_tokens,  # UPDATED: 256 tokens
             **kwargs
         )
     
@@ -469,8 +490,8 @@ def create_blip3o_dataloaders(
 
 
 def test_blip3o_dataset(embeddings_path: Union[str, Path]):
-    """Test dataset loading and basic functionality."""
-    print("Testing BLIP3-o dataset...")
+    """Test dataset loading and basic functionality with 256 tokens."""
+    print("Testing BLIP3-o dataset with 256 tokens...")
     
     try:
         # Load embeddings to check dimensions first
@@ -483,15 +504,25 @@ def test_blip3o_dataset(embeddings_path: Union[str, Path]):
         # Auto-detect dimensions
         if hasattr(eva_embeddings, 'shape'):
             eva_dim = eva_embeddings.shape[-1]
+            eva_tokens = eva_embeddings.shape[1]
         else:
             eva_dim = len(eva_embeddings[0][0]) if eva_embeddings else 4096
+            eva_tokens = len(eva_embeddings[0]) if eva_embeddings else 256
             
         if hasattr(clip_embeddings, 'shape'):
             clip_dim = clip_embeddings.shape[-1]
+            clip_tokens = clip_embeddings.shape[1]
         else:
             clip_dim = len(clip_embeddings[0][0]) if clip_embeddings else 1024
+            clip_tokens = len(clip_embeddings[0]) if clip_embeddings else 256
         
         print(f"Detected dimensions: EVA={eva_dim}, CLIP={clip_dim}")
+        print(f"Detected tokens: EVA={eva_tokens}, CLIP={clip_tokens}")
+        
+        # Check if this is a 256-token format
+        if eva_tokens != 256 or clip_tokens != 256:
+            print(f"⚠️  WARNING: Expected 256 tokens, got EVA={eva_tokens}, CLIP={clip_tokens}")
+            print("   This may be an old 64-token format. Please re-extract embeddings.")
         
         # Create dataset with auto-detected dimensions
         dataset = BLIP3oEmbeddingDataset(
@@ -500,6 +531,7 @@ def test_blip3o_dataset(embeddings_path: Union[str, Path]):
             split="all",
             expected_eva_dim=eva_dim,    # Use detected dimensions
             expected_clip_dim=clip_dim,  # Use detected dimensions
+            expected_tokens=256,         # Expect 256 tokens
         )
         
         # Print statistics
@@ -530,6 +562,7 @@ def test_blip3o_dataset(embeddings_path: Union[str, Path]):
             split="all",
             expected_eva_dim=eva_dim,
             expected_clip_dim=clip_dim,
+            expected_tokens=256,
         )
         
         batch = next(iter(dataloader))
@@ -548,6 +581,7 @@ def test_blip3o_dataset(embeddings_path: Union[str, Path]):
             eval_split_ratio=0.2,
             expected_eva_dim=eva_dim,
             expected_clip_dim=clip_dim,
+            expected_tokens=256,
         )
         
         train_batch = next(iter(train_loader))
@@ -558,6 +592,7 @@ def test_blip3o_dataset(embeddings_path: Union[str, Path]):
         print(f"  Eval batch size: {eval_batch['eva_embeddings'].shape[0]}")
         
         print("\n✅ Dataset test completed successfully!")
+        print("✅ Ready for 256-token BLIP3-o training!")
         
     except Exception as e:
         print(f"\n❌ Dataset test failed: {e}")
@@ -573,4 +608,4 @@ if __name__ == "__main__":
         test_blip3o_dataset(embeddings_path)
     else:
         print("Usage: python blip3o_dataset.py <embeddings_path>")
-        print("Example: python blip3o_dataset.py path/to/blip3o_grid_embeddings.pkl")
+        print("Example: python blip3o_dataset.py path/to/blip3o_grid_embeddings_256.pkl")

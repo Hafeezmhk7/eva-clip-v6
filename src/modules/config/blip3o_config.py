@@ -1,6 +1,6 @@
 """
-Updated configuration classes for BLIP3-o DiT architecture with 3D RoPE compatibility.
-Ensures that default configurations work properly with the fixed 3D RoPE implementation.
+UPDATED configuration classes for BLIP3-o DiT architecture with 256 tokens.
+Changes: input_size from 8 to 16 (16x16 = 256 tokens instead of 8x8 = 64 tokens)
 """
 
 from typing import Optional
@@ -9,18 +9,18 @@ from transformers import PretrainedConfig
 
 class BLIP3oDiTConfig(PretrainedConfig):
     """
-    Configuration class for BLIP3-o DiT model with 3D RoPE compatibility.
+    UPDATED Configuration class for BLIP3-o DiT model with 256 tokens.
     
     This configuration ensures that head_dim is compatible with 3D RoPE (divisible by 4)
-    and follows the exact BLIP3-o architecture.
+    and follows the exact BLIP3-o architecture with 256 tokens (16x16 grid).
     """
     
     model_type = "blip3o-dit"
 
     def __init__(
         self,
-        # Spatial configuration
-        input_size: int = 8,                    # 8x8 grid = 64 tokens
+        # Spatial configuration - UPDATED for 256 tokens
+        input_size: int = 16,                   # UPDATED: 16x16 grid = 256 tokens (was 8)
         patch_size: int = 1,                    # Already tokenized features
         
         # Model dimensions - COMPATIBLE with your extracted embeddings
@@ -138,7 +138,10 @@ class BLIP3oDiTConfig(PretrainedConfig):
         assert self.dim % self.n_heads == 0, f"Hidden dim {self.dim} must be divisible by num_heads {self.n_heads}"
         assert (self.dim // self.n_heads) % 4 == 0, f"head_dim {self.dim // self.n_heads} must be divisible by 4 for 3D RoPE"
         assert self.learn_sigma is False, "BLIP3-o uses flow matching, which doesn't require sigma learning"
-        assert self.input_size * self.input_size == 64, f"Input size {self.input_size}x{self.input_size} must equal 64 tokens"
+        
+        # UPDATED: Check for 256 tokens (16x16 grid)
+        assert self.input_size * self.input_size == 256, f"Input size {self.input_size}x{self.input_size} must equal 256 tokens"
+        print(f"✅ Validated 256-token configuration: {self.input_size}x{self.input_size} = {self.input_size * self.input_size} tokens")
 
 
 class FlowMatchingConfig:
@@ -252,9 +255,9 @@ class TrainingConfig:
 
 
 def get_default_blip3o_config() -> BLIP3oDiTConfig:
-    """Get default BLIP3-o configuration with 3D RoPE compatibility."""
+    """Get default BLIP3-o configuration with 3D RoPE compatibility and 256 tokens."""
     return BLIP3oDiTConfig(
-        input_size=8,                    # 8x8 = 64 tokens
+        input_size=16,                   # UPDATED: 16x16 = 256 tokens (was 8)
         patch_size=1,                    # Pre-tokenized
         in_channels=1024,                # CLIP dimension (ViT-L/14)
         dim=512,                         # Hidden dimension (3D RoPE compatible)
@@ -271,9 +274,9 @@ def get_default_blip3o_config() -> BLIP3oDiTConfig:
 
 
 def get_large_blip3o_config() -> BLIP3oDiTConfig:
-    """Get large BLIP3-o configuration with 3D RoPE compatibility."""
+    """Get large BLIP3-o configuration with 3D RoPE compatibility and 256 tokens."""
     return BLIP3oDiTConfig(
-        input_size=8,                    # 8x8 = 64 tokens
+        input_size=16,                   # UPDATED: 16x16 = 256 tokens (was 8)
         patch_size=1,                    # Pre-tokenized
         in_channels=1024,                # CLIP dimension (ViT-L/14)
         dim=1024,                        # Larger hidden dimension
@@ -290,9 +293,9 @@ def get_large_blip3o_config() -> BLIP3oDiTConfig:
 
 
 def get_small_blip3o_config() -> BLIP3oDiTConfig:
-    """Get small BLIP3-o configuration for testing/debugging."""
+    """Get small BLIP3-o configuration for testing/debugging with 256 tokens."""
     return BLIP3oDiTConfig(
-        input_size=8,                    # 8x8 = 64 tokens
+        input_size=16,                   # UPDATED: 16x16 = 256 tokens (was 8)
         patch_size=1,                    # Pre-tokenized
         in_channels=1024,                # CLIP dimension (ViT-L/14)
         dim=256,                         # Smaller hidden dimension
@@ -373,9 +376,9 @@ def validate_3d_rope_compatibility(config: BLIP3oDiTConfig) -> bool:
 
 
 def print_model_size_estimate(config: BLIP3oDiTConfig):
-    """Print estimated model size for a configuration."""
+    """Print estimated model size for a configuration - UPDATED for 256 tokens."""
     
-    # Rough parameter estimation
+    # Rough parameter estimation for 256 tokens
     embed_params = config.in_channels * config.dim + config.eva_embedding_size * config.dim
     
     # Transformer layers
@@ -399,15 +402,16 @@ def print_model_size_estimate(config: BLIP3oDiTConfig):
     total_params = embed_params + layer_params + output_params
     memory_mb = total_params * 4 / (1024 * 1024)  # 4 bytes per float32 parameter
     
-    print(f"📊 Estimated model size for config:")
+    print(f"📊 Estimated model size for config (256 tokens):")
     print(f"   Parameters: {total_params:,}")
     print(f"   Memory (FP32): {memory_mb:.1f} MB")
     print(f"   Memory (FP16): {memory_mb/2:.1f} MB")
+    print(f"   Tokens: 256 (16x16 grid)")
 
 
 if __name__ == "__main__":
     # Test the configurations
-    print("Testing BLIP3-o configurations...")
+    print("Testing BLIP3-o configurations with 256 tokens...")
     
     configs = [
         ("Small", get_small_blip3o_config()),
@@ -418,6 +422,7 @@ if __name__ == "__main__":
     for name, config in configs:
         print(f"\n{name} Configuration:")
         print(f"  dim={config.dim}, n_heads={config.n_heads}, n_layers={config.n_layers}")
+        print(f"  tokens={config.input_size}x{config.input_size}={config.input_size*config.input_size}")
         
         # Validate 3D RoPE compatibility
         try:
@@ -429,4 +434,4 @@ if __name__ == "__main__":
         # Print size estimate
         print_model_size_estimate(config)
     
-    print("\n✅ All configurations are 3D RoPE compatible!")
+    print("\n✅ All configurations are 3D RoPE compatible with 256 tokens!")

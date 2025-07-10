@@ -246,23 +246,23 @@ echo ""
 echo "🚀 Starting BLIP3-o DiT Training in Scratch-Shared..."
 echo "===================================================="
 
-# CRITICAL FIX: Use scratch workspace for --output_dir
+# Alternative: If you want some evaluation but less frequent
 python train_blip3o_dit.py \
   --embeddings_path "$EMBEDDINGS_FILE" \
   --output_dir "$SCRATCH_WORKSPACE/production_checkpoints" \
-  --batch_size 128 \
-  --num_epochs 3 \
+  --batch_size 256 \
+  --num_epochs 10 \
   --device cuda \
-  --fp16 \
+  --bf16 \
   --compile_model \
   --gradient_checkpointing \
-  --learning_rate 5e-5 \
-  --warmup_steps 20 \
-  --logging_steps 1 \
-  --save_steps 30 \
-  --eval_steps 10 \
+  --learning_rate 8e-5 \
+  --warmup_steps 5 \
+  --logging_steps 5 \
+  --save_steps 25 \
+  --eval_steps 25 \
   --wandb_project "blip3o-dit-scur2711" \
-  --wandb_run_name "scratch-$(date +%Y%m%d-%H%M%S)"
+  --wandb_run_name "fast-eval-$(date +%Y%m%d-%H%M%S)"
 
 # Check training exit code
 TRAINING_EXIT_CODE=$?
