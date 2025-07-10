@@ -5,6 +5,7 @@ Trains a diffusion transformer to generate CLIP embeddings from EVA-CLIP conditi
 
 This script implements the exact BLIP3-o training methodology as described in the paper.
 FIXED: Updated dimensions to match your extracted embeddings (CLIP: 1024, EVA-CLIP: 4096).
+FIXED: Removed invalid save_only_model parameter from trainer creation.
 """
 
 import os
@@ -42,8 +43,6 @@ patch_trainer_for_compatibility()
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
-
-
 
 from src.modules.config.blip3o_config import (
     BLIP3oDiTConfig, 
@@ -429,7 +428,10 @@ def main():
             greater_is_better=False,
         )
         
-        # Create trainer
+        # Only keep the latest checkpoint to save disk space
+        training_args.save_total_limit = 1
+        
+        # Create trainer - FIXED: Removed invalid save_only_model parameter
         logger.info("Creating trainer...")
         trainer = BLIP3oTrainer(
             model=model,

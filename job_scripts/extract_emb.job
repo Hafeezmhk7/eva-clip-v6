@@ -1,192 +1,228 @@
 #!/bin/bash
 #SBATCH --partition=gpu_h100
 #SBATCH --gpus=1
-#SBATCH --job-name=blip3o_embeddings
-#SBATCH --time=06:00:00
-#SBATCH --output=./slurm_out/embeddings_%j.out
-#SBATCH --error=./slurm_out/embeddings_%j.err
-#SBATCH --mem=48GB
+#SBATCH --job-name=blip3o_dit_training
+#SBATCH --time=24:00:00
+#SBATCH --output=./slurm_out/train_%j.out
+#SBATCH --error=./slurm_out/train_%j.err
+#SBATCH --mem=64GB
 #SBATCH --cpus-per-task=8
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
 
-echo "🚀 Starting BLIP3-o Embedding Extraction (Fixed Version)"
-echo "========================================================"
+echo "🚀 Starting BLIP3-o DiT Training Job - FIXED VERSION"
+echo "=================================================="
 echo "Job ID: $SLURM_JOB_ID"
-echo "Node: $SLURMD_NODENAME"
+echo "Node: $SLURMD_NODENAME" 
 echo "Date: $(date)"
 echo "Working directory: $(pwd)"
+echo "CUDA Visible Devices: $CUDA_VISIBLE_DEVICES"
 
-# Create output directory if it doesn't exist
-mkdir -p slurm_out embeddings
+# Create output directories
+mkdir -p slurm_out
+mkdir -p production_checkpoints
 
-# Load modules (following Snellius recommendations)
-echo "📦 Loading system modules..."
+# Load modules
 module purge
 module load 2024
 module load Miniconda3/24.7.1-0
 module load CUDA/12.6.0
 
-# Activate your conda environment
-echo "🐍 Activating conda environment..."
+# Activate conda environment
 source activate eva_clip_env
 
+# Check if embeddings file exists
+EMBEDDINGS_FILE="embeddings/blip3o_grid_embeddings.pkl"
+
+echo "🔍 Checking for embeddings file..."
+if [ ! -f "$EMBEDDINGS_FILE" ]; then
+    echo "❌ Embeddings file not found: $EMBEDDINGS_FILE"
+    echo ""
+    echo "Please extract embeddings first:"
+    echo "  sbatch job_scripts/extract_emb.job"
+    echo ""
+    echo "Or run extraction manually:"
+    echo "  python src/modules/extract_embeddings_g.py"
+    exit 1
+fi
+
+echo "✅ Found embeddings file: $EMBEDDINGS_FILE"
+echo "📊 File size: $(du -sh $EMBEDDINGS_FILE | cut -f1)"
+
+# Validate embeddings format
+echo "🧪 Validating embeddings format..."
+python -c "
+import pickle
+import sys
+
+try:
+    with open('$EMBEDDINGS_FILE', 'rb') as f:
+        data = pickle.load(f)
+    
+    # Check required keys for BLIP3-o
+    required_keys = ['clip_blip3o_embeddings', 'eva_blip3o_embeddings']
+    for key in required_keys:
+        if key not in data:
+            print(f'❌ Missing required key: {key}')
+            sys.exit(1)
+    
+    # Check dimensions
+    clip_shape = data['clip_blip3o_embeddings'].shape
+    eva_shape = data['eva_blip3o_embeddings'].shape
+    
+    print(f'📐 CLIP BLIP3-o embeddings: {clip_shape}')
+    print(f'📐 EVA BLIP3-o embeddings: {eva_shape}')
+    
+    # Validate shapes for BLIP3-o DiT
+    if len(clip_shape) != 3 or clip_shape[1] != 64 or clip_shape[2] != 1024:
+        print(f'❌ Invalid CLIP shape: {clip_shape}, expected [N, 64, 1024]')
+        sys.exit(1)
+        
+    if len(eva_shape) != 3 or eva_shape[1] != 64 or eva_shape[2] != 4096:
+        print(f'❌ Invalid EVA shape: {eva_shape}, expected [N, 64, 4096]')
+        sys.exit(1)
+    
+    total_samples = data.get('total_samples', clip_shape[0])
+    print(f'✅ Embeddings validation passed!')
+    print(f'   Total samples: {total_samples}')
+    print(f'   CLIP: ViT-L/14 features (1024-dim)')
+    print(f'   EVA: EVA-CLIP-8B features (4096-dim)')
+    
+except Exception as e:
+    print(f'❌ Embeddings validation failed: {e}')
+    sys.exit(1)
+"
+
+if [ $? -ne 0 ]; then
+    echo "❌ Embeddings validation failed!"
+    exit 1
+fi
+
+echo "✅ Embeddings validation passed!"
+
 # Show system information
-echo "💾 System resources:"
-echo "   CPU cores: $SLURM_CPUS_PER_TASK"
-echo "   Memory: $SLURM_MEM_PER_NODE MB"
+echo ""
+echo "💾 System Information:"
 echo "   GPU: $(nvidia-smi --query-gpu=name --format=csv,noheader,nounits)"
 echo "   GPU Memory: $(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits) MB"
-echo "   Available disk: $(df -h . | tail -1 | awk '{print $4}')"
+echo "   CPU Cores: $SLURM_CPUS_PER_TASK"
+echo "   System Memory: $SLURM_MEM_PER_NODE MB"
 
-# Set memory optimizations
-export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
+# Check available disk space
+echo "   Available Disk: $(df -h . | tail -1 | awk '{print $4}')"
 
-# Check if checkpoint exists
-if [ -f "embeddings/extraction_checkpoint.pkl" ]; then
-    echo "🔄 Checkpoint found - extraction will resume from previous state"
-    ls -lh embeddings/extraction_checkpoint.pkl
-else
-    echo "🆕 No checkpoint found - starting fresh extraction"
-fi
-
-# Check disk space before starting
+# Start training with correct embeddings path
 echo ""
-echo "📊 Pre-extraction disk check:"
-df -h . | head -2
+echo "🚀 Starting BLIP3-o DiT Training..."
+echo "=================================="
 
-available_gb=$(df . | tail -1 | awk '{print int($4/1024/1024)}')
-if [ "$available_gb" -lt 2 ]; then
-    echo "⚠️  WARNING: Less than 2GB available disk space!"
-    echo "🧹 Running quick cleanup..."
-    
-    # Quick cleanup
-    rm -rf ~/.cache/* 2>/dev/null
-    if command -v conda >/dev/null 2>&1; then
-        conda clean --all -y >/dev/null 2>&1
-    fi
-    
-    echo "📊 Disk space after cleanup:"
-    df -h . | head -2
-fi
+python train_blip3o_dit.py \
+  --embeddings_path "$EMBEDDINGS_FILE" \
+  --output_dir ./production_checkpoints \
+  --batch_size 64 \  # Increased batch size
+  --num_epochs 5 \   # Reduced epochs
+  --device cuda \
+  --fp16 \
+  --compile_model \
+  --gradient_checkpointing \
+  --learning_rate 5e-5 \
+  --warmup_steps 20 \
+  --logging_steps 10 \  # Less frequent logging
+  --save_steps 200 \   # Less frequent saving
+  --eval_steps 50 \    # Less frequent evaluation
+  --wandb_project "blip3o-dit-production" \
+  --wandb_run_name "blip3o-dit-$(date +%Y%m%d-%H%M%S)"
 
-# Run the embedding extraction
-echo ""
-echo "🧠 Starting embedding extraction..."
-echo "========================================"
-
-# Monitor memory usage
-monitor_memory() {
-    echo "📊 Memory status:"
-    echo "   System memory: $(free -h | grep '^Mem:' | awk '{print $3 "/" $2}')"
-    if nvidia-smi > /dev/null 2>&1; then
-        echo "   GPU memory: $(nvidia-smi --query-gpu=memory.used,memory.total --format=csv,noheader,nounits | awk -F', ' '{print $1 " MB / " $2 " MB"}')"
-    fi
-}
-
-# Initial memory check
-monitor_memory
-
-# Run the extraction script
-python src/modules/extract_embeddings_g.py
-
-# Check exit status
-EXTRACTION_EXIT_CODE=$?
+# Check training exit code
+TRAINING_EXIT_CODE=$?
 
 echo ""
-if [ $EXTRACTION_EXIT_CODE -eq 0 ]; then
-    echo "✅ Embedding extraction completed successfully!"
-    echo "📁 Output files:"
-    ls -lh embeddings/
+if [ $TRAINING_EXIT_CODE -eq 0 ]; then
+    echo "✅ BLIP3-o DiT training completed successfully!"
+    echo ""
+    echo "📁 Training outputs:"
+    ls -lh production_checkpoints/
     echo ""
     
-    # Verify the output file
-    if [ -f "embeddings/blip3o_grid_embeddings.pkl" ]; then
-        echo "✅ Final embeddings file created successfully"
-        echo "📊 File size: $(du -sh embeddings/blip3o_grid_embeddings.pkl | cut -f1)"
+    # Show final model info
+    if [ -d "production_checkpoints" ]; then
+        echo "🎉 Training completed successfully!"
+        echo "📊 Final model location: production_checkpoints/"
         
-        # Test loading the file
-        echo "🧪 Testing file integrity..."
-        python -c "
-import pickle
-try:
-    with open('embeddings/blip3o_grid_embeddings.pkl', 'rb') as f:
-        data = pickle.load(f)
-    print(f'✅ File loads successfully with {data[\"total_samples\"]} samples')
-    print(f'📐 CLIP shape: {data[\"clip_blip3o_embeddings\"].shape}')
-    print(f'📐 EVA shape: {data[\"eva_blip3o_embeddings\"].shape}')
-    print(f'📝 Sample caption: {data[\"captions\"][0][:50]}...')
-except Exception as e:
-    print(f'❌ File integrity test failed: {e}')
-    exit(1)
-"
-        
-        if [ $? -eq 0 ]; then
-            echo "✅ File integrity verified!"
-            
-            # Clean up checkpoint
-            if [ -f "embeddings/extraction_checkpoint.pkl" ]; then
-                echo "🗑️  Cleaning up checkpoint file..."
-                rm embeddings/extraction_checkpoint.pkl
-            fi
-            
-        else
-            echo "❌ File integrity check failed!"
-            exit 1
+        # Check for pytorch_model.bin or model weights
+        if [ -f "production_checkpoints/pytorch_model.bin" ]; then
+            echo "✅ Model weights saved: pytorch_model.bin"
+            echo "📊 Model size: $(du -sh production_checkpoints/pytorch_model.bin | cut -f1)"
         fi
         
-    else
-        echo "❌ Final embeddings file not found!"
-        exit 1
+        # Check for config files
+        if [ -f "production_checkpoints/config.json" ]; then
+            echo "✅ Model config saved: config.json"
+        fi
+        
+        # Check for training logs
+        if [ -f "production_checkpoints/training.log" ]; then
+            echo "✅ Training logs saved: training.log"
+            echo "📝 Last few training lines:"
+            tail -5 production_checkpoints/training.log
+        fi
+        
+        echo ""
+        echo "🚀 Next steps:"
+        echo "1. Test inference with your trained model"
+        echo "2. Generate sample CLIP embeddings from EVA-CLIP conditioning"
+        echo "3. Evaluate model performance on held-out data"
+        
     fi
     
 else
-    echo "❌ Embedding extraction failed with exit code: $EXTRACTION_EXIT_CODE"
+    echo "❌ BLIP3-o DiT training failed with exit code: $TRAINING_EXIT_CODE"
     
-    # Check for common issues
-    if [ $EXTRACTION_EXIT_CODE -eq 1 ]; then
-        echo "🔍 Checking for common issues..."
-        
-        # Check disk space
-        available_kb=$(df . | tail -1 | awk '{print $4}')
-        if [ "$available_kb" -lt 1000000 ]; then  # Less than 1GB
-            echo "💾 LIKELY CAUSE: Insufficient disk space"
-            echo "   Available: $(df -h . | tail -1 | awk '{print $4}')"
-            echo "   Try running: bash scripts/quick_cleanup.sh"
-        fi
-        
-        # Check for checkpoint
-        if [ -f "embeddings/extraction_checkpoint.pkl" ]; then
-            echo "💾 Progress checkpoint exists:"
-            ls -lh embeddings/extraction_checkpoint.pkl
-            echo "   You can resume extraction after freeing up space"
-        fi
+    echo ""
+    echo "🔍 Debugging information:"
+    
+    # Check GPU memory
+    echo "GPU Memory Status:"
+    nvidia-smi
+    
+    # Check if any checkpoints were saved
+    if [ -d "production_checkpoints" ] && [ "$(ls -A production_checkpoints)" ]; then
+        echo ""
+        echo "📁 Partial training outputs found:"
+        ls -lh production_checkpoints/
+        echo "   You may be able to resume training from these checkpoints"
     fi
     
-    # Show memory status for debugging
-    echo ""
-    echo "🔍 Final system status:"
-    monitor_memory
-    df -h . | head -2
+    # Check logs for errors
+    if [ -f "production_checkpoints/training.log" ]; then
+        echo ""
+        echo "📝 Last training log entries:"
+        tail -10 production_checkpoints/training.log
+    fi
     
     exit 1
 fi
 
-# Final status
+# Show final system status
 echo ""
-echo "📊 Final system status:"
-monitor_memory
+echo "📊 Final System Status:"
+echo "   GPU Memory:"
+nvidia-smi --query-gpu=memory.used,memory.total --format=csv,noheader,nounits
+echo "   Disk Usage:"
 df -h . | head -2
 
 echo ""
-echo "🎉 Job completed at: $(date)"
+echo "🎉 BLIP3-o DiT Job completed at: $(date)"
 echo "⏱️ Total runtime: $SECONDS seconds"
 
-# Success message with next steps
-if [ -f "embeddings/blip3o_grid_embeddings.pkl" ]; then
+# Final success message
+if [ $TRAINING_EXIT_CODE -eq 0 ]; then
     echo ""
-    echo "🚀 SUCCESS! Ready for training:"
-    echo "  python train_blip3o_dit.py \\"
-    echo "    --embeddings_path embeddings/blip3o_grid_embeddings.pkl \\"
-    echo "    --output_dir ./checkpoints/blip3o-dit \\"
-    echo "    --batch_size 32 \\"
-    echo "    --num_epochs 10"
+    echo "🎯 SUCCESS SUMMARY:"
+    echo "✅ Embeddings: BLIP3-o compatible format (CLIP: 1024-dim, EVA: 4096-dim)"
+    echo "✅ Architecture: BLIP3-o DiT with proper 3D RoPE and flow matching"
+    echo "✅ Training: Completed successfully with flow matching loss"
+    echo "✅ Model: Saved to production_checkpoints/"
+    echo ""
+    echo "Your BLIP3-o model is ready for inference! 🚀"
 fi

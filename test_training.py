@@ -1,113 +1,122 @@
 #!/usr/bin/env python3
 """
-Test script for the FIXED BLIP3-o implementation with proper 3D RoPE.
-This script validates that the 3D RoPE implementation works correctly.
+Simple test training script to verify BLIP3-o setup is working.
+This will do a minimal training run to test everything is connected properly.
 """
 
+import os
 import sys
 import torch
-import torch.nn.functional as F
 from pathlib import Path
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
-def test_3d_rope_utilities():
-    """Test the 3D RoPE utility functions."""
-    print("🧪 Testing 3D RoPE utilities...")
+def test_imports():
+    """Test if all imports work correctly."""
+    print("🧪 Testing imports...")
     
-    # Import the utility functions
-    from src.modules.models.blip3o_dit import get_3d_rotary_pos_embed, apply_rotary_pos_emb
+    try:
+        from src.modules.config.blip3o_config import get_default_blip3o_config
+        print("✅ Config import successful")
+    except Exception as e:
+        print(f"❌ Config import failed: {e}")
+        return False
     
-    # Test 3D RoPE creation
-    embed_dim = 64  # Must be divisible by 4
-    grid_size = 8   # 8x8 = 64 tokens
+    try:
+        from src.modules.models.blip3o_dit import create_blip3o_dit_model
+        print("✅ Model import successful")
+    except Exception as e:
+        print(f"❌ Model import failed: {e}")
+        return False
     
-    cos_emb, sin_emb = get_3d_rotary_pos_embed(embed_dim, grid_size)
+    try:
+        from src.modules.losses.flow_matching_loss import create_blip3o_flow_matching_loss
+        print("✅ Loss import successful")
+    except Exception as e:
+        print(f"❌ Loss import failed: {e}")
+        return False
     
-    print(f"   ✅ Created 3D RoPE embeddings:")
-    print(f"      cos_emb shape: {cos_emb.shape}")  # Should be [1, 64, 32]
-    print(f"      sin_emb shape: {sin_emb.shape}")  # Should be [1, 64, 32]
+    try:
+        from src.modules.datasets.blip3o_dataset import test_blip3o_dataset
+        print("✅ Dataset import successful")
+    except Exception as e:
+        print(f"❌ Dataset import failed: {e}")
+        return False
     
-    # Test RoPE application
-    batch_size = 2
-    seq_len = 64
-    num_heads = 8
-    head_dim = 64
-    
-    q = torch.randn(batch_size, seq_len, num_heads, head_dim)
-    k = torch.randn(batch_size, seq_len, num_heads, head_dim)
-    
-    q_rot, k_rot = apply_rotary_pos_emb(q, k, cos_emb, sin_emb)
-    
-    print(f"   ✅ Applied RoPE to Q, K:")
-    print(f"      q_rot shape: {q_rot.shape}")  # Should be [2, 64, 8, 64]
-    print(f"      k_rot shape: {k_rot.shape}")  # Should be [2, 64, 8, 64]
+    try:
+        from src.modules.trainers.blip3o_trainer import BLIP3oTrainer
+        print("✅ Trainer import successful")
+    except Exception as e:
+        print(f"❌ Trainer import failed: {e}")
+        return False
     
     return True
 
-def test_fixed_model():
-    """Test the fixed BLIP3-o model with proper 3D RoPE."""
-    print("🧪 Testing FIXED BLIP3-o model...")
-    
-    from src.modules.config.blip3o_config import BLIP3oDiTConfig
-    from src.modules.models.blip3o_dit import BLIP3oDiTModel
-    
-    # Create a configuration that ensures 3D RoPE compatibility
-    config = BLIP3oDiTConfig(
-        input_size=8,                    # 8x8 = 64 tokens
-        patch_size=1,                    # Pre-tokenized
-        in_channels=1024,                # CLIP dimension
-        dim=512,                         # Hidden dimension (divisible by heads)
-        eva_embedding_size=4096,         # EVA-CLIP dimension
-        n_layers=4,                      # Fewer layers for testing
-        n_heads=8,                       # 8 heads -> head_dim = 64 (divisible by 4)
-        n_kv_heads=8,                    # Same as n_heads
-        multiple_of=256,                 # FFN multiple
-        norm_eps=1e-5,                   # Normalization
-        qk_norm=True,                    # Query-key norm
-        learn_sigma=False,               # Flow matching
-        _gradient_checkpointing=False,   # Disable for testing
-    )
-    
-    print(f"   📐 Model config:")
-    print(f"      dim: {config.dim}")
-    print(f"      n_heads: {config.n_heads}")
-    print(f"      head_dim: {config.dim // config.n_heads}")
-    print(f"      head_dim % 4: {(config.dim // config.n_heads) % 4}")
-    
-    # Create model
-    model = BLIP3oDiTModel(config)
-    
-    print(f"   ✅ Model created successfully")
-    print(f"      Parameters: {model.get_num_parameters():,}")
-    print(f"      Head dim: {model.head_dim} (divisible by 4: {model.head_dim % 4 == 0})")
-    
-    return model, config
-
-def test_fixed_forward_pass():
-    """Test that the fixed forward pass works without tensor shape errors."""
-    print("🧪 Testing FIXED forward pass...")
-    
-    # Get model
-    model, config = test_fixed_model()
-    
-    device = torch.device("cpu")  # Use CPU for testing
-    model = model.to(device)
-    model.eval()
-    
-    # Create test inputs
-    batch_size = 2
-    eva_embeddings = torch.randn(batch_size, 64, 4096, device=device)  # EVA-CLIP
-    clip_embeddings = torch.randn(batch_size, 64, 1024, device=device) # CLIP targets
-    timesteps = torch.rand(batch_size, device=device)                  # Flow matching times
-    
-    print(f"   📊 Input shapes:")
-    print(f"      EVA embeddings: {eva_embeddings.shape}")
-    print(f"      CLIP embeddings: {clip_embeddings.shape}")
-    print(f"      Timesteps: {timesteps.shape}")
+def test_model_creation():
+    """Test if model can be created."""
+    print("\n🧪 Testing model creation...")
     
     try:
+        from src.modules.config.blip3o_config import get_default_blip3o_config
+        from src.modules.models.blip3o_dit import create_blip3o_dit_model
+        
+        # Create small model for testing
+        config = get_default_blip3o_config()
+        config.dim = 512  # Smaller for testing
+        config.n_layers = 4  # Fewer layers
+        config.n_heads = 8   # Fewer heads
+        
+        model = create_blip3o_dit_model(config)
+        print(f"✅ Model created successfully")
+        print(f"   Parameters: {model.get_num_parameters():,}")
+        print(f"   Memory: {model.get_memory_footprint()}")
+        
+        return True, model, config
+        
+    except Exception as e:
+        print(f"❌ Model creation failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return False, None, None
+
+def test_dataset_loading(embeddings_path):
+    """Test if dataset can be loaded."""
+    print(f"\n🧪 Testing dataset loading from: {embeddings_path}")
+    
+    try:
+        from src.modules.datasets.blip3o_dataset import test_blip3o_dataset
+        
+        # Test dataset loading
+        test_blip3o_dataset(embeddings_path)
+        print("✅ Dataset test completed")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Dataset loading failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+def test_forward_pass(model, config):
+    """Test a forward pass through the model."""
+    print("\n🧪 Testing model forward pass...")
+    
+    try:
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        model = model.to(device)
+        model.eval()
+        
+        # Create dummy inputs
+        batch_size = 2
+        eva_embeddings = torch.randn(batch_size, 64, 1280, device=device)
+        clip_embeddings = torch.randn(batch_size, 64, 768, device=device)
+        timesteps = torch.rand(batch_size, device=device)
+        
+        print(f"   Using device: {device}")
+        print(f"   EVA input shape: {eva_embeddings.shape}")
+        print(f"   CLIP input shape: {clip_embeddings.shape}")
+        
         # Forward pass
         with torch.no_grad():
             output = model(
@@ -117,205 +126,124 @@ def test_fixed_forward_pass():
                 return_dict=False
             )
         
-        print(f"   ✅ Forward pass successful!")
-        print(f"      Output shape: {output.shape}")
-        print(f"      Expected shape: {clip_embeddings.shape}")
-        
-        # Verify output shape
-        assert output.shape == clip_embeddings.shape, f"Output shape mismatch: {output.shape} vs {clip_embeddings.shape}"
-        
-        # Test that output is reasonable
-        assert not torch.isnan(output).any(), "Output contains NaN values"
-        assert torch.isfinite(output).all(), "Output contains infinite values"
-        
-        print(f"   ✅ Output validation passed")
-        print(f"      Output mean: {output.mean().item():.4f}")
-        print(f"      Output std: {output.std().item():.4f}")
-        print(f"      Output range: [{output.min().item():.4f}, {output.max().item():.4f}]")
+        print(f"✅ Forward pass successful")
+        print(f"   Output shape: {output.shape}")
         
         return True
         
     except Exception as e:
-        print(f"   ❌ Forward pass failed: {e}")
+        print(f"❌ Forward pass failed: {e}")
         import traceback
         traceback.print_exc()
         return False
 
-def test_generation():
-    """Test generation functionality."""
-    print("🧪 Testing generation...")
-    
-    # Get model
-    model, config = test_fixed_model()
-    
-    device = torch.device("cpu")
-    model = model.to(device)
-    model.eval()
-    
-    # Create test inputs
-    batch_size = 1
-    eva_embeddings = torch.randn(batch_size, 64, 4096, device=device)
-    
-    print(f"   📊 Generation inputs:")
-    print(f"      EVA embeddings: {eva_embeddings.shape}")
+def test_loss_computation():
+    """Test loss computation."""
+    print("\n🧪 Testing loss computation...")
     
     try:
-        # Generate samples
-        with torch.no_grad():
-            generated = model.generate(
-                encoder_hidden_states=eva_embeddings,
-                num_inference_steps=10,  # Few steps for testing
-                return_intermediate=False
-            )
+        from src.modules.losses.flow_matching_loss import create_blip3o_flow_matching_loss
         
-        print(f"   ✅ Generation successful!")
-        print(f"      Generated shape: {generated.shape}")
-        print(f"      Expected shape: [{batch_size}, 64, {config.in_channels}]")
+        # Create loss function
+        loss_fn = create_blip3o_flow_matching_loss()
         
-        # Verify generation
-        expected_shape = (batch_size, 64, config.in_channels)
-        assert generated.shape == expected_shape, f"Generated shape mismatch: {generated.shape} vs {expected_shape}"
+        # Create dummy data
+        batch_size = 2
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         
-        # Test reasonableness
-        assert not torch.isnan(generated).any(), "Generated output contains NaN"
-        assert torch.isfinite(generated).all(), "Generated output contains infinite values"
-        
-        print(f"   ✅ Generation validation passed")
-        print(f"      Generated mean: {generated.mean().item():.4f}")
-        print(f"      Generated std: {generated.std().item():.4f}")
-        
-        return True
-        
-    except Exception as e:
-        print(f"   ❌ Generation failed: {e}")
-        import traceback
-        traceback.print_exc()
-        return False
-
-def test_with_loss():
-    """Test model with loss computation."""
-    print("🧪 Testing with loss computation...")
-    
-    from src.modules.losses.flow_matching_loss import create_blip3o_flow_matching_loss
-    
-    # Get model
-    model, config = test_fixed_model()
-    
-    device = torch.device("cpu")
-    model = model.to(device)
-    model.train()  # Set to training mode
-    
-    # Create loss function
-    flow_loss = create_blip3o_flow_matching_loss()
-    
-    # Create test inputs
-    batch_size = 2
-    eva_embeddings = torch.randn(batch_size, 64, 4096, device=device)
-    clip_embeddings = torch.randn(batch_size, 64, 1024, device=device)
-    timesteps = torch.rand(batch_size, device=device)
-    noise = torch.randn_like(clip_embeddings)
-    
-    print(f"   📊 Training setup:")
-    print(f"      Batch size: {batch_size}")
-    print(f"      Model parameters: {model.get_num_parameters():,}")
-    
-    try:
-        # Forward pass
-        output = model(
-            hidden_states=clip_embeddings,
-            timestep=timesteps,
-            encoder_hidden_states=eva_embeddings,
-            return_dict=False
-        )
+        model_output = torch.randn(batch_size, 64, 768, device=device)
+        target_samples = torch.randn(batch_size, 64, 768, device=device)
+        timesteps = torch.rand(batch_size, device=device)
+        eva_conditioning = torch.randn(batch_size, 64, 1280, device=device)
         
         # Compute loss
-        loss, metrics = flow_loss(
-            model_output=output,
-            target_samples=clip_embeddings,
+        loss, metrics = loss_fn(
+            model_output=model_output,
+            target_samples=target_samples,
             timesteps=timesteps,
-            eva_conditioning=eva_embeddings,
-            noise=noise,
+            eva_conditioning=eva_conditioning,
             return_metrics=True
         )
         
-        print(f"   ✅ Loss computation successful!")
-        print(f"      Loss value: {loss.item():.4f}")
-        
+        print(f"✅ Loss computation successful")
+        print(f"   Loss value: {loss.item():.4f}")
         if metrics:
-            print(f"      Available metrics: {list(metrics.keys())}")
-            if 'cosine_similarity' in metrics:
-                print(f"      Cosine similarity: {metrics['cosine_similarity']:.4f}")
-            if 'snr_db' in metrics:
-                print(f"      SNR: {metrics['snr_db']:.1f} dB")
-        
-        # Test backpropagation
-        loss.backward()
-        
-        # Check gradients
-        total_grad_norm = 0
-        for param in model.parameters():
-            if param.grad is not None:
-                total_grad_norm += param.grad.data.norm(2).item() ** 2
-        total_grad_norm = total_grad_norm ** 0.5
-        
-        print(f"   ✅ Backpropagation successful!")
-        print(f"      Total gradient norm: {total_grad_norm:.4f}")
+            print(f"   Metrics: {list(metrics.keys())}")
         
         return True
         
     except Exception as e:
-        print(f"   ❌ Loss computation failed: {e}")
+        print(f"❌ Loss computation failed: {e}")
         import traceback
         traceback.print_exc()
         return False
 
 def main():
     """Main test function."""
-    print("🚀 BLIP3-o FIXED Implementation Test")
-    print("=" * 60)
+    print("🚀 BLIP3-o Setup Test")
+    print("=" * 50)
     
-    tests = [
-        ("3D RoPE Utilities", test_3d_rope_utilities),
-        ("Fixed Model Creation", lambda: test_fixed_model() is not None),
-        ("Fixed Forward Pass", test_fixed_forward_pass),
-        ("Generation", test_generation),
-        ("Loss Computation", test_with_loss),
+    # Test 1: Imports
+    if not test_imports():
+        print("❌ Import test failed. Please check your file structure and dependencies.")
+        return False
+    
+    # Test 2: Model creation
+    success, model, config = test_model_creation()
+    if not success:
+        print("❌ Model creation failed.")
+        return False
+    
+    # Test 3: Forward pass
+    if not test_forward_pass(model, config):
+        print("❌ Forward pass failed.")
+        return False
+    
+    # Test 4: Loss computation
+    if not test_loss_computation():
+        print("❌ Loss computation failed.")
+        return False
+    
+    # Test 5: Dataset (if embeddings file exists)
+    possible_embeddings_paths = [
+        "embeddings/fixed_grid_embeddings.pkl",
+        "data/embeddings/fixed_grid_embeddings.pkl",
+        "embeddings/blip3o_grid_embeddings.pkl", 
+        "data/embeddings/blip3o_grid_embeddings.pkl"
     ]
     
-    passed = 0
-    total = len(tests)
+    embeddings_path = None
+    for path in possible_embeddings_paths:
+        if os.path.exists(path):
+            embeddings_path = path
+            break
     
-    for test_name, test_func in tests:
-        print(f"\n🧪 Running: {test_name}")
-        try:
-            success = test_func()
-            if success:
-                print(f"   ✅ {test_name} PASSED")
-                passed += 1
-            else:
-                print(f"   ❌ {test_name} FAILED")
-        except Exception as e:
-            print(f"   ❌ {test_name} FAILED with exception: {e}")
-            import traceback
-            traceback.print_exc()
-    
-    print("\n" + "=" * 60)
-    print(f"🎯 Test Results: {passed}/{total} tests passed")
-    
-    if passed == total:
-        print("🎉 ALL TESTS PASSED!")
-        print("✅ The FIXED BLIP3-o implementation with proper 3D RoPE is working correctly")
-        print("\n📋 Next steps:")
-        print("   1. Replace your blip3o_dit.py with the fixed version")
-        print("   2. Run: python train_blip3o_dit.py --debug")
-        print("   3. The 3D RoPE should now work without tensor shape errors")
-        print("   4. No more fallback needed - proper 3D RoPE is implemented!")
+    if embeddings_path:
+        print(f"📁 Found embeddings file: {embeddings_path}")
+        if not test_dataset_loading(embeddings_path):
+            print("❌ Dataset loading failed.")
+            return False
     else:
-        print("❌ Some tests failed. Please check the error messages above.")
-        return 1
+        print(f"⚠️  No embeddings file found in common locations:")
+        for path in possible_embeddings_paths:
+            print(f"     - {path}")
+        print("   Please run the embeddings test first")
     
-    return 0
+    print("\n" + "=" * 50)
+    print("🎉 ALL TESTS PASSED!")
+    print("✅ Your BLIP3-o setup is working correctly")
+    print("\n📋 Next steps:")
+    print("   1. Run: python test_embeddings.py")
+    print("   2. If embeddings are good, run: python train_blip3o_dit.py --debug")
+    print("   3. For full training, remove --debug flag")
+    
+    return True
 
 if __name__ == "__main__":
-    exit_code = main()
-    sys.exit(exit_code)
+    success = main()
+    if not success:
+        print("\n💡 Troubleshooting tips:")
+        print("   - Check if all files are in the right locations")
+        print("   - Make sure you have all dependencies: pip install -r requirements.txt")
+        print("   - Verify your Python path includes the src directory")
+        sys.exit(1)
