@@ -220,7 +220,7 @@ source activate eva_clip_env
 echo "✅ Environment activated"
 
 # =============================================================================
-# FIND CHUNKED EMBEDDINGS DIRECTORY
+# FIND CHUNKED EMBEDDINGS DIRECTORY - IMPROVED SEARCH
 # =============================================================================
 
 echo ""
@@ -249,36 +249,49 @@ if [ -z "$CHUNKED_EMBEDDINGS_DIR" ] && [ -n "$BLIP3O_TEMP_DIR" ]; then
     fi
 fi
 
-# Option 3: Check for any temp directory embeddings
+# Option 3: IMPROVED - Search for embeddings from ANY previous job
 if [ -z "$CHUNKED_EMBEDDINGS_DIR" ]; then
-    echo "   Searching for chunked embeddings in temp directories..."
+    echo "   Searching for chunked embeddings from previous jobs..."
     
-    # Check common temp locations
-    for temp_dir in "$TMPDIR" "$SCRATCH_SHARED/$(whoami)" "/tmp"; do
-        if [ -n "$temp_dir" ] && [ -d "$temp_dir" ]; then
-            # Look for chunked_embeddings directory
-            SEARCH_PATH=$(find "$temp_dir" -name "chunked_embeddings" -type d 2>/dev/null | head -1)
-            if [ -n "$SEARCH_PATH" ] && [ -f "$SEARCH_PATH/embeddings_manifest.json" ]; then
-                CHUNKED_EMBEDDINGS_DIR="$SEARCH_PATH"
-                echo "   ✅ Found in temp: $temp_dir"
-                break
-            fi
-            
-            # Also check for directories matching pattern blip3o_chunked_*
-            PATTERN_SEARCH=$(find "$temp_dir" -name "blip3o_chunked_*" -type d 2>/dev/null | head -1)
-            if [ -n "$PATTERN_SEARCH" ]; then
-                CHUNKED_SUBDIR="$PATTERN_SEARCH/chunked_embeddings"
-                if [ -d "$CHUNKED_SUBDIR" ] && [ -f "$CHUNKED_SUBDIR/embeddings_manifest.json" ]; then
-                    CHUNKED_EMBEDDINGS_DIR="$CHUNKED_SUBDIR"
-                    echo "   ✅ Found pattern match in temp: $temp_dir"
+    # Get the base temp directory
+    BASE_TEMP_DIR=""
+    if [ -n "$TMPDIR" ]; then
+        BASE_TEMP_DIR=$(dirname "$TMPDIR")
+    elif [ -n "$SCRATCH_SHARED" ]; then
+        BASE_TEMP_DIR="$SCRATCH_SHARED/$(whoami)"
+    fi
+    
+    if [ -n "$BASE_TEMP_DIR" ] && [ -d "$BASE_TEMP_DIR" ]; then
+        echo "   Searching in base temp directory: $BASE_TEMP_DIR"
+        
+        # Look for any directory containing chunked embeddings
+        for temp_dir in "$BASE_TEMP_DIR"/scur2711.*; do
+            if [ -d "$temp_dir" ]; then
+                # Check for blip3o_chunked_* directories
+                for blip_dir in "$temp_dir"/blip3o_chunked_*; do
+                    if [ -d "$blip_dir" ]; then
+                        CHUNKED_SUBDIR="$blip_dir/chunked_embeddings"
+                        if [ -d "$CHUNKED_SUBDIR" ] && [ -f "$CHUNKED_SUBDIR/embeddings_manifest.json" ]; then
+                            CHUNKED_EMBEDDINGS_DIR="$CHUNKED_SUBDIR"
+                            echo "   ✅ Found embeddings from previous job: $blip_dir"
+                            break 2
+                        fi
+                    fi
+                done
+                
+                # Also check for direct chunked_embeddings directories
+                CHUNKED_DIRECT="$temp_dir/chunked_embeddings"
+                if [ -d "$CHUNKED_DIRECT" ] && [ -f "$CHUNKED_DIRECT/embeddings_manifest.json" ]; then
+                    CHUNKED_EMBEDDINGS_DIR="$CHUNKED_DIRECT"
+                    echo "   ✅ Found direct embeddings: $temp_dir"
                     break
                 fi
             fi
-        fi
-    done
+        done
+    fi
 fi
 
-# Option 4: Check project directory
+# Option 4: Check project directory symlink
 if [ -z "$CHUNKED_EMBEDDINGS_DIR" ]; then
     PROJECT_CHUNKED="./chunked_embeddings/temp_chunked"
     echo "   Checking project directory: $PROJECT_CHUNKED"
@@ -288,15 +301,46 @@ if [ -z "$CHUNKED_EMBEDDINGS_DIR" ]; then
     fi
 fi
 
+# Option 5: Search in /scratch-local directly (if accessible)
+if [ -z "$CHUNKED_EMBEDDINGS_DIR" ] && [ -d "/scratch-local" ]; then
+    echo "   Searching in /scratch-local for any user directories..."
+    for user_temp in /scratch-local/$(whoami).*; do
+        if [ -d "$user_temp" ]; then
+            for blip_dir in "$user_temp"/blip3o_chunked_*; do
+                if [ -d "$blip_dir" ]; then
+                    CHUNKED_SUBDIR="$blip_dir/chunked_embeddings"
+                    if [ -d "$CHUNKED_SUBDIR" ] && [ -f "$CHUNKED_SUBDIR/embeddings_manifest.json" ]; then
+                        CHUNKED_EMBEDDINGS_DIR="$CHUNKED_SUBDIR"
+                        echo "   ✅ Found in /scratch-local: $blip_dir"
+                        break 2
+                    fi
+                fi
+            done
+        fi
+    done
+fi
+
 # Final check
 if [ -z "$CHUNKED_EMBEDDINGS_DIR" ]; then
     echo "❌ No chunked embeddings directory found!"
     echo ""
-    echo "Please extract chunked embeddings first:"
-    echo "  sbatch job_scripts/extract_emb_256_chunk.job"
+    echo "🔍 Searched locations:"
+    echo "   - Environment variable: $BLIP3O_CHUNKED_DIR"
+    echo "   - Temp workspace: $BLIP3O_TEMP_DIR/chunked_embeddings"
+    echo "   - Previous job directories in: $BASE_TEMP_DIR"
+    echo "   - Project symlink: ./chunked_embeddings/temp_chunked"
+    echo "   - /scratch-local/$(whoami).* directories"
     echo ""
-    echo "Or set the path manually:"
-    echo "  export BLIP3O_CHUNKED_DIR=/path/to/chunked_embeddings"
+    echo "📋 SOLUTIONS:"
+    echo "1. Extract chunked embeddings first:"
+    echo "   sbatch job_scripts/extract_emb_256_chunk.job"
+    echo ""
+    echo "2. Or set the path manually if embeddings exist:"
+    echo "   export BLIP3O_CHUNKED_DIR=/path/to/chunked_embeddings"
+    echo "   sbatch job_scripts/train_flow_match_256.job"
+    echo ""
+    echo "3. Or find existing embeddings:"
+    echo "   find /scratch-local -name \"embeddings_manifest.json\" 2>/dev/null"
     exit 1
 fi
 
@@ -398,6 +442,7 @@ echo "   CPU Cores: $SLURM_CPUS_PER_TASK"
 echo "   System Memory: $SLURM_MEM_PER_NODE MB"
 echo "   Temp Available: $(df -h "$TEMP_WORKSPACE" | tail -1 | awk '{print $4}')"
 echo "   Home Available: $(df -h "$HOME" | tail -1 | awk '{print $4}')"
+echo "   Embeddings Location: $CHUNKED_EMBEDDINGS_DIR"
 
 # =============================================================================
 # START CHUNKED TRAINING (256 TOKENS)
