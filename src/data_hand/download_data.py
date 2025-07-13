@@ -30,7 +30,7 @@ def get_temp_directory():
     
     return temp_dir
 
-def download_blip3o_shards(shard_indices=None, data_dir=None, force_download=False, max_shards=12):
+def download_blip3o_shards(shard_indices=None, data_dir=None, force_download=False, max_shards=35):
     """
     Download multiple shards of BLIP3o-Pretrain-Short-Caption dataset
     
@@ -53,9 +53,10 @@ def download_blip3o_shards(shard_indices=None, data_dir=None, force_download=Fal
     # Create data directory
     data_dir.mkdir(parents=True, exist_ok=True)
     
-    # Default to downloading first few shards if not specified
+
+    # AFTER (chunked approach):
     if shard_indices is None:
-        shard_indices = list(range(min(3, max_shards)))  # Default: first 3 shards
+        shard_indices = list(range(min(30, max_shards)))  # Default: first 30 shards for ~100k samples
     
     # Ensure shard_indices is a list
     if isinstance(shard_indices, int):

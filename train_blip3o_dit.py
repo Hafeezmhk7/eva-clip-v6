@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-Main training script for BLIP3-o DiT with flow matching - FIXED VERSION.
+Main training script for BLIP3-o DiT with flow matching - UPDATED FOR CHUNKED TRAINING.
 Trains a diffusion transformer to generate CLIP embeddings from EVA-CLIP conditioning.
 
 This script implements the exact BLIP3-o training methodology as described in the paper.
-FIXED: Updated dimensions to match your extracted embeddings (CLIP: 1024, EVA-CLIP: 4096).
-FIXED: Removed invalid save_only_model parameter from trainer creation.
+UPDATED: Now supports both single-file and chunked embedding approaches.
+UPDATED: Added support for scaling to 100k+ samples with chunked dataset loading.
 """
 
 import os
@@ -18,8 +18,6 @@ from pathlib import Path
 import json
 from datetime import datetime
 import traceback
-
-# Add this right after your imports in train_blip3o_dit.py
 
 # TEMPORARY FIX: Patch for transformers compatibility
 def patch_trainer_for_compatibility():
@@ -71,15 +69,21 @@ logger = logging.getLogger(__name__)
 def parse_arguments():
     """Parse command line arguments for BLIP3-o training."""
     parser = argparse.ArgumentParser(
-        description="Train BLIP3-o DiT with flow matching",
+        description="Train BLIP3-o DiT with flow matching (supports both single-file and chunked datasets)",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
     
-    # Required arguments
-    parser.add_argument(
-        "--embeddings_path", type=str, required=True,
-        help="Path to the BLIP3-o embeddings pickle file"
+    # Required arguments - now support both single file and chunked approaches
+    embeddings_group = parser.add_mutually_exclusive_group(required=True)
+    embeddings_group.add_argument(
+        "--embeddings_path", type=str,
+        help="Path to the BLIP3-o embeddings pickle file (single file approach)"
     )
+    embeddings_group.add_argument(
+        "--chunked_embeddings_dir", type=str,
+        help="Path to directory containing chunked embedding files (chunked approach)"
+    )
+    
     parser.add_argument(
         "--output_dir", type=str, required=True,
         help="Output directory for model checkpoints and logs"
@@ -134,16 +138,18 @@ def parse_arguments():
     flow_group.add_argument("--regularization_weight", type=float, default=0.0,
                           help="Regularization weight")
     
-    # Data configuration
+    # Data configuration - UPDATED for chunked support
     data_group = parser.add_argument_group("Data Configuration")
     data_group.add_argument("--subset_size", type=int, default=None,
-                          help="Use subset of data for debugging (None for all data)")
+                          help="Use subset of data for debugging (None for all data) - only for single-file")
     data_group.add_argument("--eval_split", type=float, default=0.1,
                           help="Fraction of data to use for evaluation")
     data_group.add_argument("--normalize_embeddings", action="store_true",
                           help="Normalize embeddings to unit norm")
     data_group.add_argument("--num_workers", type=int, default=4,
-                          help="Number of dataloader workers")
+                          help="Number of dataloader workers (ignored for chunked datasets)")
+    data_group.add_argument("--delete_after_use", action="store_true",
+                          help="Delete embedding chunks after processing (chunked only)")
     
     # Logging and saving
     log_group = parser.add_argument_group("Logging and Saving")
@@ -203,7 +209,7 @@ def setup_device(device_arg: str) -> torch.device:
     return device
 
 
-def setup_wandb(args):
+def setup_wandb(args, use_chunked: bool):
     """Initialize Weights & Biases logging."""
     if args.no_wandb:
         logger.info("Weights & Biases logging disabled")
@@ -213,15 +219,16 @@ def setup_wandb(args):
     run_name = args.wandb_run_name
     if run_name is None:
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        run_name = f"blip3o-dit-{timestamp}"
+        approach = "chunked" if use_chunked else "single"
+        run_name = f"blip3o-dit-{approach}-{timestamp}"
     
     # Initialize wandb
     wandb.init(
         project=args.wandb_project,
         name=run_name,
         config=vars(args),
-        tags=["blip3o", "dit", "flow-matching", "clip-generation"],
-        notes="BLIP3-o DiT training with flow matching for CLIP embedding generation",
+        tags=["blip3o", "dit", "flow-matching", "clip-generation"] + (["chunked"] if use_chunked else ["single-file"]),
+        notes=f"BLIP3-o DiT training with flow matching for CLIP embedding generation ({'chunked' if use_chunked else 'single-file'} approach)",
     )
     
     logger.info(f"Initialized Weights & Biases: {wandb.run.url}")
@@ -230,7 +237,7 @@ def setup_wandb(args):
 def create_model_config(args) -> BLIP3oDiTConfig:
     """Create model configuration from arguments - FIXED dimensions."""
     return BLIP3oDiTConfig(
-        input_size=8,                           # 8x8 = 64 tokens (fixed for BLIP3-o)
+        input_size=16,                          # UPDATED: 16x16 = 256 tokens (was 8 for 64 tokens)
         patch_size=1,                           # Pre-tokenized (fixed)
         in_channels=1024,                       # CLIP dimension (FIXED: matches your embeddings)
         dim=args.model_dim,                     # Hidden dimension
@@ -260,7 +267,7 @@ def create_flow_matching_config(args) -> FlowMatchingConfig:
     )
 
 
-def save_configs(args, output_dir: Path):
+def save_configs(args, output_dir: Path, use_chunked: bool):
     """Save all configurations to output directory."""
     output_dir.mkdir(parents=True, exist_ok=True)
     
@@ -272,9 +279,11 @@ def save_configs(args, output_dir: Path):
         'torch_version': torch.__version__,
         'cuda_available': torch.cuda.is_available(),
         'cuda_version': torch.version.cuda if torch.cuda.is_available() else None,
+        'approach': 'chunked' if use_chunked else 'single-file',
         'fixed_dimensions': {
             'clip_dim': 1024,  # Document the fixed dimensions
             'eva_dim': 4096,
+            'tokens': 256,     # UPDATED: 256 tokens
         }
     }
     
@@ -304,6 +313,30 @@ def save_configs(args, output_dir: Path):
     logger.info(f"Configurations saved to {output_dir}")
 
 
+def load_manifest(chunked_dir: Path) -> dict:
+    """Load and validate chunked embeddings manifest."""
+    manifest_path = chunked_dir / "embeddings_manifest.json"
+    
+    if not manifest_path.exists():
+        raise FileNotFoundError(f"Manifest file not found: {manifest_path}")
+    
+    with open(manifest_path, 'r') as f:
+        manifest = json.load(f)
+    
+    # Validate manifest
+    required_keys = ['total_shards', 'total_samples', 'format_version']
+    for key in required_keys:
+        if key not in manifest:
+            raise ValueError(f"Invalid manifest: missing key '{key}'")
+    
+    # Check format version
+    format_version = manifest.get('format_version', '')
+    if '256' not in format_version:
+        logger.warning(f"Manifest format version '{format_version}' may not be 256-token compatible")
+    
+    return manifest
+
+
 def main():
     """Main training function."""
     args = parse_arguments()
@@ -331,26 +364,39 @@ def main():
     logging.getLogger().addHandler(file_handler)
     
     logger.info("=" * 80)
-    logger.info("BLIP3-o DiT Training with Flow Matching")
+    logger.info("BLIP3-o DiT Training with Flow Matching (Single-File + Chunked Support)")
     logger.info("=" * 80)
     
     try:
+        # Determine approach (single-file vs chunked)
+        if args.embeddings_path:
+            embeddings_path = Path(args.embeddings_path)
+            if not embeddings_path.exists():
+                raise FileNotFoundError(f"Embeddings file not found: {embeddings_path}")
+            logger.info(f"Using SINGLE-FILE approach: {embeddings_path}")
+            use_chunked = False
+        else:
+            embeddings_path = Path(args.chunked_embeddings_dir)
+            if not embeddings_path.exists():
+                raise FileNotFoundError(f"Chunked embeddings directory not found: {embeddings_path}")
+            
+            # Load and validate manifest
+            manifest = load_manifest(embeddings_path)
+            logger.info(f"Using CHUNKED approach: {embeddings_path}")
+            logger.info(f"  Total shards: {manifest['total_shards']}")
+            logger.info(f"  Total samples: {manifest['total_samples']:,}")
+            logger.info(f"  Format: {manifest['format_version']}")
+            use_chunked = True
+        
         # Save configurations
-        save_configs(args, output_dir)
+        save_configs(args, output_dir, use_chunked)
         
         # Setup device
         device = setup_device(args.device)
         
         # Setup wandb
         if not args.no_wandb:
-            setup_wandb(args)
-        
-        # Validate embeddings path
-        embeddings_path = Path(args.embeddings_path)
-        if not embeddings_path.exists():
-            raise FileNotFoundError(f"Embeddings file not found: {embeddings_path}")
-        
-        logger.info(f"Using embeddings from: {embeddings_path}")
+            setup_wandb(args, use_chunked)
         
         # Create model configuration and model
         logger.info("Creating model...")
@@ -368,6 +414,7 @@ def main():
         logger.info(f"  Trainable parameters: {trainable_params:,}")
         logger.info(f"  Memory footprint: {memory_footprint}")
         logger.info(f"  Model dimensions: CLIP={model_config.in_channels}, EVA={model_config.eva_embedding_size}, Hidden={model_config.dim}")
+        logger.info(f"  Tokens: {model_config.input_size}x{model_config.input_size} = {model_config.input_size**2}")
         
         # Compile model if requested
         if args.compile_model:
@@ -382,28 +429,77 @@ def main():
         flow_config = create_flow_matching_config(args)
         flow_matching_loss = create_blip3o_flow_matching_loss(config=flow_config)
         
-        # Create datasets and dataloaders
+        # Create datasets and dataloaders - UPDATED for chunked support
         logger.info("Creating datasets...")
-        train_dataloader, eval_dataloader = create_blip3o_dataloaders(
-            embeddings_path=args.embeddings_path,
-            batch_size=args.batch_size,
-            eval_batch_size=args.eval_batch_size,
-            num_workers=args.num_workers,
-            subset_size=args.subset_size,
-            normalize_embeddings=args.normalize_embeddings,
-            eval_split_ratio=args.eval_split,
-            expected_eva_dim=4096,     # Specify expected dimensions
-            expected_clip_dim=1024,    # Specify expected dimensions
-        )
         
-        train_dataset = train_dataloader.dataset
-        eval_dataset = eval_dataloader.dataset if eval_dataloader else None
+        if use_chunked:
+            # Use chunked dataset approach
+            from src.modules.datasets.blip3o_dataset import create_chunked_dataloaders
+            
+            logger.info("Loading chunked datasets...")
+            train_dataloader, eval_dataloader = create_chunked_dataloaders(
+                chunked_embeddings_dir=embeddings_path,
+                batch_size=args.batch_size,
+                eval_batch_size=args.eval_batch_size,
+                eval_split_ratio=args.eval_split,
+                normalize_embeddings=args.normalize_embeddings,
+                delete_after_use=args.delete_after_use,
+                num_workers=0,  # IterableDataset requires num_workers=0
+            )
+            
+            # For chunked datasets, we can't get exact length, so use manifest
+            total_samples = manifest['total_samples']
+            train_samples = int(total_samples * (1 - args.eval_split))
+            eval_samples = total_samples - train_samples
+            
+            logger.info(f"Chunked datasets created:")
+            logger.info(f"  Total samples: {total_samples:,}")
+            logger.info(f"  Training samples: {train_samples:,}")
+            logger.info(f"  Evaluation samples: {eval_samples:,}")
+            logger.info(f"  Total shards: {manifest['total_shards']}")
+            logger.info(f"  Sequential loading: One shard at a time")
+            logger.info(f"  Auto cleanup: {args.delete_after_use}")
+            
+            # Create dummy datasets for trainer compatibility
+            class DummyDataset:
+                def __init__(self, length):
+                    self.length = length
+                def __len__(self):
+                    return self.length
+            
+            train_dataset = DummyDataset(train_samples)
+            eval_dataset = DummyDataset(eval_samples) if eval_dataloader else None
+            
+        else:
+            # Use traditional single-file approach
+            logger.info("Loading single-file dataset...")
+            train_dataloader, eval_dataloader = create_blip3o_dataloaders(
+                embeddings_path=embeddings_path,
+                batch_size=args.batch_size,
+                eval_batch_size=args.eval_batch_size,
+                num_workers=args.num_workers,
+                subset_size=args.subset_size,
+                normalize_embeddings=args.normalize_embeddings,
+                eval_split_ratio=args.eval_split,
+                expected_eva_dim=4096,     # Specify expected dimensions
+                expected_clip_dim=1024,    # Specify expected dimensions
+                expected_tokens=256,       # UPDATED: 256 tokens
+            )
+            
+            train_dataset = train_dataloader.dataset
+            eval_dataset = eval_dataloader.dataset if eval_dataloader else None
+            
+            logger.info(f"Single-file datasets created:")
+            logger.info(f"  Training samples: {len(train_dataset)}")
+            if eval_dataset:
+                logger.info(f"  Evaluation samples: {len(eval_dataset)}")
         
-        logger.info(f"Datasets created:")
-        logger.info(f"  Training samples: {len(train_dataset)}")
-        if eval_dataset:
-            logger.info(f"  Evaluation samples: {len(eval_dataset)}")
-        logger.info(f"  Training batches per epoch: {len(train_dataloader)}")
+        # Log dataloader info
+        try:
+            batches_per_epoch = len(train_dataloader)
+            logger.info(f"  Training batches per epoch: {batches_per_epoch}")
+        except:
+            logger.info(f"  Training batches per epoch: Unknown (streaming/chunked)")
         
         # Create training arguments
         training_args = create_blip3o_training_args(
@@ -420,7 +516,7 @@ def main():
             gradient_accumulation_steps=args.gradient_accumulation_steps,
             fp16=args.fp16 and not args.bf16,
             bf16=args.bf16,
-            dataloader_num_workers=args.num_workers,
+            dataloader_num_workers=0 if use_chunked else args.num_workers,  # Chunked requires 0 workers
             # Fix for newer transformers compatibility
             remove_unused_columns=False,
             load_best_model_at_end=True,
@@ -431,7 +527,7 @@ def main():
         # Only keep the latest checkpoint to save disk space
         training_args.save_total_limit = 1
         
-        # Create trainer - FIXED: Removed invalid save_only_model parameter
+        # Create trainer
         logger.info("Creating trainer...")
         trainer = BLIP3oTrainer(
             model=model,
@@ -447,11 +543,20 @@ def main():
             return 0
         
         # Print training summary
-        total_steps = len(train_dataloader) * args.num_epochs
+        try:
+            total_steps = len(train_dataloader) * args.num_epochs
+            steps_info = f"Total steps: {total_steps}"
+        except:
+            steps_info = "Total steps: Unknown (streaming dataset)"
+        
         logger.info("Training Summary:")
+        logger.info(f"  Approach: {'Chunked' if use_chunked else 'Single-file'}")
         logger.info(f"  Epochs: {args.num_epochs}")
-        logger.info(f"  Steps per epoch: {len(train_dataloader)}")
-        logger.info(f"  Total steps: {total_steps}")
+        try:
+            logger.info(f"  Steps per epoch: {len(train_dataloader)}")
+        except:
+            logger.info(f"  Steps per epoch: Unknown (streaming)")
+        logger.info(f"  {steps_info}")
         logger.info(f"  Batch size: {args.batch_size}")
         logger.info(f"  Learning rate: {args.learning_rate}")
         logger.info(f"  Weight decay: {args.weight_decay}")
@@ -459,6 +564,13 @@ def main():
         logger.info(f"  Mixed precision: {'fp16' if args.fp16 else 'bf16' if args.bf16 else 'fp32'}")
         logger.info(f"  Output directory: {output_dir}")
         logger.info(f"  3D RoPE: Enabled with proper spatial-temporal encoding")
+        
+        if use_chunked:
+            logger.info(f"  Chunked features:")
+            logger.info(f"    Sequential loading: One shard at a time")
+            logger.info(f"    Memory efficient: Constant memory usage")
+            logger.info(f"    Auto cleanup: {args.delete_after_use}")
+            logger.info(f"    Scalable: Can handle 100k+ samples")
         
         # Start training
         logger.info("Starting training...")
@@ -482,11 +594,13 @@ def main():
             final_metrics = trainer.evaluate()
             logger.info(f"Final evaluation metrics: {final_metrics}")
         
-        # Generate sample outputs for verification
-        logger.info("Generating sample outputs...")
-        if eval_dataloader:
+        # Generate sample outputs for verification (only for single-file approach)
+        if not use_chunked:
+            logger.info("Generating sample outputs...")
             try:
-                sample_batch = next(iter(eval_dataloader))
+                # Get eval dataloader for sampling
+                eval_dl = eval_dataloader if eval_dataloader else train_dataloader
+                sample_batch = next(iter(eval_dl))
                 eva_conditioning = sample_batch['eva_embeddings'][:4].to(device)
                 
                 model.eval()
@@ -513,7 +627,9 @@ def main():
         logger.info("=" * 80)
         logger.info("Training completed successfully!")
         logger.info(f"Model saved to: {output_dir}")
-        logger.info("🎉 Your BLIP3-o model with proper 3D RoPE is ready!")
+        logger.info(f"🎉 Your BLIP3-o model with {'chunked' if use_chunked else 'single-file'} training is ready!")
+        if use_chunked:
+            logger.info("🚀 Chunked approach successfully handled large-scale training!")
         logger.info("=" * 80)
         
         return 0

@@ -355,7 +355,7 @@ echo "=================================================="
 
 # TRAINING WITH 256 TOKENS - Use temp workspace for output
 python train_blip3o_dit.py \
-  --embeddings_path "$EMBEDDINGS_FILE" \
+   --chunked_embeddings_dir /temp/chunked_embeddings \
   --output_dir "$TEMP_WORKSPACE/model_checkpoints" \
   --batch_size 64 \
   --num_epochs 5 \

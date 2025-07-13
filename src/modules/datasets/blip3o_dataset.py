@@ -1,601 +1,519 @@
 """
-UPDATED Dataset implementation for BLIP3-o embedding training with 256 tokens.
-Handles loading and preprocessing of EVA-CLIP and CLIP embeddings for flow matching.
-CHANGES: Updated from 64 tokens to 256 tokens (16x16 grid instead of 8x8)
+CHUNKED Dataset implementation for BLIP3-o training with sequential shard loading.
+Loads one embedding chunk at a time, trains on it, then loads the next chunk.
+Place this file as: src/modules/datasets/blip3o_chunked_dataset.py
 """
 
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, IterableDataset
 import pickle
 import numpy as np
-from typing import Dict, Any, Optional, List, Tuple, Union
+from typing import Dict, Any, Optional, List, Tuple, Union, Iterator
 from pathlib import Path
 import logging
+import json
+import random
+import time
+import gc
 
 logger = logging.getLogger(__name__)
 
 
-class BLIP3oEmbeddingDataset(Dataset):
+class BLIP3oEmbeddingDataset(IterableDataset):
     """
-    UPDATED Dataset class for BLIP3-o embedding training with 256 tokens.
+    Chunked dataset for BLIP3-o training that loads one shard at a time.
     
-    Loads pre-extracted EVA-CLIP and CLIP embeddings in 256-token format
-    for flow matching training. The dataset handles:
-    - EVA-CLIP embeddings (4096-dim, 256 tokens) as conditioning
-    - CLIP embeddings (1024-dim, 256 tokens) as targets
-    - Proper normalization and preprocessing
-    - Memory-efficient loading
+    This dataset:
+    1. Loads embedding shards sequentially
+    2. Provides samples from current shard
+    3. Automatically moves to next shard when current is exhausted
+    4. Optionally deletes processed shards to save disk space
     """
     
     def __init__(
         self,
-        embeddings_path: Union[str, Path],
-        subset_size: Optional[int] = None,
-        normalize_embeddings: bool = True,
-        eva_normalize: bool = True,
-        clip_normalize: bool = True,
-        cache_in_memory: bool = True,
+        chunked_embeddings_dir: Union[str, Path],
         split: str = "train",
         eval_split_ratio: float = 0.1,
+        normalize_embeddings: bool = True,
+        shuffle_shards: bool = True,
+        shuffle_within_shard: bool = True,
+        delete_after_use: bool = True,
         random_seed: int = 42,
-        # Allow configuration of expected dimensions
-        expected_eva_dim: Optional[int] = None,
-        expected_clip_dim: Optional[int] = None,
-        # UPDATED: Expected token count
-        expected_tokens: int = 256,  # UPDATED: 256 tokens instead of 64
+        expected_tokens: int = 256,
+        cache_next_shard: bool = True,
     ):
         """
-        Initialize the BLIP3-o embedding dataset.
+        Initialize chunked dataset.
         
         Args:
-            embeddings_path: Path to the pickle file containing embeddings
-            subset_size: Optional subset size for debugging/testing
-            normalize_embeddings: Whether to normalize embeddings (applies to both)
-            eva_normalize: Whether to normalize EVA-CLIP embeddings specifically
-            clip_normalize: Whether to normalize CLIP embeddings specifically
-            cache_in_memory: Whether to keep all data in memory
-            split: Dataset split ("train" or "eval")
-            eval_split_ratio: Ratio of data to use for evaluation
-            random_seed: Random seed for reproducible splitting
-            expected_eva_dim: Expected EVA embedding dimension (auto-detected if None)
-            expected_clip_dim: Expected CLIP embedding dimension (auto-detected if None)
-            expected_tokens: Expected number of tokens (256 for 16x16 grid)
+            chunked_embeddings_dir: Directory containing embedding shards
+            split: Dataset split ("train", "eval", or "all")
+            eval_split_ratio: Ratio of data for evaluation
+            normalize_embeddings: Whether to normalize embeddings
+            shuffle_shards: Whether to shuffle order of shards
+            shuffle_within_shard: Whether to shuffle samples within each shard
+            delete_after_use: Whether to delete shard files after use
+            random_seed: Random seed for reproducibility
+            expected_tokens: Expected number of tokens (256)
+            cache_next_shard: Whether to preload next shard
         """
-        self.embeddings_path = Path(embeddings_path)
-        self.subset_size = subset_size
-        self.normalize_embeddings = normalize_embeddings
-        self.eva_normalize = eva_normalize and normalize_embeddings
-        self.clip_normalize = clip_normalize and normalize_embeddings
-        self.cache_in_memory = cache_in_memory
+        super().__init__()
+        
+        self.chunked_embeddings_dir = Path(chunked_embeddings_dir)
         self.split = split
         self.eval_split_ratio = eval_split_ratio
+        self.normalize_embeddings = normalize_embeddings
+        self.shuffle_shards = shuffle_shards
+        self.shuffle_within_shard = shuffle_within_shard
+        self.delete_after_use = delete_after_use
         self.random_seed = random_seed
-        self.expected_eva_dim = expected_eva_dim
-        self.expected_clip_dim = expected_clip_dim
-        self.expected_tokens = expected_tokens  # UPDATED: 256 tokens
+        self.expected_tokens = expected_tokens
+        self.cache_next_shard = cache_next_shard
         
-        # Load and process the embeddings
-        self._load_embeddings()
-        self._split_dataset()
+        # Setup random state
+        self.rng = random.Random(random_seed)
+        self.torch_generator = torch.Generator()
+        self.torch_generator.manual_seed(random_seed)
         
-        # Apply subset if requested
-        if subset_size is not None:
-            self._apply_subset(subset_size)
+        # Load manifest and shard list
+        self._load_manifest()
+        self._prepare_shard_list()
         
-        # Log dataset information
-        self._log_dataset_info()
+        # Current shard state
+        self.current_shard_idx = 0
+        self.current_shard_data = None
+        self.current_shard_samples = []
+        self.current_sample_idx = 0
+        
+        # Cache for next shard
+        self.next_shard_data = None
+        
+        # Statistics
+        self.total_samples_processed = 0
+        self.shards_processed = 0
+        
+        logger.info(f"ChunkedDataset initialized:")
+        logger.info(f"  Directory: {self.chunked_embeddings_dir}")
+        logger.info(f"  Split: {self.split}")
+        logger.info(f"  Total shards: {len(self.shard_files)}")
+        logger.info(f"  Estimated samples: {self.estimated_total_samples:,}")
+        logger.info(f"  Delete after use: {self.delete_after_use}")
     
-    def _load_embeddings(self):
-        """Load embeddings from pickle file and validate format."""
-        if not self.embeddings_path.exists():
-            raise FileNotFoundError(f"Embeddings file not found: {self.embeddings_path}")
+    def _load_manifest(self):
+        """Load the embeddings manifest file."""
+        manifest_path = self.chunked_embeddings_dir / "embeddings_manifest.json"
         
-        logger.info(f"Loading embeddings from {self.embeddings_path}")
+        if not manifest_path.exists():
+            raise FileNotFoundError(f"Manifest not found: {manifest_path}")
+        
+        with open(manifest_path, 'r') as f:
+            self.manifest = json.load(f)
+        
+        self.estimated_total_samples = self.manifest.get('total_samples', 0)
+        logger.info(f"Loaded manifest: {self.manifest['total_shards']} shards, {self.estimated_total_samples:,} samples")
+    
+    def _prepare_shard_list(self):
+        """Prepare the list of shard files to process."""
+        # Find all shard files
+        shard_pattern = "embeddings_shard_*.pkl"
+        all_shard_files = list(self.chunked_embeddings_dir.glob(shard_pattern))
+        all_shard_files.sort()  # Sort by name (shard index)
+        
+        if not all_shard_files:
+            raise FileNotFoundError(f"No shard files found in {self.chunked_embeddings_dir}")
+        
+        # Split shards for train/eval if needed
+        if self.split in ["train", "eval"] and self.eval_split_ratio > 0:
+            total_shards = len(all_shard_files)
+            eval_shards = max(1, int(total_shards * self.eval_split_ratio))
+            train_shards = total_shards - eval_shards
+            
+            # Use consistent splitting based on shard names
+            self.rng.shuffle(all_shard_files)  # Shuffle with fixed seed
+            
+            if self.split == "train":
+                self.shard_files = all_shard_files[:train_shards]
+            else:  # eval
+                self.shard_files = all_shard_files[train_shards:]
+        else:
+            self.shard_files = all_shard_files
+        
+        # Shuffle shard order if requested
+        if self.shuffle_shards:
+            self.rng.shuffle(self.shard_files)
+        
+        logger.info(f"Prepared {len(self.shard_files)} shard files for {self.split} split")
+    
+    def _load_shard(self, shard_path: Path) -> Dict[str, Any]:
+        """Load a single embedding shard."""
+        logger.debug(f"Loading shard: {shard_path}")
         
         try:
-            with open(self.embeddings_path, 'rb') as f:
-                data = pickle.load(f)
+            with open(shard_path, 'rb') as f:
+                shard_data = pickle.load(f)
+            
+            # Validate shard data
+            self._validate_shard(shard_data, shard_path)
+            
+            # Normalize embeddings if requested
+            if self.normalize_embeddings:
+                shard_data = self._normalize_shard_embeddings(shard_data)
+            
+            return shard_data
+            
         except Exception as e:
-            raise RuntimeError(f"Failed to load embeddings: {e}")
+            logger.error(f"Failed to load shard {shard_path}: {e}")
+            raise
+    
+    def _validate_shard(self, shard_data: Dict[str, Any], shard_path: Path):
+        """Validate shard data format."""
+        required_keys = ['clip_blip3o_embeddings', 'eva_blip3o_embeddings', 'captions']
         
-        # Extract embeddings - ensure we use the 256-token BLIP3-o format
-        if 'eva_blip3o_embeddings' not in data or 'clip_blip3o_embeddings' not in data:
-            raise ValueError(
-                "Expected 'eva_blip3o_embeddings' and 'clip_blip3o_embeddings' in data. "
-                "Make sure you're using the BLIP3-o compatible embeddings with 256 tokens."
-            )
+        for key in required_keys:
+            if key not in shard_data:
+                raise ValueError(f"Missing key '{key}' in shard {shard_path}")
         
-        self.eva_embeddings = data['eva_blip3o_embeddings']    # [N, 256, 4096]
-        self.clip_embeddings = data['clip_blip3o_embeddings']  # [N, 256, 1024]
-        self.captions = data.get('captions', [])
-        self.keys = data.get('keys', [])
-        self.config = data.get('config', {})
-        
-        # Check format version
-        format_version = self.config.get('format_version', 'unknown')
-        if '256' not in format_version:
-            logger.warning(f"Format version '{format_version}' may not be 256-token compatible")
-        
-        # Convert to torch tensors
-        self.eva_embeddings = self._to_torch_tensor(self.eva_embeddings)
-        self.clip_embeddings = self._to_torch_tensor(self.clip_embeddings)
+        clip_emb = shard_data['clip_blip3o_embeddings']
+        eva_emb = shard_data['eva_blip3o_embeddings']
         
         # Validate shapes
-        self._validate_embeddings()
+        if clip_emb.shape[1] != self.expected_tokens:
+            raise ValueError(f"Expected {self.expected_tokens} tokens, got {clip_emb.shape[1]} in {shard_path}")
         
-        # Apply normalization
-        if self.eva_normalize:
-            logger.info("Normalizing EVA-CLIP embeddings")
-            self.eva_embeddings = self._normalize_embeddings(self.eva_embeddings)
+        if eva_emb.shape[1] != self.expected_tokens:
+            raise ValueError(f"Expected {self.expected_tokens} tokens, got {eva_emb.shape[1]} in {shard_path}")
         
-        if self.clip_normalize:
-            logger.info("Normalizing CLIP embeddings")
-            self.clip_embeddings = self._normalize_embeddings(self.clip_embeddings)
-        
-        logger.info(f"Loaded {self.eva_embeddings.shape[0]} embedding pairs")
+        # Check consistency
+        if clip_emb.shape[0] != eva_emb.shape[0]:
+            raise ValueError(f"Sample count mismatch in {shard_path}: CLIP {clip_emb.shape[0]} vs EVA {eva_emb.shape[0]}")
     
-    def _to_torch_tensor(self, data) -> torch.Tensor:
-        """Convert numpy array or other format to torch tensor."""
-        if isinstance(data, np.ndarray):
-            return torch.from_numpy(data).float()
-        elif isinstance(data, torch.Tensor):
-            return data.float()
-        else:
-            return torch.tensor(data, dtype=torch.float32)
+    def _normalize_shard_embeddings(self, shard_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Normalize embeddings in a shard."""
+        clip_emb = shard_data['clip_blip3o_embeddings']
+        eva_emb = shard_data['eva_blip3o_embeddings']
+        
+        # Normalize to unit norm along feature dimension
+        clip_norm = torch.norm(clip_emb, dim=-1, keepdim=True)
+        clip_norm = torch.clamp(clip_norm, min=1e-8)
+        shard_data['clip_blip3o_embeddings'] = clip_emb / clip_norm
+        
+        eva_norm = torch.norm(eva_emb, dim=-1, keepdim=True)
+        eva_norm = torch.clamp(eva_norm, min=1e-8)
+        shard_data['eva_blip3o_embeddings'] = eva_emb / eva_norm
+        
+        return shard_data
     
-    def _validate_embeddings(self):
-        """Validate embedding shapes and consistency for 256 tokens."""
-        eva_shape = self.eva_embeddings.shape
-        clip_shape = self.clip_embeddings.shape
+    def _prepare_current_shard_samples(self):
+        """Prepare samples from current shard."""
+        if self.current_shard_data is None:
+            return
         
-        # Check batch dimension consistency
-        if eva_shape[0] != clip_shape[0]:
-            raise ValueError(
-                f"Mismatch in number of samples: EVA {eva_shape[0]} vs CLIP {clip_shape[0]}"
-            )
+        num_samples = self.current_shard_data['clip_blip3o_embeddings'].shape[0]
+        indices = list(range(num_samples))
         
-        # UPDATED: Check token dimension (should be 256)
-        if eva_shape[1] != self.expected_tokens:
-            raise ValueError(f"EVA embeddings should have {self.expected_tokens} tokens, got {eva_shape[1]}")
-        if clip_shape[1] != self.expected_tokens:
-            raise ValueError(f"CLIP embeddings should have {self.expected_tokens} tokens, got {clip_shape[1]}")
+        # Shuffle within shard if requested
+        if self.shuffle_within_shard:
+            self.rng.shuffle(indices)
         
-        # Auto-detect dimensions if not specified
-        actual_eva_dim = eva_shape[2]
-        actual_clip_dim = clip_shape[2]
-        
-        if self.expected_eva_dim is None:
-            self.expected_eva_dim = actual_eva_dim
-            logger.info(f"Auto-detected EVA dimension: {actual_eva_dim}")
-        else:
-            if actual_eva_dim != self.expected_eva_dim:
-                raise ValueError(f"EVA embeddings should be {self.expected_eva_dim}-dim, got {actual_eva_dim}")
-        
-        if self.expected_clip_dim is None:
-            self.expected_clip_dim = actual_clip_dim
-            logger.info(f"Auto-detected CLIP dimension: {actual_clip_dim}")
-        else:
-            if actual_clip_dim != self.expected_clip_dim:
-                raise ValueError(f"CLIP embeddings should be {self.expected_clip_dim}-dim, got {actual_clip_dim}")
-        
-        logger.info(f"Validated embeddings: EVA {eva_shape}, CLIP {clip_shape}")
-        logger.info(f"✅ Using 256 tokens (16x16 grid) - NO POOLING")
+        self.current_shard_samples = indices
+        self.current_sample_idx = 0
     
-    def _normalize_embeddings(self, embeddings: torch.Tensor) -> torch.Tensor:
-        """
-        Normalize embeddings to unit norm along the feature dimension.
-        
-        Args:
-            embeddings: Input embeddings [..., feature_dim]
+    def _load_next_shard(self):
+        """Load the next shard and prepare it."""
+        # Clean up current shard
+        if self.current_shard_data is not None:
+            # Delete previous shard file if requested
+            if self.delete_after_use and self.current_shard_idx > 0:
+                prev_shard_path = self.shard_files[self.current_shard_idx - 1]
+                try:
+                    prev_shard_path.unlink()
+                    logger.debug(f"Deleted processed shard: {prev_shard_path}")
+                except Exception as e:
+                    logger.warning(f"Failed to delete shard {prev_shard_path}: {e}")
             
-        Returns:
-            Normalized embeddings
-        """
-        # Compute L2 norm along the last dimension
-        norm = torch.norm(embeddings, dim=-1, keepdim=True)
-        # Avoid division by zero
-        norm = torch.clamp(norm, min=1e-8)
-        return embeddings / norm
-    
-    def _split_dataset(self):
-        """Split dataset into train/eval based on split parameter."""
-        if self.split not in ["train", "eval", "all"]:
-            raise ValueError(f"Invalid split: {self.split}. Must be 'train', 'eval', or 'all'")
+            # Clear memory
+            del self.current_shard_data
+            gc.collect()
         
-        if self.split == "all":
-            # Use all data
+        # Check if we have more shards
+        if self.current_shard_idx >= len(self.shard_files):
+            self.current_shard_data = None
+            return False
+        
+        # Use cached shard if available
+        if self.next_shard_data is not None:
+            self.current_shard_data = self.next_shard_data
+            self.next_shard_data = None
+        else:
+            # Load current shard
+            shard_path = self.shard_files[self.current_shard_idx]
+            self.current_shard_data = self._load_shard(shard_path)
+        
+        # Prepare samples
+        self._prepare_current_shard_samples()
+        
+        # Cache next shard if requested
+        if self.cache_next_shard and (self.current_shard_idx + 1) < len(self.shard_files):
+            try:
+                next_shard_path = self.shard_files[self.current_shard_idx + 1]
+                self.next_shard_data = self._load_shard(next_shard_path)
+                logger.debug(f"Cached next shard: {next_shard_path}")
+            except Exception as e:
+                logger.warning(f"Failed to cache next shard: {e}")
+                self.next_shard_data = None
+        
+        logger.info(f"Loaded shard {self.current_shard_idx + 1}/{len(self.shard_files)}: "
+                   f"{len(self.current_shard_samples)} samples")
+        
+        self.current_shard_idx += 1
+        self.shards_processed += 1
+        
+        return True
+    
+    def __iter__(self) -> Iterator[Dict[str, Any]]:
+        """Iterate through all samples across all shards."""
+        # Reset state
+        self.current_shard_idx = 0
+        self.current_shard_data = None
+        self.current_sample_idx = 0
+        self.total_samples_processed = 0
+        self.shards_processed = 0
+        
+        # Load first shard
+        if not self._load_next_shard():
             return
         
-        # Set random seed for reproducible splits
-        generator = torch.Generator()
-        generator.manual_seed(self.random_seed)
+        # Iterate through all shards and samples
+        while self.current_shard_data is not None:
+            # Iterate through current shard
+            while self.current_sample_idx < len(self.current_shard_samples):
+                sample_idx = self.current_shard_samples[self.current_sample_idx]
+                
+                # Get sample data
+                item = {
+                    'eva_embeddings': self.current_shard_data['eva_blip3o_embeddings'][sample_idx],
+                    'clip_embeddings': self.current_shard_data['clip_blip3o_embeddings'][sample_idx],
+                    'caption': self.current_shard_data['captions'][sample_idx],
+                    'key': self.current_shard_data.get('keys', [f"sample_{sample_idx}"])[sample_idx] if self.current_shard_data.get('keys') else f"sample_{sample_idx}",
+                    'shard_idx': self.current_shard_idx - 1,
+                    'sample_idx': sample_idx,
+                }
+                
+                self.current_sample_idx += 1
+                self.total_samples_processed += 1
+                
+                yield item
+            
+            # Move to next shard
+            if not self._load_next_shard():
+                break
         
-        total_size = len(self.eva_embeddings)
-        eval_size = int(total_size * self.eval_split_ratio)
-        train_size = total_size - eval_size
-        
-        # Create random permutation
-        indices = torch.randperm(total_size, generator=generator)
-        
-        if self.split == "train":
-            selected_indices = indices[:train_size]
-        else:  # eval
-            selected_indices = indices[train_size:]
-        
-        # Apply split
-        self.eva_embeddings = self.eva_embeddings[selected_indices]
-        self.clip_embeddings = self.clip_embeddings[selected_indices]
-        
-        # Handle captions and keys if they exist
-        if self.captions:
-            self.captions = [self.captions[i] for i in selected_indices.tolist()]
-        if self.keys:
-            self.keys = [self.keys[i] for i in selected_indices.tolist()]
-        
-        logger.info(f"Using {self.split} split: {len(selected_indices)} samples")
-    
-    def _apply_subset(self, subset_size: int):
-        """Apply subset for debugging/testing."""
-        current_size = len(self.eva_embeddings)
-        if subset_size >= current_size:
-            logger.warning(f"Subset size {subset_size} >= dataset size {current_size}")
-            return
-        
-        # Use random subset
-        generator = torch.Generator()
-        generator.manual_seed(self.random_seed)
-        indices = torch.randperm(current_size, generator=generator)[:subset_size]
-        
-        self.eva_embeddings = self.eva_embeddings[indices]
-        self.clip_embeddings = self.clip_embeddings[indices]
-        
-        if self.captions:
-            self.captions = [self.captions[i] for i in indices.tolist()]
-        if self.keys:
-            self.keys = [self.keys[i] for i in indices.tolist()]
-        
-        logger.info(f"Applied subset of size {subset_size}")
-    
-    def _log_dataset_info(self):
-        """Log dataset information."""
-        logger.info(f"Dataset created with {len(self)} samples")
-        logger.info(f"EVA-CLIP embeddings shape: {self.eva_embeddings.shape}")
-        logger.info(f"CLIP embeddings shape: {self.clip_embeddings.shape}")
-        logger.info(f"Split: {self.split}")
-        logger.info(f"Normalization - EVA: {self.eva_normalize}, CLIP: {self.clip_normalize}")
-        logger.info(f"✅ Using {self.expected_tokens} tokens (16x16 grid)")
-    
-    def __len__(self) -> int:
-        return len(self.eva_embeddings)
-    
-    def __getitem__(self, idx: int) -> Dict[str, Any]:
-        """
-        Get a single item from the dataset.
-        
-        Returns:
-            Dictionary containing:
-            - eva_embeddings: [256, EVA_DIM] EVA-CLIP conditioning (UPDATED: 256 tokens)
-            - clip_embeddings: [256, CLIP_DIM] CLIP targets (UPDATED: 256 tokens)
-            - caption: Text caption (if available)
-            - key: Unique identifier (if available)
-            - index: Dataset index
-        """
-        item = {
-            'eva_embeddings': self.eva_embeddings[idx],      # [256, EVA_DIM]
-            'clip_embeddings': self.clip_embeddings[idx],    # [256, CLIP_DIM]
-            'index': idx,
-        }
-        
-        # Add optional metadata
-        if self.captions and idx < len(self.captions):
-            item['caption'] = self.captions[idx]
-        else:
-            item['caption'] = f"sample_{idx}"
-        
-        if self.keys and idx < len(self.keys):
-            item['key'] = self.keys[idx]
-        else:
-            item['key'] = f"key_{idx}"
-        
-        return item
+        logger.info(f"Dataset iteration completed: {self.total_samples_processed} samples from {self.shards_processed} shards")
     
     def get_statistics(self) -> Dict[str, Any]:
-        """Get comprehensive dataset statistics."""
-        eva_flat = self.eva_embeddings.view(-1, self.eva_embeddings.shape[-1])
-        clip_flat = self.clip_embeddings.view(-1, self.clip_embeddings.shape[-1])
-        
+        """Get dataset statistics."""
         return {
-            'num_samples': len(self),
-            'num_tokens': self.eva_embeddings.shape[1],  # Should be 256
-            'eva_dim': self.eva_embeddings.shape[-1],
-            'clip_dim': self.clip_embeddings.shape[-1],
-            'eva_stats': {
-                'mean': eva_flat.mean().item(),
-                'std': eva_flat.std().item(),
-                'min': eva_flat.min().item(),
-                'max': eva_flat.max().item(),
-                'norm_mean': torch.norm(self.eva_embeddings, dim=-1).mean().item(),
-            },
-            'clip_stats': {
-                'mean': clip_flat.mean().item(),
-                'std': clip_flat.std().item(),
-                'min': clip_flat.min().item(),
-                'max': clip_flat.max().item(),
-                'norm_mean': torch.norm(self.clip_embeddings, dim=-1).mean().item(),
-            },
+            'total_shards': len(self.shard_files),
+            'estimated_total_samples': self.estimated_total_samples,
+            'shards_processed': self.shards_processed,
+            'samples_processed': self.total_samples_processed,
+            'current_shard': self.current_shard_idx,
             'split': self.split,
-            'normalized': {
-                'eva': self.eva_normalize,
-                'clip': self.clip_normalize,
-            },
-            'format_version': self.config.get('format_version', 'unknown'),
-            'grid_size': '16x16',  # UPDATED
-            'tokens': self.expected_tokens,  # UPDATED: 256
+            'delete_after_use': self.delete_after_use,
+            'expected_tokens': self.expected_tokens,
         }
 
 
-def blip3o_collate_fn(batch: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """
-    Custom collate function for BLIP3-o batching with 256 tokens.
-    
-    Args:
-        batch: List of dataset items
-        
-    Returns:
-        Batched dictionary with proper tensor stacking
-    """
+def chunked_collate_fn(batch: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Custom collate function for chunked dataset."""
     # Stack tensor data
     eva_embeddings = torch.stack([item['eva_embeddings'] for item in batch])
     clip_embeddings = torch.stack([item['clip_embeddings'] for item in batch])
-    indices = torch.tensor([item['index'] for item in batch])
     
-    # Collect string data
+    # Collect metadata
     captions = [item['caption'] for item in batch]
     keys = [item['key'] for item in batch]
+    shard_indices = [item['shard_idx'] for item in batch]
+    sample_indices = [item['sample_idx'] for item in batch]
     
     return {
-        'eva_embeddings': eva_embeddings,      # [B, 256, EVA_DIM]
-        'clip_embeddings': clip_embeddings,    # [B, 256, CLIP_DIM]
-        'captions': captions,                  # List[str]
-        'keys': keys,                          # List[str]
-        'indices': indices,                    # [B]
+        'eva_embeddings': eva_embeddings,
+        'clip_embeddings': clip_embeddings,
+        'captions': captions,
+        'keys': keys,
+        'shard_indices': shard_indices,
+        'sample_indices': sample_indices,
     }
 
 
-def create_blip3o_dataloader(
-    embeddings_path: Union[str, Path],
+def create_chunked_dataloader(
+    chunked_embeddings_dir: Union[str, Path],
     batch_size: int = 32,
-    shuffle: bool = True,
-    num_workers: int = 4,
     split: str = "train",
-    subset_size: Optional[int] = None,
-    normalize_embeddings: bool = True,
     eval_split_ratio: float = 0.1,
+    normalize_embeddings: bool = True,
+    shuffle_shards: bool = True,
+    shuffle_within_shard: bool = True,
+    delete_after_use: bool = True,
+    num_workers: int = 0,  # Use 0 for IterableDataset
     pin_memory: bool = None,
-    expected_eva_dim: Optional[int] = None,
-    expected_clip_dim: Optional[int] = None,
-    expected_tokens: int = 256,  # UPDATED: 256 tokens
     **kwargs
 ) -> DataLoader:
     """
-    Create a DataLoader for BLIP3-o training with 256 tokens.
+    Create a DataLoader for chunked embeddings.
     
     Args:
-        embeddings_path: Path to embeddings pickle file
+        chunked_embeddings_dir: Directory containing embedding shards
         batch_size: Batch size
-        shuffle: Whether to shuffle data
-        num_workers: Number of worker processes
         split: Dataset split ("train", "eval", or "all")
-        subset_size: Optional subset size for debugging
-        normalize_embeddings: Whether to normalize embeddings
         eval_split_ratio: Ratio for train/eval split
-        pin_memory: Whether to pin memory (auto-detected if None)
-        expected_eva_dim: Expected EVA embedding dimension
-        expected_clip_dim: Expected CLIP embedding dimension
-        expected_tokens: Expected number of tokens (256 for 16x16 grid)
+        normalize_embeddings: Whether to normalize embeddings
+        shuffle_shards: Whether to shuffle shard order
+        shuffle_within_shard: Whether to shuffle within each shard
+        delete_after_use: Whether to delete shards after processing
+        num_workers: Number of worker processes (should be 0 for IterableDataset)
+        pin_memory: Whether to pin memory
         **kwargs: Additional DataLoader arguments
         
     Returns:
         DataLoader instance
     """
-    # Auto-detect pin_memory based on CUDA availability
+    # Auto-detect pin_memory
     if pin_memory is None:
         pin_memory = torch.cuda.is_available()
     
     # Create dataset
     dataset = BLIP3oEmbeddingDataset(
-        embeddings_path=embeddings_path,
-        subset_size=subset_size,
-        normalize_embeddings=normalize_embeddings,
+        chunked_embeddings_dir=chunked_embeddings_dir,
         split=split,
         eval_split_ratio=eval_split_ratio,
-        expected_eva_dim=expected_eva_dim,
-        expected_clip_dim=expected_clip_dim,
-        expected_tokens=expected_tokens,  # UPDATED: 256 tokens
+        normalize_embeddings=normalize_embeddings,
+        shuffle_shards=shuffle_shards,
+        shuffle_within_shard=shuffle_within_shard,
+        delete_after_use=delete_after_use,
+        **kwargs
     )
     
     # Create dataloader
     dataloader = DataLoader(
         dataset,
         batch_size=batch_size,
-        shuffle=shuffle,
-        num_workers=num_workers,
-        collate_fn=blip3o_collate_fn,
+        num_workers=num_workers,  # Should be 0 for IterableDataset
+        collate_fn=chunked_collate_fn,
         pin_memory=pin_memory,
-        drop_last=False,  # Keep all samples
         **kwargs
     )
     
     return dataloader
 
 
-def create_blip3o_dataloaders(
-    embeddings_path: Union[str, Path],
+def create_chunked_dataloaders(
+    chunked_embeddings_dir: Union[str, Path],
     batch_size: int = 32,
     eval_batch_size: Optional[int] = None,
-    num_workers: int = 4,
-    subset_size: Optional[int] = None,
-    normalize_embeddings: bool = True,
     eval_split_ratio: float = 0.1,
-    expected_eva_dim: Optional[int] = None,
-    expected_clip_dim: Optional[int] = None,
-    expected_tokens: int = 256,  # UPDATED: 256 tokens
+    normalize_embeddings: bool = True,
+    delete_after_use: bool = True,
     **kwargs
 ) -> Tuple[DataLoader, Optional[DataLoader]]:
     """
-    Create both training and evaluation dataloaders with 256 tokens.
+    Create both training and evaluation dataloaders for chunked embeddings.
     
     Returns:
         Tuple of (train_dataloader, eval_dataloader)
-        eval_dataloader is None if eval_split_ratio is 0
     """
     if eval_batch_size is None:
-        eval_batch_size = batch_size * 2  # Larger batch size for evaluation
+        eval_batch_size = batch_size * 2
     
     # Create training dataloader
-    train_dataloader = create_blip3o_dataloader(
-        embeddings_path=embeddings_path,
+    train_dataloader = create_chunked_dataloader(
+        chunked_embeddings_dir=chunked_embeddings_dir,
         batch_size=batch_size,
-        shuffle=True,
-        num_workers=num_workers,
         split="train",
-        subset_size=subset_size,
-        normalize_embeddings=normalize_embeddings,
         eval_split_ratio=eval_split_ratio,
-        expected_eva_dim=expected_eva_dim,
-        expected_clip_dim=expected_clip_dim,
-        expected_tokens=expected_tokens,  # UPDATED: 256 tokens
+        normalize_embeddings=normalize_embeddings,
+        shuffle_shards=True,
+        shuffle_within_shard=True,
+        delete_after_use=delete_after_use,
         **kwargs
     )
     
     # Create evaluation dataloader if eval_split_ratio > 0
     eval_dataloader = None
     if eval_split_ratio > 0:
-        eval_dataloader = create_blip3o_dataloader(
-            embeddings_path=embeddings_path,
+        eval_dataloader = create_chunked_dataloader(
+            chunked_embeddings_dir=chunked_embeddings_dir,
             batch_size=eval_batch_size,
-            shuffle=False,
-            num_workers=num_workers,
             split="eval",
-            subset_size=subset_size,
-            normalize_embeddings=normalize_embeddings,
             eval_split_ratio=eval_split_ratio,
-            expected_eva_dim=expected_eva_dim,
-            expected_clip_dim=expected_clip_dim,
-            expected_tokens=expected_tokens,  # UPDATED: 256 tokens
+            normalize_embeddings=normalize_embeddings,
+            shuffle_shards=False,
+            shuffle_within_shard=False,
+            delete_after_use=False,  # Don't delete eval shards
             **kwargs
         )
     
     return train_dataloader, eval_dataloader
 
 
-def test_blip3o_dataset(embeddings_path: Union[str, Path]):
-    """Test dataset loading and basic functionality with 256 tokens."""
-    print("Testing BLIP3-o dataset with 256 tokens...")
+def test_chunked_dataset(chunked_embeddings_dir: Union[str, Path]):
+    """Test the chunked dataset implementation."""
+    print(f"🧪 Testing chunked dataset: {chunked_embeddings_dir}")
     
     try:
-        # Load embeddings to check dimensions first
-        with open(embeddings_path, 'rb') as f:
-            data = pickle.load(f)
-        
-        eva_embeddings = data['eva_blip3o_embeddings']
-        clip_embeddings = data['clip_blip3o_embeddings']
-        
-        # Auto-detect dimensions
-        if hasattr(eva_embeddings, 'shape'):
-            eva_dim = eva_embeddings.shape[-1]
-            eva_tokens = eva_embeddings.shape[1]
-        else:
-            eva_dim = len(eva_embeddings[0][0]) if eva_embeddings else 4096
-            eva_tokens = len(eva_embeddings[0]) if eva_embeddings else 256
-            
-        if hasattr(clip_embeddings, 'shape'):
-            clip_dim = clip_embeddings.shape[-1]
-            clip_tokens = clip_embeddings.shape[1]
-        else:
-            clip_dim = len(clip_embeddings[0][0]) if clip_embeddings else 1024
-            clip_tokens = len(clip_embeddings[0]) if clip_embeddings else 256
-        
-        print(f"Detected dimensions: EVA={eva_dim}, CLIP={clip_dim}")
-        print(f"Detected tokens: EVA={eva_tokens}, CLIP={clip_tokens}")
-        
-        # Check if this is a 256-token format
-        if eva_tokens != 256 or clip_tokens != 256:
-            print(f"⚠️  WARNING: Expected 256 tokens, got EVA={eva_tokens}, CLIP={clip_tokens}")
-            print("   This may be an old 64-token format. Please re-extract embeddings.")
-        
-        # Create dataset with auto-detected dimensions
-        dataset = BLIP3oEmbeddingDataset(
-            embeddings_path=embeddings_path,
-            subset_size=100,  # Small subset for testing
+        # Create dataset
+        dataset = BLIP3oChunkedDataset(
+            chunked_embeddings_dir=chunked_embeddings_dir,
             split="all",
-            expected_eva_dim=eva_dim,    # Use detected dimensions
-            expected_clip_dim=clip_dim,  # Use detected dimensions
-            expected_tokens=256,         # Expect 256 tokens
+            delete_after_use=False,  # Don't delete during testing
+            cache_next_shard=True,
         )
         
-        # Print statistics
-        stats = dataset.get_statistics()
-        print("\nDataset Statistics:")
-        for key, value in stats.items():
-            if isinstance(value, dict):
-                print(f"  {key}:")
-                for subkey, subvalue in value.items():
-                    print(f"    {subkey}: {subvalue}")
-            else:
-                print(f"  {key}: {value}")
+        # Test iteration
+        sample_count = 0
+        shard_count = 0
+        current_shard = -1
         
-        # Test single item
-        item = dataset[0]
-        print(f"\nSample item:")
-        print(f"  EVA embeddings shape: {item['eva_embeddings'].shape}")
-        print(f"  CLIP embeddings shape: {item['clip_embeddings'].shape}")
-        print(f"  Caption: {item['caption']}")
-        print(f"  Key: {item['key']}")
+        for i, sample in enumerate(dataset):
+            if sample['shard_idx'] != current_shard:
+                current_shard = sample['shard_idx']
+                shard_count += 1
+                print(f"  Shard {shard_count}: Started processing shard {current_shard}")
+            
+            sample_count += 1
+            
+            # Validate sample
+            assert sample['eva_embeddings'].shape[0] == 256, f"Invalid EVA tokens: {sample['eva_embeddings'].shape[0]}"
+            assert sample['clip_embeddings'].shape[0] == 256, f"Invalid CLIP tokens: {sample['clip_embeddings'].shape[0]}"
+            
+            # Print first few samples
+            if i < 3:
+                print(f"    Sample {i}: EVA {sample['eva_embeddings'].shape}, CLIP {sample['clip_embeddings'].shape}")
+                print(f"      Caption: {sample['caption'][:50]}...")
+            
+            # Break early for testing
+            if sample_count >= 10:
+                break
+        
+        print(f"✅ Test completed: {sample_count} samples from {shard_count} shards")
         
         # Test dataloader
-        dataloader = create_blip3o_dataloader(
-            embeddings_path=embeddings_path,
-            batch_size=8,
-            subset_size=50,
-            num_workers=0,  # Avoid multiprocessing in testing
+        print(f"🧪 Testing dataloader...")
+        dataloader = create_chunked_dataloader(
+            chunked_embeddings_dir=chunked_embeddings_dir,
+            batch_size=4,
             split="all",
-            expected_eva_dim=eva_dim,
-            expected_clip_dim=clip_dim,
-            expected_tokens=256,
+            delete_after_use=False,
         )
         
         batch = next(iter(dataloader))
-        print(f"\nBatch shapes:")
-        print(f"  EVA embeddings: {batch['eva_embeddings'].shape}")
-        print(f"  CLIP embeddings: {batch['clip_embeddings'].shape}")
-        print(f"  Number of captions: {len(batch['captions'])}")
-        print(f"  Number of keys: {len(batch['keys'])}")
+        print(f"✅ Dataloader test: batch shape EVA {batch['eva_embeddings'].shape}, CLIP {batch['clip_embeddings'].shape}")
         
-        # Test train/eval split
-        train_loader, eval_loader = create_blip3o_dataloaders(
-            embeddings_path=embeddings_path,
-            batch_size=8,
-            subset_size=50,
-            num_workers=0,
-            eval_split_ratio=0.2,
-            expected_eva_dim=eva_dim,
-            expected_clip_dim=clip_dim,
-            expected_tokens=256,
-        )
-        
-        train_batch = next(iter(train_loader))
-        eval_batch = next(iter(eval_loader))
-        
-        print(f"\nTrain/Eval split test:")
-        print(f"  Train batch size: {train_batch['eva_embeddings'].shape[0]}")
-        print(f"  Eval batch size: {eval_batch['eva_embeddings'].shape[0]}")
-        
-        print("\n✅ Dataset test completed successfully!")
-        print("✅ Ready for 256-token BLIP3-o training!")
+        print(f"✅ All tests passed!")
         
     except Exception as e:
-        print(f"\n❌ Dataset test failed: {e}")
+        print(f"❌ Test failed: {e}")
         import traceback
         traceback.print_exc()
 
@@ -604,8 +522,8 @@ if __name__ == "__main__":
     import sys
     
     if len(sys.argv) > 1:
-        embeddings_path = sys.argv[1]
-        test_blip3o_dataset(embeddings_path)
+        chunked_dir = sys.argv[1]
+        test_chunked_dataset(chunked_dir)
     else:
-        print("Usage: python blip3o_dataset.py <embeddings_path>")
-        print("Example: python blip3o_dataset.py path/to/blip3o_grid_embeddings_256.pkl")
+        print("Usage: python blip3o_chunked_dataset.py <chunked_embeddings_dir>")
+        print("Example: python blip3o_chunked_dataset.py /scratch-local/user/chunked_embeddings")

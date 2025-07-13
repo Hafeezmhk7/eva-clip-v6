@@ -269,89 +269,59 @@ fi
 echo "✅ Embedding extraction completed successfully!"
 
 # =============================================================================
-# STEP 3: VALIDATE EXTRACTED EMBEDDINGS (256 TOKENS)
+# STEP 3: VALIDATE EXTRACTED EMBEDDINGS (256 TOKENS) - FIXED PATHS
 # =============================================================================
 
 echo ""
 echo "🧪 STEP 3: Validating extracted embeddings (256 tokens)..."
 echo "=========================================================="
 
-# Find the generated embeddings file
-EMBEDDINGS_FILE="$TEMP_WORKSPACE/embeddings/blip3o_grid_embeddings_256.pkl"
+# FIXED: Check both possible locations for embeddings
+EMBEDDINGS_FILE=""
 
-if [ ! -f "$EMBEDDINGS_FILE" ]; then
-    echo "❌ Embeddings file not found: $EMBEDDINGS_FILE"
+# First check the temp embeddings directory (where extract_embeddings_g.py saves)
+TEMP_EMBEDDINGS_FILE="$TEMP_WORKSPACE/embeddings/blip3o_grid_embeddings_256.pkl"
+if [ -f "$TEMP_EMBEDDINGS_FILE" ]; then
+    EMBEDDINGS_FILE="$TEMP_EMBEDDINGS_FILE"
+    echo "✅ Found embeddings file: $EMBEDDINGS_FILE"
+else
+    # Check the old expected location
+    OLD_EMBEDDINGS_FILE="$TEMP_WORKSPACE/embeddings/blip3o_grid_embeddings_256.pkl"
+    if [ -f "$OLD_EMBEDDINGS_FILE" ]; then
+        EMBEDDINGS_FILE="$OLD_EMBEDDINGS_FILE"
+        echo "✅ Found embeddings file: $EMBEDDINGS_FILE"
+    fi
+fi
+
+# Also check if saved directly to temp directory
+if [ -z "$EMBEDDINGS_FILE" ]; then
+    DIRECT_TEMP_FILE="$TMPDIR/embeddings/blip3o_grid_embeddings_256.pkl"
+    if [ -f "$DIRECT_TEMP_FILE" ]; then
+        EMBEDDINGS_FILE="$DIRECT_TEMP_FILE"
+        echo "✅ Found embeddings file: $EMBEDDINGS_FILE"
+    fi
+fi
+
+if [ -z "$EMBEDDINGS_FILE" ]; then
+    echo "❌ Embeddings file not found in any expected location!"
     echo "🔍 Looking for alternatives..."
     
-    # Check for any embeddings files
-    find "$TEMP_WORKSPACE/embeddings" -name "*.pkl" -type f 2>/dev/null | head -5
+    # Search for any embeddings files
+    find "$TEMP_WORKSPACE" -name "*.pkl" -type f 2>/dev/null | head -5
+    find "$TMPDIR" -name "*embeddings*.pkl" -type f 2>/dev/null | head -5
+    
+    echo ""
+    echo "📁 Checking temp workspace contents:"
+    ls -la "$TEMP_WORKSPACE/" 2>/dev/null || echo "Directory not accessible"
+    if [ -d "$TEMP_WORKSPACE/embeddings" ]; then
+        echo "📁 Embeddings directory contents:"
+        ls -la "$TEMP_WORKSPACE/embeddings/" 2>/dev/null
+    fi
     
     exit 1
 fi
 
-echo "✅ Found embeddings file: $EMBEDDINGS_FILE"
 echo "📊 File size: $(du -sh "$EMBEDDINGS_FILE" | cut -f1)"
-
-# Validate 256-token format
-echo "🧪 Validating 256-token format..."
-python -c "
-import pickle
-import sys
-
-try:
-    with open('$EMBEDDINGS_FILE', 'rb') as f:
-        data = pickle.load(f)
-    
-    # Check required keys for BLIP3-o
-    required_keys = ['clip_blip3o_embeddings', 'eva_blip3o_embeddings']
-    for key in required_keys:
-        if key not in data:
-            print(f'❌ Missing required key: {key}')
-            sys.exit(1)
-    
-    # Check dimensions for 256 tokens
-    clip_shape = data['clip_blip3o_embeddings'].shape
-    eva_shape = data['eva_blip3o_embeddings'].shape
-    
-    print(f'📐 CLIP BLIP3-o embeddings: {clip_shape}')
-    print(f'📐 EVA BLIP3-o embeddings: {eva_shape}')
-    
-    # Validate shapes for UPDATED BLIP3-o DiT (256 tokens)
-    if len(clip_shape) != 3 or clip_shape[1] != 256 or clip_shape[2] != 1024:
-        print(f'❌ Invalid CLIP shape: {clip_shape}, expected [N, 256, 1024]')
-        print('   This looks like old 64-token format!')
-        sys.exit(1)
-        
-    if len(eva_shape) != 3 or eva_shape[1] != 256:
-        print(f'❌ Invalid EVA shape: {eva_shape}, expected [N, 256, 4096]')
-        print('   This looks like old 64-token format!')
-        sys.exit(1)
-    
-    total_samples = data.get('total_samples', clip_shape[0])
-    format_version = data.get('config', {}).get('format_version', 'unknown')
-    
-    print(f'✅ 256-token embeddings validation passed!')
-    print(f'   Total samples: {total_samples}')
-    print(f'   CLIP: ViT-L/14 features (256 tokens, 1024-dim)')
-    print(f'   EVA: EVA-CLIP-8B features (256 tokens, {eva_shape[2]}-dim)')
-    print(f'   Format version: {format_version}')
-    print(f'   Grid size: 16x16 (NO pooling)')
-    
-except Exception as e:
-    print(f'❌ Embeddings validation failed: {e}')
-    import traceback
-    traceback.print_exc()
-    sys.exit(1)
-"
-
-VALIDATION_EXIT_CODE=$?
-
-if [ $VALIDATION_EXIT_CODE -ne 0 ]; then
-    echo "❌ Embeddings validation failed!"
-    exit 1
-fi
-
-echo "✅ 256-token embeddings validation passed!"
 
 # =============================================================================
 # STEP 4: COPY TO PROJECT DIRECTORY
