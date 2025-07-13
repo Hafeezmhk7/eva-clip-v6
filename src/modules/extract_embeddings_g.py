@@ -39,7 +39,7 @@ def setup_paths():
 def setup_temp_manager():
     """Setup temp manager for structured directory management."""
     try:
-        from temp_manager import setup_snellius_environment
+        from src.modules.utils.temp_manager import setup_snellius_environment
         manager = setup_snellius_environment("blip3o_workspace")
         return manager
     except ImportError:
