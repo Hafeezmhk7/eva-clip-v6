@@ -1,14 +1,12 @@
 """
-CHUNKED: Memory-Efficient Grid-Based Embedding Extraction for BLIP3-o
-Place this file as: src/modules/extract_embeddings_chunked.py
+UPDATED: Memory-Efficient Grid-Based Embedding Extraction for BLIP3-o with Temp Manager
+Place this file as: src/modules/extract_embeddings_g.py
 
-NEW APPROACH:
-1. Process each TAR file separately
-2. Save individual pickle files per TAR (small chunks)
-3. Avoid disk quota issues by processing one TAR at a time
-4. Enable scaling to 30+ TAR files (~100k samples)
-
-FIXED: Import issues resolved
+NEW FEATURES:
+1. Uses SnelliusTempManager for structured temp directory management
+2. Stores embeddings in persistent workspace (survives 14 days)
+3. Uses job temp for processing and cache
+4. Better disk space management and monitoring
 """
 
 import sys
@@ -34,23 +32,19 @@ def setup_paths():
     sys.path.insert(0, str(project_root))
     sys.path.insert(0, str(project_root / "src"))
     sys.path.insert(0, str(project_root / "src" / "data_hand"))
+    sys.path.insert(0, str(project_root / "src" / "utils"))
     
     return project_root
 
-def get_temp_directory():
-    """Get the temp directory path for Snellius or other systems"""
-    # Check for environment variable first
-    if "BLIP3O_TEMP_DIR" in os.environ:
-        temp_dir = Path(os.environ["BLIP3O_TEMP_DIR"])
-    elif "TMPDIR" in os.environ:
-        temp_dir = Path(os.environ["TMPDIR"])
-    elif "SCRATCH_SHARED" in os.environ:
-        temp_dir = Path(os.environ["SCRATCH_SHARED"])
-    else:
-        # Fallback to project embeddings directory
-        temp_dir = setup_paths() / "embeddings"
-    
-    return temp_dir
+def setup_temp_manager():
+    """Setup temp manager for structured directory management."""
+    try:
+        from temp_manager import setup_snellius_environment
+        manager = setup_snellius_environment("blip3o_workspace")
+        return manager
+    except ImportError:
+        print("⚠️  Temp manager not available, using fallback directories")
+        return None
 
 def get_memory_usage():
     """Get current memory usage in GB"""
@@ -208,87 +202,75 @@ def format_to_blip3o_tokens(grid_features, target_tokens=256):
     
     return result
 
-def find_data_files():
-    """Find downloaded tar files in temp directory or project directory"""
-    temp_dir = get_temp_directory()
-    project_root = setup_paths()
-    
-    # Check temp directory first
-    tar_files = []
-    
-    print(f"🔍 Searching for dataset shards...")
-    print(f"   Temp directory: {temp_dir}")
-    
-    # Look for downloaded shards list
-    search_locations = []
-    
-    # 1. Check temp directory with blip3o_data subdirectory
-    search_locations.append(temp_dir / "blip3o_data")
-    search_locations.append(temp_dir / "data")
-    search_locations.append(temp_dir)
-    
-    # 2. Check if TMPDIR has blip3o_data (common on Snellius)
-    if "TMPDIR" in os.environ:
-        tmpdir_path = Path(os.environ["TMPDIR"])
-        search_locations.append(tmpdir_path / "blip3o_data")
-        search_locations.append(tmpdir_path)
-    
-    # 3. Check SCRATCH_SHARED (Snellius)
-    if "SCRATCH_SHARED" in os.environ:
-        user = os.environ.get("USER", "user")
-        scratch_path = Path(os.environ["SCRATCH_SHARED"]) / user
-        search_locations.append(scratch_path / "blip3o_data")
-        search_locations.append(scratch_path)
-    
-    # 4. Check project directory
-    search_locations.append(project_root / "data")
-    
-    # Search each location
-    for search_path in search_locations:
-        if not search_path.exists():
-            continue
-            
-        print(f"   Checking: {search_path}")
-        
-        # Look for tar files directly
-        found_tars = list(search_path.glob("*.tar"))
-        if found_tars and not tar_files:
-            found_tars.sort()  # Sort numerically
-            tar_files = [str(f) for f in found_tars]
-            print(f"   ✅ Found {len(tar_files)} tar files directly")
-            break
-    
-    if not tar_files:
-        raise FileNotFoundError(
-            "No tar files found!\n"
-            "Please download dataset shards first:\n"
-            "  python src/data_hand/download_data.py --shards 0 1 2 3 4 5 6 7 8 9\n"
-            "\nOr check if files are in a different location."
-        )
-    
-    # Validate files exist and show details
-    valid_files = []
-    total_size_gb = 0
-    
-    print(f"\n📊 Validating found files...")
-    for tar_file in tar_files:
-        tar_path = Path(tar_file)
-        if tar_path.exists():
-            size_gb = tar_path.stat().st_size / (1024**3)
-            total_size_gb += size_gb
-            valid_files.append(tar_file)
-            print(f"   ✅ {tar_path.name}: {size_gb:.2f} GB")
+def find_data_files(temp_manager):
+    """Find downloaded tar files using temp manager."""
+    if temp_manager:
+        datasets_dir = temp_manager.get_datasets_dir()
+        print(f"🔍 Searching for dataset shards in: {datasets_dir}")
+    else:
+        # Fallback to old method
+        print("🔍 Searching for dataset shards (fallback method)...")
+        if "TMPDIR" in os.environ:
+            datasets_dir = Path(os.environ["TMPDIR"]) / "blip3o_data"
+        elif "SCRATCH_SHARED" in os.environ:
+            user = os.environ.get("USER", "user")
+            datasets_dir = Path(os.environ["SCRATCH_SHARED"]) / user / "blip3o_data"
         else:
-            print(f"   ❌ Missing: {tar_file}")
+            datasets_dir = Path(__file__).parent.parent.parent / "data"
     
-    print(f"\n🎯 Using {len(valid_files)} tar files for CHUNKED extraction")
-    print(f"📊 Total dataset size: {total_size_gb:.2f} GB")
+    # Look for tar files
+    tar_files = list(datasets_dir.glob("*.tar"))
+    if tar_files:
+        tar_files.sort()  # Sort numerically
+        tar_files = [str(f) for f in tar_files]
+        print(f"   ✅ Found {len(tar_files)} tar files")
+        
+        # Validate files exist and show details
+        valid_files = []
+        total_size_gb = 0
+        
+        print(f"\n📊 Validating found files...")
+        for tar_file in tar_files:
+            tar_path = Path(tar_file)
+            if tar_path.exists():
+                size_gb = tar_path.stat().st_size / (1024**3)
+                total_size_gb += size_gb
+                valid_files.append(tar_file)
+                print(f"   ✅ {tar_path.name}: {size_gb:.2f} GB")
+            else:
+                print(f"   ❌ Missing: {tar_file}")
+        
+        print(f"\n🎯 Using {len(valid_files)} tar files for CHUNKED extraction")
+        print(f"📊 Total dataset size: {total_size_gb:.2f} GB")
+        
+        # Estimate samples
+        estimated_samples = int(total_size_gb * 400000 / 1.0)  # Rough estimate
+        print(f"📊 Estimated samples: ~{estimated_samples:,}")
+        
+        return valid_files
     
-    # Estimate samples
-    estimated_samples = int(total_size_gb * 400000 / 1.0)  # Rough estimate
-    print(f"📊 Estimated samples: ~{estimated_samples:,}")
+    # Also check for downloaded_shards.txt file
+    shard_list = datasets_dir / "downloaded_shards.txt"
+    if shard_list.exists():
+        print(f"   📋 Found shard list: {shard_list}")
+        try:
+            with open(shard_list, 'r') as f:
+                listed_files = [line.strip() for line in f if line.strip()]
+            
+            # Validate files exist
+            valid_files = [f for f in listed_files if Path(f).exists()]
+            if valid_files:
+                print(f"   ✅ Using {len(valid_files)} files from shard list")
+                return valid_files
+        except Exception as e:
+            print(f"   ⚠️  Could not read shard list: {e}")
     
-    return valid_files
+    raise FileNotFoundError(
+        f"No TAR files found in {datasets_dir}!\n"
+        "Please download dataset shards first:\n"
+        "  python src/data_hand/download_data.py --shards 0 1 2 3 4 5 6 7 8 9\n"
+        "\nOr check if files are in a different location."
+    )
 
 def process_single_tar(
     tar_file_path: str,
@@ -296,17 +278,19 @@ def process_single_tar(
     clip_processor, clip_model, eva_processor, eva_model,
     device: torch.device,
     output_dir: Path,
+    working_dir: Path,
     batch_size: int = 16
 ) -> dict:
     """
-    Process a single TAR file and save embeddings.
+    Process a single TAR file and save embeddings using structured temp directories.
     
     Args:
         tar_file_path: Path to the TAR file
         shard_idx: Index of this shard
         clip_processor, clip_model, eva_processor, eva_model: Loaded models
         device: Computing device
-        output_dir: Output directory for embeddings
+        output_dir: Output directory for embeddings (persistent)
+        working_dir: Working directory for processing (temp)
         batch_size: Batch size for processing
         
     Returns:
@@ -315,21 +299,19 @@ def process_single_tar(
     
     print(f"\n🔄 Processing shard {shard_idx}: {Path(tar_file_path).name}")
     
-    # Import dataset - FIXED: Use the correct import path
+    # Import dataset
     try:
-        # Try to import the original WebDataset from the data_hand directory
         from dataset import BLIP3oWebDataset
         print("   ✅ Imported BLIP3oWebDataset from dataset.py")
     except ImportError:
         try:
-            # Alternative import path
             from src.data_hand.dataset import BLIP3oWebDataset
             print("   ✅ Imported BLIP3oWebDataset from src.data_hand.dataset")
         except ImportError as e:
             print(f"   ❌ Failed to import BLIP3oWebDataset: {e}")
             print("   💡 Using simplified WebDataset approach...")
             
-            # FALLBACK: Use webdataset directly without the custom wrapper
+            # FALLBACK: Use webdataset directly
             import webdataset as wds
             from PIL import Image
             import io
@@ -366,7 +348,6 @@ def process_single_tar(
                         'key': key,
                     }
                 except Exception as e:
-                    print(f"     Warning: Failed to decode sample: {e}")
                     return None
             
             # Create WebDataset directly
@@ -392,9 +373,8 @@ def process_single_tar(
     
     # If we successfully imported BLIP3oWebDataset, use it
     if 'BLIP3oWebDataset' in locals():
-        # Create dataset for this single TAR file
         dataset = BLIP3oWebDataset(
-            tar_paths=[tar_file_path],  # Only this TAR file
+            tar_paths=[tar_file_path],
             batch_size=batch_size,
             shuffle=False,
             num_workers=0
@@ -492,11 +472,11 @@ def process_single_tar(
             }
         }
         
-        # Save this shard's embeddings
+        # Save this shard's embeddings to PERSISTENT storage
         shard_filename = f"embeddings_shard_{shard_idx:05d}.pkl"
         shard_path = output_dir / shard_filename
         
-        print(f"   💾 Saving shard {shard_idx}...")
+        print(f"   💾 Saving shard {shard_idx} to persistent storage...")
         with open(shard_path, 'wb') as f:
             pickle.dump(shard_data, f)
         
@@ -504,6 +484,7 @@ def process_single_tar(
         
         print(f"   ✅ Shard {shard_idx} completed:")
         print(f"      File: {shard_filename}")
+        print(f"      Location: {shard_path}")
         print(f"      Size: {file_size_mb:.1f} MB")
         print(f"      Samples: {total_samples}")
         print(f"      Time: {time.time() - start_time:.1f}s")
@@ -530,16 +511,15 @@ def process_single_tar(
         }
 
 def main():
-    """Main extraction function with CHUNKED processing (one file per TAR)"""
-    print("🚀 BLIP3-o CHUNKED Embedding Extraction (256 TOKENS)")
+    """Main extraction function with structured temp directory management."""
+    print("🚀 BLIP3-o CHUNKED Embedding Extraction (256 TOKENS) with Temp Manager")
     print("=" * 80)
-    print("NEW APPROACH:")
-    print("  ✅ Process each TAR file separately")
-    print("  ✅ Save individual pickle files (small chunks)")
-    print("  ✅ Avoid disk quota issues")
-    print("  ✅ Enable scaling to 30+ TAR files")
-    print("  CLIP BLIP3-o: [N, 256, 1024] per shard")  
-    print("  EVA BLIP3-o:  [N, 256, 4096] per shard")
+    print("ENHANCED FEATURES:")
+    print("  ✅ Structured temp directory management")
+    print("  ✅ Persistent embeddings storage (14-day retention)")
+    print("  ✅ Job-specific temp processing")
+    print("  ✅ Automatic disk usage monitoring")
+    print("  ✅ Smart cache management")
     print("=" * 80)
     
     # Setup
@@ -548,10 +528,43 @@ def main():
     
     device = torch.device('cuda')
     project_root = setup_paths()
-    temp_dir = get_temp_directory()
     
-    print(f"✅ Using GPU: {torch.cuda.get_device_name(0)}")
-    print(f"📁 Temp directory: {temp_dir}")
+    # Setup temp manager
+    temp_manager = setup_temp_manager()
+    
+    if temp_manager:
+        # Use structured temp management
+        embeddings_dir = temp_manager.create_embeddings_subdirectory("chunked_256_tokens")
+        working_dir = temp_manager.get_working_dir()
+        temp_manager.setup_model_cache()
+        
+        print(f"✅ Using structured temp management")
+        print(f"📁 Embeddings dir (persistent): {embeddings_dir}")
+        print(f"📁 Working dir (temp): {working_dir}")
+        
+        # Show disk usage
+        temp_manager.print_status()
+    else:
+        # Fallback to old method
+        if "TMPDIR" in os.environ:
+            base_temp = Path(os.environ["TMPDIR"])
+        elif "SCRATCH_SHARED" in os.environ:
+            user = os.environ.get("USER", "user")
+            base_temp = Path(os.environ["SCRATCH_SHARED"]) / user
+        else:
+            base_temp = Path("./temp")
+        
+        embeddings_dir = base_temp / "chunked_embeddings"
+        working_dir = base_temp / "working"
+        
+        embeddings_dir.mkdir(parents=True, exist_ok=True)
+        working_dir.mkdir(parents=True, exist_ok=True)
+        
+        print(f"⚠️  Using fallback temp management")
+        print(f"📁 Embeddings dir: {embeddings_dir}")
+        print(f"📁 Working dir: {working_dir}")
+    
+    print(f"🎮 Using GPU: {torch.cuda.get_device_name(0)}")
     print(f"💾 Initial memory usage: {get_memory_usage():.2f} GB")
     
     # Load models
@@ -563,16 +576,12 @@ def main():
     
     # Find TAR files
     try:
-        tar_files = find_data_files()
+        tar_files = find_data_files(temp_manager)
     except Exception as e:
         print(f"❌ {e}")
         return 1
     
-    # Setup output directory
-    output_dir = temp_dir / "chunked_embeddings"
-    output_dir.mkdir(exist_ok=True)
-    
-    print(f"📤 Output directory: {output_dir}")
+    print(f"📤 Output directory: {embeddings_dir}")
     
     # Process each TAR file separately
     print(f"\n🔄 Processing {len(tar_files)} TAR files...")
@@ -594,8 +603,9 @@ def main():
             eva_processor=eva_processor,
             eva_model=eva_model,
             device=device,
-            output_dir=output_dir,
-            batch_size=16  # Smaller batch for memory efficiency
+            output_dir=embeddings_dir,
+            working_dir=working_dir,
+            batch_size=16
         )
         
         if result and result['success']:
@@ -608,6 +618,12 @@ def main():
             print(f"❌ Shard {shard_idx} failed")
             if 'error' in result:
                 print(f"   Error: {result['error']}")
+        
+        # Show disk usage after each shard
+        if temp_manager and shard_idx % 5 == 0:  # Every 5 shards
+            usage = temp_manager.get_disk_usage()
+            persistent_usage = usage.get('embeddings', {}).get('total_size_gb', 0)
+            print(f"   💾 Persistent storage usage: {persistent_usage:.2f} GB")
     
     # Create manifest file
     manifest_data = {
@@ -617,17 +633,24 @@ def main():
         'extraction_timestamp': time.time(),
         'shards': processing_results,
         'format_version': 'blip3o_256_tokens_chunked_v1',
+        'storage_info': {
+            'embeddings_directory': str(embeddings_dir),
+            'persistent_storage': True,
+            'retention_policy': '14 days (scratch-shared)',
+            'access_path': str(embeddings_dir),
+        },
         'usage': {
-            'training_command': f'python train_blip3o_dit.py --chunked_embeddings_dir {output_dir}',
+            'training_command': f'python train_blip3o_dit.py --chunked_embeddings_dir {embeddings_dir}',
             'individual_files': [f"embeddings_shard_{i:05d}.pkl" for i in range(len(processing_results))]
         }
     }
     
-    manifest_path = output_dir / "embeddings_manifest.json"
+    manifest_path = embeddings_dir / "embeddings_manifest.json"
     with open(manifest_path, 'w') as f:
         import json
         json.dump(manifest_data, f, indent=2)
     
+    # Final status
     print("\n" + "=" * 80)
     print("✅ CHUNKED EXTRACTION COMPLETED!")
     print("=" * 80)
@@ -636,11 +659,27 @@ def main():
     print(f"   Total samples: {total_samples_all:,}")
     print(f"   Total size: {total_size_mb_all:.1f} MB")
     print(f"   Average per shard: {total_samples_all//len(processing_results) if processing_results else 0:,} samples")
-    print(f"   Output directory: {output_dir}")
+    print(f"   Embeddings location: {embeddings_dir}")
     print(f"   Manifest file: {manifest_path}")
+    print(f"   Storage: Persistent (14-day retention on scratch-shared)")
+    
+    if temp_manager:
+        print(f"\n📋 STORAGE DETAILS:")
+        usage = temp_manager.get_disk_usage()
+        for name, info in usage.items():
+            if info.get('exists', False) and 'embeddings' in name:
+                size_gb = info.get('total_size_gb', 0)
+                print(f"   {name}: {size_gb:.2f} GB")
+        
+        print(f"\n💡 RECOMMENDATIONS:")
+        print(f"   • Embeddings are in persistent storage (14-day retention)")
+        print(f"   • Use the embeddings directory path for training")
+        print(f"   • Copy final models to home directory for long-term storage")
+        print(f"   • Monitor disk usage to avoid quotas")
+    
     print("\n🎉 Ready for chunked BLIP3-o training!")
     print("Use this command:")
-    print(f"python train_blip3o_dit.py --chunked_embeddings_dir {output_dir}")
+    print(f"python train_blip3o_dit.py --chunked_embeddings_dir {embeddings_dir}")
     print("=" * 80)
     
     return 0

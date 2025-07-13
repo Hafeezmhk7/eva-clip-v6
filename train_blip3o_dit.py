@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 """
-FIXED Main training script for BLIP3-o DiT with flow matching - CHUNKED TRAINING.
+UPDATED Main training script for BLIP3-o DiT with flow matching and Temp Manager.
 Trains a diffusion transformer to generate CLIP embeddings from EVA-CLIP conditioning.
 
-This script implements the exact BLIP3-o training methodology with chunked dataset support.
-FIXED: All import issues, dataset handling, and trainer compatibility.
+ENHANCED FEATURES:
+- Structured temp directory management with SnelliusTempManager
+- Persistent embeddings storage with 14-day retention
+- Job-specific temp for checkpoints and cache
+- Automatic model archival to home directory
+- Smart disk usage monitoring
 """
 
 import os
@@ -43,6 +47,17 @@ def patch_trainer_for_compatibility():
 # Apply the patch immediately
 patch_trainer_for_compatibility()
 
+def setup_temp_manager():
+    """Setup temp manager for structured directory management."""
+    try:
+        sys.path.insert(0, str(Path(__file__).parent / "src" / "utils"))
+        from temp_manager import setup_snellius_environment
+        manager = setup_snellius_environment("blip3o_workspace")
+        return manager
+    except ImportError:
+        print("⚠️  Temp manager not available, using fallback directories")
+        return None
+
 from src.modules.config.blip3o_config import (
     BLIP3oDiTConfig, 
     FlowMatchingConfig, 
@@ -73,37 +88,44 @@ logger = logging.getLogger(__name__)
 
 
 def parse_arguments():
-    """Parse command line arguments for BLIP3-o training."""
+    """Parse command line arguments for BLIP3-o training with temp manager."""
     parser = argparse.ArgumentParser(
-        description="Train BLIP3-o DiT with flow matching using chunked embeddings",
+        description="Train BLIP3-o DiT with flow matching using structured temp management",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
     
-    # Required arguments - chunked embeddings directory
-    parser.add_argument(
-        "--chunked_embeddings_dir", type=str, required=True,
+    # Data source (either chunked_embeddings_dir OR let temp manager find it)
+    data_group = parser.add_mutually_exclusive_group()
+    data_group.add_argument(
+        "--chunked_embeddings_dir", type=str, 
         help="Path to directory containing chunked embedding files"
+    )
+    data_group.add_argument(
+        "--auto_find_embeddings", action="store_true",
+        help="Automatically find embeddings using temp manager"
+    )
+    
+    # Output configuration
+    parser.add_argument(
+        "--output_dir", type=str, default="./checkpoints/blip3o-dit-temp",
+        help="Base output directory name (will be created in temp)"
     )
     
     parser.add_argument(
-        "--output_dir", type=str, required=True,
-        help="Output directory for model checkpoints and logs"
+        "--final_model_name", type=str, default=None,
+        help="Name for final model in home directory (auto-generated if None)"
     )
     
     # Model configuration
     model_group = parser.add_argument_group("Model Configuration")
     model_group.add_argument("--model_dim", type=int, default=512,
-                           help="Model hidden dimension (default: 512 for 3D RoPE compatibility)")
+                           help="Model hidden dimension")
     model_group.add_argument("--num_layers", type=int, default=24,
                            help="Number of transformer layers")
     model_group.add_argument("--num_heads", type=int, default=8,
-                           help="Number of attention heads (default: 8 for head_dim=64)")
+                           help="Number of attention heads")
     model_group.add_argument("--num_kv_heads", type=int, default=None,
-                           help="Number of KV heads (default: same as num_heads)")
-    model_group.add_argument("--multiple_of", type=int, default=256,
-                           help="FFN dimension multiple")
-    model_group.add_argument("--ffn_dim_multiplier", type=float, default=None,
-                           help="FFN dimension multiplier")
+                           help="Number of KV heads")
     model_group.add_argument("--gradient_checkpointing", action="store_true",
                            help="Enable gradient checkpointing for memory efficiency")
     
@@ -124,28 +146,13 @@ def parse_arguments():
     train_group.add_argument("--gradient_accumulation_steps", type=int, default=1,
                            help="Gradient accumulation steps")
     
-    # Flow matching configuration
-    flow_group = parser.add_argument_group("Flow Matching Configuration")
-    flow_group.add_argument("--sigma_min", type=float, default=1e-4,
-                          help="Minimum noise sigma for flow matching")
-    flow_group.add_argument("--sigma_max", type=float, default=1.0,
-                          help="Maximum noise sigma for flow matching")
-    flow_group.add_argument("--prediction_type", type=str, default="v_prediction",
-                          choices=["v_prediction", "epsilon"],
-                          help="Flow matching prediction type")
-    flow_group.add_argument("--schedule_type", type=str, default="linear",
-                          choices=["linear", "cosine"],
-                          help="Noise schedule type")
-    flow_group.add_argument("--regularization_weight", type=float, default=0.0,
-                          help="Regularization weight")
-    
     # Data configuration
-    data_group = parser.add_argument_group("Data Configuration")
-    data_group.add_argument("--eval_split", type=float, default=0.1,
+    data_config_group = parser.add_argument_group("Data Configuration")
+    data_config_group.add_argument("--eval_split", type=float, default=0.1,
                           help="Fraction of data to use for evaluation")
-    data_group.add_argument("--normalize_embeddings", action="store_true",
+    data_config_group.add_argument("--normalize_embeddings", action="store_true",
                           help="Normalize embeddings to unit norm")
-    data_group.add_argument("--delete_after_use", action="store_true",
+    data_config_group.add_argument("--delete_after_use", action="store_true",
                           help="Delete embedding chunks after processing")
     
     # Logging and saving
@@ -156,7 +163,7 @@ def parse_arguments():
                          help="Save checkpoint every N steps")
     log_group.add_argument("--eval_steps", type=int, default=50,
                          help="Evaluate model every N steps")
-    log_group.add_argument("--wandb_project", type=str, default="blip3o-dit-256-tokens",
+    log_group.add_argument("--wandb_project", type=str, default="blip3o-dit-256-tokens-temp",
                          help="Weights & Biases project name")
     log_group.add_argument("--wandb_run_name", type=str, default=None,
                          help="Weights & Biases run name")
@@ -171,13 +178,6 @@ def parse_arguments():
                         help="Use bfloat16 mixed precision training")
     hw_group.add_argument("--device", type=str, default="auto",
                         help="Device to use (auto, cuda, cpu)")
-    hw_group.add_argument("--compile_model", action="store_true",
-                        help="Use torch.compile for model optimization")
-    
-    # Resume training
-    resume_group = parser.add_argument_group("Resume Training")
-    resume_group.add_argument("--resume_from_checkpoint", type=str, default=None,
-                            help="Path to checkpoint to resume training from")
     
     # Debug mode
     debug_group = parser.add_argument_group("Debug Configuration")
@@ -185,6 +185,8 @@ def parse_arguments():
                            help="Enable debug mode with reduced epochs")
     debug_group.add_argument("--dry_run", action="store_true",
                            help="Run through setup without training")
+    debug_group.add_argument("--show_temp_info", action="store_true",
+                           help="Show temp directory information and exit")
     
     return parser.parse_args()
 
@@ -206,7 +208,7 @@ def setup_device(device_arg: str) -> torch.device:
     return device
 
 
-def setup_wandb(args):
+def setup_wandb(args, temp_manager):
     """Initialize Weights & Biases logging."""
     if args.no_wandb:
         logger.info("Weights & Biases logging disabled")
@@ -216,16 +218,27 @@ def setup_wandb(args):
     run_name = args.wandb_run_name
     if run_name is None:
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        run_name = f"256-tokens-{timestamp}"
+        job_id = os.environ.get("SLURM_JOB_ID", "local")
+        run_name = f"256-tokens-temp-{job_id}-{timestamp}"
+    
+    # Prepare config with temp info
+    config = vars(args).copy()
+    if temp_manager:
+        config.update({
+            'temp_workspace': str(temp_manager.persistent_workspace),
+            'job_temp': str(temp_manager.job_temp),
+            'storage_type': 'structured_temp_management',
+            'retention_policy': '14_days_scratch_shared'
+        })
     
     # Initialize wandb
     try:
         wandb.init(
             project=args.wandb_project,
             name=run_name,
-            config=vars(args),
-            tags=["blip3o", "dit", "flow-matching", "clip-generation", "chunked", "256-tokens"],
-            notes="BLIP3-o DiT training with flow matching for CLIP embedding generation (256 tokens, chunked approach)",
+            config=config,
+            tags=["blip3o", "dit", "flow-matching", "clip-generation", "chunked", "256-tokens", "temp-managed"],
+            notes="BLIP3-o DiT training with structured temp management (256 tokens, chunked approach)",
         )
         
         logger.info(f"Initialized Weights & Biases: {wandb.run.url}")
@@ -234,40 +247,161 @@ def setup_wandb(args):
         args.no_wandb = True
 
 
+def find_embeddings_directory(args, temp_manager):
+    """Find embeddings directory using temp manager or specified path."""
+    
+    if args.chunked_embeddings_dir:
+        # Use specified directory
+        embeddings_path = Path(args.chunked_embeddings_dir)
+        if not embeddings_path.exists():
+            raise FileNotFoundError(f"Specified embeddings directory not found: {embeddings_path}")
+        
+        logger.info(f"Using specified embeddings directory: {embeddings_path}")
+        return embeddings_path
+    
+    elif args.auto_find_embeddings and temp_manager:
+        # Auto-find using temp manager
+        embeddings_dir = temp_manager.get_embeddings_dir()
+        
+        # Look for any subdirectory with embeddings
+        candidates = []
+        for subdir in embeddings_dir.iterdir():
+            if subdir.is_dir():
+                manifest_file = subdir / "embeddings_manifest.json"
+                if manifest_file.exists():
+                    candidates.append(subdir)
+        
+        if not candidates:
+            raise FileNotFoundError(
+                f"No embeddings found in temp workspace: {embeddings_dir}\n"
+                "Please run embedding extraction first:\n"
+                "  python src/modules/extract_embeddings_g.py"
+            )
+        
+        # Use the most recent one
+        embeddings_path = max(candidates, key=lambda p: p.stat().st_mtime)
+        logger.info(f"Auto-found embeddings directory: {embeddings_path}")
+        return embeddings_path
+    
+    else:
+        # Try to find in common locations
+        search_locations = []
+        
+        if temp_manager:
+            search_locations.append(temp_manager.get_embeddings_dir())
+        
+        # Add environment-based locations
+        if "BLIP3O_EMBEDDINGS" in os.environ:
+            search_locations.append(Path(os.environ["BLIP3O_EMBEDDINGS"]))
+        
+        if "TMPDIR" in os.environ:
+            search_locations.append(Path(os.environ["TMPDIR"]) / "chunked_embeddings")
+        
+        # Search each location
+        for location in search_locations:
+            if location.exists():
+                # Look for manifest files
+                manifest_files = list(location.glob("**/embeddings_manifest.json"))
+                if manifest_files:
+                    embeddings_path = manifest_files[0].parent
+                    logger.info(f"Found embeddings directory: {embeddings_path}")
+                    return embeddings_path
+        
+        raise FileNotFoundError(
+            "No embeddings directory found!\n"
+            "Please either:\n"
+            "1. Specify --chunked_embeddings_dir /path/to/embeddings\n"
+            "2. Use --auto_find_embeddings with temp manager\n"
+            "3. Run embedding extraction first: python src/modules/extract_embeddings_g.py"
+        )
+
+
 def create_model_config(args) -> BLIP3oDiTConfig:
-    """Create model configuration from arguments - FIXED dimensions."""
+    """Create model configuration from arguments."""
     return BLIP3oDiTConfig(
         input_size=16,                          # 16x16 = 256 tokens
-        patch_size=1,                           # Pre-tokenized (fixed)
-        in_channels=1024,                       # CLIP dimension (FIXED: matches your embeddings)
+        patch_size=1,                           # Pre-tokenized
+        in_channels=1024,                       # CLIP dimension
         dim=args.model_dim,                     # Hidden dimension
-        eva_embedding_size=4096,                # EVA-CLIP dimension (FIXED: matches your embeddings)
+        eva_embedding_size=4096,                # EVA-CLIP dimension
         n_layers=args.num_layers,               # Number of layers
         n_heads=args.num_heads,                 # Attention heads
         n_kv_heads=args.num_kv_heads or args.num_heads,  # KV heads
-        multiple_of=args.multiple_of,           # FFN multiple
-        ffn_dim_multiplier=args.ffn_dim_multiplier,  # FFN multiplier
         norm_eps=1e-5,                          # Layer norm epsilon
         qk_norm=True,                           # Query-key normalization
-        learn_sigma=False,                      # Flow matching (fixed)
+        learn_sigma=False,                      # Flow matching
         _gradient_checkpointing=args.gradient_checkpointing,
     )
 
 
 def create_flow_matching_config(args) -> FlowMatchingConfig:
-    """Create flow matching configuration from arguments - FIXED dimensions."""
+    """Create flow matching configuration from arguments."""
     return FlowMatchingConfig(
-        sigma_min=args.sigma_min,
-        sigma_max=args.sigma_max,
-        prediction_type=args.prediction_type,
-        clip_dim=1024,                          # FIXED: CLIP dimension matches your embeddings
-        eva_dim=4096,                           # FIXED: EVA-CLIP dimension matches your embeddings
-        regularization_weight=args.regularization_weight,
-        schedule_type=args.schedule_type,
+        sigma_min=1e-4,
+        sigma_max=1.0,
+        prediction_type="v_prediction",
+        clip_dim=1024,                          # CLIP dimension
+        eva_dim=4096,                           # EVA-CLIP dimension
+        regularization_weight=0.0,
+        schedule_type="linear",
     )
 
 
-def save_configs(args, output_dir: Path):
+def setup_training_directories(args, temp_manager):
+    """Setup training directories using temp manager."""
+    
+    if temp_manager:
+        # Use temp manager for structured storage
+        
+        # Create temp checkpoint directory for this training run
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        job_id = os.environ.get("SLURM_JOB_ID", "local")
+        training_name = f"blip3o_256_tokens_{job_id}_{timestamp}"
+        
+        temp_checkpoint_dir = temp_manager.get_temp_checkpoints_dir() / training_name
+        temp_checkpoint_dir.mkdir(exist_ok=True)
+        
+        # Create persistent checkpoint directory 
+        persistent_checkpoint_dir = temp_manager.create_checkpoint_subdirectory(training_name)
+        
+        # Setup final model directory in home
+        final_model_name = args.final_model_name or f"blip3o_256_tokens_{timestamp}"
+        final_model_dir = Path.home() / "models" / final_model_name
+        final_model_dir.mkdir(parents=True, exist_ok=True)
+        
+        logger.info(f"Training directories (temp managed):")
+        logger.info(f"  Temp checkpoints: {temp_checkpoint_dir}")
+        logger.info(f"  Persistent checkpoints: {persistent_checkpoint_dir}")
+        logger.info(f"  Final model (home): {final_model_dir}")
+        
+        return temp_checkpoint_dir, persistent_checkpoint_dir, final_model_dir
+    
+    else:
+        # Fallback to basic temp directories
+        if "TMPDIR" in os.environ:
+            base_temp = Path(os.environ["TMPDIR"])
+        else:
+            base_temp = Path("./temp")
+        
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        temp_checkpoint_dir = base_temp / f"blip3o_training_{timestamp}"
+        temp_checkpoint_dir.mkdir(parents=True, exist_ok=True)
+        
+        # No persistent directory in fallback mode
+        persistent_checkpoint_dir = None
+        
+        # Final model in current directory
+        final_model_dir = Path(args.output_dir)
+        final_model_dir.mkdir(parents=True, exist_ok=True)
+        
+        logger.info(f"Training directories (fallback):")
+        logger.info(f"  Temp checkpoints: {temp_checkpoint_dir}")
+        logger.info(f"  Final model: {final_model_dir}")
+        
+        return temp_checkpoint_dir, persistent_checkpoint_dir, final_model_dir
+
+
+def save_configs(args, output_dir: Path, temp_manager=None):
     """Save all configurations to output directory."""
     output_dir.mkdir(parents=True, exist_ok=True)
     
@@ -279,13 +413,21 @@ def save_configs(args, output_dir: Path):
         'torch_version': torch.__version__,
         'cuda_available': torch.cuda.is_available(),
         'cuda_version': torch.version.cuda if torch.cuda.is_available() else None,
-        'approach': 'chunked',
+        'approach': 'chunked_with_temp_manager',
         'fixed_dimensions': {
-            'clip_dim': 1024,  # Document the fixed dimensions
+            'clip_dim': 1024,
             'eva_dim': 4096,
-            'tokens': 256,     # 256 tokens
+            'tokens': 256,
         }
     }
+    
+    if temp_manager:
+        training_config['temp_management'] = {
+            'workspace': str(temp_manager.persistent_workspace),
+            'job_temp': str(temp_manager.job_temp),
+            'retention_policy': '14_days_scratch_shared',
+            'storage_structured': True,
+        }
     
     with open(output_dir / "training_args.json", 'w') as f:
         json.dump(training_config, f, indent=2)
@@ -329,52 +471,7 @@ def load_manifest(chunked_dir: Path) -> dict:
         if key not in manifest:
             raise ValueError(f"Invalid manifest: missing key '{key}'")
     
-    # Check format version
-    format_version = manifest.get('format_version', '')
-    if '256' not in format_version:
-        logger.warning(f"Manifest format version '{format_version}' may not be 256-token compatible")
-    
     return manifest
-
-
-def get_temp_directory():
-    """Get temp directory for saving checkpoints."""
-    if "TMPDIR" in os.environ:
-        return Path(os.environ["TMPDIR"])
-    elif "SCRATCH_SHARED" in os.environ:
-        return Path(os.environ["SCRATCH_SHARED"])
-    else:
-        return Path("./temp")
-
-
-def create_temp_output_dir(base_output_dir: str) -> Path:
-    """Create output directory in temp storage."""
-    temp_dir = get_temp_directory()
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    
-    # Create temp output directory
-    temp_output_dir = temp_dir / f"blip3o_training_{timestamp}"
-    temp_output_dir.mkdir(parents=True, exist_ok=True)
-    
-    # Also create the requested output directory as a symlink if possible
-    base_output_path = Path(base_output_dir)
-    try:
-        base_output_path.mkdir(parents=True, exist_ok=True)
-        # Create a symlink from base to temp (if possible)
-        if not (base_output_path / "temp_link").exists():
-            (base_output_path / "temp_link").symlink_to(temp_output_dir)
-        
-        # Create info file
-        with open(base_output_path / "temp_location.txt", 'w') as f:
-            f.write(f"Actual training directory: {temp_output_dir}\n")
-            f.write(f"Created: {datetime.now().isoformat()}\n")
-            f.write(f"Use this path to access model checkpoints and logs.\n")
-        
-        logger.info(f"Created symlink from {base_output_path} to {temp_output_dir}")
-    except Exception as e:
-        logger.warning(f"Could not create symlink: {e}")
-    
-    return temp_output_dir
 
 
 class DummyDataset:
@@ -386,25 +483,138 @@ class DummyDataset:
         return self.length
 
 
+def create_final_model_package(model, temp_checkpoint_dir, final_model_dir, args, temp_manager=None):
+    """Create final model package in home directory."""
+    
+    logger.info(f"Creating final model package in: {final_model_dir}")
+    
+    # Copy model files
+    for file_pattern in ["*.bin", "*.safetensors", "*.json", "*.txt"]:
+        for file_path in temp_checkpoint_dir.glob(file_pattern):
+            target_path = final_model_dir / file_path.name
+            if file_path.is_file():
+                import shutil
+                shutil.copy2(file_path, target_path)
+    
+    # Create model loading script
+    loading_script = final_model_dir / "load_model.py"
+    with open(loading_script, 'w') as f:
+        f.write(f'''#!/usr/bin/env python3
+"""Load BLIP3-o model trained with temp manager (256 tokens)"""
+import sys
+import torch
+from pathlib import Path
+
+# Add project src to path
+project_root = Path(__file__).parent.parent.parent  # Adjust as needed
+sys.path.insert(0, str(project_root / "src"))
+
+from src.modules.models.blip3o_dit import BLIP3oDiTModel
+from src.modules.config.blip3o_config import BLIP3oDiTConfig
+import json
+
+def load_model():
+    model_dir = Path(__file__).parent
+    
+    # Load config
+    config_file = model_dir / "model_config.json"
+    with open(config_file, 'r') as f:
+        config_dict = json.load(f)
+    config = BLIP3oDiTConfig(**config_dict)
+    
+    # Create model
+    model = BLIP3oDiTModel(config)
+    
+    # Load weights
+    model_file = model_dir / "pytorch_model.bin"
+    if model_file.exists():
+        state_dict = torch.load(model_file, map_location='cpu')
+        model.load_state_dict(state_dict)
+        print(f"✅ Model loaded from {{model_file}}")
+    else:
+        print("⚠️  No weights found, using random initialization")
+    
+    print(f"✅ BLIP3-o model loaded successfully!")
+    print(f"   Parameters: {{model.get_num_parameters():,}}")
+    print(f"   Tokens: 256 (16x16 grid)")
+    print(f"   Training: Chunked approach with temp manager")
+    
+    return model
+
+if __name__ == "__main__":
+    model = load_model()
+''')
+    
+    # Create info file
+    info_file = final_model_dir / "model_info.txt"
+    with open(info_file, 'w') as f:
+        f.write(f"""BLIP3-o DiT Model (256 Tokens, Temp Managed)
+============================================
+
+Training Information:
+- Date: {datetime.now().isoformat()}
+- Job ID: {os.environ.get('SLURM_JOB_ID', 'local')}
+- Approach: Chunked training with structured temp management
+- Tokens: 256 (16x16 grid, NO pooling)
+- Dimensions: CLIP=1024, EVA=4096, Hidden={args.model_dim}
+
+Model Configuration:
+- Layers: {args.num_layers}
+- Heads: {args.num_heads}
+- Epochs: {args.num_epochs}
+- Batch size: {args.batch_size}
+- Learning rate: {args.learning_rate}
+
+Temp Management:
+- Storage: Structured temp directories
+- Retention: 14 days (scratch-shared)
+- Auto-archived: Yes (to home directory)
+
+Usage:
+python load_model.py
+""")
+    
+    # Make loading script executable
+    loading_script.chmod(0o755)
+    
+    # Calculate final size
+    total_size = sum(f.stat().st_size for f in final_model_dir.rglob('*') if f.is_file())
+    size_mb = total_size / (1024 * 1024)
+    
+    logger.info(f"✅ Final model package created:")
+    logger.info(f"   Location: {final_model_dir}")
+    logger.info(f"   Size: {size_mb:.1f} MB")
+    logger.info(f"   Files: {len(list(final_model_dir.iterdir()))}")
+
+
 def main():
-    """Main training function."""
+    """Main training function with temp manager."""
     args = parse_arguments()
+    
+    # Setup temp manager
+    temp_manager = setup_temp_manager()
+    
+    if args.show_temp_info:
+        if temp_manager:
+            temp_manager.print_status()
+        else:
+            print("Temp manager not available")
+        return 0
     
     # Setup debug mode
     if args.debug:
         logger.info("Debug mode enabled")
         args.num_epochs = 2
         args.logging_steps = 5
-        args.save_steps = 50
-        args.eval_steps = 25
+        args.save_steps = 20
+        args.eval_steps = 10
         args.no_wandb = True
     
-    # Setup output directory in temp storage
-    temp_output_dir = create_temp_output_dir(args.output_dir)
-    logger.info(f"Using temp output directory: {temp_output_dir}")
+    # Setup training directories
+    temp_checkpoint_dir, persistent_checkpoint_dir, final_model_dir = setup_training_directories(args, temp_manager)
     
     # Setup logging to file
-    log_file = temp_output_dir / "training.log"
+    log_file = temp_checkpoint_dir / "training.log"
     file_handler = logging.FileHandler(log_file)
     file_handler.setFormatter(logging.Formatter(
         '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -412,33 +622,31 @@ def main():
     logging.getLogger().addHandler(file_handler)
     
     logger.info("=" * 80)
-    logger.info("BLIP3-o DiT Training with Flow Matching (256 TOKENS, CHUNKED)")
+    logger.info("BLIP3-o DiT Training with Temp Manager (256 TOKENS, CHUNKED)")
     logger.info("=" * 80)
     
     try:
-        # Validate chunked embeddings directory
-        embeddings_path = Path(args.chunked_embeddings_dir)
-        if not embeddings_path.exists():
-            raise FileNotFoundError(f"Chunked embeddings directory not found: {embeddings_path}")
+        # Find embeddings directory
+        embeddings_path = find_embeddings_directory(args, temp_manager)
         
         # Load and validate manifest
         manifest = load_manifest(embeddings_path)
-        logger.info(f"Using CHUNKED approach: {embeddings_path}")
+        logger.info(f"Using embeddings: {embeddings_path}")
         logger.info(f"  Total shards: {manifest['total_shards']}")
         logger.info(f"  Total samples: {manifest['total_samples']:,}")
         logger.info(f"  Format: {manifest['format_version']}")
         
         # Save configurations
-        save_configs(args, temp_output_dir)
+        save_configs(args, temp_checkpoint_dir, temp_manager)
         
         # Setup device
         device = setup_device(args.device)
         
         # Setup wandb
         if not args.no_wandb:
-            setup_wandb(args)
+            setup_wandb(args, temp_manager)
         
-        # Create model configuration and model
+        # Create model
         logger.info("Creating model...")
         model_config = create_model_config(args)
         model = create_blip3o_dit_model(config=model_config)
@@ -453,16 +661,6 @@ def main():
         logger.info(f"  Total parameters: {total_params:,}")
         logger.info(f"  Trainable parameters: {trainable_params:,}")
         logger.info(f"  Memory footprint: {memory_footprint}")
-        logger.info(f"  Model dimensions: CLIP={model_config.in_channels}, EVA={model_config.eva_embedding_size}, Hidden={model_config.dim}")
-        logger.info(f"  Tokens: {model_config.input_size}x{model_config.input_size} = {model_config.input_size**2}")
-        
-        # Compile model if requested
-        if args.compile_model:
-            try:
-                model = torch.compile(model)
-                logger.info("Model compiled for optimization")
-            except Exception as e:
-                logger.warning(f"Model compilation failed: {e}")
         
         # Create flow matching loss
         logger.info("Creating flow matching loss...")
@@ -479,7 +677,7 @@ def main():
             eval_split_ratio=args.eval_split,
             normalize_embeddings=args.normalize_embeddings,
             delete_after_use=args.delete_after_use,
-            num_workers=0,  # IterableDataset requires num_workers=0
+            num_workers=0,
         )
         
         # Calculate sample counts from manifest
@@ -491,9 +689,6 @@ def main():
         logger.info(f"  Total samples: {total_samples:,}")
         logger.info(f"  Training samples: {train_samples:,}")
         logger.info(f"  Evaluation samples: {eval_samples:,}")
-        logger.info(f"  Total shards: {manifest['total_shards']}")
-        logger.info(f"  Sequential loading: One shard at a time")
-        logger.info(f"  Auto cleanup: {args.delete_after_use}")
         
         # Create dummy datasets for trainer compatibility
         train_dataset = DummyDataset(train_samples)
@@ -501,7 +696,7 @@ def main():
         
         # Create training arguments
         training_args = create_blip3o_training_args(
-            output_dir=str(temp_output_dir),
+            output_dir=str(temp_checkpoint_dir),
             num_train_epochs=args.num_epochs,
             per_device_train_batch_size=args.batch_size,
             per_device_eval_batch_size=args.eval_batch_size,
@@ -514,17 +709,14 @@ def main():
             gradient_accumulation_steps=args.gradient_accumulation_steps,
             fp16=args.fp16 and not args.bf16,
             bf16=args.bf16,
-            dataloader_num_workers=0,  # Chunked requires 0 workers
+            dataloader_num_workers=0,
             remove_unused_columns=False,
             load_best_model_at_end=True,
             metric_for_best_model="eval_loss",
             greater_is_better=False,
         )
         
-        # Only keep the latest checkpoint to save disk space
-        training_args.save_total_limit = 2
-        
-        # Create custom trainer that uses our dataloaders
+        # Create trainer
         logger.info("Creating trainer...")
         trainer = BLIP3oTrainer(
             model=model,
@@ -534,15 +726,9 @@ def main():
             eval_dataset=eval_dataset,
         )
         
-        # Override the get_train_dataloader method to use our chunked dataloader
-        def get_train_dataloader():
-            return train_dataloader
-        
-        def get_eval_dataloader(eval_dataset=None):
-            return eval_dataloader
-        
-        trainer.get_train_dataloader = get_train_dataloader
-        trainer.get_eval_dataloader = get_eval_dataloader
+        # Override dataloader methods
+        trainer.get_train_dataloader = lambda: train_dataloader
+        trainer.get_eval_dataloader = lambda eval_dataset=None: eval_dataloader
         
         # Check for dry run
         if args.dry_run:
@@ -551,36 +737,37 @@ def main():
         
         # Print training summary
         logger.info("Training Summary:")
-        logger.info(f"  Approach: Chunked (256 tokens)")
+        logger.info(f"  Approach: Chunked (256 tokens) with temp manager")
         logger.info(f"  Epochs: {args.num_epochs}")
         logger.info(f"  Batch size: {args.batch_size}")
         logger.info(f"  Learning rate: {args.learning_rate}")
-        logger.info(f"  Weight decay: {args.weight_decay}")
-        logger.info(f"  Gradient accumulation: {args.gradient_accumulation_steps}")
-        logger.info(f"  Mixed precision: {'fp16' if args.fp16 else 'bf16' if args.bf16 else 'fp32'}")
-        logger.info(f"  Temp output directory: {temp_output_dir}")
-        logger.info(f"  3D RoPE: Enabled with proper spatial-temporal encoding")
-        logger.info(f"  Chunked features:")
-        logger.info(f"    Sequential loading: One shard at a time")
-        logger.info(f"    Memory efficient: Constant memory usage")
-        logger.info(f"    Auto cleanup: {args.delete_after_use}")
-        logger.info(f"    Scalable: Can handle 100k+ samples")
+        logger.info(f"  Temp checkpoints: {temp_checkpoint_dir}")
+        logger.info(f"  Final model: {final_model_dir}")
+        
+        if temp_manager:
+            logger.info(f"  Storage: Structured temp management")
+            logger.info(f"  Retention: 14 days (scratch-shared)")
+            logger.info(f"  Auto-archive: Yes (to home directory)")
         
         # Start training
         logger.info("Starting training...")
         logger.info("=" * 80)
         
-        # Resume from checkpoint if specified
-        resume_from_checkpoint = args.resume_from_checkpoint
-        if resume_from_checkpoint:
-            logger.info(f"Resuming training from checkpoint: {resume_from_checkpoint}")
-        
         # Train the model
-        trainer.train(resume_from_checkpoint=resume_from_checkpoint)
+        trainer.train()
         
-        # Save final model
+        # Save final model to temp
         logger.info("Training completed! Saving final model...")
         trainer.save_model()
+        
+        # Create final model package
+        create_final_model_package(model, temp_checkpoint_dir, final_model_dir, args, temp_manager)
+        
+        # Copy to persistent checkpoint if available
+        if persistent_checkpoint_dir and temp_manager:
+            import shutil
+            shutil.copytree(temp_checkpoint_dir, persistent_checkpoint_dir, dirs_exist_ok=True)
+            logger.info(f"Model also saved to persistent storage: {persistent_checkpoint_dir}")
         
         # Run final evaluation
         if eval_dataset:
@@ -588,12 +775,21 @@ def main():
             final_metrics = trainer.evaluate()
             logger.info(f"Final evaluation metrics: {final_metrics}")
         
+        # Show final status
         logger.info("=" * 80)
         logger.info("Training completed successfully!")
-        logger.info(f"Model saved to: {temp_output_dir}")
-        logger.info(f"Base output directory info: {args.output_dir}")
-        logger.info("🎉 Your BLIP3-o model with chunked training is ready!")
-        logger.info("🚀 Chunked approach successfully handled large-scale training!")
+        logger.info(f"Model saved to: {final_model_dir}")
+        
+        if temp_manager:
+            logger.info("\n📊 Final Storage Status:")
+            usage = temp_manager.get_disk_usage()
+            for name, info in usage.items():
+                if info.get('exists', False):
+                    size_gb = info.get('total_size_gb', 0)
+                    print(f"   {name}: {size_gb:.2f} GB")
+        
+        logger.info("🎉 Your BLIP3-o model with temp management is ready!")
+        logger.info("🚀 Structured temp approach optimized storage usage!")
         logger.info("=" * 80)
         
         return 0
@@ -602,7 +798,7 @@ def main():
         logger.info("Training interrupted by user")
         if 'trainer' in locals():
             logger.info("Saving checkpoint...")
-            trainer.save_model(temp_output_dir / "interrupted_checkpoint")
+            trainer.save_model(temp_checkpoint_dir / "interrupted_checkpoint")
         return 1
         
     except Exception as e:

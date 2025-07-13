@@ -1,6 +1,6 @@
 """
-Download BLIP3o-Pretrain-Short-Caption dataset - UPDATED VERSION
-Supports multiple shards and temp directory storage
+UPDATED Download BLIP3o-Pretrain-Short-Caption dataset with Temp Manager
+Supports multiple shards and structured temp directory storage
 Place this file in: src/data_hand/download_data.py
 """
 
@@ -17,13 +17,33 @@ def get_project_root():
     # Go up from src/data_hand/download_data.py to project root
     return current_file.parent.parent.parent
 
+def setup_temp_manager():
+    """Setup temp manager for structured directory management."""
+    try:
+        # Add utils to path
+        project_root = get_project_root()
+        sys.path.insert(0, str(project_root / "src" / "utils"))
+        
+        from temp_manager import setup_snellius_environment
+        manager = setup_snellius_environment("blip3o_workspace")
+        return manager
+    except ImportError:
+        print("⚠️  Temp manager not available, using fallback directories")
+        return None
+
 def get_temp_directory():
     """Get the temp directory path for Snellius or other systems"""
-    # Check for Snellius temp directory
+    # Try to use temp manager first
+    temp_manager = setup_temp_manager()
+    if temp_manager:
+        return temp_manager.get_datasets_dir()
+    
+    # Fallback to environment variables
     if "TMPDIR" in os.environ:
-        temp_dir = Path(os.environ["TMPDIR"])
+        temp_dir = Path(os.environ["TMPDIR"]) / "blip3o_data"
     elif "SCRATCH_SHARED" in os.environ:
-        temp_dir = Path(os.environ["SCRATCH_SHARED"])
+        user = os.environ.get("USER", "user")
+        temp_dir = Path(os.environ["SCRATCH_SHARED"]) / user / "blip3o_data"
     else:
         # Fallback to project data directory
         temp_dir = get_project_root() / "data"
@@ -32,7 +52,7 @@ def get_temp_directory():
 
 def download_blip3o_shards(shard_indices=None, data_dir=None, force_download=False, max_shards=35):
     """
-    Download multiple shards of BLIP3o-Pretrain-Short-Caption dataset
+    Download multiple shards of BLIP3o-Pretrain-Short-Caption dataset using temp manager
     
     Args:
         shard_indices (list): List of shard indices to download (0-11). If None, downloads all.
@@ -44,17 +64,25 @@ def download_blip3o_shards(shard_indices=None, data_dir=None, force_download=Fal
         list: Paths to downloaded files
     """
     
-    # Set up paths - prioritize temp directory
+    # Setup temp manager for structured storage
+    temp_manager = setup_temp_manager()
+    
+    # Set up paths - prioritize temp manager
     if data_dir is None:
-        data_dir = get_temp_directory() / "blip3o_data"
+        if temp_manager:
+            data_dir = temp_manager.get_datasets_dir()
+            print(f"📁 Using temp manager datasets directory: {data_dir}")
+        else:
+            data_dir = get_temp_directory()
+            print(f"📁 Using fallback temp directory: {data_dir}")
     else:
         data_dir = Path(data_dir)
+        print(f"📁 Using specified directory: {data_dir}")
     
     # Create data directory
     data_dir.mkdir(parents=True, exist_ok=True)
     
-
-    # AFTER (chunked approach):
+    # Default shard selection
     if shard_indices is None:
         shard_indices = list(range(min(30, max_shards)))  # Default: first 30 shards for ~100k samples
     
@@ -71,11 +99,23 @@ def download_blip3o_shards(shard_indices=None, data_dir=None, force_download=Fal
     # Dataset info
     repo_id = "BLIP3o/BLIP3o-Pretrain-Short-Caption"
     
-    print(f"Downloading BLIP3o Short Caption Dataset to TEMP DIRECTORY")
+    print(f"Downloading BLIP3o Short Caption Dataset")
     print(f"Repository: {repo_id}")
     print(f"Shards to download: {shard_indices}")
     print(f"Destination: {data_dir}")
     print(f"Total shards requested: {len(shard_indices)}")
+    
+    if temp_manager:
+        print(f"Storage type: Structured temp management")
+        print(f"Retention: 14 days (scratch-shared)")
+        # Show current disk usage
+        usage = temp_manager.get_disk_usage()
+        datasets_usage = usage.get('datasets', {})
+        if datasets_usage.get('exists', False):
+            print(f"Current datasets size: {datasets_usage.get('total_size_gb', 0):.2f} GB")
+    else:
+        print(f"Storage type: Basic temp directory")
+    
     print("=" * 70)
     
     downloaded_files = []
@@ -127,6 +167,14 @@ def download_blip3o_shards(shard_indices=None, data_dir=None, force_download=Fal
         except Exception as e:
             print(f"❌ Download error for shard {shard_idx}: {e}")
             continue
+        
+        # Show disk usage update if using temp manager
+        if temp_manager and shard_idx % 5 == 0:  # Every 5 downloads
+            usage = temp_manager.get_disk_usage()
+            datasets_usage = usage.get('datasets', {})
+            if datasets_usage.get('exists', False):
+                current_size = datasets_usage.get('total_size_gb', 0)
+                print(f"   💾 Current datasets storage: {current_size:.2f} GB")
     
     print("\n" + "=" * 70)
     print(f"📊 DOWNLOAD SUMMARY:")
@@ -135,11 +183,34 @@ def download_blip3o_shards(shard_indices=None, data_dir=None, force_download=Fal
     print(f"   Storage location: {data_dir}")
     print(f"   Estimated total samples: ~{int(total_size_gb * 400000):,}")
     
+    if temp_manager:
+        print(f"\n🗂️  TEMP MANAGER INFO:")
+        print(f"   Storage type: Persistent (scratch-shared)")
+        print(f"   Retention policy: 14 days automatic cleanup")
+        print(f"   Access across jobs: Yes")
+        print(f"   Workspace: {temp_manager.persistent_workspace}")
+        
+        # Show final disk usage
+        usage = temp_manager.get_disk_usage()
+        for name, info in usage.items():
+            if info.get('exists', False) and 'datasets' in name:
+                size_gb = info.get('total_size_gb', 0)
+                file_count = info.get('file_count', 0)
+                print(f"   {name}: {size_gb:.2f} GB ({file_count} files)")
+    
     if downloaded_files:
         print(f"\n✅ Ready for embedding extraction!")
         print(f"   Use these files in extract_embeddings_g.py")
+        print(f"   Files are in structured temp storage with 14-day retention")
     else:
         print(f"\n❌ No files downloaded successfully")
+    
+    # Save file list for embedding extraction
+    file_list_path = data_dir / "downloaded_shards.txt"
+    with open(file_list_path, 'w') as f:
+        for file_path in downloaded_files:
+            f.write(f"{file_path}\n")
+    print(f"\n📝 File list saved to: {file_list_path}")
     
     return downloaded_files
 
@@ -190,18 +261,39 @@ def verify_downloads(file_paths):
     
     return valid_files
 
+def show_temp_info():
+    """Show information about temp directory setup"""
+    temp_manager = setup_temp_manager()
+    
+    if temp_manager:
+        print("\n🗂️  TEMP MANAGER STATUS:")
+        temp_manager.print_status()
+    else:
+        print("\n📁 FALLBACK TEMP DIRECTORIES:")
+        temp_dir = get_temp_directory()
+        print(f"   Datasets directory: {temp_dir}")
+        
+        # Check available space if possible
+        try:
+            import shutil
+            total, used, free = shutil.disk_usage(temp_dir.parent)
+            print(f"   Available space: {free / (1024**3):.1f} GB")
+        except:
+            print("   Cannot determine available space")
+
 def main():
     """Main function for command line usage"""
     parser = argparse.ArgumentParser(
-        description="Download BLIP3o-Pretrain-Short-Caption dataset with multi-shard support",
+        description="Download BLIP3o-Pretrain-Short-Caption dataset with structured temp management",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python src/data_hand/download_data.py                           # Download first 3 shards to temp
+  python src/data_hand/download_data.py                           # Download first 30 shards to temp
   python src/data_hand/download_data.py --shards 0 1 2 3 4        # Download specific shards
   python src/data_hand/download_data.py --shards 0 --data_dir /tmp # Download to specific directory
   python src/data_hand/download_data.py --list                    # List available files
   python src/data_hand/download_data.py --all                     # Download ALL shards (be careful!)
+  python src/data_hand/download_data.py --info                    # Show temp directory info
         """
     )
     
@@ -210,7 +302,7 @@ Examples:
         type=int,
         nargs='+',
         default=None,
-        help="Shard indices to download (default: first 3 shards)"
+        help="Shard indices to download (default: first 30 shards)"
     )
     
     parser.add_argument(
@@ -223,7 +315,7 @@ Examples:
         "--data_dir",
         type=str,
         default=None,
-        help="Directory to save data (default: auto-detect temp directory)"
+        help="Directory to save data (default: use temp manager)"
     )
     
     parser.add_argument(
@@ -244,7 +336,17 @@ Examples:
         help="Verify specific downloaded files"
     )
     
+    parser.add_argument(
+        "--info",
+        action="store_true",
+        help="Show temp directory information"
+    )
+    
     args = parser.parse_args()
+    
+    if args.info:
+        show_temp_info()
+        return
     
     if args.list:
         list_available_files()
@@ -253,6 +355,9 @@ Examples:
     if args.verify:
         verify_downloads(args.verify)
         return
+    
+    # Show temp directory info first
+    show_temp_info()
     
     # Determine which shards to download
     if args.all:
@@ -268,22 +373,26 @@ Examples:
     else:
         shard_indices = args.shards
     
-    # Show temp directory info
-    temp_dir = get_temp_directory()
-    print(f"🗂️  Temp directory detected: {temp_dir}")
-    
-    # Check available space if possible
-    try:
-        import shutil
-        total, used, free = shutil.disk_usage(temp_dir)
-        print(f"💾 Available space: {free / (1024**3):.1f} GB")
+    # Estimate space needed if using temp manager
+    temp_manager = setup_temp_manager()
+    if temp_manager:
+        num_shards = len(shard_indices) if shard_indices else 30
+        estimated_gb = num_shards * 1.2  # Rough: 1.2GB per shard
         
-        # Estimate space needed (rough: 1GB per shard)
-        estimated_need = len(shard_indices) if shard_indices else 3
-        if free / (1024**3) < estimated_need * 1.5:  # 1.5x safety margin
-            print(f"⚠️  WARNING: May not have enough space (need ~{estimated_need}GB)")
-    except:
-        pass
+        usage = temp_manager.get_disk_usage()
+        available_info = usage.get('workspace_system', {})
+        available_gb = available_info.get('free_gb', 0)
+        
+        print(f"\n💾 SPACE CHECK:")
+        print(f"   Estimated need: {estimated_gb:.1f} GB")
+        print(f"   Available space: {available_gb:.1f} GB")
+        
+        if available_gb > 0 and estimated_gb > available_gb * 0.8:  # 80% threshold
+            print(f"   ⚠️  WARNING: May not have enough space!")
+            response = input("Continue anyway? (y/N): ")
+            if response.lower() != 'y':
+                print("Cancelled.")
+                return
     
     # Download the shards
     downloaded_files = download_blip3o_shards(
@@ -296,16 +405,16 @@ Examples:
         print(f"\n🎉 SUCCESS! Downloaded {len(downloaded_files)} shards")
         print(f"\n📋 Next steps:")
         print(f"1. Extract embeddings: python src/modules/extract_embeddings_g.py")
-        print(f"2. Start training with multiple shards")
-        print(f"3. Files are in temp directory - they will be cleaned up automatically")
+        print(f"2. Start training with structured temp management")
+        print(f"3. Files are in structured temp storage with proper retention")
         
-        # Save file list for embedding extraction
-        temp_dir = get_temp_directory()
-        file_list_path = temp_dir / "downloaded_shards.txt"
-        with open(file_list_path, 'w') as f:
-            for file_path in downloaded_files:
-                f.write(f"{file_path}\n")
-        print(f"\n📝 File list saved to: {file_list_path}")
+        if temp_manager:
+            print(f"\n🗂️  TEMP MANAGER BENEFITS:")
+            print(f"   ✅ Structured storage in persistent workspace")
+            print(f"   ✅ 14-day retention (scratch-shared)")
+            print(f"   ✅ Accessible across different jobs")
+            print(f"   ✅ Automatic disk usage monitoring")
+            print(f"   ✅ Proper cache management")
         
     else:
         print(f"\n❌ Download failed. Please check the error messages above.")
