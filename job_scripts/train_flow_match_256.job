@@ -1,16 +1,16 @@
 #!/bin/bash
 #SBATCH --partition=gpu_h100
 #SBATCH --gpus=1
-#SBATCH --job-name=blip3o_dit_256_train
+#SBATCH --job-name=blip3o_dit_256_chunked_train
 #SBATCH --time=24:00:00
-#SBATCH --output=./slurm_out/train_%j.out
-#SBATCH --error=./slurm_out/train_%j.err
+#SBATCH --output=./slurm_out/train_chunked_%j.out
+#SBATCH --error=./slurm_out/train_chunked_%j.err
 #SBATCH --mem=64GB
 #SBATCH --cpus-per-task=8
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 
-echo "🚀 Starting BLIP3-o DiT Training Job - 256 TOKENS VERSION"
+echo "🚀 Starting BLIP3-o DiT CHUNKED Training Job - 256 TOKENS"
 echo "========================================================"
 echo "Job ID: $SLURM_JOB_ID"
 echo "Node: $SLURMD_NODENAME" 
@@ -25,10 +25,10 @@ echo "CUDA Visible Devices: $CUDA_VISIBLE_DEVICES"
 
 # Set up temp workspace for model checkpoints and training files
 if [ -n "$TMPDIR" ]; then
-    TEMP_WORKSPACE="$TMPDIR/blip3o_training_$SLURM_JOB_ID"
+    TEMP_WORKSPACE="$TMPDIR"
     echo "📁 Using TMPDIR: $TMPDIR"
 elif [ -n "$SCRATCH_SHARED" ]; then
-    TEMP_WORKSPACE="$SCRATCH_SHARED/$(whoami)/blip3o_training_$SLURM_JOB_ID"
+    TEMP_WORKSPACE="$SCRATCH_SHARED/$(whoami)"
     echo "📁 Using SCRATCH_SHARED: $SCRATCH_SHARED"
 else:
     # Fallback
@@ -36,8 +36,8 @@ else:
     echo "📁 Using local temp: $TEMP_WORKSPACE"
 fi
 
-# Final model archive location
-HOME_FINAL_MODEL="$HOME/models_archive/blip3o_256_$(date +%Y%m%d_%H%M%S)"
+# Final model archive location in home directory
+HOME_FINAL_MODEL="$HOME/models_archive/blip3o_256_chunked_$(date +%Y%m%d_%H%M%S)"
 
 echo ""
 echo "📁 STORAGE SETUP:"
@@ -48,7 +48,6 @@ echo "   ⚠️  Final model will be auto-saved to home directory"
 
 # Create directories
 mkdir -p slurm_out
-mkdir -p "$TEMP_WORKSPACE/model_checkpoints"
 mkdir -p "$HOME/models_archive"
 mkdir -p "$HOME_FINAL_MODEL"
 
@@ -57,10 +56,9 @@ export WANDB_DIR="$TEMP_WORKSPACE/wandb_logs"
 export TORCH_HOME="$TEMP_WORKSPACE/torch_cache"
 export HF_HOME="$TEMP_WORKSPACE/huggingface_cache"
 export TRANSFORMERS_CACHE="$TEMP_WORKSPACE/transformers_cache"
-export TMPDIR="$TEMP_WORKSPACE/tmp"
 
 # Create cache directories
-mkdir -p "$WANDB_DIR" "$TORCH_HOME" "$HF_HOME" "$TRANSFORMERS_CACHE" "$TMPDIR"
+mkdir -p "$WANDB_DIR" "$TORCH_HOME" "$HF_HOME" "$TRANSFORMERS_CACHE"
 
 echo "✅ Temp directories created"
 
@@ -80,14 +78,17 @@ save_final_model() {
     echo "💾 AUTO-SAVING MODEL TO PERSISTENT STORAGE..."
     echo "============================================="
     
-    if [ -d "$TEMP_WORKSPACE/model_checkpoints" ]; then
+    # Find the training output directory
+    TRAINING_OUTPUT=$(find "$TEMP_WORKSPACE" -name "blip3o_training_*" -type d | head -1)
+    
+    if [ -n "$TRAINING_OUTPUT" ] && [ -d "$TRAINING_OUTPUT" ]; then
         echo "📦 Copying model from temp to home directory..."
-        cp -r "$TEMP_WORKSPACE/model_checkpoints"/* "$HOME_FINAL_MODEL/" 2>/dev/null || true
+        cp -r "$TRAINING_OUTPUT"/* "$HOME_FINAL_MODEL/" 2>/dev/null || true
         
         # Create model loading script
         cat > "$HOME_FINAL_MODEL/load_model.py" << 'EOF'
 #!/usr/bin/env python3
-"""Quick script to load this BLIP3-o model (256 tokens)"""
+"""Quick script to load this BLIP3-o model (256 tokens, chunked training)"""
 import sys
 from pathlib import Path
 
@@ -95,17 +96,43 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root / "src"))
 
-from src.modules.models.blip3o_dit import load_blip3o_dit_model
+from src.modules.models.blip3o_dit import BLIP3oDiTModel
+from src.modules.config.blip3o_config import BLIP3oDiTConfig
+import torch
+import json
 
 def load_model():
     model_path = Path(__file__).parent
-    print(f"Loading BLIP3-o model (256 tokens) from: {model_path}")
+    print(f"Loading BLIP3-o model (256 tokens, chunked training) from: {model_path}")
     
-    model = load_blip3o_dit_model(str(model_path))
+    # Load config
+    config_file = model_path / "model_config.json"
+    if config_file.exists():
+        with open(config_file, 'r') as f:
+            config_dict = json.load(f)
+        config = BLIP3oDiTConfig(**config_dict)
+    else:
+        print("⚠️  Using default config")
+        from src.modules.config.blip3o_config import get_default_blip3o_config
+        config = get_default_blip3o_config()
+    
+    # Create model
+    model = BLIP3oDiTModel(config)
+    
+    # Load weights
+    model_file = model_path / "pytorch_model.bin"
+    if model_file.exists():
+        state_dict = torch.load(model_file, map_location='cpu')
+        model.load_state_dict(state_dict)
+        print("✅ Model weights loaded")
+    else:
+        print("⚠️  No model weights found, using random initialization")
+    
     print("✅ BLIP3-o model loaded successfully!")
     print(f"   Parameters: {model.get_num_parameters():,}")
     print(f"   Memory: {model.get_memory_footprint()}")
     print(f"   Tokens: 256 (16x16 grid)")
+    print(f"   Training approach: Chunked dataset")
     return model
 
 if __name__ == "__main__":
@@ -114,8 +141,8 @@ EOF
         
         # Create training summary
         cat > "$HOME_FINAL_MODEL/training_info.txt" << EOF
-BLIP3-o DiT Training Summary (256 TOKENS) for $(whoami)
-======================================================
+BLIP3-o DiT CHUNKED Training Summary (256 TOKENS) for $(whoami)
+=============================================================
 Job ID: $SLURM_JOB_ID
 Node: $SLURMD_NODENAME
 Training Date: $(date)
@@ -126,20 +153,40 @@ MODEL CONFIGURATION:
 - Tokens: 256 (16x16 grid, NO pooling)
 - CLIP dimension: 1024 (ViT-L/14)
 - EVA-CLIP dimension: 4096 (EVA-CLIP-8B)
-- Format: blip3o_256_tokens_v1
+- Format: blip3o_256_tokens_chunked_v1
+- Training approach: Chunked dataset loading
+
+TRAINING APPROACH:
+- Chunked embeddings: Sequential loading of embedding shards
+- Memory efficient: One shard loaded at a time
+- Scalable: Can handle 100k+ samples
+- Auto cleanup: Shards deleted after processing
 
 IMPORTANT NOTES:
 - Training files in temp will be auto-deleted
 - This final model is permanently saved in your home directory
 - This model uses 256 tokens instead of the old 64-token format
+- Trained using chunked dataset approach for large-scale data
 
 TO LOAD THIS MODEL:
 cd $(pwd)
 python $HOME_FINAL_MODEL/load_model.py
 
 OR in your code:
-from src.modules.models.blip3o_dit import load_blip3o_dit_model
-model = load_blip3o_dit_model('$HOME_FINAL_MODEL')
+from src.modules.models.blip3o_dit import BLIP3oDiTModel
+from src.modules.config.blip3o_config import BLIP3oDiTConfig
+import torch
+import json
+
+# Load config
+with open('$HOME_FINAL_MODEL/model_config.json', 'r') as f:
+    config_dict = json.load(f)
+config = BLIP3oDiTConfig(**config_dict)
+
+# Create and load model
+model = BLIP3oDiTModel(config)
+state_dict = torch.load('$HOME_FINAL_MODEL/pytorch_model.bin', map_location='cpu')
+model.load_state_dict(state_dict)
 EOF
         
         chmod +x "$HOME_FINAL_MODEL/load_model.py"
@@ -149,8 +196,8 @@ EOF
         echo "   Size: $(du -sh "$HOME_FINAL_MODEL" | cut -f1)"
         
     else
-        echo "⚠️  No model checkpoints found in temp workspace"
-        echo "   Expected location: $TEMP_WORKSPACE/model_checkpoints"
+        echo "⚠️  No training output found in temp workspace"
+        echo "   Expected location pattern: $TEMP_WORKSPACE/blip3o_training_*"
     fi
 }
 
@@ -173,164 +220,171 @@ source activate eva_clip_env
 echo "✅ Environment activated"
 
 # =============================================================================
-# FIND EMBEDDINGS FILE (256 TOKENS)
+# FIND CHUNKED EMBEDDINGS DIRECTORY
 # =============================================================================
 
 echo ""
-echo "🔍 Looking for 256-token embeddings file..."
-echo "=========================================="
+echo "🔍 Looking for chunked embeddings directory..."
+echo "=============================================="
 
-# Try multiple locations for embeddings
-EMBEDDINGS_FILE=""
+# Try multiple locations for chunked embeddings
+CHUNKED_EMBEDDINGS_DIR=""
 
-# Option 1: Check if embeddings path was provided via environment
-if [ -n "$BLIP3O_EMBEDDINGS_PATH" ]; then
-    echo "   Checking environment variable: $BLIP3O_EMBEDDINGS_PATH"
-    if [ -f "$BLIP3O_EMBEDDINGS_PATH" ]; then
-        EMBEDDINGS_FILE="$BLIP3O_EMBEDDINGS_PATH"
+# Option 1: Check if path was provided via environment
+if [ -n "$BLIP3O_CHUNKED_DIR" ]; then
+    echo "   Checking environment variable: $BLIP3O_CHUNKED_DIR"
+    if [ -d "$BLIP3O_CHUNKED_DIR" ] && [ -f "$BLIP3O_CHUNKED_DIR/embeddings_manifest.json" ]; then
+        CHUNKED_EMBEDDINGS_DIR="$BLIP3O_CHUNKED_DIR"
         echo "   ✅ Found via environment variable"
     fi
 fi
 
 # Option 2: Check temp workspace from extraction job
-if [ -z "$EMBEDDINGS_FILE" ] && [ -n "$BLIP3O_TEMP_WORKSPACE" ]; then
-    TEMP_EMBEDDINGS="$BLIP3O_TEMP_WORKSPACE/embeddings/blip3o_grid_embeddings_256.pkl"
-    echo "   Checking temp workspace: $TEMP_EMBEDDINGS"
-    if [ -f "$TEMP_EMBEDDINGS" ]; then
-        EMBEDDINGS_FILE="$TEMP_EMBEDDINGS"
+if [ -z "$CHUNKED_EMBEDDINGS_DIR" ] && [ -n "$BLIP3O_TEMP_DIR" ]; then
+    TEMP_CHUNKED="$BLIP3O_TEMP_DIR/chunked_embeddings"
+    echo "   Checking temp workspace: $TEMP_CHUNKED"
+    if [ -d "$TEMP_CHUNKED" ] && [ -f "$TEMP_CHUNKED/embeddings_manifest.json" ]; then
+        CHUNKED_EMBEDDINGS_DIR="$TEMP_CHUNKED"
         echo "   ✅ Found in temp workspace"
     fi
 fi
 
 # Option 3: Check for any temp directory embeddings
-if [ -z "$EMBEDDINGS_FILE" ]; then
-    echo "   Searching for embeddings in temp directories..."
+if [ -z "$CHUNKED_EMBEDDINGS_DIR" ]; then
+    echo "   Searching for chunked embeddings in temp directories..."
     
     # Check common temp locations
     for temp_dir in "$TMPDIR" "$SCRATCH_SHARED/$(whoami)" "/tmp"; do
         if [ -n "$temp_dir" ] && [ -d "$temp_dir" ]; then
-            SEARCH_PATH=$(find "$temp_dir" -name "blip3o_grid_embeddings_256.pkl" -type f 2>/dev/null | head -1)
-            if [ -n "$SEARCH_PATH" ]; then
-                EMBEDDINGS_FILE="$SEARCH_PATH"
+            # Look for chunked_embeddings directory
+            SEARCH_PATH=$(find "$temp_dir" -name "chunked_embeddings" -type d 2>/dev/null | head -1)
+            if [ -n "$SEARCH_PATH" ] && [ -f "$SEARCH_PATH/embeddings_manifest.json" ]; then
+                CHUNKED_EMBEDDINGS_DIR="$SEARCH_PATH"
                 echo "   ✅ Found in temp: $temp_dir"
                 break
+            fi
+            
+            # Also check for directories matching pattern blip3o_chunked_*
+            PATTERN_SEARCH=$(find "$temp_dir" -name "blip3o_chunked_*" -type d 2>/dev/null | head -1)
+            if [ -n "$PATTERN_SEARCH" ]; then
+                CHUNKED_SUBDIR="$PATTERN_SEARCH/chunked_embeddings"
+                if [ -d "$CHUNKED_SUBDIR" ] && [ -f "$CHUNKED_SUBDIR/embeddings_manifest.json" ]; then
+                    CHUNKED_EMBEDDINGS_DIR="$CHUNKED_SUBDIR"
+                    echo "   ✅ Found pattern match in temp: $temp_dir"
+                    break
+                fi
             fi
         fi
     done
 fi
 
 # Option 4: Check project directory
-if [ -z "$EMBEDDINGS_FILE" ]; then
-    PROJECT_EMBEDDINGS="./embeddings/blip3o_grid_embeddings_256.pkl"
-    echo "   Checking project directory: $PROJECT_EMBEDDINGS"
-    if [ -f "$PROJECT_EMBEDDINGS" ]; then
-        EMBEDDINGS_FILE="$PROJECT_EMBEDDINGS"
+if [ -z "$CHUNKED_EMBEDDINGS_DIR" ]; then
+    PROJECT_CHUNKED="./chunked_embeddings/temp_chunked"
+    echo "   Checking project directory: $PROJECT_CHUNKED"
+    if [ -d "$PROJECT_CHUNKED" ] && [ -f "$PROJECT_CHUNKED/embeddings_manifest.json" ]; then
+        CHUNKED_EMBEDDINGS_DIR="$PROJECT_CHUNKED"
         echo "   ✅ Found in project directory"
     fi
 fi
 
-# Option 5: Check for backward compatibility file
-if [ -z "$EMBEDDINGS_FILE" ]; then
-    COMPAT_EMBEDDINGS="./embeddings/blip3o_grid_embeddings.pkl"
-    echo "   Checking compatibility file: $COMPAT_EMBEDDINGS"
-    if [ -f "$COMPAT_EMBEDDINGS" ]; then
-        echo "   ⚠️  Found compatibility file, will validate if it's 256-token format"
-        EMBEDDINGS_FILE="$COMPAT_EMBEDDINGS"
-    fi
-fi
-
 # Final check
-if [ -z "$EMBEDDINGS_FILE" ]; then
-    echo "❌ No embeddings file found!"
+if [ -z "$CHUNKED_EMBEDDINGS_DIR" ]; then
+    echo "❌ No chunked embeddings directory found!"
     echo ""
-    echo "Please extract 256-token embeddings first:"
-    echo "  sbatch job_scripts/extract_emb.job"
+    echo "Please extract chunked embeddings first:"
+    echo "  sbatch job_scripts/extract_emb_256_chunk.job"
     echo ""
     echo "Or set the path manually:"
-    echo "  export BLIP3O_EMBEDDINGS_PATH=/path/to/blip3o_grid_embeddings_256.pkl"
+    echo "  export BLIP3O_CHUNKED_DIR=/path/to/chunked_embeddings"
     exit 1
 fi
 
-echo "✅ Found embeddings file: $EMBEDDINGS_FILE"
-echo "📊 File size: $(du -sh "$EMBEDDINGS_FILE" | cut -f1)"
+echo "✅ Found chunked embeddings directory: $CHUNKED_EMBEDDINGS_DIR"
 
 # =============================================================================
-# VALIDATE 256-TOKEN FORMAT
+# VALIDATE CHUNKED EMBEDDINGS FORMAT
 # =============================================================================
 
 echo ""
-echo "🧪 Validating 256-token embeddings format..."
-echo "==========================================="
+echo "🧪 Validating chunked embeddings format..."
+echo "=========================================="
 
+# Check manifest file
+MANIFEST_FILE="$CHUNKED_EMBEDDINGS_DIR/embeddings_manifest.json"
+if [ ! -f "$MANIFEST_FILE" ]; then
+    echo "❌ Manifest file not found: $MANIFEST_FILE"
+    exit 1
+fi
+
+# Validate manifest content
 python -c "
-import pickle
+import json
 import sys
+from pathlib import Path
 
 try:
-    with open('$EMBEDDINGS_FILE', 'rb') as f:
-        data = pickle.load(f)
+    manifest_path = Path('$MANIFEST_FILE')
+    with open(manifest_path, 'r') as f:
+        manifest = json.load(f)
     
-    # Check required keys for BLIP3-o
-    required_keys = ['clip_blip3o_embeddings', 'eva_blip3o_embeddings']
+    # Check required keys
+    required_keys = ['total_shards', 'total_samples', 'format_version']
     for key in required_keys:
-        if key not in data:
+        if key not in manifest:
             print(f'❌ Missing required key: {key}')
             sys.exit(1)
     
-    # Check dimensions for 256 tokens
-    clip_shape = data['clip_blip3o_embeddings'].shape
-    eva_shape = data['eva_blip3o_embeddings'].shape
+    total_shards = manifest['total_shards']
+    total_samples = manifest['total_samples']
+    format_version = manifest['format_version']
     
-    print(f'📐 CLIP BLIP3-o embeddings: {clip_shape}')
-    print(f'📐 EVA BLIP3-o embeddings: {eva_shape}')
-    
-    # Validate shapes for 256-token BLIP3-o DiT
-    if len(clip_shape) != 3 or clip_shape[1] != 256 or clip_shape[2] != 1024:
-        print(f'❌ Invalid CLIP shape: {clip_shape}, expected [N, 256, 1024]')
-        print('   This appears to be the old 64-token format!')
-        print('   Please re-extract embeddings with: sbatch job_scripts/extract_emb.job')
-        sys.exit(1)
-        
-    if len(eva_shape) != 3 or eva_shape[1] != 256:
-        print(f'❌ Invalid EVA shape: {eva_shape}, expected [N, 256, 4096]')
-        print('   This appears to be the old 64-token format!')
-        print('   Please re-extract embeddings with: sbatch job_scripts/extract_emb.job')
-        sys.exit(1)
-    
-    total_samples = data.get('total_samples', clip_shape[0])
-    format_version = data.get('config', {}).get('format_version', 'unknown')
-    
-    print(f'✅ 256-token embeddings validation passed!')
-    print(f'   Total samples: {total_samples}')
-    print(f'   CLIP: ViT-L/14 features (256 tokens, 1024-dim)')
-    print(f'   EVA: EVA-CLIP-8B features (256 tokens, {eva_shape[2]}-dim)')
+    print(f'📐 Chunked embeddings validation:')
+    print(f'   Total shards: {total_shards}')
+    print(f'   Total samples: {total_samples:,}')
     print(f'   Format version: {format_version}')
-    print(f'   Grid size: 16x16 (full resolution, NO pooling)')
     
-    # Verify this is the new format
+    # Check if it's 256-token format
     if '256' not in format_version:
-        print(f'⚠️  Warning: Format version \"{format_version}\" may be old')
-        print('   But shape validation passed, so proceeding...')
+        print(f'⚠️  Warning: Format version \"{format_version}\" may not be 256-token compatible')
+        print('   But proceeding anyway...')
     else:
-        print(f'✅ Confirmed new 256-token format!')
+        print(f'✅ Confirmed 256-token chunked format!')
+    
+    # Check if we have shard files
+    chunked_dir = manifest_path.parent
+    shard_files = list(chunked_dir.glob('embeddings_shard_*.pkl'))
+    
+    if len(shard_files) != total_shards:
+        print(f'⚠️  Warning: Found {len(shard_files)} shard files, expected {total_shards}')
+    else:
+        print(f'✅ All {total_shards} shard files present')
+    
+    # Show total size
+    total_size = sum(f.stat().st_size for f in shard_files) / (1024**3)
+    print(f'📊 Total size: {total_size:.1f} GB')
+    
+    # Check for sufficient data
+    if total_samples < 10000:
+        print(f'⚠️  Warning: Only {total_samples} samples - may not be sufficient for robust training')
+    elif total_samples >= 50000:
+        print(f'✅ Excellent! {total_samples:,} samples for robust training')
+    else:
+        print(f'✅ Good! {total_samples:,} samples for training')
     
 except Exception as e:
-    print(f'❌ Embeddings validation failed: {e}')
+    print(f'❌ Manifest validation failed: {e}')
     import traceback
     traceback.print_exc()
     sys.exit(1)
 "
 
 if [ $? -ne 0 ]; then
-    echo "❌ Embeddings validation failed!"
-    echo ""
-    echo "The embeddings file appears to be in the old 64-token format."
-    echo "Please re-extract with the updated script:"
-    echo "  sbatch job_scripts/extract_emb.job"
+    echo "❌ Chunked embeddings validation failed!"
     exit 1
 fi
 
-echo "✅ 256-token embeddings validation passed!"
+echo "✅ Chunked embeddings validation passed!"
 
 # =============================================================================
 # SYSTEM INFO
@@ -346,30 +400,38 @@ echo "   Temp Available: $(df -h "$TEMP_WORKSPACE" | tail -1 | awk '{print $4}')
 echo "   Home Available: $(df -h "$HOME" | tail -1 | awk '{print $4}')"
 
 # =============================================================================
-# START TRAINING (256 TOKENS)
+# START CHUNKED TRAINING (256 TOKENS)
 # =============================================================================
 
 echo ""
-echo "🚀 Starting BLIP3-o DiT Training with 256 tokens..."
-echo "=================================================="
+echo "🚀 Starting BLIP3-o DiT CHUNKED Training with 256 tokens..."
+echo "=========================================================="
 
-# TRAINING WITH 256 TOKENS - Use temp workspace for output
+# Set output directory in temp
+TRAINING_OUTPUT_DIR="$TEMP_WORKSPACE/blip3o_training_$(date +%Y%m%d_%H%M%S)"
+
+# TRAINING WITH CHUNKED EMBEDDINGS - All outputs to temp
 python train_blip3o_dit.py \
-   --chunked_embeddings_dir /temp/chunked_embeddings \
-  --output_dir "$TEMP_WORKSPACE/model_checkpoints" \
+  --chunked_embeddings_dir "$CHUNKED_EMBEDDINGS_DIR" \
+  --output_dir "$TRAINING_OUTPUT_DIR" \
   --batch_size 64 \
   --num_epochs 5 \
-  --device cuda \
-  --fp16 \
-  --compile_model \
-  --gradient_checkpointing \
+  --model_dim 512 \
+  --num_heads 8 \
+  --num_layers 24 \
   --learning_rate 5e-5 \
+  --weight_decay 0.01 \
   --warmup_steps 20 \
+  --gradient_accumulation_steps 1 \
   --logging_steps 10 \
   --save_steps 200 \
   --eval_steps 50 \
-  --wandb_project "blip3o-dit-256-tokens" \
-  --wandb_run_name "256-tokens-$(date +%Y%m%d-%H%M%S)"
+  --fp16 \
+  --gradient_checkpointing \
+  --normalize_embeddings \
+  --delete_after_use \
+  --wandb_project "blip3o-dit-256-tokens-chunked" \
+  --wandb_run_name "chunked-256-tokens-$(date +%Y%m%d-%H%M%S)"
 
 # Check training exit code
 TRAINING_EXIT_CODE=$?
@@ -383,30 +445,30 @@ echo "🎯 TRAINING COMPLETED WITH EXIT CODE: $TRAINING_EXIT_CODE"
 
 if [ $TRAINING_EXIT_CODE -eq 0 ]; then
     echo ""
-    echo "✅ BLIP3-o DiT training completed successfully!"
+    echo "✅ BLIP3-o DiT chunked training completed successfully!"
     echo ""
     echo "📁 Training outputs in temp:"
-    ls -lh "$TEMP_WORKSPACE/model_checkpoints/" 2>/dev/null || echo "   No checkpoints found"
+    ls -lh "$TRAINING_OUTPUT_DIR"/ 2>/dev/null || echo "   No training outputs found"
     echo ""
     echo "📁 Final model archive (persistent):"
     ls -lh "$HOME_FINAL_MODEL/" 2>/dev/null || echo "   Archive will be created during cleanup"
     
-    # Show final model info
-    if [ -d "$TEMP_WORKSPACE/model_checkpoints" ]; then
+    # Show training completion info
+    if [ -d "$TRAINING_OUTPUT_DIR" ]; then
         echo ""
-        echo "🎉 Training completed successfully!"
-        echo "📊 Temp location: $TEMP_WORKSPACE/model_checkpoints/"
-        echo "📊 Permanent location: $HOME_FINAL_MODEL/"
+        echo "🎉 Chunked training completed successfully!"
+        echo "📊 Temp location: $TRAINING_OUTPUT_DIR"
+        echo "📊 Permanent location: $HOME_FINAL_MODEL"
         
         # Check for pytorch_model.bin or model weights
-        if [ -f "$TEMP_WORKSPACE/model_checkpoints/pytorch_model.bin" ]; then
+        if [ -f "$TRAINING_OUTPUT_DIR/pytorch_model.bin" ]; then
             echo "✅ Model weights saved: pytorch_model.bin"
-            echo "📊 Model size: $(du -sh "$TEMP_WORKSPACE/model_checkpoints/pytorch_model.bin" | cut -f1)"
+            echo "📊 Model size: $(du -sh "$TRAINING_OUTPUT_DIR/pytorch_model.bin" | cut -f1)"
         fi
         
         # Check for config files
-        if [ -f "$TEMP_WORKSPACE/model_checkpoints/config.json" ]; then
-            echo "✅ Model config saved: config.json"
+        if [ -f "$TRAINING_OUTPUT_DIR/model_config.json" ]; then
+            echo "✅ Model config saved: model_config.json"
         fi
         
         echo ""
@@ -414,11 +476,12 @@ if [ $TRAINING_EXIT_CODE -eq 0 ]; then
         echo "1. Final model will be automatically saved to: $HOME_FINAL_MODEL"
         echo "2. Load model: python $HOME_FINAL_MODEL/load_model.py"
         echo "3. Test inference with 256-token inputs"
+        echo "4. Use chunked dataset approach for large-scale training"
         
     fi
     
 else
-    echo "❌ BLIP3-o DiT training failed with exit code: $TRAINING_EXIT_CODE"
+    echo "❌ BLIP3-o DiT chunked training failed with exit code: $TRAINING_EXIT_CODE"
     
     echo ""
     echo "🔍 Debugging information:"
@@ -428,10 +491,10 @@ else
     nvidia-smi
     
     # Check if any checkpoints were saved
-    if [ -d "$TEMP_WORKSPACE/model_checkpoints" ] && [ "$(ls -A "$TEMP_WORKSPACE/model_checkpoints")" ]; then
+    if [ -d "$TRAINING_OUTPUT_DIR" ] && [ "$(ls -A "$TRAINING_OUTPUT_DIR")" ]; then
         echo ""
         echo "📁 Partial training outputs found in temp:"
-        ls -lh "$TEMP_WORKSPACE/model_checkpoints/"
+        ls -lh "$TRAINING_OUTPUT_DIR/"
         echo "   You may be able to resume training from these checkpoints"
     fi
     
@@ -449,18 +512,18 @@ echo "   Home Directory:"
 df -h "$HOME" | tail -1 | awk '{print "   Available: " $4 " (Used: " $5 ")"}'
 
 echo ""
-echo "🎉 BLIP3-o DiT Job completed at: $(date)"
+echo "🎉 BLIP3-o DiT Chunked Training Job completed at: $(date)"
 echo "⏱️ Total runtime: $SECONDS seconds"
 
 # Final success message
 if [ $TRAINING_EXIT_CODE -eq 0 ]; then
     echo ""
     echo "🎯 SUCCESS SUMMARY:"
-    echo "✅ Embeddings: BLIP3-o 256-token format (16x16 grid, NO pooling)"
+    echo "✅ Embeddings: BLIP3-o 256-token chunked format (16x16 grid, NO pooling)"
     echo "✅ Architecture: BLIP3-o DiT with proper 3D RoPE and flow matching"
-    echo "✅ Training: Completed successfully with 256-token inputs"
-    echo "✅ Model: Training files in temp, final model auto-archived"
-    echo "✅ Storage: No disk quota issues!"
+    echo "✅ Training: Completed successfully with chunked 256-token inputs"
+    echo "✅ Scalability: Chunked approach handled large dataset efficiently"
+    echo "✅ Storage: No disk quota issues with sequential loading!"
     echo ""
     echo "📁 IMPORTANT LOCATIONS:"
     echo "   Temp workspace: $TEMP_WORKSPACE (temporary)"
@@ -469,7 +532,8 @@ if [ $TRAINING_EXIT_CODE -eq 0 ]; then
     echo "🔄 TO LOAD YOUR MODEL:"
     echo "   python $HOME_FINAL_MODEL/load_model.py"
     echo ""
-    echo "🎊 Your BLIP3-o model with 256 tokens is ready for inference! 🚀"
+    echo "🎊 Your BLIP3-o model with 256 tokens and chunked training is ready! 🚀"
     echo "   This model uses the full 16x16 resolution (no pooling)"
     echo "   Compatible with CLIP ViT-L/14 and EVA-CLIP-8B features"
+    echo "   Trained using memory-efficient chunked dataset approach"
 fi

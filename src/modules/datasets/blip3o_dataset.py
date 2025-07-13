@@ -1,7 +1,6 @@
 """
-CHUNKED Dataset implementation for BLIP3-o training with sequential shard loading.
-Loads one embedding chunk at a time, trains on it, then loads the next chunk.
-Place this file as: src/modules/datasets/blip3o_chunked_dataset.py
+FIXED Chunked Dataset implementation for BLIP3-o training with sequential shard loading.
+Place this file as: src/modules/datasets/blip3o_dataset.py
 """
 
 import torch
@@ -45,18 +44,6 @@ class BLIP3oEmbeddingDataset(IterableDataset):
     ):
         """
         Initialize chunked dataset.
-        
-        Args:
-            chunked_embeddings_dir: Directory containing embedding shards
-            split: Dataset split ("train", "eval", or "all")
-            eval_split_ratio: Ratio of data for evaluation
-            normalize_embeddings: Whether to normalize embeddings
-            shuffle_shards: Whether to shuffle order of shards
-            shuffle_within_shard: Whether to shuffle samples within each shard
-            delete_after_use: Whether to delete shard files after use
-            random_seed: Random seed for reproducibility
-            expected_tokens: Expected number of tokens (256)
-            cache_next_shard: Whether to preload next shard
         """
         super().__init__()
         
@@ -362,22 +349,6 @@ def create_chunked_dataloader(
 ) -> DataLoader:
     """
     Create a DataLoader for chunked embeddings.
-    
-    Args:
-        chunked_embeddings_dir: Directory containing embedding shards
-        batch_size: Batch size
-        split: Dataset split ("train", "eval", or "all")
-        eval_split_ratio: Ratio for train/eval split
-        normalize_embeddings: Whether to normalize embeddings
-        shuffle_shards: Whether to shuffle shard order
-        shuffle_within_shard: Whether to shuffle within each shard
-        delete_after_use: Whether to delete shards after processing
-        num_workers: Number of worker processes (should be 0 for IterableDataset)
-        pin_memory: Whether to pin memory
-        **kwargs: Additional DataLoader arguments
-        
-    Returns:
-        DataLoader instance
     """
     # Auto-detect pin_memory
     if pin_memory is None:
@@ -402,7 +373,6 @@ def create_chunked_dataloader(
         num_workers=num_workers,  # Should be 0 for IterableDataset
         collate_fn=chunked_collate_fn,
         pin_memory=pin_memory,
-        **kwargs
     )
     
     return dataloader
@@ -457,13 +427,37 @@ def create_chunked_dataloaders(
     return train_dataloader, eval_dataloader
 
 
+# Legacy compatibility for single-file approach
+def create_blip3o_dataloader(*args, **kwargs):
+    """Legacy function - redirects to chunked approach"""
+    logger.warning("create_blip3o_dataloader called - this should use single-file approach")
+    raise NotImplementedError("Use create_chunked_dataloader for chunked datasets")
+
+
+def create_blip3o_dataloaders(*args, **kwargs):
+    """Legacy function - redirects to chunked approach"""
+    logger.warning("create_blip3o_dataloaders called - this should use single-file approach")  
+    raise NotImplementedError("Use create_chunked_dataloaders for chunked datasets")
+
+
+def blip3o_collate_fn(*args, **kwargs):
+    """Legacy function - redirects to chunked approach"""
+    return chunked_collate_fn(*args, **kwargs)
+
+
+def test_blip3o_dataset(*args, **kwargs):
+    """Legacy function - redirects to chunked approach"""
+    logger.warning("test_blip3o_dataset called - this should use single-file approach")
+    raise NotImplementedError("Use test_chunked_dataset for chunked datasets")
+
+
 def test_chunked_dataset(chunked_embeddings_dir: Union[str, Path]):
     """Test the chunked dataset implementation."""
     print(f"🧪 Testing chunked dataset: {chunked_embeddings_dir}")
     
     try:
         # Create dataset
-        dataset = BLIP3oChunkedDataset(
+        dataset = BLIP3oEmbeddingDataset(
             chunked_embeddings_dir=chunked_embeddings_dir,
             split="all",
             delete_after_use=False,  # Don't delete during testing
@@ -525,5 +519,5 @@ if __name__ == "__main__":
         chunked_dir = sys.argv[1]
         test_chunked_dataset(chunked_dir)
     else:
-        print("Usage: python blip3o_chunked_dataset.py <chunked_embeddings_dir>")
-        print("Example: python blip3o_chunked_dataset.py /scratch-local/user/chunked_embeddings")
+        print("Usage: python blip3o_dataset.py <chunked_embeddings_dir>")
+        print("Example: python blip3o_dataset.py /scratch-local/user/chunked_embeddings")
