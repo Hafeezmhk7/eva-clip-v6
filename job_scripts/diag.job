@@ -1,0 +1,92 @@
+#!/bin/bash
+# Snellius Diagnostic Script
+# Run this to check available partitions and resources
+
+echo "🔍 SNELLIUS DIAGNOSTIC REPORT"
+echo "=" * 50
+
+echo ""
+echo "📊 Available Partitions:"
+sinfo -s
+
+echo ""
+echo "🎮 GPU Partitions Detailed:"
+sinfo -p gpu_h100,gpu_a100,gpu,gpu_mig -o "%.10P %.5a %.10l %.6D %.6t %N" 2>/dev/null || echo "Some partitions may not exist"
+
+echo ""
+echo "👤 Your Account Access:"
+sacctmgr show user $USER -s | grep -E "(User|Account|Partition)"
+
+echo ""
+echo "💰 Your Budget Status:"
+accinfo --product gpu 2>/dev/null || echo "Could not check GPU budget"
+
+echo ""
+echo "🔄 Current Queue Status:"
+squeue -u $USER
+
+echo ""
+echo "🎯 Node States by Partition:"
+echo "GPU_H100:"
+sinfo -p gpu_h100 -N -o "%.8N %.6t %.4c %.8z %.6m %.8G" 2>/dev/null || echo "  gpu_h100 partition not found or no access"
+
+echo ""
+echo "GPU_A100:"
+sinfo -p gpu_a100 -N -o "%.8N %.6t %.4c %.8z %.6m %.8G" 2>/dev/null || echo "  gpu_a100 partition not found or no access"
+
+echo ""
+echo "GPU:"
+sinfo -p gpu -N -o "%.8N %.6t %.4c %.8z %.6m %.8G" 2>/dev/null || echo "  gpu partition not found or no access"
+
+echo ""
+echo "GPU_MIG:"
+sinfo -p gpu_mig -N -o "%.8N %.6t %.4c %.8z %.6m %.8G" 2>/dev/null || echo "  gpu_mig partition not found or no access"
+
+echo ""
+echo "🔧 Testing Small Job Submission (dry run):"
+echo "Testing gpu_h100 partition:"
+sbatch --test-only --partition=gpu_h100 --gpus=1 --time=00:10:00 <<EOF 2>/dev/null && echo "  ✅ gpu_h100 accessible" || echo "  ❌ gpu_h100 not accessible"
+#!/bin/bash
+#SBATCH --job-name=test
+echo "test"
+EOF
+
+echo ""
+echo "Testing gpu_a100 partition:"
+sbatch --test-only --partition=gpu_a100 --gpus=1 --time=00:10:00 <<EOF 2>/dev/null && echo "  ✅ gpu_a100 accessible" || echo "  ❌ gpu_a100 not accessible"
+#!/bin/bash
+#SBATCH --job-name=test
+echo "test"
+EOF
+
+echo ""
+echo "Testing gpu partition:"
+sbatch --test-only --partition=gpu --gpus=1 --time=00:10:00 <<EOF 2>/dev/null && echo "  ✅ gpu accessible" || echo "  ❌ gpu not accessible"
+#!/bin/bash
+#SBATCH --job-name=test
+echo "test"
+EOF
+
+echo ""
+echo "Testing gpu_mig partition:"
+sbatch --test-only --partition=gpu_mig --gpus=1 --time=00:10:00 <<EOF 2>/dev/null && echo "  ✅ gpu_mig accessible" || echo "  ❌ gpu_mig not accessible"
+#!/bin/bash
+#SBATCH --job-name=test
+echo "test"
+EOF
+
+echo ""
+echo "📋 RECOMMENDATIONS:"
+echo "Based on the results above:"
+echo "1. Use partitions marked with ✅"
+echo "2. Check your budget if all partitions show ❌"
+echo "3. Try gpu_mig first (cheapest option)"
+echo "4. Use gpu_a100 if you need more memory"
+echo "5. Only use gpu_h100 if specifically needed (most expensive)"
+
+echo ""
+echo "🚀 NEXT STEPS:"
+echo "1. Run: chmod +x diagnostic.sh && ./diagnostic.sh"
+echo "2. Use the working partition in your job script"
+echo "3. Start with 1-2 GPUs instead of 4"
+echo "4. Check if H100 access needs special permission"
