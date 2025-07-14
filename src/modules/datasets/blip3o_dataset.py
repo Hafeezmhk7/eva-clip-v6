@@ -1,6 +1,6 @@
 """
 FIXED Chunked Dataset implementation for BLIP3-o training with sequential shard loading.
-Place this file as: src/modules/datasets/blip3o_dataset.py
+FIXED: Better shard file management and existence checking.
 """
 
 import torch
@@ -20,13 +20,14 @@ logger = logging.getLogger(__name__)
 
 class BLIP3oEmbeddingDataset(IterableDataset):
     """
-    Chunked dataset for BLIP3-o training that loads one shard at a time.
+    FIXED Chunked dataset for BLIP3-o training that loads one shard at a time.
     
     This dataset:
     1. Loads embedding shards sequentially
     2. Provides samples from current shard
     3. Automatically moves to next shard when current is exhausted
     4. Optionally deletes processed shards to save disk space
+    5. FIXED: Better file existence checking and error handling
     """
     
     def __init__(
@@ -101,7 +102,7 @@ class BLIP3oEmbeddingDataset(IterableDataset):
         logger.info(f"Loaded manifest: {self.manifest['total_shards']} shards, {self.estimated_total_samples:,} samples")
     
     def _prepare_shard_list(self):
-        """Prepare the list of shard files to process."""
+        """FIXED: Prepare the list of shard files to process with better validation."""
         # Find all shard files
         shard_pattern = "embeddings_shard_*.pkl"
         all_shard_files = list(self.chunked_embeddings_dir.glob(shard_pattern))
@@ -109,6 +110,23 @@ class BLIP3oEmbeddingDataset(IterableDataset):
         
         if not all_shard_files:
             raise FileNotFoundError(f"No shard files found in {self.chunked_embeddings_dir}")
+        
+        logger.info(f"Found {len(all_shard_files)} shard files:")
+        for shard_file in all_shard_files:
+            logger.info(f"  {shard_file.name} ({'EXISTS' if shard_file.exists() else 'MISSING'})")
+        
+        # FIXED: Filter out non-existent files
+        existing_shard_files = [f for f in all_shard_files if f.exists()]
+        if len(existing_shard_files) != len(all_shard_files):
+            missing_files = [f for f in all_shard_files if not f.exists()]
+            logger.warning(f"Some shard files are missing:")
+            for missing_file in missing_files:
+                logger.warning(f"  Missing: {missing_file}")
+            logger.warning(f"Proceeding with {len(existing_shard_files)} existing files")
+            all_shard_files = existing_shard_files
+        
+        if not all_shard_files:
+            raise FileNotFoundError(f"No existing shard files found in {self.chunked_embeddings_dir}")
         
         # Split shards for train/eval if needed
         if self.split in ["train", "eval"] and self.eval_split_ratio > 0:
@@ -207,17 +225,22 @@ class BLIP3oEmbeddingDataset(IterableDataset):
         self.current_sample_idx = 0
     
     def _load_next_shard(self):
-        """Load the next shard and prepare it."""
+        """FIXED: Load the next shard and prepare it with better error handling."""
         # Clean up current shard
         if self.current_shard_data is not None:
-            # Delete previous shard file if requested
-            if self.delete_after_use and self.current_shard_idx > 0:
-                prev_shard_path = self.shard_files[self.current_shard_idx - 1]
+            # Delete previous shard file if requested (and not the first iteration)
+            if self.delete_after_use and self.shards_processed > 0:
                 try:
-                    prev_shard_path.unlink()
-                    logger.debug(f"Deleted processed shard: {prev_shard_path}")
+                    prev_shard_idx = self.current_shard_idx - 1
+                    if 0 <= prev_shard_idx < len(self.shard_files):
+                        prev_shard_path = self.shard_files[prev_shard_idx]
+                        if prev_shard_path.exists():
+                            prev_shard_path.unlink()
+                            logger.debug(f"Deleted processed shard: {prev_shard_path}")
+                        else:
+                            logger.debug(f"Previous shard already deleted: {prev_shard_path}")
                 except Exception as e:
-                    logger.warning(f"Failed to delete shard {prev_shard_path}: {e}")
+                    logger.warning(f"Failed to delete previous shard: {e}")
             
             # Clear memory
             del self.current_shard_data
@@ -225,6 +248,7 @@ class BLIP3oEmbeddingDataset(IterableDataset):
         
         # Check if we have more shards
         if self.current_shard_idx >= len(self.shard_files):
+            logger.info("No more shards to process")
             self.current_shard_data = None
             return False
         
@@ -232,10 +256,24 @@ class BLIP3oEmbeddingDataset(IterableDataset):
         if self.next_shard_data is not None:
             self.current_shard_data = self.next_shard_data
             self.next_shard_data = None
+            logger.debug("Using cached next shard")
         else:
-            # Load current shard
+            # Load current shard with error handling
             shard_path = self.shard_files[self.current_shard_idx]
-            self.current_shard_data = self._load_shard(shard_path)
+            
+            # FIXED: Check if shard file exists before trying to load
+            if not shard_path.exists():
+                logger.error(f"Shard file does not exist: {shard_path}")
+                self.current_shard_idx += 1
+                return self._load_next_shard()  # Try next shard recursively
+            
+            try:
+                self.current_shard_data = self._load_shard(shard_path)
+                logger.debug(f"Loaded current shard: {shard_path}")
+            except Exception as e:
+                logger.error(f"Failed to load shard {shard_path}: {e}")
+                self.current_shard_idx += 1
+                return self._load_next_shard()  # Try next shard
         
         # Prepare samples
         self._prepare_current_shard_samples()
@@ -244,8 +282,12 @@ class BLIP3oEmbeddingDataset(IterableDataset):
         if self.cache_next_shard and (self.current_shard_idx + 1) < len(self.shard_files):
             try:
                 next_shard_path = self.shard_files[self.current_shard_idx + 1]
-                self.next_shard_data = self._load_shard(next_shard_path)
-                logger.debug(f"Cached next shard: {next_shard_path}")
+                if next_shard_path.exists():
+                    self.next_shard_data = self._load_shard(next_shard_path)
+                    logger.debug(f"Cached next shard: {next_shard_path}")
+                else:
+                    logger.warning(f"Next shard file does not exist: {next_shard_path}")
+                    self.next_shard_data = None
             except Exception as e:
                 logger.warning(f"Failed to cache next shard: {e}")
                 self.next_shard_data = None
@@ -269,6 +311,7 @@ class BLIP3oEmbeddingDataset(IterableDataset):
         
         # Load first shard
         if not self._load_next_shard():
+            logger.warning("No shards could be loaded")
             return
         
         # Iterate through all shards and samples

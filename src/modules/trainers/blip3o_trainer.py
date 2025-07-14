@@ -1,7 +1,6 @@
 """
 Custom HuggingFace Trainer for BLIP3-o DiT training with flow matching.
-Implements exact BLIP3-o training methodology with flow matching loss.
-FIXED: Updated for compatibility with newer transformers versions.
+FIXED: Updated parameter validation and compatibility issues.
 """
 
 import torch
@@ -105,10 +104,11 @@ class BLIP3oTrainer(Trainer):
         model: BLIP3oDiTModel,
         inputs: Dict[str, Any],
         return_outputs: bool = False,
-        num_items_in_batch: Optional[int] = None,  # NEW: Add this parameter for newer transformers compatibility
+        num_items_in_batch: Optional[int] = None,  # FIXED: Add this parameter for newer transformers compatibility
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, Any]]:
         """
         Compute flow matching loss for BLIP3-o training.
+        FIXED: Added num_items_in_batch parameter for compatibility.
         
         This implements the exact BLIP3-o flow matching training procedure:
         1. Extract EVA-CLIP conditioning and CLIP targets
@@ -554,7 +554,7 @@ def create_blip3o_training_args(
 ) -> TrainingArguments:
     """
     Create TrainingArguments optimized for BLIP3-o DiT training.
-    FIXED: Updated for compatibility with newer transformers versions.
+    FIXED: Automatic parameter validation to ensure compatibility.
     
     Args:
         output_dir: Output directory for checkpoints and logs
@@ -580,6 +580,15 @@ def create_blip3o_training_args(
     Returns:
         TrainingArguments configured for BLIP3-o training
     """
+    # FIXED: Ensure save_steps is compatible with eval_steps
+    if load_best_model_at_end and eval_steps > 0:
+        # Adjust save_steps to be a multiple of eval_steps
+        if save_steps % eval_steps != 0:
+            # Round save_steps to nearest multiple of eval_steps
+            adjusted_save_steps = ((save_steps // eval_steps) + 1) * eval_steps
+            logger.warning(f"Adjusting save_steps from {save_steps} to {adjusted_save_steps} to be compatible with eval_steps ({eval_steps})")
+            save_steps = adjusted_save_steps
+    
     # Determine evaluation strategy based on eval_steps
     if eval_steps > 0:
         eval_strategy = "steps"
@@ -587,6 +596,8 @@ def create_blip3o_training_args(
     else:
         eval_strategy = "no"
         eval_steps_value = None
+        load_best_model_at_end = False  # Can't load best model if no evaluation
+        logger.info("Evaluation disabled, setting load_best_model_at_end=False")
     
     return TrainingArguments(
         output_dir=output_dir,
