@@ -692,12 +692,25 @@ def main():
         
         # Create dummy datasets for trainer compatibility
         train_dataset = DummyDataset(train_samples)
-        eval_dataset = DummyDataset(eval_samples) if eval_dataloader else None
+        eval_dataset = DummyDataset(eval_samples) if eval_dataloader is not None else None
         
+        # Calculate max_steps for IterableDataset (required since dataloader has no length)
+        steps_per_epoch = (train_samples + args.batch_size - 1) // args.batch_size
+        max_steps = steps_per_epoch * args.num_epochs
+        
+        # Adjust for gradient accumulation
+        max_steps = max_steps // args.gradient_accumulation_steps
+        
+        logger.info(f"Calculated training steps:")
+        logger.info(f"  Steps per epoch: {steps_per_epoch}")
+        logger.info(f"  Total epochs: {args.num_epochs}")
+        logger.info(f"  Max steps: {max_steps}")
+
         # Create training arguments
         training_args = create_blip3o_training_args(
             output_dir=str(temp_checkpoint_dir),
             num_train_epochs=args.num_epochs,
+            max_steps=max_steps,  # Required for IterableDataset
             per_device_train_batch_size=args.batch_size,
             per_device_eval_batch_size=args.eval_batch_size,
             learning_rate=args.learning_rate,

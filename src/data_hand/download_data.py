@@ -1,7 +1,13 @@
 """
-UPDATED Download BLIP3o-Pretrain-Short-Caption dataset with Temp Manager
-Supports multiple shards and structured temp directory storage
+FIXED Download BLIP3o-Pretrain-Short-Caption dataset with better Snellius support
+Supports multiple shards and structured temp directory storage with quota management
 Place this file in: src/data_hand/download_data.py
+
+FIXES:
+- Better disk space checking before download
+- Proper temp manager integration
+- Avoids home directory quota issues
+- Better error handling for disk quota exceeded
 """
 
 import os
@@ -10,6 +16,10 @@ from pathlib import Path
 from huggingface_hub import hf_hub_download, list_repo_files
 from tqdm import tqdm
 import argparse
+import shutil
+import logging
+
+logger = logging.getLogger(__name__)
 
 def get_project_root():
     """Get the project root directory"""
@@ -22,13 +32,14 @@ def setup_temp_manager():
     try:
         # Add utils to path
         project_root = get_project_root()
-        sys.path.insert(0, str(project_root / "src" / "utils"))
+        sys.path.insert(0, str(project_root / "src" / "modules" / "utils"))
         
         from temp_manager import setup_snellius_environment
         manager = setup_snellius_environment("blip3o_workspace")
         return manager
-    except ImportError:
-        print("⚠️  Temp manager not available, using fallback directories")
+    except ImportError as e:
+        print(f"⚠️  Temp manager not available: {e}")
+        print("Using fallback directories")
         return None
 
 def get_temp_directory():
@@ -38,21 +49,78 @@ def get_temp_directory():
     if temp_manager:
         return temp_manager.get_datasets_dir()
     
+    # FIXED: Better fallback to proper Snellius directories
+    # First try environment variables set by job script
+    if "BLIP3O_DATASETS" in os.environ:
+        temp_dir = Path(os.environ["BLIP3O_DATASETS"])
+        print(f"📁 Using BLIP3O_DATASETS: {temp_dir}")
+        return temp_dir
+    
+    # Try Snellius scratch directories
+    user = os.environ.get("USER", "user")
+    
+    # Check for scratch-shared
+    if Path("/scratch-shared").exists():
+        temp_dir = Path("/scratch-shared") / user / "blip3o_workspace" / "datasets"
+        print(f"📁 Using scratch-shared: {temp_dir}")
+        return temp_dir
+    
     # Fallback to environment variables
     if "TMPDIR" in os.environ:
         temp_dir = Path(os.environ["TMPDIR"]) / "blip3o_data"
+        print(f"📁 Using TMPDIR: {temp_dir}")
     elif "SCRATCH_SHARED" in os.environ:
-        user = os.environ.get("USER", "user")
         temp_dir = Path(os.environ["SCRATCH_SHARED"]) / user / "blip3o_data"
+        print(f"📁 Using SCRATCH_SHARED env var: {temp_dir}")
     else:
-        # Fallback to project data directory
-        temp_dir = get_project_root() / "data"
+        # AVOID home directory to prevent quota issues
+        temp_dir = Path("/tmp") / user / "blip3o_data"
+        print(f"⚠️  Using /tmp fallback: {temp_dir}")
+        print("⚠️  Consider setting proper scratch directories")
     
     return temp_dir
 
+def check_disk_space(target_dir: Path, required_gb: float) -> bool:
+    """Check if there's enough disk space for download."""
+    try:
+        # Get available space
+        total, used, free = shutil.disk_usage(target_dir.parent)
+        free_gb = free / (1024**3)
+        total_gb = total / (1024**3)
+        used_percent = (used / total) * 100
+        
+        print(f"💾 Disk space check for {target_dir.parent}:")
+        print(f"   Total: {total_gb:.1f} GB")
+        print(f"   Used: {used_percent:.1f}%")
+        print(f"   Free: {free_gb:.1f} GB")
+        print(f"   Required: {required_gb:.1f} GB")
+        
+        if free_gb < required_gb:
+            print(f"❌ Insufficient disk space!")
+            print(f"   Need {required_gb:.1f} GB, but only {free_gb:.1f} GB available")
+            return False
+        
+        # Warning if less than 2x required space
+        if free_gb < required_gb * 2:
+            print(f"⚠️  Low disk space warning!")
+            print(f"   Only {free_gb:.1f} GB available for {required_gb:.1f} GB download")
+            print(f"   Consider using fewer shards or cleaning up space")
+        
+        return True
+        
+    except Exception as e:
+        print(f"⚠️  Could not check disk space: {e}")
+        return True  # Continue anyway
+
+def estimate_download_size(num_shards: int) -> float:
+    """Estimate download size in GB based on number of shards."""
+    # Based on empirical data: ~1.2 GB per shard on average
+    estimated_gb = num_shards * 1.2
+    return estimated_gb
+
 def download_blip3o_shards(shard_indices=None, data_dir=None, force_download=False, max_shards=35):
     """
-    Download multiple shards of BLIP3o-Pretrain-Short-Caption dataset using temp manager
+    FIXED: Download multiple shards with better disk space management
     
     Args:
         shard_indices (list): List of shard indices to download (0-11). If None, downloads all.
@@ -80,7 +148,17 @@ def download_blip3o_shards(shard_indices=None, data_dir=None, force_download=Fal
         print(f"📁 Using specified directory: {data_dir}")
     
     # Create data directory
-    data_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        data_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        if "Disk quota exceeded" in str(e):
+            print(f"❌ DISK QUOTA EXCEEDED when creating directory!")
+            print(f"   Target directory: {data_dir}")
+            print(f"   Consider using scratch directories instead of home")
+            raise
+        else:
+            print(f"❌ Error creating directory {data_dir}: {e}")
+            raise
     
     # Default shard selection
     if shard_indices is None:
@@ -96,6 +174,18 @@ def download_blip3o_shards(shard_indices=None, data_dir=None, force_download=Fal
     if not shard_indices:
         raise ValueError(f"No valid shard indices provided. Must be in range 0-{max_shards-1}")
     
+    # FIXED: Check disk space before starting download
+    estimated_size_gb = estimate_download_size(len(shard_indices))
+    if not check_disk_space(data_dir, estimated_size_gb):
+        # Try to suggest alternatives
+        print(f"\n💡 Suggestions to fix disk space issue:")
+        print(f"   1. Use fewer shards: --shards 0 1 2 3 4 (for 5 shards)")
+        print(f"   2. Clean up existing files in {data_dir}")
+        print(f"   3. Use a different directory with more space")
+        if temp_manager:
+            print(f"   4. Check temp manager status for disk usage")
+        raise RuntimeError("Insufficient disk space for download")
+    
     # Dataset info
     repo_id = "BLIP3o/BLIP3o-Pretrain-Short-Caption"
     
@@ -104,6 +194,7 @@ def download_blip3o_shards(shard_indices=None, data_dir=None, force_download=Fal
     print(f"Shards to download: {shard_indices}")
     print(f"Destination: {data_dir}")
     print(f"Total shards requested: {len(shard_indices)}")
+    print(f"Estimated size: {estimated_size_gb:.1f} GB")
     
     if temp_manager:
         print(f"Storage type: Structured temp management")
@@ -120,6 +211,7 @@ def download_blip3o_shards(shard_indices=None, data_dir=None, force_download=Fal
     
     downloaded_files = []
     total_size_gb = 0
+    failed_downloads = []
     
     for shard_idx in shard_indices:
         shard_filename = f"{shard_idx:05d}.tar"
@@ -136,6 +228,16 @@ def download_blip3o_shards(shard_indices=None, data_dir=None, force_download=Fal
             total_size_gb += file_size_gb
             continue
         
+        # Check disk space before each download
+        remaining_shards = len(shard_indices) - len(downloaded_files) - len(failed_downloads)
+        estimated_remaining_gb = remaining_shards * 1.2
+        
+        if not check_disk_space(data_dir, estimated_remaining_gb):
+            print(f"⚠️  Stopping download due to insufficient disk space")
+            print(f"   Successfully downloaded {len(downloaded_files)} shards")
+            print(f"   Remaining shards would need ~{estimated_remaining_gb:.1f} GB")
+            break
+        
         try:
             print(f"🔄 Downloading {shard_filename}...")
             
@@ -146,6 +248,7 @@ def download_blip3o_shards(shard_indices=None, data_dir=None, force_download=Fal
                 repo_type="dataset",
                 local_dir=str(data_dir),
                 local_dir_use_symlinks=False,  # Download actual files, not symlinks
+                resume_download=True,  # Resume partial downloads
             )
             
             # Verify download
@@ -163,18 +266,33 @@ def download_blip3o_shards(shard_indices=None, data_dir=None, force_download=Fal
                 print(f"   Estimated samples: ~{estimated_samples:,}")
             else:
                 print(f"❌ Download failed: File not found at {downloaded_path}")
+                failed_downloads.append(shard_idx)
                 
         except Exception as e:
             print(f"❌ Download error for shard {shard_idx}: {e}")
-            continue
+            
+            # Check if it's a disk quota error
+            if "Disk quota exceeded" in str(e) or "No space left" in str(e):
+                print(f"💾 DISK QUOTA/SPACE ERROR!")
+                print(f"   Downloaded {len(downloaded_files)} shards successfully")
+                print(f"   Total downloaded: {total_size_gb:.2f} GB")
+                print(f"   Consider using fewer shards or cleaning up space")
+                break
+            else:
+                failed_downloads.append(shard_idx)
+                continue
         
         # Show disk usage update if using temp manager
         if temp_manager and shard_idx % 5 == 0:  # Every 5 downloads
-            usage = temp_manager.get_disk_usage()
-            datasets_usage = usage.get('datasets', {})
-            if datasets_usage.get('exists', False):
-                current_size = datasets_usage.get('total_size_gb', 0)
-                print(f"   💾 Current datasets storage: {current_size:.2f} GB")
+            try:
+                usage = temp_manager.get_disk_usage()
+                datasets_usage = usage.get('datasets', {})
+                if datasets_usage.get('exists', False):
+                    current_size = datasets_usage.get('total_size_gb', 0)
+                    print(f"   💾 Current datasets storage: {current_size:.2f} GB")
+            except Exception as e:
+                # Don't fail the whole download for status check issues
+                pass
     
     print("\n" + "=" * 70)
     print(f"📊 DOWNLOAD SUMMARY:")
@@ -182,6 +300,10 @@ def download_blip3o_shards(shard_indices=None, data_dir=None, force_download=Fal
     print(f"   Total size: {total_size_gb:.2f} GB")
     print(f"   Storage location: {data_dir}")
     print(f"   Estimated total samples: ~{int(total_size_gb * 400000):,}")
+    
+    if failed_downloads:
+        print(f"   Failed downloads: {len(failed_downloads)} shards")
+        print(f"   Failed shard indices: {failed_downloads}")
     
     if temp_manager:
         print(f"\n🗂️  TEMP MANAGER INFO:")
@@ -191,12 +313,16 @@ def download_blip3o_shards(shard_indices=None, data_dir=None, force_download=Fal
         print(f"   Workspace: {temp_manager.persistent_workspace}")
         
         # Show final disk usage
-        usage = temp_manager.get_disk_usage()
-        for name, info in usage.items():
-            if info.get('exists', False) and 'datasets' in name:
-                size_gb = info.get('total_size_gb', 0)
-                file_count = info.get('file_count', 0)
-                print(f"   {name}: {size_gb:.2f} GB ({file_count} files)")
+        try:
+            usage = temp_manager.get_disk_usage()
+            for name, info in usage.items():
+                if info.get('exists', False) and 'datasets' in name:
+                    size_gb = info.get('total_size_gb', 0)
+                    file_count = info.get('file_count', 0)
+                    print(f"   {name}: {size_gb:.2f} GB ({file_count} files)")
+        except Exception as e:
+            # Don't fail for status issues
+            pass
     
     if downloaded_files:
         print(f"\n✅ Ready for embedding extraction!")
@@ -204,13 +330,20 @@ def download_blip3o_shards(shard_indices=None, data_dir=None, force_download=Fal
         print(f"   Files are in structured temp storage with 14-day retention")
     else:
         print(f"\n❌ No files downloaded successfully")
+        if failed_downloads:
+            print(f"   This is likely due to disk space issues")
+            print(f"   Try downloading fewer shards or cleaning up space")
     
     # Save file list for embedding extraction
-    file_list_path = data_dir / "downloaded_shards.txt"
-    with open(file_list_path, 'w') as f:
-        for file_path in downloaded_files:
-            f.write(f"{file_path}\n")
-    print(f"\n📝 File list saved to: {file_list_path}")
+    if downloaded_files:
+        try:
+            file_list_path = data_dir / "downloaded_shards.txt"
+            with open(file_list_path, 'w') as f:
+                for file_path in downloaded_files:
+                    f.write(f"{file_path}\n")
+            print(f"\n📝 File list saved to: {file_list_path}")
+        except Exception as e:
+            print(f"⚠️  Could not save file list: {e}")
     
     return downloaded_files
 
@@ -268,6 +401,16 @@ def show_temp_info():
     if temp_manager:
         print("\n🗂️  TEMP MANAGER STATUS:")
         temp_manager.print_status()
+        
+        # Show disk quota safety
+        safety = temp_manager.check_disk_quota_safety()
+        print(f"\n🛡️  Disk quota safety: {safety['status']}")
+        if safety['warnings']:
+            for warning in safety['warnings']:
+                print(f"   ⚠️  {warning}")
+        if safety['recommendations']:
+            for rec in safety['recommendations']:
+                print(f"   💡 {rec}")
     else:
         print("\n📁 FALLBACK TEMP DIRECTORIES:")
         temp_dir = get_temp_directory()
@@ -275,16 +418,16 @@ def show_temp_info():
         
         # Check available space if possible
         try:
-            import shutil
             total, used, free = shutil.disk_usage(temp_dir.parent)
             print(f"   Available space: {free / (1024**3):.1f} GB")
+            print(f"   Used: {(used/total)*100:.1f}%")
         except:
             print("   Cannot determine available space")
 
 def main():
     """Main function for command line usage"""
     parser = argparse.ArgumentParser(
-        description="Download BLIP3o-Pretrain-Short-Caption dataset with structured temp management",
+        description="Download BLIP3o-Pretrain-Short-Caption dataset with better disk space management",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -363,61 +506,87 @@ Examples:
     if args.all:
         # Download all available shards (get list first)
         print("⚠️  WARNING: Downloading ALL shards will use significant storage!")
+        
+        # Estimate space needed
+        available_files = list_available_files()
+        estimated_gb = len(available_files) * 1.2
+        print(f"   Estimated space needed: {estimated_gb:.1f} GB")
+        
         response = input("Continue? (y/N): ")
         if response.lower() != 'y':
             print("Cancelled.")
             return
         
-        available_files = list_available_files()
         shard_indices = list(range(len(available_files)))
     else:
         shard_indices = args.shards
     
-    # Estimate space needed if using temp manager
-    temp_manager = setup_temp_manager()
-    if temp_manager:
-        num_shards = len(shard_indices) if shard_indices else 30
-        estimated_gb = num_shards * 1.2  # Rough: 1.2GB per shard
+    # Estimate space needed and warn user
+    if shard_indices:
+        estimated_gb = estimate_download_size(len(shard_indices))
+        print(f"\n💾 SPACE ESTIMATE:")
+        print(f"   Shards to download: {len(shard_indices)}")
+        print(f"   Estimated space needed: {estimated_gb:.1f} GB")
         
-        usage = temp_manager.get_disk_usage()
-        available_info = usage.get('workspace_system', {})
-        available_gb = available_info.get('free_gb', 0)
-        
-        print(f"\n💾 SPACE CHECK:")
-        print(f"   Estimated need: {estimated_gb:.1f} GB")
-        print(f"   Available space: {available_gb:.1f} GB")
-        
-        if available_gb > 0 and estimated_gb > available_gb * 0.8:  # 80% threshold
-            print(f"   ⚠️  WARNING: May not have enough space!")
-            response = input("Continue anyway? (y/N): ")
-            if response.lower() != 'y':
-                print("Cancelled.")
-                return
+        # Check with temp manager
+        temp_manager = setup_temp_manager()
+        if temp_manager:
+            usage = temp_manager.get_disk_usage()
+            
+            # Check workspace space
+            workspace_info = usage.get('workspace_system', {})
+            if workspace_info and 'free_gb' in workspace_info:
+                available_gb = workspace_info['free_gb']
+                print(f"   Available space: {available_gb:.1f} GB")
+                
+                if estimated_gb > available_gb * 0.8:  # 80% threshold
+                    print(f"   ⚠️  WARNING: May not have enough space!")
+                    print(f"   Consider downloading fewer shards")
+                    response = input("Continue anyway? (y/N): ")
+                    if response.lower() != 'y':
+                        print("Cancelled.")
+                        return
     
     # Download the shards
-    downloaded_files = download_blip3o_shards(
-        shard_indices=shard_indices,
-        data_dir=args.data_dir,
-        force_download=args.force
-    )
-    
-    if downloaded_files:
-        print(f"\n🎉 SUCCESS! Downloaded {len(downloaded_files)} shards")
-        print(f"\n📋 Next steps:")
-        print(f"1. Extract embeddings: python src/modules/extract_embeddings_g.py")
-        print(f"2. Start training with structured temp management")
-        print(f"3. Files are in structured temp storage with proper retention")
+    try:
+        downloaded_files = download_blip3o_shards(
+            shard_indices=shard_indices,
+            data_dir=args.data_dir,
+            force_download=args.force
+        )
         
-        if temp_manager:
-            print(f"\n🗂️  TEMP MANAGER BENEFITS:")
-            print(f"   ✅ Structured storage in persistent workspace")
-            print(f"   ✅ 14-day retention (scratch-shared)")
-            print(f"   ✅ Accessible across different jobs")
-            print(f"   ✅ Automatic disk usage monitoring")
-            print(f"   ✅ Proper cache management")
-        
-    else:
-        print(f"\n❌ Download failed. Please check the error messages above.")
+        if downloaded_files:
+            print(f"\n🎉 SUCCESS! Downloaded {len(downloaded_files)} shards")
+            print(f"\n📋 Next steps:")
+            print(f"1. Extract embeddings: python src/modules/extract_embeddings_g.py")
+            print(f"2. Start training with structured temp management")
+            print(f"3. Files are in structured temp storage with proper retention")
+            
+            temp_manager = setup_temp_manager()
+            if temp_manager:
+                print(f"\n🗂️  TEMP MANAGER BENEFITS:")
+                print(f"   ✅ Structured storage in persistent workspace")
+                print(f"   ✅ 14-day retention (scratch-shared)")
+                print(f"   ✅ Accessible across different jobs")
+                print(f"   ✅ Automatic disk usage monitoring")
+                print(f"   ✅ Proper cache management")
+            
+        else:
+            print(f"\n❌ Download failed. Please check the error messages above.")
+            print(f"   Common issues:")
+            print(f"   • Disk quota exceeded (use scratch directories)")
+            print(f"   • Network issues (try again later)")
+            print(f"   • Insufficient disk space (download fewer shards)")
+            sys.exit(1)
+            
+    except Exception as e:
+        print(f"\n❌ Download failed with error: {e}")
+        if "Disk quota exceeded" in str(e):
+            print(f"\n💡 Disk quota exceeded solutions:")
+            print(f"   1. Use scratch-shared instead of home directory")
+            print(f"   2. Clean up existing files")
+            print(f"   3. Download fewer shards")
+            print(f"   4. Set BLIP3O_DATASETS to a scratch directory")
         sys.exit(1)
 
 if __name__ == "__main__":

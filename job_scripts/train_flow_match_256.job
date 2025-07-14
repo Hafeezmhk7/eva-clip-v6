@@ -20,12 +20,12 @@ echo "User: $(whoami)"
 echo "CUDA Visible Devices: $CUDA_VISIBLE_DEVICES"
 
 # =============================================================================
-# TEMP MANAGER SETUP
+# ENVIRONMENT SETUP
 # =============================================================================
 
 echo ""
-echo "🗂️ STEP 0: Setting up structured temp environment..."
-echo "==================================================="
+echo "🗂️ STEP 0: Setting up Snellius environment..."
+echo "==============================================="
 
 # Load modules
 module purge
@@ -36,35 +36,151 @@ module load CUDA/12.6.0
 # Activate conda environment
 source activate eva_clip_env
 
-# Run Python to initialize temp manager
-python -c "
-import sys
-sys.path.insert(0, 'src/utils')
-from temp_manager import setup_snellius_environment
-manager = setup_snellius_environment('blip3o_workspace')
-manager.setup_model_cache()
-print(f'✅ Temp manager initialized:')
-print(f'   Persistent workspace: {manager.persistent_workspace}')
-print(f'   Job temp: {manager.job_temp}')
-print(f'   Embeddings dir: {manager.get_embeddings_dir()}')
-print(f'   Checkpoints dir: {manager.get_checkpoints_dir()}')
-"
+# CRITICAL: Set up Snellius scratch directories
+export SCRATCH_SHARED="/scratch-shared"
+export SCRATCH_LOCAL="/scratch-local"
 
-echo "✅ Environment setup completed"
+# Set up project directories with proper Snellius paths
+export BLIP3O_USER=$(whoami)
+export BLIP3O_JOB_ID=${SLURM_JOB_ID}
+
+# Persistent workspace (14-day retention on scratch-shared)
+export BLIP3O_WORKSPACE="/scratch-shared/${BLIP3O_USER}/blip3o_workspace"
+export BLIP3O_DATASETS="${BLIP3O_WORKSPACE}/datasets"
+export BLIP3O_EMBEDDINGS="${BLIP3O_WORKSPACE}/embeddings"
+export BLIP3O_CHECKPOINTS="${BLIP3O_WORKSPACE}/checkpoints"
+export BLIP3O_LOGS="${BLIP3O_WORKSPACE}/logs"
+
+# Job-specific temp (deleted after job)
+export BLIP3O_JOB_TEMP="/scratch-local/${BLIP3O_USER}.${BLIP3O_JOB_ID}/blip3o_job_${BLIP3O_JOB_ID}"
+export BLIP3O_CACHE="${BLIP3O_JOB_TEMP}/cache"
+export BLIP3O_WORKING="${BLIP3O_JOB_TEMP}/working"
+export BLIP3O_TEMP_CHECKPOINTS="${BLIP3O_JOB_TEMP}/temp_checkpoints"
+
+# Create all directories
+mkdir -p "${BLIP3O_WORKSPACE}"/{datasets,embeddings,checkpoints,logs,metadata}
+mkdir -p "${BLIP3O_JOB_TEMP}"/{cache,working,temp_checkpoints}
+
+# Redirect model caches to job temp (to avoid home directory quota)
+export TORCH_HOME="${BLIP3O_CACHE}/torch"
+export HF_HOME="${BLIP3O_CACHE}/huggingface"
+export TRANSFORMERS_CACHE="${BLIP3O_CACHE}/transformers"
+export WANDB_DIR="${BLIP3O_LOGS}/wandb"
+
+# Create cache subdirectories
+mkdir -p "${TORCH_HOME}" "${HF_HOME}" "${TRANSFORMERS_CACHE}" "${WANDB_DIR}"
+
+echo "✅ Snellius environment configured:"
+echo "   Persistent workspace: ${BLIP3O_WORKSPACE}"
+echo "   Job temp: ${BLIP3O_JOB_TEMP}"
+echo "   Checkpoints: ${BLIP3O_CHECKPOINTS}"
+echo "   Temp checkpoints: ${BLIP3O_TEMP_CHECKPOINTS}"
+echo "   Cache: ${BLIP3O_CACHE}"
+
+# Check disk space
+echo ""
+echo "💾 Disk space check:"
+df -h /scratch-shared 2>/dev/null || echo "   scratch-shared: Not available"
+df -h /scratch-local 2>/dev/null || echo "   scratch-local: Not available"
+df -h ~ | tail -1 | awk '{print "   Home: " $4 " available (" $5 " used)"}'
 
 # =============================================================================
-# START TRAINING
+# STEP 1: FIND EMBEDDINGS
 # =============================================================================
 
 echo ""
-echo "🚀 STEP 1: Starting training with structured temp management..."
+echo "🔍 STEP 1: Locating embeddings..."
+echo "================================="
+
+# Find the most recent embeddings directory
+EMBEDDINGS_DIR=$(find "${BLIP3O_EMBEDDINGS}" -name "*chunked*256*" -type d | head -1)
+
+if [ -z "$EMBEDDINGS_DIR" ]; then
+    echo "❌ No chunked embeddings directory found in ${BLIP3O_EMBEDDINGS}"
+    echo "Available directories:"
+    ls -la "${BLIP3O_EMBEDDINGS}" 2>/dev/null || true
+    echo ""
+    echo "Please run embedding extraction first:"
+    echo "   sbatch job_scripts/extract_emb_256_chunk.job"
+    exit 1
+fi
+
+echo "✅ Found embeddings directory: $EMBEDDINGS_DIR"
+
+# Validate embeddings
+MANIFEST_FILE="$EMBEDDINGS_DIR/embeddings_manifest.json"
+if [ ! -f "$MANIFEST_FILE" ]; then
+    echo "❌ Manifest file not found: $MANIFEST_FILE"
+    exit 1
+fi
+
+# Show embeddings info
+python -c "
+import json
+try:
+    with open('$MANIFEST_FILE', 'r') as f:
+        manifest = json.load(f)
+    print(f'📊 Embeddings info:')
+    print(f'   Total shards: {manifest[\"total_shards\"]}')
+    print(f'   Total samples: {manifest[\"total_samples\"]:,}')
+    print(f'   Total size: {manifest[\"total_size_mb\"]:.1f} MB')
+    print(f'   Format: {manifest[\"format_version\"]}')
+except Exception as e:
+    print(f'❌ Failed to read manifest: {e}')
+    exit(1)
+"
+
+echo "✅ Embeddings validated"
+
+# =============================================================================
+# STEP 2: SETUP TRAINING DIRECTORIES
+# =============================================================================
+
+echo ""
+echo "📁 STEP 2: Setting up training directories..."
+echo "============================================="
+
+# Create training-specific directories
+TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+TRAINING_NAME="blip3o_256_tokens_${SLURM_JOB_ID}_${TIMESTAMP}"
+
+# Temp checkpoints (for active training)
+TEMP_CHECKPOINT_DIR="${BLIP3O_TEMP_CHECKPOINTS}/${TRAINING_NAME}"
+mkdir -p "$TEMP_CHECKPOINT_DIR"
+
+# Persistent checkpoints (for important saves)
+PERSISTENT_CHECKPOINT_DIR="${BLIP3O_CHECKPOINTS}/${TRAINING_NAME}"
+mkdir -p "$PERSISTENT_CHECKPOINT_DIR"
+
+# Final model in home directory (long-term storage)
+FINAL_MODEL_DIR="${HOME}/models/blip3o_256_tokens_${TIMESTAMP}"
+mkdir -p "$FINAL_MODEL_DIR"
+
+echo "✅ Training directories created:"
+echo "   Temp checkpoints: $TEMP_CHECKPOINT_DIR"
+echo "   Persistent checkpoints: $PERSISTENT_CHECKPOINT_DIR"
+echo "   Final model: $FINAL_MODEL_DIR"
+
+# =============================================================================
+# STEP 3: START TRAINING
+# =============================================================================
+
+echo ""
+echo "🚀 STEP 3: Starting training with structured temp management..."
 echo "==============================================================="
+
+# Set environment variable for temp directory (for compatibility)
+export BLIP3O_TEMP_DIR="${BLIP3O_JOB_TEMP}"
+
+# Generate wandb run name
+WANDB_RUN_NAME="chunked-256-tokens-${SLURM_JOB_ID}-${TIMESTAMP}"
 
 # Run training with auto-discovery of embeddings
 python train_blip3o_dit.py \
   --auto_find_embeddings \
-  --output_dir "./checkpoints/blip3o-dit-temp" \
-  --batch_size 64 \
+  --output_dir "${TEMP_CHECKPOINT_DIR}" \
+  --final_model_name "blip3o_256_tokens_${TIMESTAMP}" \
+  --batch_size 256 \
   --num_epochs 5 \
   --model_dim 512 \
   --num_heads 8 \
@@ -80,8 +196,8 @@ python train_blip3o_dit.py \
   --gradient_checkpointing \
   --normalize_embeddings \
   --delete_after_use \
-  --wandb_project "blip3o-dit-256-tokens-temp" \
-  --wandb_run_name "chunked-256-tokens-$(date +%Y%m%d-%H%M%S)"
+  --wandb_project "blip3o-dit-256-tokens-snellius" \
+  --wandb_run_name "${WANDB_RUN_NAME}"
 
 TRAINING_EXIT_CODE=$?
 
@@ -89,20 +205,145 @@ echo ""
 echo "🎯 TRAINING COMPLETED WITH EXIT CODE: $TRAINING_EXIT_CODE"
 
 # =============================================================================
-# FINAL STEPS
+# STEP 4: SAVE AND ARCHIVE MODEL
 # =============================================================================
 
 if [ $TRAINING_EXIT_CODE -eq 0 ]; then
     echo ""
-    echo "✅ BLIP3-o DiT training completed successfully!"
-    echo ""
-    echo "📁 Model saved to persistent checkpoints directory"
-    echo "📁 Final model archived in home directory"
+    echo "✅ Training completed successfully! Archiving model..."
+    echo "====================================================="
+    
+    # Copy to persistent checkpoints
+    if [ -d "$TEMP_CHECKPOINT_DIR" ] && [ "$(ls -A "$TEMP_CHECKPOINT_DIR")" ]; then
+        echo "📁 Copying to persistent storage..."
+        cp -r "$TEMP_CHECKPOINT_DIR"/* "$PERSISTENT_CHECKPOINT_DIR/"
+        echo "✅ Model saved to persistent checkpoints: $PERSISTENT_CHECKPOINT_DIR"
+    fi
+    
+    # Copy to home directory for long-term storage
+    if [ -d "$FINAL_MODEL_DIR" ] && [ "$(ls -A "$FINAL_MODEL_DIR")" ]; then
+        echo "🏠 Model archived to home directory: $FINAL_MODEL_DIR"
+        
+        # Create loading instructions
+        cat > "$FINAL_MODEL_DIR/README.md" << EOF
+# BLIP3-o DiT Model (256 Tokens)
+
+## Training Information
+- **Date**: $(date -Iseconds)
+- **Job ID**: ${SLURM_JOB_ID}
+- **Approach**: Chunked training with structured temp management
+- **Tokens**: 256 (16x16 grid, NO pooling)
+- **Dimensions**: CLIP=1024, EVA=4096, Hidden=512
+
+## Model Files
+- \`pytorch_model.bin\`: Main model weights
+- \`model_config.json\`: Model configuration
+- \`training_args.json\`: Training configuration
+- \`flow_matching_config.json\`: Flow matching configuration
+
+## Loading the Model
+\`\`\`python
+import sys
+import torch
+from pathlib import Path
+
+# Add project src to path (adjust path as needed)
+project_root = Path("path/to/eva-clip-flow-matching")
+sys.path.insert(0, str(project_root / "src"))
+
+from src.modules.models.blip3o_dit import BLIP3oDiTModel
+from src.modules.config.blip3o_config import BLIP3oDiTConfig
+import json
+
+# Load config
+with open("model_config.json", 'r') as f:
+    config_dict = json.load(f)
+config = BLIP3oDiTConfig(**config_dict)
+
+# Create and load model
+model = BLIP3oDiTModel(config)
+state_dict = torch.load("pytorch_model.bin", map_location='cpu')
+model.load_state_dict(state_dict)
+
+print(f"✅ Model loaded! Parameters: {model.get_num_parameters():,}")
+\`\`\`
+
+## Storage Information
+- **Location**: Home directory (long-term storage)
+- **Backup**: Included in home directory backups
+- **Persistent Copy**: ${PERSISTENT_CHECKPOINT_DIR}
+- **Retention**: Persistent copy has 14-day retention on scratch-shared
+EOF
+    fi
+    
+    # Create final summary
+    FINAL_SUMMARY="${BLIP3O_LOGS}/training_summary_${SLURM_JOB_ID}.json"
+    cat > "$FINAL_SUMMARY" << EOF
+{
+    "job_id": "${SLURM_JOB_ID}",
+    "completion_time": "$(date -Iseconds)",
+    "user": "${BLIP3O_USER}",
+    "training_status": "completed_successfully",
+    "embeddings_used": "$EMBEDDINGS_DIR",
+    "temp_checkpoints": "$TEMP_CHECKPOINT_DIR",
+    "persistent_checkpoints": "$PERSISTENT_CHECKPOINT_DIR",
+    "final_model": "$FINAL_MODEL_DIR",
+    "storage_info": {
+        "approach": "structured_temp_management",
+        "scratch_shared_retention": "14_days",
+        "home_directory_backup": "yes",
+        "total_storage_locations": 3
+    },
+    "next_steps": {
+        "model_location": "$FINAL_MODEL_DIR",
+        "loading_instructions": "$FINAL_MODEL_DIR/README.md"
+    }
+}
+EOF
+    
+    echo "📊 Training summary saved to: $FINAL_SUMMARY"
+    
 else
     echo "❌ Training failed with exit code: $TRAINING_EXIT_CODE"
+    echo "Check logs for details"
     exit 1
+fi
+
+# =============================================================================
+# STEP 5: CLEANUP AND FINAL STATUS
+# =============================================================================
+
+echo ""
+echo "🧹 STEP 5: Cleaning up and final status..."
+echo "=========================================="
+
+# Show final disk usage
+echo "💾 Final disk usage:"
+df -h /scratch-shared /scratch-local ~ 2>/dev/null | grep -v "Filesystem" || true
+
+# Clean up large cache files to save space
+if [ -d "${BLIP3O_CACHE}" ]; then
+    echo "🧹 Cleaning up cache files..."
+    find "${BLIP3O_CACHE}" -name "*.bin" -size +100M -delete 2>/dev/null || true
+    find "${BLIP3O_CACHE}" -name "*.safetensors" -size +100M -delete 2>/dev/null || true
+fi
+
+# Show storage summary
+echo ""
+echo "📊 STORAGE SUMMARY:"
+echo "=================="
+if [ -d "$FINAL_MODEL_DIR" ]; then
+    FINAL_SIZE=$(du -sh "$FINAL_MODEL_DIR" | cut -f1)
+    echo "   Final model (home): $FINAL_SIZE"
+fi
+if [ -d "$PERSISTENT_CHECKPOINT_DIR" ]; then
+    PERSISTENT_SIZE=$(du -sh "$PERSISTENT_CHECKPOINT_DIR" | cut -f1)
+    echo "   Persistent (scratch-shared): $PERSISTENT_SIZE"
 fi
 
 echo ""
 echo "🎉 BLIP3-o DiT Chunked Training Job completed at: $(date)"
 echo "⏱️ Total runtime: $SECONDS seconds"
+echo ""
+echo "✅ Your model is ready at: $FINAL_MODEL_DIR"
+echo "📖 Loading instructions: $FINAL_MODEL_DIR/README.md"

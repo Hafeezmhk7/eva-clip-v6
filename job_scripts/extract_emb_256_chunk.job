@@ -26,12 +26,12 @@ echo "   • Automatic cache management"
 echo "   • Sequential processing of TAR files"
 
 # =============================================================================
-# TEMP MANAGER SETUP
+# ENVIRONMENT SETUP
 # =============================================================================
 
 echo ""
-echo "🗂️ STEP 0: Setting up structured temp environment..."
-echo "==================================================="
+echo "🗂️ STEP 0: Setting up Snellius environment..."
+echo "==============================================="
 
 # Load modules
 module purge
@@ -42,32 +42,66 @@ module load CUDA/12.6.0
 # Activate conda environment
 source activate eva_clip_env
 
-# Run Python to initialize temp manager
-python -c "
-import sys
-sys.path.insert(0, 'src/modules/utils')
-from temp_manager import setup_snellius_environment
-manager = setup_snellius_environment('blip3o_workspace')
-manager.setup_model_cache()
-print(f'✅ Temp manager initialized:')
-print(f'   Persistent workspace: {manager.persistent_workspace}')
-print(f'   Job temp: {manager.job_temp}')
-print(f'   Embeddings dir: {manager.get_embeddings_dir()}')
-print(f'   Datasets dir: {manager.get_datasets_dir()}')
-"
+# CRITICAL: Set up Snellius scratch directories
+export SCRATCH_SHARED="/scratch-shared"
+export SCRATCH_LOCAL="/scratch-local"
 
-echo "✅ Environment setup completed"
+# Set up project directories with proper Snellius paths
+export BLIP3O_USER=$(whoami)
+export BLIP3O_JOB_ID=${SLURM_JOB_ID}
+
+# Persistent workspace (14-day retention on scratch-shared)
+export BLIP3O_WORKSPACE="/scratch-shared/${BLIP3O_USER}/blip3o_workspace"
+export BLIP3O_DATASETS="${BLIP3O_WORKSPACE}/datasets"
+export BLIP3O_EMBEDDINGS="${BLIP3O_WORKSPACE}/embeddings"
+export BLIP3O_CHECKPOINTS="${BLIP3O_WORKSPACE}/checkpoints"
+export BLIP3O_LOGS="${BLIP3O_WORKSPACE}/logs"
+
+# Job-specific temp (deleted after job)
+export BLIP3O_JOB_TEMP="/scratch-local/${BLIP3O_USER}.${BLIP3O_JOB_ID}/blip3o_job_${BLIP3O_JOB_ID}"
+export BLIP3O_CACHE="${BLIP3O_JOB_TEMP}/cache"
+export BLIP3O_WORKING="${BLIP3O_JOB_TEMP}/working"
+
+# Create all directories
+mkdir -p "${BLIP3O_WORKSPACE}"/{datasets,embeddings,checkpoints,logs,metadata}
+mkdir -p "${BLIP3O_JOB_TEMP}"/{cache,working,temp_checkpoints}
+
+# Redirect model caches to job temp (to avoid home directory quota)
+export TORCH_HOME="${BLIP3O_CACHE}/torch"
+export HF_HOME="${BLIP3O_CACHE}/huggingface"
+export TRANSFORMERS_CACHE="${BLIP3O_CACHE}/transformers"
+export WANDB_DIR="${BLIP3O_LOGS}/wandb"
+
+# Create cache subdirectories
+mkdir -p "${TORCH_HOME}" "${HF_HOME}" "${TRANSFORMERS_CACHE}" "${WANDB_DIR}"
+
+echo "✅ Snellius environment configured:"
+echo "   Persistent workspace: ${BLIP3O_WORKSPACE}"
+echo "   Job temp: ${BLIP3O_JOB_TEMP}"
+echo "   Datasets: ${BLIP3O_DATASETS}"
+echo "   Embeddings: ${BLIP3O_EMBEDDINGS}"
+echo "   Cache: ${BLIP3O_CACHE}"
+
+# Check disk space
+echo ""
+echo "💾 Disk space check:"
+df -h /scratch-shared 2>/dev/null || echo "   scratch-shared: Not available"
+df -h /scratch-local 2>/dev/null || echo "   scratch-local: Not available"
+df -h ~ | tail -1 | awk '{print "   Home: " $4 " available (" $5 " used)"}'
 
 # =============================================================================
 # STEP 1: DOWNLOAD TAR FILES
 # =============================================================================
 
 echo ""
-echo "📥 STEP 1: Downloading dataset shards (30 shards for ~100k samples)..."
-echo "======================================================================"
+echo "📥 STEP 1: Downloading dataset shards to scratch-shared..."
+echo "=========================================================="
 
-# Download 30 shards using temp manager
-python src/data_hand/download_data.py --shards $(seq -s ' ' 0 29)
+# Download 30 shards to the scratch-shared datasets directory
+python src/data_hand/download_data.py \
+    --shards $(seq -s ' ' 0 29) \
+    --data_dir "${BLIP3O_DATASETS}" \
+    --force
 
 DOWNLOAD_EXIT_CODE=$?
 
@@ -76,16 +110,32 @@ if [ $DOWNLOAD_EXIT_CODE -ne 0 ]; then
     echo "Trying with fewer shards..."
     
     # Fallback: try with 20 shards
-    python src/data_hand/download_data.py --shards $(seq -s ' ' 0 19)
+    python src/data_hand/download_data.py \
+        --shards $(seq -s ' ' 0 19) \
+        --data_dir "${BLIP3O_DATASETS}" \
+        --force
     
     DOWNLOAD_EXIT_CODE=$?
     if [ $DOWNLOAD_EXIT_CODE -ne 0 ]; then
-        echo "❌ Even reduced download failed. Exiting."
+        echo "❌ Even reduced download failed. Checking disk space..."
+        df -h /scratch-shared /scratch-local ~ 2>/dev/null || true
+        echo "Exiting."
         exit 1
     fi
 fi
 
 echo "✅ Dataset download completed"
+
+# Check downloaded files
+echo "📊 Downloaded files:"
+ls -lh "${BLIP3O_DATASETS}"/*.tar 2>/dev/null | head -5
+SHARD_COUNT=$(ls "${BLIP3O_DATASETS}"/*.tar 2>/dev/null | wc -l)
+echo "Total shards: ${SHARD_COUNT}"
+
+if [ $SHARD_COUNT -eq 0 ]; then
+    echo "❌ No TAR files found after download!"
+    exit 1
+fi
 
 # =============================================================================
 # STEP 2: CHUNKED EMBEDDING EXTRACTION
@@ -95,6 +145,9 @@ echo ""
 echo "🧠 STEP 2: Chunked embedding extraction..."
 echo "=========================================="
 
+# Set environment variables for the extraction script
+export BLIP3O_TEMP_DIR="${BLIP3O_JOB_TEMP}"
+
 # Run chunked embedding extraction
 python src/modules/extract_embeddings_g.py
 
@@ -102,6 +155,9 @@ EXTRACTION_EXIT_CODE=$?
 
 if [ $EXTRACTION_EXIT_CODE -ne 0 ]; then
     echo "❌ Chunked embedding extraction failed with exit code: $EXTRACTION_EXIT_CODE"
+    echo "Checking disk space and temp directories..."
+    df -h /scratch-shared /scratch-local ~ 2>/dev/null || true
+    ls -la "${BLIP3O_EMBEDDINGS}" 2>/dev/null || true
     exit 1
 fi
 
@@ -115,11 +171,13 @@ echo ""
 echo "🧪 STEP 3: Validating embeddings..."
 echo "==================================="
 
-# Get embeddings directory
-EMBEDDINGS_DIR=$(python -c "import sys; sys.path.insert(0, 'src/utils'); from temp_manager import setup_snellius_environment; print(setup_snellius_environment('blip3o_workspace').get_embeddings_dir() / 'chunked_256_tokens')")
+# Find embeddings directory (look for chunked_256_tokens subdirectory)
+EMBEDDINGS_DIR=$(find "${BLIP3O_EMBEDDINGS}" -name "*chunked*256*" -type d | head -1)
 
-if [ ! -d "$EMBEDDINGS_DIR" ]; then
-    echo "❌ Embeddings directory not found: $EMBEDDINGS_DIR"
+if [ -z "$EMBEDDINGS_DIR" ]; then
+    echo "❌ No chunked embeddings directory found in ${BLIP3O_EMBEDDINGS}"
+    echo "Available directories:"
+    ls -la "${BLIP3O_EMBEDDINGS}" 2>/dev/null || true
     exit 1
 fi
 
@@ -129,6 +187,8 @@ echo "✅ Found embeddings directory: $EMBEDDINGS_DIR"
 MANIFEST_FILE="$EMBEDDINGS_DIR/embeddings_manifest.json"
 if [ ! -f "$MANIFEST_FILE" ]; then
     echo "❌ Manifest file not found: $MANIFEST_FILE"
+    echo "Files in embeddings directory:"
+    ls -la "$EMBEDDINGS_DIR" 2>/dev/null || true
     exit 1
 fi
 
@@ -179,6 +239,48 @@ fi
 echo "✅ Embeddings validation passed!"
 
 # =============================================================================
+# STEP 4: CLEANUP AND FINALIZE
+# =============================================================================
+
+echo ""
+echo "🧹 STEP 4: Cleaning up job temp files..."
+echo "======================================="
+
+# Clean up model cache to save space (keeping only essential files)
+if [ -d "${BLIP3O_CACHE}" ]; then
+    CACHE_SIZE_BEFORE=$(du -sh "${BLIP3O_CACHE}" | cut -f1)
+    echo "Cache size before cleanup: $CACHE_SIZE_BEFORE"
+    
+    # Remove large cache files but keep small config files
+    find "${BLIP3O_CACHE}" -name "*.bin" -size +100M -delete 2>/dev/null || true
+    find "${BLIP3O_CACHE}" -name "*.safetensors" -size +100M -delete 2>/dev/null || true
+    
+    CACHE_SIZE_AFTER=$(du -sh "${BLIP3O_CACHE}" | cut -f1)
+    echo "Cache size after cleanup: $CACHE_SIZE_AFTER"
+fi
+
+# Create summary file
+SUMMARY_FILE="${BLIP3O_EMBEDDINGS}/extraction_summary_${SLURM_JOB_ID}.json"
+cat > "$SUMMARY_FILE" << EOF
+{
+    "job_id": "${SLURM_JOB_ID}",
+    "completion_time": "$(date -Iseconds)",
+    "user": "${BLIP3O_USER}",
+    "embeddings_directory": "$EMBEDDINGS_DIR",
+    "datasets_directory": "${BLIP3O_DATASETS}",
+    "total_shards_processed": $SHARD_COUNT,
+    "storage_location": "scratch-shared",
+    "retention_policy": "14_days",
+    "next_steps": {
+        "training_command": "sbatch job_scripts/train_flow_match_256.job",
+        "embeddings_path": "$EMBEDDINGS_DIR"
+    }
+}
+EOF
+
+echo "✅ Summary saved to: $SUMMARY_FILE"
+
+# =============================================================================
 # FINAL STEPS
 # =============================================================================
 
@@ -191,11 +293,15 @@ echo "   $EMBEDDINGS_DIR"
 echo ""
 echo "🔍 WHAT'S NEXT:"
 echo "   1. Start training: sbatch job_scripts/train_flow_match_256.job"
-echo "   2. Use --auto_find_embeddings in training script"
+echo "   2. Embeddings will auto-discover from: $EMBEDDINGS_DIR"
 echo ""
 echo "📋 STORAGE INFO:"
-echo "   • Embeddings stored in persistent workspace"
+echo "   • Embeddings stored in scratch-shared (persistent)"
 echo "   • 14-day automatic retention"
 echo "   • Accessible across different jobs"
+echo "   • Job temp cleaned automatically"
+echo ""
+echo "💾 FINAL DISK USAGE:"
+df -h /scratch-shared /scratch-local ~ 2>/dev/null | grep -v "Filesystem" || true
 echo ""
 echo "⏱️  Job completed at: $(date)"
