@@ -96,8 +96,8 @@ class BLIP3oTrainer(Trainer):
         self.loss_components = defaultdict(list)
         
         logger.info("BLIP3-o trainer initialized")
-        logger.info(f"Model parameters: {model.get_num_parameters():,}")
-        logger.info(f"Trainable parameters: {model.get_num_parameters(trainable_only=True):,}")
+        # logger.info(f"Model parameters: {model.get_num_parameters():,}")
+        # logger.info(f"Trainable parameters: {model.get_num_parameters(trainable_only=True):,}")
     
     def compute_loss(
         self,

@@ -26,13 +26,29 @@ def setup_distributed_training():
     world_size = int(os.environ.get("WORLD_SIZE", 1))
     
     print(f"🌐 Distributed setup: local_rank={local_rank}, global_rank={global_rank}, world_size={world_size}")
+    print(f"✅ CUDA available: {torch.cuda.is_available()}")
     
-    # Set the device
-    torch.cuda.set_device(local_rank)
-    device = torch.device(f"cuda:{local_rank}")
+    if torch.cuda.is_available():
+        device_count = torch.cuda.device_count()
+        print(f"✅ CUDA device count: {device_count}")
+        print(f"✅ CUDA visible devices: {os.environ.get('CUDA_VISIBLE_DEVICES', 'not set')}")
+        
+        # SAFE DEVICE SELECTION
+        if local_rank < device_count:
+            device = torch.device(f"cuda:{local_rank}")
+        else:
+            # Fallback to first GPU if local_rank exceeds available devices
+            print(f"⚠️ Warning: local_rank {local_rank} exceeds available devices ({device_count}). Using cuda:0")
+            device = torch.device("cuda:0")
+            
+        torch.cuda.set_device(device)
+    else:
+        device = torch.device("cpu")
     
-    # Initialize process group
-    if not dist.is_initialized():
+    print(f"✅ Using device: {device}")
+    
+    # Initialize process group only if needed
+    if world_size > 1 and not dist.is_initialized():
         dist.init_process_group(
             backend="nccl",
             init_method="env://",
@@ -225,9 +241,22 @@ def main():
         if hasattr(model, 'enable_gradient_checkpointing'):
             model.enable_gradient_checkpointing()
         
+        # Calculate parameters BEFORE DDP wrapping
         if local_rank == 0:
-            print(f"📊 Model parameters: {model.get_num_parameters():,}")
-            print(f"💾 Memory per GPU: ~{model.get_num_parameters() * 4 / (1024**3):.1f} GB")
+            param_count = sum(p.numel() for p in model.parameters() if p.requires_grad)
+            print(f"📊 Model parameters: {param_count:,}")
+            print(f"💾 Memory per GPU: ~{param_count * 4 / (1024**3):.1f} GB")
+        
+        # CRITICAL FIX: Wrap model with DDP for multi-GPU training
+        if world_size > 1:
+            print(f"🔗 Wrapping model with DDP (local_rank={local_rank})")
+            model = torch.nn.parallel.DistributedDataParallel(
+                model,
+                device_ids=[local_rank],
+                output_device=local_rank,
+                find_unused_parameters=True  # Fix for unused parameter error
+            )
+            print(f"✅ DDP model wrapper applied for rank {global_rank}")
         
         # Create flow matching loss
         flow_matching_loss = create_blip3o_flow_matching_loss()
@@ -280,7 +309,7 @@ def main():
             remove_unused_columns=False,
             load_best_model_at_end=False,
             local_rank=local_rank,
-            ddp_find_unused_parameters=False,
+            ddp_find_unused_parameters=False,  # We're handling this in DDP wrapper
             dataloader_pin_memory=True,
             save_on_each_node=False,
         )

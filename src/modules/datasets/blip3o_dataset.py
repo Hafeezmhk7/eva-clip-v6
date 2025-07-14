@@ -1,6 +1,7 @@
 """
 FIXED Chunked Dataset implementation for BLIP3-o training with sequential shard loading.
 FIXED: Better shard file management and existence checking.
+FIXED: Correct parameter passing for DataLoader
 """
 
 import torch
@@ -392,6 +393,8 @@ def create_chunked_dataloader(
 ) -> DataLoader:
     """
     Create a DataLoader for chunked embeddings.
+    
+    FIXED: Removed dataset-specific parameters from kwargs
     """
     # Auto-detect pin_memory
     if pin_memory is None:
@@ -406,7 +409,6 @@ def create_chunked_dataloader(
         shuffle_shards=shuffle_shards,
         shuffle_within_shard=shuffle_within_shard,
         delete_after_use=delete_after_use,
-        **kwargs
     )
     
     # Create dataloader
@@ -416,6 +418,7 @@ def create_chunked_dataloader(
         num_workers=num_workers,  # Should be 0 for IterableDataset
         collate_fn=chunked_collate_fn,
         pin_memory=pin_memory,
+        **kwargs  # Pass kwargs to DataLoader (drop_last, persistent_workers, etc.)
     )
     
     return dataloader
