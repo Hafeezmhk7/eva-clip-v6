@@ -1,12 +1,13 @@
 """
-UPDATED: Memory-Efficient Grid-Based Embedding Extraction for BLIP3-o with Temp Manager
+FIXED: Memory-Efficient Grid-Based Embedding Extraction for BLIP3-o with Better Error Handling
 Place this file as: src/modules/extract_embeddings_g.py
 
-NEW FEATURES:
-1. Uses SnelliusTempManager for structured temp directory management
-2. Stores embeddings in persistent workspace (survives 14 days)
-3. Uses job temp for processing and cache
-4. Better disk space management and monitoring
+FIXES:
+1. Better error handling for file saving
+2. Verification that files are actually created
+3. More robust shard processing with retry logic
+4. Better disk space monitoring during processing
+5. Explicit file existence checks after saving
 """
 
 import sys
@@ -22,6 +23,8 @@ import gc
 import psutil
 import time
 import glob
+import json
+import shutil
 
 def setup_paths():
     """Setup paths for project structure"""
@@ -55,12 +58,116 @@ def get_memory_usage():
     except:
         return 0.0
 
+def get_disk_usage(path):
+    """Get disk usage for a specific path"""
+    try:
+        total, used, free = shutil.disk_usage(path)
+        return {
+            'total_gb': total / (1024**3),
+            'used_gb': used / (1024**3),
+            'free_gb': free / (1024**3),
+            'usage_percent': (used / total) * 100
+        }
+    except Exception as e:
+        print(f"⚠️  Could not get disk usage for {path}: {e}")
+        return None
+
 def cleanup_memory():
     """Aggressive memory cleanup"""
     gc.collect()
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
         torch.cuda.synchronize()
+
+def verify_file_saved(file_path: Path, expected_min_size_mb: float = 1.0) -> bool:
+    """Verify that a file was actually saved correctly"""
+    try:
+        if not file_path.exists():
+            print(f"❌ File does not exist: {file_path}")
+            return False
+        
+        file_size_mb = file_path.stat().st_size / (1024 * 1024)
+        if file_size_mb < expected_min_size_mb:
+            print(f"❌ File too small ({file_size_mb:.1f} MB): {file_path}")
+            return False
+        
+        # Try to load the file to verify it's not corrupted
+        try:
+            with open(file_path, 'rb') as f:
+                data = pickle.load(f)
+            
+            # Basic validation
+            required_keys = ['clip_blip3o_embeddings', 'eva_blip3o_embeddings', 'captions']
+            for key in required_keys:
+                if key not in data:
+                    print(f"❌ Missing key '{key}' in saved file: {file_path}")
+                    return False
+            
+            print(f"✅ File verified: {file_path} ({file_size_mb:.1f} MB)")
+            return True
+            
+        except Exception as e:
+            print(f"❌ File corrupted or unreadable: {file_path} - {e}")
+            return False
+            
+    except Exception as e:
+        print(f"❌ Error verifying file {file_path}: {e}")
+        return False
+
+def safe_save_pickle(data: dict, file_path: Path, max_retries: int = 3) -> bool:
+    """Safely save pickle file with retries and verification"""
+    for attempt in range(max_retries):
+        try:
+            print(f"   💾 Saving to {file_path} (attempt {attempt + 1}/{max_retries})...")
+            
+            # Check disk space before saving
+            disk_info = get_disk_usage(file_path.parent)
+            if disk_info and disk_info['free_gb'] < 1.0:
+                print(f"❌ Insufficient disk space: {disk_info['free_gb']:.1f} GB free")
+                return False
+            
+            # Create parent directory if it doesn't exist
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Save to temporary file first
+            temp_path = file_path.with_suffix('.tmp')
+            
+            with open(temp_path, 'wb') as f:
+                pickle.dump(data, f, protocol=pickle.HIGHEST_PROTOCOL)
+            
+            # Verify temp file
+            temp_size_mb = temp_path.stat().st_size / (1024 * 1024)
+            print(f"   📁 Temp file created: {temp_size_mb:.1f} MB")
+            
+            # Move temp file to final location (atomic operation)
+            temp_path.rename(file_path)
+            
+            # Verify final file
+            if verify_file_saved(file_path, expected_min_size_mb=temp_size_mb * 0.9):
+                print(f"   ✅ Successfully saved: {file_path}")
+                return True
+            else:
+                print(f"   ❌ File verification failed after save")
+                if file_path.exists():
+                    file_path.unlink()  # Delete corrupted file
+                
+        except Exception as e:
+            print(f"   ❌ Save attempt {attempt + 1} failed: {e}")
+            
+            # Clean up any partial files
+            for partial_file in [file_path, file_path.with_suffix('.tmp')]:
+                if partial_file.exists():
+                    try:
+                        partial_file.unlink()
+                    except:
+                        pass
+            
+            if attempt < max_retries - 1:
+                print(f"   🔄 Retrying in 2 seconds...")
+                time.sleep(2)
+    
+    print(f"❌ Failed to save file after {max_retries} attempts: {file_path}")
+    return False
 
 def load_models(device):
     """Load CLIP and EVA-CLIP models with correct dimensions"""
@@ -282,22 +389,42 @@ def process_single_tar(
     batch_size: int = 16
 ) -> dict:
     """
-    Process a single TAR file and save embeddings using structured temp directories.
-    
-    Args:
-        tar_file_path: Path to the TAR file
-        shard_idx: Index of this shard
-        clip_processor, clip_model, eva_processor, eva_model: Loaded models
-        device: Computing device
-        output_dir: Output directory for embeddings (persistent)
-        working_dir: Working directory for processing (temp)
-        batch_size: Batch size for processing
-        
-    Returns:
-        Dictionary with processing statistics
+    Process a single TAR file and save embeddings with improved error handling.
     """
     
     print(f"\n🔄 Processing shard {shard_idx}: {Path(tar_file_path).name}")
+    
+    # Expected output file path
+    shard_filename = f"embeddings_shard_{shard_idx:05d}.pkl"
+    shard_path = output_dir / shard_filename
+    
+    # Check if this shard already exists and is valid
+    if shard_path.exists():
+        if verify_file_saved(shard_path):
+            print(f"   ✅ Shard {shard_idx} already exists and is valid: {shard_path}")
+            file_size_mb = shard_path.stat().st_size / (1024 * 1024)
+            
+            # Try to get sample count from existing file
+            try:
+                with open(shard_path, 'rb') as f:
+                    existing_data = pickle.load(f)
+                sample_count = len(existing_data.get('captions', []))
+                
+                return {
+                    'shard_idx': shard_idx,
+                    'total_samples': sample_count,
+                    'file_size_mb': file_size_mb,
+                    'processing_time': 0.0,
+                    'output_path': str(shard_path),
+                    'success': True,
+                    'skipped': True
+                }
+            except:
+                print(f"   ⚠️  Could not read existing file, will reprocess...")
+                shard_path.unlink()  # Delete corrupted file
+        else:
+            print(f"   ⚠️  Existing file is invalid, will reprocess...")
+            shard_path.unlink()  # Delete invalid file
     
     # Import dataset
     try:
@@ -472,54 +599,127 @@ def process_single_tar(
             }
         }
         
-        # Save this shard's embeddings to PERSISTENT storage
-        shard_filename = f"embeddings_shard_{shard_idx:05d}.pkl"
-        shard_path = output_dir / shard_filename
-        
+        # Save this shard's embeddings with improved error handling
         print(f"   💾 Saving shard {shard_idx} to persistent storage...")
-        with open(shard_path, 'wb') as f:
-            pickle.dump(shard_data, f)
         
-        file_size_mb = shard_path.stat().st_size / (1024 * 1024)
-        
-        print(f"   ✅ Shard {shard_idx} completed:")
-        print(f"      File: {shard_filename}")
-        print(f"      Location: {shard_path}")
-        print(f"      Size: {file_size_mb:.1f} MB")
-        print(f"      Samples: {total_samples}")
-        print(f"      Time: {time.time() - start_time:.1f}s")
-        
-        # Clear memory
-        del shard_clip_embeddings, shard_eva_embeddings, final_clip, final_eva
-        cleanup_memory()
-        
-        return {
-            'shard_idx': shard_idx,
-            'total_samples': total_samples,
-            'file_size_mb': file_size_mb,
-            'processing_time': time.time() - start_time,
-            'output_path': str(shard_path),
-            'success': True
-        }
+        if safe_save_pickle(shard_data, shard_path):
+            file_size_mb = shard_path.stat().st_size / (1024 * 1024)
+            
+            print(f"   ✅ Shard {shard_idx} completed:")
+            print(f"      File: {shard_filename}")
+            print(f"      Location: {shard_path}")
+            print(f"      Size: {file_size_mb:.1f} MB")
+            print(f"      Samples: {total_samples}")
+            print(f"      Time: {time.time() - start_time:.1f}s")
+            
+            # Clear memory
+            del shard_clip_embeddings, shard_eva_embeddings, final_clip, final_eva
+            cleanup_memory()
+            
+            return {
+                'shard_idx': shard_idx,
+                'total_samples': total_samples,
+                'file_size_mb': file_size_mb,
+                'processing_time': time.time() - start_time,
+                'output_path': str(shard_path),
+                'success': True
+            }
+        else:
+            print(f"   ❌ Failed to save shard {shard_idx}")
+            return {
+                'shard_idx': shard_idx,
+                'total_samples': total_samples,
+                'success': False,
+                'error': 'File save failed'
+            }
     
     else:
         print(f"   ❌ No embeddings extracted from shard {shard_idx}")
         return {
             'shard_idx': shard_idx,
             'total_samples': 0,
-            'success': False
+            'success': False,
+            'error': 'No embeddings extracted'
         }
 
+def verify_all_shards(embeddings_dir: Path, expected_count: int) -> dict:
+    """Verify that all expected shard files exist and are valid"""
+    print(f"\n🔍 Verifying {expected_count} shard files in {embeddings_dir}...")
+    
+    verification_results = {
+        'total_expected': expected_count,
+        'found_files': 0,
+        'valid_files': 0,
+        'invalid_files': 0,
+        'missing_files': 0,
+        'total_samples': 0,
+        'total_size_mb': 0,
+        'file_details': []
+    }
+    
+    for shard_idx in range(expected_count):
+        shard_filename = f"embeddings_shard_{shard_idx:05d}.pkl"
+        shard_path = embeddings_dir / shard_filename
+        
+        if shard_path.exists():
+            verification_results['found_files'] += 1
+            
+            if verify_file_saved(shard_path):
+                verification_results['valid_files'] += 1
+                
+                # Get file details
+                file_size_mb = shard_path.stat().st_size / (1024 * 1024)
+                verification_results['total_size_mb'] += file_size_mb
+                
+                # Try to get sample count
+                try:
+                    with open(shard_path, 'rb') as f:
+                        data = pickle.load(f)
+                    sample_count = len(data.get('captions', []))
+                    verification_results['total_samples'] += sample_count
+                    
+                    verification_results['file_details'].append({
+                        'shard_idx': shard_idx,
+                        'filename': shard_filename,
+                        'size_mb': file_size_mb,
+                        'samples': sample_count,
+                        'valid': True
+                    })
+                    
+                except Exception as e:
+                    print(f"   ⚠️  Could not read shard {shard_idx}: {e}")
+                    verification_results['invalid_files'] += 1
+                    verification_results['valid_files'] -= 1
+                    
+            else:
+                verification_results['invalid_files'] += 1
+                print(f"   ❌ Invalid shard file: {shard_filename}")
+        else:
+            verification_results['missing_files'] += 1
+            print(f"   ❌ Missing shard file: {shard_filename}")
+    
+    # Print summary
+    print(f"\n📊 Verification Summary:")
+    print(f"   Expected files: {verification_results['total_expected']}")
+    print(f"   Found files: {verification_results['found_files']}")
+    print(f"   Valid files: {verification_results['valid_files']}")
+    print(f"   Invalid files: {verification_results['invalid_files']}")
+    print(f"   Missing files: {verification_results['missing_files']}")
+    print(f"   Total samples: {verification_results['total_samples']:,}")
+    print(f"   Total size: {verification_results['total_size_mb']:.1f} MB")
+    
+    return verification_results
+
 def main():
-    """Main extraction function with structured temp directory management."""
-    print("🚀 BLIP3-o CHUNKED Embedding Extraction (256 TOKENS) with Temp Manager")
+    """Main extraction function with improved error handling and verification."""
+    print("🚀 BLIP3-o CHUNKED Embedding Extraction (256 TOKENS) - FIXED VERSION")
     print("=" * 80)
     print("ENHANCED FEATURES:")
-    print("  ✅ Structured temp directory management")
-    print("  ✅ Persistent embeddings storage (14-day retention)")
-    print("  ✅ Job-specific temp processing")
-    print("  ✅ Automatic disk usage monitoring")
-    print("  ✅ Smart cache management")
+    print("  ✅ Robust file saving with verification")
+    print("  ✅ Retry logic for failed saves") 
+    print("  ✅ Skip existing valid files")
+    print("  ✅ Better error handling and logging")
+    print("  ✅ Post-processing verification")
     print("=" * 80)
     
     # Setup
@@ -567,6 +767,11 @@ def main():
     print(f"🎮 Using GPU: {torch.cuda.get_device_name(0)}")
     print(f"💾 Initial memory usage: {get_memory_usage():.2f} GB")
     
+    # Check initial disk space
+    disk_info = get_disk_usage(embeddings_dir)
+    if disk_info:
+        print(f"💾 Initial disk space: {disk_info['free_gb']:.1f} GB free ({disk_info['usage_percent']:.1f}% used)")
+    
     # Load models
     try:
         clip_processor, clip_model, eva_processor, eva_model = load_models(device)
@@ -589,6 +794,7 @@ def main():
     processing_results = []
     total_samples_all = 0
     total_size_mb_all = 0
+    failed_shards = []
     
     for shard_idx, tar_file in enumerate(tar_files):
         print(f"\n" + "="*60)
@@ -613,25 +819,35 @@ def main():
             total_samples_all += result['total_samples']
             total_size_mb_all += result['file_size_mb']
             
-            print(f"✅ Shard {shard_idx} successful: {result['total_samples']} samples, {result['file_size_mb']:.1f} MB")
+            if result.get('skipped'):
+                print(f"⏭️  Shard {shard_idx} skipped (already exists): {result['total_samples']} samples")
+            else:
+                print(f"✅ Shard {shard_idx} successful: {result['total_samples']} samples, {result['file_size_mb']:.1f} MB")
         else:
+            failed_shards.append(shard_idx)
             print(f"❌ Shard {shard_idx} failed")
             if 'error' in result:
                 print(f"   Error: {result['error']}")
         
-        # Show disk usage after each shard
-        if temp_manager and shard_idx % 5 == 0:  # Every 5 shards
-            usage = temp_manager.get_disk_usage()
-            persistent_usage = usage.get('embeddings', {}).get('total_size_gb', 0)
-            print(f"   💾 Persistent storage usage: {persistent_usage:.2f} GB")
+        # Show disk usage periodically
+        if shard_idx % 5 == 0:
+            disk_info = get_disk_usage(embeddings_dir)
+            if disk_info:
+                print(f"   💾 Current disk usage: {disk_info['free_gb']:.1f} GB free ({disk_info['usage_percent']:.1f}% used)")
+    
+    # Verify all shard files were created
+    print(f"\n🔍 Verifying all shard files...")
+    verification_results = verify_all_shards(embeddings_dir, len(tar_files))
     
     # Create manifest file
     manifest_data = {
         'total_shards': len(processing_results),
-        'total_samples': total_samples_all,
-        'total_size_mb': total_size_mb_all,
+        'total_samples': verification_results['total_samples'],
+        'total_size_mb': verification_results['total_size_mb'],
         'extraction_timestamp': time.time(),
         'shards': processing_results,
+        'verification': verification_results,
+        'failed_shards': failed_shards,
         'format_version': 'blip3o_256_tokens_chunked_v1',
         'storage_info': {
             'embeddings_directory': str(embeddings_dir),
@@ -647,7 +863,6 @@ def main():
     
     manifest_path = embeddings_dir / "embeddings_manifest.json"
     with open(manifest_path, 'w') as f:
-        import json
         json.dump(manifest_data, f, indent=2)
     
     # Final status
@@ -655,34 +870,30 @@ def main():
     print("✅ CHUNKED EXTRACTION COMPLETED!")
     print("=" * 80)
     print(f"📊 SUMMARY:")
-    print(f"   Successful shards: {len(processing_results)}/{len(tar_files)}")
-    print(f"   Total samples: {total_samples_all:,}")
-    print(f"   Total size: {total_size_mb_all:.1f} MB")
-    print(f"   Average per shard: {total_samples_all//len(processing_results) if processing_results else 0:,} samples")
+    print(f"   TAR files processed: {len(tar_files)}")
+    print(f"   Successful shards: {verification_results['valid_files']}/{len(tar_files)}")
+    print(f"   Failed shards: {len(failed_shards)}")
+    print(f"   Total samples: {verification_results['total_samples']:,}")
+    print(f"   Total size: {verification_results['total_size_mb']:.1f} MB")
     print(f"   Embeddings location: {embeddings_dir}")
     print(f"   Manifest file: {manifest_path}")
-    print(f"   Storage: Persistent (14-day retention on scratch-shared)")
     
-    if temp_manager:
-        print(f"\n📋 STORAGE DETAILS:")
-        usage = temp_manager.get_disk_usage()
-        for name, info in usage.items():
-            if info.get('exists', False) and 'embeddings' in name:
-                size_gb = info.get('total_size_gb', 0)
-                print(f"   {name}: {size_gb:.2f} GB")
-        
-        print(f"\n💡 RECOMMENDATIONS:")
-        print(f"   • Embeddings are in persistent storage (14-day retention)")
-        print(f"   • Use the embeddings directory path for training")
-        print(f"   • Copy final models to home directory for long-term storage")
-        print(f"   • Monitor disk usage to avoid quotas")
+    if failed_shards:
+        print(f"\n❌ Failed shards: {failed_shards}")
+        print(f"   Consider re-running to retry failed shards")
     
-    print("\n🎉 Ready for chunked BLIP3-o training!")
-    print("Use this command:")
-    print(f"python train_blip3o_dit.py --chunked_embeddings_dir {embeddings_dir}")
+    if verification_results['valid_files'] == len(tar_files):
+        print(f"\n🎉 SUCCESS! All {len(tar_files)} shards processed successfully!")
+        print("Ready for chunked BLIP3-o training!")
+        print(f"Use this command:")
+        print(f"python train_blip3o_dit.py --chunked_embeddings_dir {embeddings_dir}")
+    else:
+        print(f"\n⚠️  WARNING: Only {verification_results['valid_files']}/{len(tar_files)} shards were successful")
+        print(f"   Check the failed shards and consider re-running")
+    
     print("=" * 80)
     
-    return 0
+    return 0 if verification_results['valid_files'] == len(tar_files) else 1
 
 if __name__ == "__main__":
     try:
