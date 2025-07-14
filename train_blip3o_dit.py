@@ -42,12 +42,20 @@ def patch_chunked_dataset_shard_management():
     """CRITICAL FIX: Patch the chunked dataset to prevent premature shard deletion"""
     try:
         from src.modules.datasets.blip3o_dataset import BLIP3oEmbeddingDataset
+        import logging
+        import gc
         
         # Store original method
         original_load_next_shard = BLIP3oEmbeddingDataset._load_next_shard
         
         def fixed_load_next_shard(self):
             """FIXED: Don't delete shards until we're sure we won't need them again"""
+            import logging
+            import gc
+            
+            # Create logger for this function
+            logger = logging.getLogger('blip3o_training')
+            
             # Clean up current shard data but DON'T delete the file yet
             if self.current_shard_data is not None:
                 # Only clear memory, don't delete files
@@ -56,7 +64,7 @@ def patch_chunked_dataset_shard_management():
             
             # Check if we have more shards
             if self.current_shard_idx >= len(self.shard_files):
-                logger.info("No more shards to process")
+                print("No more shards to process")  # Use print as fallback
                 self.current_shard_data = None
                 return False
             
@@ -65,23 +73,23 @@ def patch_chunked_dataset_shard_management():
             
             # Check if shard file exists
             if not shard_path.exists():
-                logger.error(f"Shard file does not exist: {shard_path}")
+                print(f"ERROR: Shard file does not exist: {shard_path}")  # Use print as fallback
                 self.current_shard_idx += 1
                 return self._load_next_shard()  # Try next shard
             
             try:
                 self.current_shard_data = self._load_shard(shard_path)
-                logger.info(f"Loaded shard {self.current_shard_idx + 1}/{len(self.shard_files)}: {shard_path}")
+                print(f"✅ Loaded shard {self.current_shard_idx + 1}/{len(self.shard_files)}: {shard_path}")
             except Exception as e:
-                logger.error(f"Failed to load shard {shard_path}: {e}")
+                print(f"❌ Failed to load shard {shard_path}: {e}")
                 self.current_shard_idx += 1
                 return self._load_next_shard()  # Try next shard
             
             # Prepare samples
             self._prepare_current_shard_samples()
             
-            logger.info(f"Loaded shard {self.current_shard_idx + 1}/{len(self.shard_files)}: "
-                       f"{len(self.current_shard_samples)} samples")
+            print(f"📊 Shard {self.current_shard_idx + 1}/{len(self.shard_files)}: "
+                  f"{len(self.current_shard_samples)} samples ready")
             
             self.current_shard_idx += 1
             self.shards_processed += 1
@@ -94,6 +102,7 @@ def patch_chunked_dataset_shard_management():
     except Exception as e:
         print(f"⚠️  Failed to apply shard management fix: {e}")
 
+        
 def patch_trainer_ultra_memory_evaluation():
     """ULTRA AGGRESSIVE evaluation patch to prevent OOM during eval"""
     try:
