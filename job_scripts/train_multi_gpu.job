@@ -147,7 +147,7 @@ torchrun \
     --chunked_embeddings_dir "$EMBEDDINGS_DIR" \
     --output_dir "$TEMP_CHECKPOINT_DIR" \
     --batch_size 8 \
-    --eval_batch_size 4 \
+    --eval_batch_size 2 \
     --num_epochs 5 \
     --model_dim 768 \
     --num_heads 12 \
@@ -155,9 +155,9 @@ torchrun \
     --learning_rate 1e-4 \
     --weight_decay 0.01 \
     --warmup_steps 100 \
-    --gradient_accumulation_steps 4 \
+    --gradient_accumulation_steps 2 \
     --fp16 \
-    --dataloader_num_workers 4
+    --dataloader_num_workers 2
 
 TRAINING_EXIT_CODE=$?
 
