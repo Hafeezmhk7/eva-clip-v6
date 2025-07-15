@@ -1,6 +1,9 @@
 """
-UPDATED BLIP3-o DiT Model Implementation for 256 tokens
-Changes: Updated from 64 tokens (8x8) to 256 tokens (16x16)
+UPDATED BLIP3-o DiT Model Implementation for 256 tokens with DDP Compatibility
+Changes: 
+1. Removed unused MultiheadAttention module causing DDP issues
+2. Unified self-attention path always using manual projections
+3. Maintained 3D RoPE functionality for 256 tokens
 """
 
 import torch
@@ -17,64 +20,37 @@ def get_3d_rotary_pos_embed(embed_dim, grid_size, temporal_size=1, base=10000.0)
     """
     Create 3D rotary position embeddings following Lumina-Next implementation.
     UPDATED: Now supports 16x16 grid (256 tokens) instead of 8x8 (64 tokens)
-    
-    Args:
-        embed_dim: Embedding dimension (must be divisible by 4 for 2D spatial + 1D temporal)
-        grid_size: Spatial grid size (e.g., 16 for 16x16 = 256 tokens)
-        temporal_size: Temporal dimension (1 for image generation)
-        base: Base frequency for RoPE
-        
-    Returns:
-        cos_emb, sin_emb: Cosine and sine embeddings for 3D RoPE
     """
-    # Ensure embed_dim is divisible by 4 (2 for height, 2 for width)
     assert embed_dim % 4 == 0, f"embed_dim {embed_dim} must be divisible by 4 for 3D RoPE"
-    
-    # Divide embedding dimension into spatial (height, width) components
-    # Following Lumina-Next: height gets embed_dim//4, width gets embed_dim//4
     dim_h = embed_dim // 4
     dim_w = embed_dim // 4
     
-    # Create frequency vectors for each dimension
     inv_freq_h = 1.0 / (base ** (torch.arange(0, dim_h, 2).float() / dim_h))
     inv_freq_w = 1.0 / (base ** (torch.arange(0, dim_w, 2).float() / dim_w))
     
-    # Create spatial position grids - UPDATED for 16x16
-    h_pos = torch.arange(grid_size, dtype=torch.float32)  # [grid_size]
-    w_pos = torch.arange(grid_size, dtype=torch.float32)  # [grid_size]
+    h_pos = torch.arange(grid_size, dtype=torch.float32)
+    w_pos = torch.arange(grid_size, dtype=torch.float32)
     
-    # Create 2D grid positions for 16x16 -> 256 tokens (UPDATED)
-    grid_h, grid_w = torch.meshgrid(h_pos, w_pos, indexing='ij')  # [grid_size, grid_size]
-    grid_h = grid_h.flatten()  # [256] (UPDATED)
-    grid_w = grid_w.flatten()  # [256] (UPDATED)
+    grid_h, grid_w = torch.meshgrid(h_pos, w_pos, indexing='ij')
+    grid_h = grid_h.flatten()
+    grid_w = grid_w.flatten()
     
-    # Compute frequency interactions
-    # Height frequencies: [256, dim_h//2] (UPDATED)
     freqs_h = torch.outer(grid_h, inv_freq_h)
-    # Width frequencies: [256, dim_w//2] (UPDATED)
     freqs_w = torch.outer(grid_w, inv_freq_w)
     
-    # Create cosine and sine embeddings
-    cos_h = torch.cos(freqs_h)  # [256, dim_h//2] (UPDATED)
-    sin_h = torch.sin(freqs_h)  # [256, dim_h//2] (UPDATED)
-    cos_w = torch.cos(freqs_w)  # [256, dim_w//2] (UPDATED)
-    sin_w = torch.sin(freqs_w)  # [256, dim_w//2] (UPDATED)
+    cos_h = torch.cos(freqs_h)
+    sin_h = torch.sin(freqs_h)
+    cos_w = torch.cos(freqs_w)
+    sin_w = torch.sin(freqs_w)
     
-    # Interleave cos and sin for proper rotation
-    # Height component: [256, dim_h] (UPDATED)
     cos_h_full = torch.stack([cos_h, cos_h], dim=-1).flatten(-2)
     sin_h_full = torch.stack([sin_h, sin_h], dim=-1).flatten(-2)
-    
-    # Width component: [256, dim_w] (UPDATED)
     cos_w_full = torch.stack([cos_w, cos_w], dim=-1).flatten(-2)
     sin_w_full = torch.stack([sin_w, sin_w], dim=-1).flatten(-2)
     
-    # Concatenate height and width components
-    # Total: [256, dim_h + dim_w] = [256, embed_dim//2] (UPDATED)
     cos_emb = torch.cat([cos_h_full, cos_w_full], dim=-1)
     sin_emb = torch.cat([sin_h_full, sin_w_full], dim=-1)
     
-    # Add batch and head dimensions: [1, 256, embed_dim//2] (UPDATED)
     cos_emb = cos_emb.unsqueeze(0)
     sin_emb = sin_emb.unsqueeze(0)
     
@@ -85,56 +61,29 @@ def apply_rotary_pos_emb(q, k, cos, sin):
     """
     Apply rotary position embedding to query and key tensors.
     UPDATED: Now handles 256 tokens instead of 64
-    
-    Args:
-        q: Query tensor [batch_size, seq_len, num_heads, head_dim]
-        k: Key tensor [batch_size, seq_len, num_heads, head_dim] 
-        cos: Cosine embedding [1, seq_len, head_dim//2]
-        sin: Sine embedding [1, seq_len, head_dim//2]
-        
-    Returns:
-        Rotated query and key tensors
     """
     def rotate_half(x):
-        """Rotates half the hidden dims of the input."""
         x1 = x[..., : x.shape[-1] // 2]
         x2 = x[..., x.shape[-1] // 2 :]
         return torch.cat((-x2, x1), dim=-1)
     
-    # Get dimensions
     batch_size, seq_len, num_heads, head_dim = q.shape
     
-    # cos, sin should be [1, seq_len, head_dim//2]
-    # We need to expand them to [batch_size, seq_len, num_heads, head_dim//2]
-    
-    # First, expand batch dimension: [batch_size, seq_len, head_dim//2]
     cos = cos.expand(batch_size, -1, -1)
     sin = sin.expand(batch_size, -1, -1)
+    cos = cos.unsqueeze(2).expand(-1, -1, num_heads, -1)
+    sin = sin.unsqueeze(2).expand(-1, -1, num_heads, -1)
     
-    # Then, add head dimension: [batch_size, seq_len, 1, head_dim//2]
-    cos = cos.unsqueeze(2)
-    sin = sin.unsqueeze(2)
+    q1 = q[..., : head_dim // 2]
+    q2 = q[..., head_dim // 2 :]
+    k1 = k[..., : head_dim // 2]
+    k2 = k[..., head_dim // 2 :]
     
-    # Expand to all heads: [batch_size, seq_len, num_heads, head_dim//2]
-    cos = cos.expand(-1, -1, num_heads, -1)
-    sin = sin.expand(-1, -1, num_heads, -1)
-    
-    # Apply rotation to each half of the head_dim
-    # Split q and k into two halves
-    q1 = q[..., : head_dim // 2]  # [batch_size, seq_len, num_heads, head_dim//2]
-    q2 = q[..., head_dim // 2 :]  # [batch_size, seq_len, num_heads, head_dim//2]
-    
-    k1 = k[..., : head_dim // 2]  # [batch_size, seq_len, num_heads, head_dim//2]
-    k2 = k[..., head_dim // 2 :]  # [batch_size, seq_len, num_heads, head_dim//2]
-    
-    # Apply rotation: [cos, -sin; sin, cos] * [q1; q2]
     q_rot1 = q1 * cos - q2 * sin
     q_rot2 = q1 * sin + q2 * cos
-    
     k_rot1 = k1 * cos - k2 * sin
     k_rot2 = k1 * sin + k2 * cos
     
-    # Concatenate back
     q_embed = torch.cat([q_rot1, q_rot2], dim=-1)
     k_embed = torch.cat([k_rot1, k_rot2], dim=-1)
     
@@ -144,61 +93,37 @@ def apply_rotary_pos_emb(q, k, cos, sin):
 class SimpleTokenEmbedder(nn.Module):
     """
     Simple embedding layer for pre-tokenized BLIP3-o features.
-    UPDATED: Now handles 256 tokens (16x16 grid) instead of 64 tokens (8x8 grid)
+    UPDATED: Now handles 256 tokens (16x16 grid)
     """
     
     def __init__(self, in_channels: int, embed_dim: int, num_tokens: int = 256):
         super().__init__()
         self.in_channels = in_channels
         self.embed_dim = embed_dim
-        self.num_tokens = num_tokens  # UPDATED: 256 tokens
+        self.num_tokens = num_tokens
         
-        # Simple linear transformation for pre-tokenized features
         self.proj = nn.Linear(in_channels, embed_dim, bias=True)
-        
-        # Position embeddings for 16x16 grid (256 tokens) - optional, since we use RoPE
         self.pos_embed = nn.Parameter(torch.randn(1, num_tokens, embed_dim) * 0.02)
         
-        print(f"✅ Token embedder initialized for {num_tokens} tokens")
-        
     def forward(self, x: torch.Tensor, image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None):
-        """
-        Forward pass for token embedding.
-        
-        Args:
-            x: Input tokens [B, num_tokens, in_channels] (UPDATED: 256 tokens)
-            image_rotary_emb: Tuple of (cos_emb, sin_emb) for 3D RoPE (not used here)
-            
-        Returns:
-            Tuple of (embedded_tokens, attention_mask, image_size, rotary_emb)
-        """
         batch_size, num_tokens, in_channels = x.shape
-        
-        # Validate input - UPDATED for 256 tokens
         assert num_tokens == self.num_tokens, f"Expected {self.num_tokens} tokens, got {num_tokens}"
         assert in_channels == self.in_channels, f"Expected {self.in_channels} channels, got {in_channels}"
         
-        # Linear projection
-        embedded = self.proj(x)  # [B, 256, embed_dim]
-        
-        # Add position embeddings (optional with RoPE)
+        embedded = self.proj(x)
         embedded = embedded + self.pos_embed
-        
-        # Create attention mask (all tokens are valid)
         attention_mask = torch.ones(batch_size, num_tokens, device=x.device, dtype=torch.bool)
-        
-        # Image size (16x16 for 256 tokens) - UPDATED
         img_size = [(16, 16)] * batch_size
         
-        # Pass through the provided rotary embeddings (will be created in main model)
         return embedded, attention_mask, img_size, image_rotary_emb
 
 
 class BLIP3oAttentionBlock(nn.Module):
     """
-    Fixed DiT block for BLIP3-o that works with pre-tokenized embeddings and proper 3D RoPE.
-    Following the exact Lumina-Next architecture.
-    UPDATED: Now handles 256 tokens instead of 64
+    FIXED DiT block with DDP compatibility:
+    - Removed unused MultiheadAttention module
+    - Always uses manual projections for consistent parameter usage
+    - Maintains 3D RoPE functionality
     """
     
     def __init__(
@@ -207,21 +132,17 @@ class BLIP3oAttentionBlock(nn.Module):
         num_attention_heads: int,
         cross_attention_dim: int,
         norm_eps: float = 1e-5,
-        qk_norm: bool = True,
     ):
         super().__init__()
         self.dim = dim
         self.num_attention_heads = num_attention_heads
         self.head_dim = dim // num_attention_heads
         
-        # Self-attention
-        self.self_attn = nn.MultiheadAttention(
-            embed_dim=dim,
-            num_heads=num_attention_heads,
-            dropout=0.0,
-            bias=True,
-            batch_first=True,
-        )
+        # Self-attention projections (ALWAYS USED)
+        self.q_proj = nn.Linear(dim, dim, bias=True)
+        self.k_proj = nn.Linear(dim, dim, bias=True)
+        self.v_proj = nn.Linear(dim, dim, bias=True)
+        self.out_proj = nn.Linear(dim, dim, bias=True)
         
         # Cross-attention
         self.cross_attn = nn.MultiheadAttention(
@@ -248,95 +169,78 @@ class BLIP3oAttentionBlock(nn.Module):
         self.cross_norm = nn.LayerNorm(cross_attention_dim, eps=norm_eps)
         
         # Timestep conditioning
-        self.time_proj = nn.Linear(dim, dim * 6)  # For various gates and scales
-        
-        # Manual query/key/value projections for RoPE application
-        self.q_proj = nn.Linear(dim, dim, bias=True)
-        self.k_proj = nn.Linear(dim, dim, bias=True)
-        self.v_proj = nn.Linear(dim, dim, bias=True)
-        self.out_proj = nn.Linear(dim, dim, bias=True)
+        self.time_proj = nn.Linear(dim, dim * 6)
         
     def forward(
         self,
-        hidden_states: torch.Tensor,              # [B, 256, dim] (UPDATED)
-        encoder_hidden_states: torch.Tensor,     # [B, 256, cross_attention_dim] (UPDATED)
-        timestep_emb: torch.Tensor,              # [B, dim]
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: torch.Tensor,
+        timestep_emb: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
         encoder_mask: Optional[torch.Tensor] = None,
         image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
     ) -> torch.Tensor:
-        """Forward pass through BLIP3-o DiT block with proper 3D RoPE for 256 tokens."""
-        
         batch_size, seq_len, _ = hidden_states.shape
-        
-        # Ensure we're working with 256 tokens
         assert seq_len == 256, f"Expected 256 tokens, got {seq_len}"
         
         # Get timestep conditioning
-        time_cond = self.time_proj(timestep_emb)  # [B, dim * 6]
-        time_chunks = time_cond.chunk(6, dim=-1)  # 6 chunks of [B, dim]
+        time_cond = self.time_proj(timestep_emb)
+        scale_msa, gate_msa, scale_mlp, gate_mlp, scale_cross, gate_cross = time_cond.chunk(6, dim=-1)
         
-        scale_msa, gate_msa, scale_mlp, gate_mlp, scale_cross, gate_cross = time_chunks
-        
-        # Self-attention with timestep conditioning and 3D RoPE
+        # Self-attention with consistent manual projections
         residual = hidden_states
         norm_hidden = self.norm1(hidden_states)
         norm_hidden = norm_hidden * (1 + scale_msa.unsqueeze(1))
         
-        # Apply 3D RoPE to self-attention if available
+        # ALWAYS use manual projections (fixes DDP issue)
+        q = self.q_proj(norm_hidden)
+        k = self.k_proj(norm_hidden)
+        v = self.v_proj(norm_hidden)
+        
+        # Reshape for multi-head attention
+        q = q.view(batch_size, seq_len, self.num_attention_heads, self.head_dim)
+        k = k.view(batch_size, seq_len, self.num_attention_heads, self.head_dim)
+        v = v.view(batch_size, seq_len, self.num_attention_heads, self.head_dim)
+        
+        # Apply RoPE if available
         if image_rotary_emb is not None:
             cos_emb, sin_emb = image_rotary_emb
-            
-            # Manual Q, K, V computation for RoPE
-            q = self.q_proj(norm_hidden)  # [B, 256, dim]
-            k = self.k_proj(norm_hidden)  # [B, 256, dim]
-            v = self.v_proj(norm_hidden)  # [B, 256, dim]
-            
-            # Reshape for multi-head attention: [B, 256, num_heads, head_dim]
-            q = q.view(batch_size, seq_len, self.num_attention_heads, self.head_dim)
-            k = k.view(batch_size, seq_len, self.num_attention_heads, self.head_dim)
-            v = v.view(batch_size, seq_len, self.num_attention_heads, self.head_dim)
-            
-            # Apply RoPE
             q_rot, k_rot = apply_rotary_pos_emb(q, k, cos_emb, sin_emb)
-            
-            # Reshape back for attention: [B, 256, dim]
-            q_rot = q_rot.view(batch_size, seq_len, self.dim)
-            k_rot = k_rot.view(batch_size, seq_len, self.dim)
-            v = v.view(batch_size, seq_len, self.dim)
-            
-            # Compute attention manually with proper tensor handling
-            # Transpose and reshape with contiguous() to avoid stride issues
-            q_for_attn = q_rot.transpose(1, 2).contiguous().view(batch_size * self.num_attention_heads, seq_len, self.head_dim)
-            k_for_attn = k_rot.transpose(1, 2).contiguous().view(batch_size * self.num_attention_heads, seq_len, self.head_dim)
-            v_for_attn = v.transpose(1, 2).contiguous().view(batch_size * self.num_attention_heads, seq_len, self.head_dim)
-            
-            # Don't pass attention_mask since all tokens are valid and mask would need reshaping
-            attn_output = F.scaled_dot_product_attention(
-                q_for_attn,
-                k_for_attn,
-                v_for_attn,
-                attn_mask=None,  # Skip mask since all tokens are valid
-                dropout_p=0.0,
-                is_causal=False
-            )
-            
-            # Reshape and project output
-            attn_output = attn_output.view(batch_size, self.num_attention_heads, seq_len, self.head_dim)
-            attn_output = attn_output.transpose(1, 2).contiguous().view(batch_size, seq_len, self.dim)
-            attn_output = self.out_proj(attn_output)
-            
         else:
-            # Fallback to standard attention without RoPE
-            attn_output, _ = self.self_attn(
-                norm_hidden, norm_hidden, norm_hidden,
-                attn_mask=attention_mask,
-                need_weights=False
-            )
+            q_rot, k_rot = q, k
+        
+        # Prepare for attention computation
+        q_for_attn = q_rot.transpose(1, 2).contiguous().view(batch_size * self.num_attention_heads, seq_len, self.head_dim)
+        k_for_attn = k_rot.transpose(1, 2).contiguous().view(batch_size * self.num_attention_heads, seq_len, self.head_dim)
+        v_for_attn = v.transpose(1, 2).contiguous().view(batch_size * self.num_attention_heads, seq_len, self.head_dim)
+        
+        # Handle attention mask
+        attn_mask = None
+        if attention_mask is not None:
+            additive_mask = torch.zeros_like(attention_mask, dtype=q_for_attn.dtype)
+            additive_mask = additive_mask.masked_fill(~attention_mask, torch.finfo(q_for_attn.dtype).min)
+            additive_mask = additive_mask.view(batch_size, 1, seq_len)
+            additive_mask = additive_mask.expand(-1, self.num_attention_heads, -1)
+            attn_mask = additive_mask.reshape(batch_size * self.num_attention_heads, 1, seq_len)
+        
+        # Compute attention
+        attn_output = F.scaled_dot_product_attention(
+            q_for_attn,
+            k_for_attn,
+            v_for_attn,
+            attn_mask=attn_mask,
+            dropout_p=0.0,
+            is_causal=False
+        )
+        
+        # Reshape and project output
+        attn_output = attn_output.view(batch_size, self.num_attention_heads, seq_len, self.head_dim)
+        attn_output = attn_output.transpose(1, 2).contiguous().view(batch_size, seq_len, self.dim)
+        attn_output = self.out_proj(attn_output)
         
         hidden_states = residual + gate_msa.unsqueeze(1).tanh() * attn_output
         
-        # Cross-attention with EVA-CLIP conditioning
+        # Cross-attention
         residual = hidden_states
         norm_hidden = self.norm2(hidden_states)
         norm_encoder = self.cross_norm(encoder_hidden_states)
@@ -350,7 +254,7 @@ class BLIP3oAttentionBlock(nn.Module):
         
         hidden_states = residual + gate_cross.unsqueeze(1).tanh() * cross_attn_output
         
-        # Feed-forward with timestep conditioning
+        # Feed-forward
         residual = hidden_states
         norm_hidden = self.norm3(hidden_states)
         norm_hidden = norm_hidden * (1 + scale_mlp.unsqueeze(1))
@@ -363,89 +267,47 @@ class BLIP3oAttentionBlock(nn.Module):
 
 class BLIP3oDiTModel(PreTrainedModel):
     """
-    BLIP3-o Diffusion Transformer Model with FIXED 3D RoPE implementation.
-    UPDATED: Now handles 256 tokens (16x16 grid) instead of 64 tokens (8x8 grid)
-    
-    This model implements the exact BLIP3-o architecture for generating CLIP embeddings
-    from EVA-CLIP conditioning using flow matching with proper 3D Rotary Position Embedding.
-    
-    Architecture:
-    - Input: Noisy CLIP features [B, 256, 1024] + EVA-CLIP conditioning [B, 256, 4096] (UPDATED)
-    - Backbone: DiT transformer with 3D RoPE and cross-attention
-    - Output: Velocity field predictions [B, 256, 1024] for flow matching (UPDATED)
+    DDP-Compatible BLIP3-o Diffusion Transformer Model
+    Key Fixes:
+    - Removed unused parameters causing DDP sync issues
+    - Maintained 3D RoPE for 256 tokens
     """
     
     config_class = BLIP3oDiTConfig
     
     def __init__(self, config: BLIP3oDiTConfig):
         super().__init__(config)
-        
-        # Store configuration
         self.config = config
         self._gradient_checkpointing = config._gradient_checkpointing
-        
-        # Validate configuration for BLIP3-o
         self._validate_blip3o_config(config)
         
-        # Calculate expected number of tokens based on input_size
         self.num_tokens = config.input_size * config.input_size
-        print(f"🔧 Model configured for {self.num_tokens} tokens ({config.input_size}x{config.input_size} grid)")
-        
-        # Ensure head_dim is compatible with 3D RoPE
         self.head_dim = config.dim // config.n_heads
         
-        # Check if head_dim is compatible with 3D RoPE (must be divisible by 4)
+        # Adjust dimensions for RoPE compatibility
         if self.head_dim % 4 != 0:
-            print(f"⚠️  Head dimension {self.head_dim} not divisible by 4, adjusting for 3D RoPE compatibility...")
-            
-            # Find compatible dimensions
-            compatible_found = False
-            
-            # Strategy 1: Adjust num_heads to make head_dim divisible by 4
             for candidate_heads in range(1, config.dim + 1):
-                if config.dim % candidate_heads == 0:  # Must be divisible for MultiheadAttention
+                if config.dim % candidate_heads == 0:
                     candidate_head_dim = config.dim // candidate_heads
-                    if candidate_head_dim % 4 == 0:  # Must be divisible by 4 for 3D RoPE
+                    if candidate_head_dim % 4 == 0:
                         config.n_heads = candidate_heads
-                        config.n_kv_heads = candidate_heads  
+                        config.n_kv_heads = candidate_heads
                         self.head_dim = candidate_head_dim
-                        compatible_found = True
-                        print(f"✅ Adjusted num_heads to {candidate_heads} (head_dim={candidate_head_dim})")
                         break
-            
-            # Strategy 2: If no compatible num_heads found, adjust dim
-            if not compatible_found:
-                # Find the largest dim <= original_dim that works
-                original_heads = config.n_heads
-                for candidate_dim in range(config.dim, 0, -4):  # Step by 4 for RoPE compatibility
-                    if candidate_dim % original_heads == 0:  # Must work with original heads
-                        candidate_head_dim = candidate_dim // original_heads
-                        if candidate_head_dim % 4 == 0:
-                            config.dim = candidate_dim
-                            self.head_dim = candidate_head_dim
-                            print(f"✅ Adjusted dim to {candidate_dim} (head_dim={candidate_head_dim})")
-                            compatible_found = True
-                            break
-                
-                # Strategy 3: Use safe default
-                if not compatible_found:
-                    config.dim = 512  # Safe default
-                    config.n_heads = 8
-                    config.n_kv_heads = 8
-                    self.head_dim = 64
-                    print(f"✅ Using safe default: dim=512, heads=8, head_dim=64")
-        else:
-            print(f"✅ Head dimension {self.head_dim} is compatible with 3D RoPE")
+            if self.head_dim % 4 != 0:
+                config.dim = 512
+                config.n_heads = 8
+                config.n_kv_heads = 8
+                self.head_dim = 64
         
-        # Final validation
         assert config.dim % config.n_heads == 0, f"dim {config.dim} must be divisible by num_heads {config.n_heads}"
         assert self.head_dim % 4 == 0, f"head_dim {self.head_dim} must be divisible by 4 for 3D RoPE"
         
-        # Token embedder for pre-tokenized inputs - UPDATED for variable token count
+        # Token embedder
         self.token_embedder = SimpleTokenEmbedder(
             in_channels=config.in_channels,
             embed_dim=config.dim,
-            num_tokens=self.num_tokens,  # UPDATED: Can be 256 or other values
+            num_tokens=self.num_tokens,
         )
         
         # Timestep embedding
@@ -455,21 +317,18 @@ class BLIP3oDiTModel(PreTrainedModel):
             nn.SiLU(),
             nn.Linear(config.dim, config.dim),
         )
-        
-        # Timestep frequency embedding
         self.time_proj = self._create_sinusoidal_timestep_embedding(time_embed_dim)
         
-        # EVA-CLIP conditioning projection
+        # EVA-CLIP projection
         self.eva_proj = nn.Linear(config.eva_embedding_size, config.dim)
         
-        # Transformer layers with 3D RoPE
+        # Transformer layers
         self.layers = nn.ModuleList([
             BLIP3oAttentionBlock(
                 dim=config.dim,
                 num_attention_heads=config.n_heads,
-                cross_attention_dim=config.dim,  # After EVA projection
+                cross_attention_dim=config.dim,
                 norm_eps=config.norm_eps,
-                qk_norm=config.qk_norm,
             )
             for _ in range(config.n_layers)
         ])
@@ -478,49 +337,22 @@ class BLIP3oDiTModel(PreTrainedModel):
         self.norm_out = nn.LayerNorm(config.dim, eps=config.norm_eps)
         self.proj_out = nn.Linear(config.dim, config.in_channels, bias=True)
         
-        # Initialize weights
         self._init_weights()
-        
-        print(f"✅ BLIP3-o DiT model with FIXED 3D RoPE initialized")
-        print(f"   Parameters: {self.get_num_parameters():,}")
-        print(f"   Final dimensions: dim={config.dim}, heads={config.n_heads}, head_dim={self.head_dim}")
-        print(f"   Tokens: {self.num_tokens} ({config.input_size}x{config.input_size} grid)")
-        print(f"   3D RoPE compatible: head_dim % 4 = {self.head_dim % 4}")
-    
+        print(f"✅ DDP-Compatible BLIP3-o DiT model initialized for {self.num_tokens} tokens")
+
     def _create_sinusoidal_timestep_embedding(self, embed_dim: int):
-        """Create sinusoidal timestep embedding layer."""
         half_dim = embed_dim // 2
         emb = math.log(10000) / (half_dim - 1)
         emb = torch.exp(torch.arange(half_dim, dtype=torch.float32) * -emb)
         return emb
     
     def _validate_blip3o_config(self, config: BLIP3oDiTConfig):
-        """Validate configuration specific to BLIP3-o requirements."""
         assert config.learn_sigma is False, "BLIP3-o uses flow matching, sigma learning must be False"
         assert config.in_channels > 0, "CLIP embedding dimension must be positive"
         assert config.eva_embedding_size > 0, "EVA-CLIP conditioning dimension must be positive"
         assert config.patch_size == 1, "Features are pre-tokenized, patch_size must be 1"
         
-        # Calculate number of tokens
-        num_tokens = config.input_size * config.input_size
-        
-        # Log the dimensions being used (helpful for debugging)
-        print(f"🔧 Model configured for:")
-        print(f"   CLIP dimension: {config.in_channels}")
-        print(f"   EVA-CLIP dimension: {config.eva_embedding_size}")
-        print(f"   Hidden dimension: {config.dim}")
-        print(f"   Grid: {config.input_size}x{config.input_size} = {num_tokens} tokens")
-        
-        # Validate token count makes sense
-        if num_tokens == 64:
-            print(f"   📊 Using 64 tokens (8x8 grid) - legacy format")
-        elif num_tokens == 256:
-            print(f"   📊 Using 256 tokens (16x16 grid) - updated format")
-        else:
-            print(f"   📊 Using {num_tokens} tokens ({config.input_size}x{config.input_size} grid) - custom format")
-    
     def _init_weights(self):
-        """Initialize model weights following BLIP3-o methodology."""
         for module in self.modules():
             if isinstance(module, nn.Linear):
                 torch.nn.init.xavier_uniform_(module.weight)
@@ -531,72 +363,40 @@ class BLIP3oDiTModel(PreTrainedModel):
                 torch.nn.init.zeros_(module.bias)
     
     def enable_gradient_checkpointing(self):
-        """Enable gradient checkpointing for memory efficiency."""
         self._gradient_checkpointing = True
-        print("✅ Gradient checkpointing enabled")
     
     def disable_gradient_checkpointing(self):
-        """Disable gradient checkpointing."""
         self._gradient_checkpointing = False
-        print("✅ Gradient checkpointing disabled")
     
     def get_timestep_embedding(self, timesteps: torch.Tensor) -> torch.Tensor:
-        """Get sinusoidal timestep embeddings."""
         device = timesteps.device
         dtype = timesteps.dtype
-        
-        # Ensure timesteps are in [0, 1] range for flow matching
-        timesteps = torch.clamp(timesteps, 0.0, 1.0)
-        
-        # Scale to a larger range for better embedding
-        timesteps = timesteps * 1000.0
-        
-        # Create sinusoidal embeddings
+        timesteps = torch.clamp(timesteps, 0.0, 1.0) * 1000.0
         half_dim = len(self.time_proj)
         emb = self.time_proj.to(device=device, dtype=dtype)
         emb = timesteps[:, None] * emb[None, :]
         emb = torch.cat([torch.sin(emb), torch.cos(emb)], dim=-1)
-        
         return emb
     
     def forward(
         self,
-        hidden_states: torch.Tensor,           # [B, num_tokens, 1024] - Noisy CLIP features (UPDATED: flexible token count)
-        timestep: torch.Tensor,                # [B] - Flow matching timesteps
-        encoder_hidden_states: torch.Tensor,  # [B, num_tokens, 4096] - EVA-CLIP conditioning (UPDATED: flexible token count)
-        encoder_attention_mask: Optional[torch.Tensor] = None,  # [B, num_tokens] - Attention mask
+        hidden_states: torch.Tensor,
+        timestep: torch.Tensor,
+        encoder_hidden_states: torch.Tensor,
+        encoder_attention_mask: Optional[torch.Tensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
         **kwargs
     ):
-        """
-        Forward pass of BLIP3-o DiT model with FIXED 3D RoPE.
-        UPDATED: Now handles flexible token counts (256 for updated format, 64 for legacy)
-        
-        Args:
-            hidden_states: Noisy CLIP features [batch_size, num_tokens, 1024]
-            timestep: Flow matching timesteps [batch_size] or scalar
-            encoder_hidden_states: EVA-CLIP conditioning [batch_size, num_tokens, 4096]
-            encoder_attention_mask: Optional attention mask [batch_size, num_tokens]
-            cross_attention_kwargs: Additional cross-attention arguments
-            return_dict: Whether to return ModelOutput object
-            
-        Returns:
-            Predicted velocity field [batch_size, num_tokens, 1024] for flow matching
-        """
         batch_size = hidden_states.shape[0]
         device = hidden_states.device
-        
-        # Validate input shapes
         self._validate_forward_inputs(hidden_states, timestep, encoder_hidden_states)
         
-        # Handle timestep format
-        if timestep.dim() == 0:  # Scalar timestep
+        if timestep.dim() == 0:
             timestep = timestep.unsqueeze(0).expand(batch_size)
         elif timestep.shape[0] != batch_size:
-            raise ValueError(f"Timestep batch size {timestep.shape[0]} != hidden states batch size {batch_size}")
+            raise ValueError(f"Timestep batch size mismatch")
         
-        # Create encoder attention mask if not provided
         if encoder_attention_mask is None:
             encoder_attention_mask = torch.ones(
                 (batch_size, encoder_hidden_states.shape[1]),
@@ -604,36 +404,29 @@ class BLIP3oDiTModel(PreTrainedModel):
                 dtype=torch.bool
             )
         
-        # Embed input tokens (without creating RoPE here)
         hidden_states, attention_mask, img_size, _ = self.token_embedder(hidden_states)
         
-        # Create 3D RoPE embeddings with correct head dimension and grid size
-        # UPDATED: Use config.input_size for grid size (16 for 256 tokens, 8 for 64 tokens)
+        # Create 3D RoPE embeddings
         cos_emb, sin_emb = get_3d_rotary_pos_embed(
-            embed_dim=self.head_dim,  # Use head_dim for RoPE
-            grid_size=self.config.input_size  # UPDATED: flexible grid size
+            embed_dim=self.head_dim,
+            grid_size=self.config.input_size
         )
         cos_emb = cos_emb.to(device)
         sin_emb = sin_emb.to(device)
         image_rotary_emb = (cos_emb, sin_emb)
         
-        # Get timestep embeddings
+        # Timestep embedding
         timestep_emb = self.get_timestep_embedding(timestep)
-        timestep_emb = self.time_embed(timestep_emb)  # [B, dim]
+        timestep_emb = self.time_embed(timestep_emb)
         
-        # Project EVA-CLIP conditioning
-        encoder_hidden_states = self.eva_proj(encoder_hidden_states)  # [B, num_tokens, dim]
+        # Project EVA-CLIP
+        encoder_hidden_states = self.eva_proj(encoder_hidden_states)
         
-        # Pass through transformer layers with 3D RoPE
+        # Transformer layers
         for layer in self.layers:
             if self.training and self._gradient_checkpointing:
-                def create_custom_forward(module):
-                    def custom_forward(*inputs):
-                        return module(*inputs)
-                    return custom_forward
-                
                 hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(layer),
+                    layer,
                     hidden_states,
                     encoder_hidden_states,
                     timestep_emb,
@@ -654,37 +447,25 @@ class BLIP3oDiTModel(PreTrainedModel):
         
         # Output projection
         hidden_states = self.norm_out(hidden_states)
-        output = self.proj_out(hidden_states)  # [B, num_tokens, 1024]
+        output = self.proj_out(hidden_states)
         
         if return_dict:
             from transformers.modeling_outputs import BaseModelOutput
             return BaseModelOutput(last_hidden_state=output)
-        else:
-            return output
+        return output
     
-    def _validate_forward_inputs(
-        self, 
-        hidden_states: torch.Tensor, 
-        timestep: torch.Tensor, 
-        encoder_hidden_states: torch.Tensor
-    ):
-        """Validate forward pass inputs - UPDATED for flexible token counts."""
-        # Check hidden_states shape [B, num_tokens, clip_dim]
+    def _validate_forward_inputs(self, hidden_states, timestep, encoder_hidden_states):
         actual_tokens = hidden_states.shape[1]
         if actual_tokens != self.num_tokens:
             raise ValueError(f"Expected {self.num_tokens} tokens, got {actual_tokens}")
         if hidden_states.shape[2] != self.config.in_channels:
-            raise ValueError(f"Expected {self.config.in_channels}-dim CLIP features, got {hidden_states.shape[2]}")
-        
-        # Check encoder_hidden_states shape [B, num_tokens, eva_dim]
+            raise ValueError(f"Expected {self.config.in_channels}-dim CLIP features")
         if encoder_hidden_states.shape[1] != self.num_tokens:
-            raise ValueError(f"Expected {self.num_tokens} conditioning tokens, got {encoder_hidden_states.shape[1]}")
+            raise ValueError(f"Expected {self.num_tokens} conditioning tokens")
         if encoder_hidden_states.shape[2] != self.config.eva_embedding_size:
-            raise ValueError(f"Expected {self.config.eva_embedding_size}-dim EVA-CLIP features, got {encoder_hidden_states.shape[2]}")
-        
-        # Check batch size consistency
+            raise ValueError(f"Expected {self.config.eva_embedding_size}-dim EVA-CLIP features")
         if hidden_states.shape[0] != encoder_hidden_states.shape[0]:
-            raise ValueError(f"Batch size mismatch: {hidden_states.shape[0]} vs {encoder_hidden_states.shape[0]}")
+            raise ValueError(f"Batch size mismatch")
     
     @torch.no_grad()
     def generate(
