@@ -1,6 +1,7 @@
 """
 Custom HuggingFace Trainer for BLIP3-o DiT training with flow matching.
 FIXED: Updated parameter validation and compatibility issues.
+ADDED: Cosine learning rate scheduler support
 """
 
 import torch
@@ -15,7 +16,6 @@ import json
 import numpy as np
 import math
 from collections import defaultdict
-from typing import Dict, Any, Optional, Union, Tuple, List
 
 from ..models.blip3o_dit import BLIP3oDiTModel
 from ..losses.flow_matching_loss import BLIP3oFlowMatchingLoss
@@ -96,19 +96,16 @@ class BLIP3oTrainer(Trainer):
         self.loss_components = defaultdict(list)
         
         logger.info("BLIP3-o trainer initialized")
-        # logger.info(f"Model parameters: {model.get_num_parameters():,}")
-        # logger.info(f"Trainable parameters: {model.get_num_parameters(trainable_only=True):,}")
     
     def compute_loss(
         self,
         model: BLIP3oDiTModel,
         inputs: Dict[str, Any],
         return_outputs: bool = False,
-        num_items_in_batch: Optional[int] = None,  # FIXED: Add this parameter for newer transformers compatibility
+        num_items_in_batch: Optional[int] = None,  # FIXED: Compatibility parameter
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, Any]]:
         """
         Compute flow matching loss for BLIP3-o training.
-        FIXED: Added num_items_in_batch parameter for compatibility.
         
         This implements the exact BLIP3-o flow matching training procedure:
         1. Extract EVA-CLIP conditioning and CLIP targets
@@ -121,7 +118,7 @@ class BLIP3oTrainer(Trainer):
             model: The BLIP3oDiTModel
             inputs: Batch inputs from dataloader
             return_outputs: Whether to return model outputs
-            num_items_in_batch: Number of items in batch (for newer transformers compatibility)
+            num_items_in_batch: Compatibility parameter (unused)
             
         Returns:
             Loss tensor, optionally with additional outputs
@@ -443,6 +440,9 @@ class BLIP3oTrainer(Trainer):
             'num_trainable_parameters': self.model.get_num_parameters(trainable_only=True),
             'memory_footprint': self.model.get_memory_footprint(),
             'gradient_checkpointing': self.model._gradient_checkpointing,
+            'lr_scheduler_type': self.args.lr_scheduler_type,
+            'min_lr': self.args.lr_end,
+            'warmup_ratio': self.args.warmup_ratio,
         }
         
         with open(output_dir / 'training_summary.json', 'w') as f:
@@ -485,6 +485,9 @@ class BLIP3oTrainer(Trainer):
         logger.info(f"Created optimizer: {type(optimizer).__name__}")
         logger.info(f"Learning rate: {self.args.learning_rate}")
         logger.info(f"Weight decay: {self.args.weight_decay}")
+        logger.info(f"LR Scheduler: {self.args.lr_scheduler_type}")
+        logger.info(f"Min LR: {self.args.lr_end}")
+        logger.info(f"Warmup Ratio: {self.args.warmup_ratio}")
         
         return optimizer
     
@@ -537,6 +540,9 @@ def create_blip3o_training_args(
     per_device_train_batch_size: int = 32,
     per_device_eval_batch_size: int = 64,
     learning_rate: float = 1e-4,
+    lr_scheduler_type: str = "cosine",   # Add scheduler type parameter
+    min_lr: float = 1e-6,                # Add minimum LR parameter
+    warmup_ratio: float = 0.05,          # Add warmup ratio parameter
     weight_decay: float = 0.01,
     warmup_steps: int = 1000,
     logging_steps: int = 100,
@@ -562,6 +568,9 @@ def create_blip3o_training_args(
         per_device_train_batch_size: Training batch size per device
         per_device_eval_batch_size: Evaluation batch size per device
         learning_rate: Learning rate
+        lr_scheduler_type: Learning rate scheduler type
+        min_lr: Minimum learning rate for cosine scheduler
+        warmup_ratio: Warmup steps as ratio of total steps
         weight_decay: Weight decay for regularization
         warmup_steps: Number of warmup steps for learning rate
         logging_steps: Log every N steps
@@ -605,6 +614,9 @@ def create_blip3o_training_args(
         per_device_train_batch_size=per_device_train_batch_size,
         per_device_eval_batch_size=per_device_eval_batch_size,
         learning_rate=learning_rate,
+        lr_scheduler_type=lr_scheduler_type,  # Set scheduler type
+        lr_end=min_lr,                        # Set minimum LR
+        warmup_ratio=warmup_ratio,             # Set warmup ratio
         weight_decay=weight_decay,
         warmup_steps=warmup_steps,
         logging_steps=logging_steps,
