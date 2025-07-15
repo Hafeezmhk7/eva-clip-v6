@@ -1,7 +1,6 @@
 """
-FIXED Chunked Dataset implementation for BLIP3-o training with sequential shard loading.
-FIXED: Better shard file management and existence checking.
-FIXED: Correct parameter passing for DataLoader
+FIXED Chunked Dataset implementation for BLIP3-o training with proper __len__ method.
+FIX: Added __len__() method to make it compatible with DataLoader boolean evaluation.
 """
 
 import torch
@@ -15,6 +14,7 @@ import json
 import random
 import time
 import gc
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -23,12 +23,14 @@ class BLIP3oEmbeddingDataset(IterableDataset):
     """
     FIXED Chunked dataset for BLIP3-o training that loads one shard at a time.
     
+    FIX: Added __len__() method to prevent boolean evaluation errors with DataLoader.
+    
     This dataset:
     1. Loads embedding shards sequentially
     2. Provides samples from current shard
     3. Automatically moves to next shard when current is exhausted
     4. Optionally deletes processed shards to save disk space
-    5. FIXED: Better file existence checking and error handling
+    5. FIXED: Provides length estimation for DataLoader compatibility
     """
     
     def __init__(
@@ -82,12 +84,74 @@ class BLIP3oEmbeddingDataset(IterableDataset):
         self.total_samples_processed = 0
         self.shards_processed = 0
         
+        # FIXED: Calculate estimated length for this split and rank
+        self._calculate_estimated_length()
+        
         logger.info(f"ChunkedDataset initialized:")
         logger.info(f"  Directory: {self.chunked_embeddings_dir}")
         logger.info(f"  Split: {self.split}")
         logger.info(f"  Total shards: {len(self.shard_files)}")
-        logger.info(f"  Estimated samples: {self.estimated_total_samples:,}")
+        logger.info(f"  Estimated samples: {self.estimated_length:,}")
         logger.info(f"  Delete after use: {self.delete_after_use}")
+    
+    def _calculate_estimated_length(self):
+        """
+        FIXED: Calculate estimated length for this dataset split and distributed rank.
+        This enables DataLoader boolean evaluation and length-based operations.
+        """
+        # Get total samples from manifest
+        total_samples = self.estimated_total_samples
+        
+        # Apply split ratio for train/eval
+        if self.split == "train" and self.eval_split_ratio > 0:
+            # Training gets (1 - eval_split_ratio) of the data
+            split_samples = int(total_samples * (1 - self.eval_split_ratio))
+        elif self.split == "eval" and self.eval_split_ratio > 0:
+            # Evaluation gets eval_split_ratio of the data
+            split_samples = int(total_samples * self.eval_split_ratio)
+        else:
+            # Use all data if no split or split is "all"
+            split_samples = total_samples
+        
+        # Account for distributed training
+        # Check if we're in distributed mode
+        if 'WORLD_SIZE' in os.environ and 'RANK' in os.environ:
+            world_size = int(os.environ['WORLD_SIZE'])
+            rank = int(os.environ['RANK'])
+            
+            # Each rank gets approximately 1/world_size of the data
+            rank_samples = split_samples // world_size
+            
+            # Add remainder to last rank
+            if rank == world_size - 1:
+                rank_samples += split_samples % world_size
+            
+            self.estimated_length = rank_samples
+            
+            logger.info(f"Distributed mode: rank {rank}/{world_size}")
+            logger.info(f"  Total samples: {total_samples:,}")
+            logger.info(f"  Split samples ({self.split}): {split_samples:,}")
+            logger.info(f"  This rank samples: {rank_samples:,}")
+        else:
+            self.estimated_length = split_samples
+            logger.info(f"Single-node mode:")
+            logger.info(f"  Total samples: {total_samples:,}")
+            logger.info(f"  Split samples ({self.split}): {split_samples:,}")
+    
+    def __len__(self) -> int:
+        """
+        FIXED: Return estimated length for DataLoader compatibility.
+        
+        This is required for:
+        1. DataLoader boolean evaluation (if dataloader: ...)
+        2. Training progress tracking
+        3. Epoch-based training schedules
+        4. Distributed training coordination
+        
+        Returns:
+            Estimated number of samples in this dataset split
+        """
+        return self.estimated_length
     
     def _load_manifest(self):
         """Load the embeddings manifest file."""
@@ -347,6 +411,7 @@ class BLIP3oEmbeddingDataset(IterableDataset):
         return {
             'total_shards': len(self.shard_files),
             'estimated_total_samples': self.estimated_total_samples,
+            'estimated_length': self.estimated_length,
             'shards_processed': self.shards_processed,
             'samples_processed': self.total_samples_processed,
             'current_shard': self.current_shard_idx,
@@ -510,6 +575,9 @@ def test_chunked_dataset(chunked_embeddings_dir: Union[str, Path]):
             cache_next_shard=True,
         )
         
+        # Test length
+        print(f"✅ Dataset length: {len(dataset):,}")
+        
         # Test iteration
         sample_count = 0
         shard_count = 0
@@ -546,6 +614,10 @@ def test_chunked_dataset(chunked_embeddings_dir: Union[str, Path]):
             split="all",
             delete_after_use=False,
         )
+        
+        # Test boolean evaluation
+        print(f"✅ DataLoader boolean evaluation: {bool(dataloader)}")
+        print(f"✅ DataLoader length: {len(dataloader):,}")
         
         batch = next(iter(dataloader))
         print(f"✅ Dataloader test: batch shape EVA {batch['eva_embeddings'].shape}, CLIP {batch['clip_embeddings'].shape}")
