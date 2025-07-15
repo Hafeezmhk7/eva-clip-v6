@@ -1,15 +1,17 @@
 #!/bin/bash
-#SBATCH --job-name=blip3o_multi_gpu
+#SBATCH --job-name=blip3o_multi_gpu_fixed
 #SBATCH --partition=gpu_h100
 #SBATCH --nodes=1
 #SBATCH --gpus=3
 #SBATCH --cpus-per-gpu=18
 #SBATCH --time=12:00:00
 #SBATCH --mem=0
-#SBATCH --output=./slurm_out/multi_gpu_%j.out
-#SBATCH --error=./slurm_out/multi_gpu_%j.err
+#SBATCH --output=./slurm_out/multi_gpu_fixed_%j.out
+#SBATCH --error=./slurm_out/multi_gpu_fixed_%j.err
 
-echo "🚀 BLIP3-o DiT Multi-GPU Training (3x H100 GPUs)"
+echo "🚀 FIXED BLIP3-o DiT Multi-GPU Training (3x H100 GPUs)"
+echo "================================================================"
+echo "Key Fix: Using HuggingFace Trainer's automatic DDP handling"
 echo "================================================================"
 echo "Job ID: $SLURM_JOB_ID"
 echo "Node: $SLURMD_NODENAME"
@@ -42,24 +44,14 @@ echo "=== Environment Check ==="
 python -c "import torch; print(f'PyTorch: {torch.__version__}'); print(f'CUDA: {torch.version.cuda}'); print(f'Devices: {torch.cuda.device_count()}')"
 echo "========================="
 
-# Set up distributed training environment variables
-export MASTER_PORT=12340
-master_addr=$(scontrol show hostnames "$SLURM_JOB_NODELIST" | head -n 1)
-export MASTER_ADDR=$master_addr
-
 # Get actual number of GPUs
 NUM_GPUS=$(python -c "import torch; print(torch.cuda.device_count())")
-export WORLD_SIZE=$NUM_GPUS
 
-echo "🌐 Distributed training setup:"
-echo "   MASTER_ADDR: $MASTER_ADDR"
-echo "   MASTER_PORT: $MASTER_PORT"
-echo "   WORLD_SIZE: $WORLD_SIZE"
-echo "   ACTUAL GPUS: $NUM_GPUS"
+echo "🌐 Multi-GPU setup:"
+echo "   Actual GPUs available: $NUM_GPUS"
+echo "   Will use all available GPUs"
 
-# Set up Snellius scratch directories
-export SCRATCH_SHARED="/scratch-shared"
-export SCRATCH_LOCAL="/scratch-local"
+# Set up directories (simplified)
 export BLIP3O_USER=$(whoami)
 export BLIP3O_JOB_ID=${SLURM_JOB_ID}
 
@@ -67,36 +59,25 @@ export BLIP3O_JOB_ID=${SLURM_JOB_ID}
 export BLIP3O_WORKSPACE="/scratch-shared/${BLIP3O_USER}/blip3o_workspace"
 export BLIP3O_EMBEDDINGS="${BLIP3O_WORKSPACE}/embeddings"
 export BLIP3O_CHECKPOINTS="${BLIP3O_WORKSPACE}/checkpoints"
-export BLIP3O_LOGS="${BLIP3O_WORKSPACE}/logs"
 
 # Job-specific temp
 export BLIP3O_JOB_TEMP="/scratch-local/${BLIP3O_USER}.${BLIP3O_JOB_ID}/blip3o_job_${BLIP3O_JOB_ID}"
-export BLIP3O_CACHE="${BLIP3O_JOB_TEMP}/cache"
-export BLIP3O_TEMP_CHECKPOINTS="${BLIP3O_JOB_TEMP}/temp_checkpoints"
 
 # Create directories
-mkdir -p "${BLIP3O_WORKSPACE}"/{embeddings,checkpoints,logs,metadata}
+mkdir -p "${BLIP3O_WORKSPACE}"/{embeddings,checkpoints,logs}
 mkdir -p "${BLIP3O_JOB_TEMP}"/{cache,temp_checkpoints}
 
-# Redirect model caches
-export TORCH_HOME="${BLIP3O_CACHE}/torch"
-export HF_HOME="${BLIP3O_CACHE}/huggingface"
-export TRANSFORMERS_CACHE="${BLIP3O_CACHE}/transformers"
-export WANDB_DIR="${BLIP3O_LOGS}/wandb"
+# Redirect model caches to temp
+export TORCH_HOME="${BLIP3O_JOB_TEMP}/cache/torch"
+export HF_HOME="${BLIP3O_JOB_TEMP}/cache/huggingface"
+export TRANSFORMERS_CACHE="${BLIP3O_JOB_TEMP}/cache/transformers"
 
 # Create cache directories
-mkdir -p "${TORCH_HOME}" "${HF_HOME}" "${TRANSFORMERS_CACHE}" "${WANDB_DIR}"
+mkdir -p "${TORCH_HOME}" "${HF_HOME}" "${TRANSFORMERS_CACHE}"
 
 echo "✅ Environment configured"
 echo "   Workspace: ${BLIP3O_WORKSPACE}"
 echo "   Job temp: ${BLIP3O_JOB_TEMP}"
-
-# Check GPU info
-echo ""
-echo "🎮 GPU Information:"
-nvidia-smi -L
-echo ""
-nvidia-smi --query-gpu=memory.total,memory.free --format=csv,noheader,nounits
 
 # =============================================================================
 # FIND EMBEDDINGS
@@ -118,15 +99,6 @@ fi
 
 echo "✅ Found embeddings: $EMBEDDINGS_DIR"
 
-# Validate manifest
-MANIFEST_FILE="$EMBEDDINGS_DIR/embeddings_manifest.json"
-if [ ! -f "$MANIFEST_FILE" ]; then
-    echo "❌ Manifest file not found: $MANIFEST_FILE"
-    exit 1
-fi
-
-echo "✅ Embeddings validated"
-
 # =============================================================================
 # TRAINING SETUP
 # =============================================================================
@@ -137,39 +109,40 @@ echo "=================="
 
 # Create training directories
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-TRAINING_NAME="blip3o_multi_gpu_${SLURM_JOB_ID}_${TIMESTAMP}"
+TRAINING_NAME="blip3o_multi_gpu_fixed_${SLURM_JOB_ID}_${TIMESTAMP}"
 
-TEMP_CHECKPOINT_DIR="${BLIP3O_TEMP_CHECKPOINTS}/${TRAINING_NAME}"
+TEMP_CHECKPOINT_DIR="${BLIP3O_JOB_TEMP}/temp_checkpoints/${TRAINING_NAME}"
 PERSISTENT_CHECKPOINT_DIR="${BLIP3O_CHECKPOINTS}/${TRAINING_NAME}"
-FINAL_MODEL_DIR="${HOME}/models/blip3o_multi_gpu_${TIMESTAMP}"
 
 mkdir -p "$TEMP_CHECKPOINT_DIR"
 mkdir -p "$PERSISTENT_CHECKPOINT_DIR"
-mkdir -p "$FINAL_MODEL_DIR"
 
 echo "✅ Training directories created:"
 echo "   Temp: $TEMP_CHECKPOINT_DIR"
 echo "   Persistent: $PERSISTENT_CHECKPOINT_DIR"
-echo "   Final: $FINAL_MODEL_DIR"
 
 # =============================================================================
-# MULTI-GPU TRAINING WITH TORCHRUN - FIXED SYNTAX
+# FIXED MULTI-GPU TRAINING WITH TORCHRUN
 # =============================================================================
 
 echo ""
-echo "🚀 Starting Multi-GPU Training with torchrun..."
-echo "==============================================="
+echo "🚀 Starting FIXED Multi-GPU Training with torchrun..."
+echo "====================================================="
 
-echo "🔧 Multi-GPU Configuration:"
+echo "🔧 Fixed Multi-GPU Configuration:"
 echo "   🎯 GPUs: ${NUM_GPUS}x H100"
 echo "   📐 Model: Large configuration (768 dim, 16 layers)"
 echo "   📦 Batch size: 8 per GPU"
 echo "   🔄 Gradient accumulation: 4"
 echo "   💾 Memory optimizations: Gradient checkpointing enabled"
+echo "   ✅ Key Fix: Let Trainer handle DDP automatically"
 echo ""
 
-# Fixed command syntax - removed line breaks between arguments
-torchrun --nproc_per_node=$NUM_GPUS --nnodes=1 --node_rank=0 --master_addr=$MASTER_ADDR --master_port=$MASTER_PORT \
+# FIXED: Use the corrected training script
+torchrun \
+    --nproc_per_node=$NUM_GPUS \
+    --nnodes=1 \
+    --node_rank=0 \
     train_blip3o_dit_multi_gpu.py \
     --chunked_embeddings_dir "$EMBEDDINGS_DIR" \
     --output_dir "$TEMP_CHECKPOINT_DIR" \
@@ -189,10 +162,10 @@ torchrun --nproc_per_node=$NUM_GPUS --nnodes=1 --node_rank=0 --master_addr=$MAST
 TRAINING_EXIT_CODE=$?
 
 echo ""
-echo "🎯 MULTI-GPU TRAINING COMPLETED WITH EXIT CODE: $TRAINING_EXIT_CODE"
+echo "🎯 FIXED MULTI-GPU TRAINING COMPLETED WITH EXIT CODE: $TRAINING_EXIT_CODE"
 
 # =============================================================================
-# MODEL ARCHIVING AND CLEANUP
+# MODEL ARCHIVING
 # =============================================================================
 
 if [ $TRAINING_EXIT_CODE -eq 0 ]; then
@@ -207,63 +180,17 @@ if [ $TRAINING_EXIT_CODE -eq 0 ]; then
         echo "✅ Saved to: $PERSISTENT_CHECKPOINT_DIR"
     fi
     
-    # Copy to home directory
-    if [ -d "$PERSISTENT_CHECKPOINT_DIR" ] && [ "$(ls -A "$PERSISTENT_CHECKPOINT_DIR")" ]; then
-        echo "🏠 Archiving to home directory..."
-        cp -r "$PERSISTENT_CHECKPOINT_DIR"/* "$FINAL_MODEL_DIR/"
-        echo "✅ Final model: $FINAL_MODEL_DIR"
-        
-        # Create usage instructions
-        cat > "$FINAL_MODEL_DIR/README.md" << EOF
-# BLIP3-o DiT Model (256 Tokens) - Multi-GPU Training
-
-## Training Information
-- **Date**: $(date -Iseconds)
-- **Job ID**: ${SLURM_JOB_ID}
-- **GPUs Used**: ${NUM_GPUS}x H100
-- **Tokens**: 256 (16x16 grid)
-- **Training Method**: PyTorch DDP with torchrun
-
-## Model Architecture
-- **Hidden Dimension**: 768
-- **Layers**: 16
-- **Attention Heads**: 12
-- **Input Resolution**: 16x16 = 256 tokens
-- **CLIP Input**: 1024-dim (ViT-L/14)
-- **EVA-CLIP Conditioning**: 4096-dim (EVA-CLIP-8B)
-
-## Loading
-\`\`\`python
-from src.modules.models.blip3o_dit import create_blip3o_dit_model
-from src.modules.config.blip3o_config import BLIP3oDiTConfig
-
-# Load the model configuration and weights
-config = BLIP3oDiTConfig(
-    input_size=16, dim=768, n_layers=16, n_heads=12
-)
-model = create_blip3o_dit_model(config)
-model.load_state_dict(torch.load('pytorch_model.bin'))
-\`\`\`
-EOF
-    fi
-    
     echo ""
-    echo "🎉 SUCCESS! Multi-GPU BLIP3-o training completed!"
-    echo "Model saved to: $FINAL_MODEL_DIR"
+    echo "🎉 SUCCESS! Fixed Multi-GPU BLIP3-o training completed!"
+    echo "Model saved to: $PERSISTENT_CHECKPOINT_DIR"
     
 else
     echo ""
     echo "❌ Multi-GPU training failed"
-    echo "Check logs: ./slurm_out/multi_gpu_${SLURM_JOB_ID}.{out,err}"
+    echo "Check logs: ./slurm_out/multi_gpu_fixed_${SLURM_JOB_ID}.{out,err}"
     exit 1
 fi
 
 echo ""
 echo "🎉 Job completed at: $(date)"
 echo "⏱️  Total runtime: $SECONDS seconds"
-echo ""
-echo "📋 MULTI-GPU TRAINING SUMMARY:"
-echo "==============================="
-echo "✅ Used ${NUM_GPUS}x H100 GPUs"
-echo "✅ DDP with NCCL backend"
-echo "✅ Memory issues resolved!"
