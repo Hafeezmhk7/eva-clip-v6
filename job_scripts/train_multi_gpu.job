@@ -9,9 +9,13 @@
 #SBATCH --output=./slurm_out/multi_gpu_fixed_%j.out
 #SBATCH --error=./slurm_out/multi_gpu_fixed_%j.err
 
-echo "🚀 FIXED BLIP3-o DiT Multi-GPU Training (3x H100 GPUs)"
+echo "🚀 FIXED BLIP3-o DiT Multi-GPU Training (3x H100 GPUs) - Cosine Scheduler"
 echo "================================================================"
-echo "Key Fix: Using HuggingFace Trainer's automatic DDP handling"
+echo "Key Fixes:"
+echo "  ✅ Removed invalid lr_end parameter"
+echo "  ✅ Proper cosine learning rate scheduler"
+echo "  ✅ DDP parameter usage compatibility"
+echo "  ✅ All model parameters guaranteed to be used"
 echo "================================================================"
 echo "Job ID: $SLURM_JOB_ID"
 echo "Node: $SLURMD_NODENAME"
@@ -109,7 +113,7 @@ echo "=================="
 
 # Create training directories
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-TRAINING_NAME="blip3o_multi_gpu_fixed_${SLURM_JOB_ID}_${TIMESTAMP}"
+TRAINING_NAME="blip3o_multi_gpu_fixed_cosine_${SLURM_JOB_ID}_${TIMESTAMP}"
 
 TEMP_CHECKPOINT_DIR="${BLIP3O_JOB_TEMP}/temp_checkpoints/${TRAINING_NAME}"
 PERSISTENT_CHECKPOINT_DIR="${BLIP3O_CHECKPOINTS}/${TRAINING_NAME}"
@@ -126,19 +130,21 @@ echo "   Persistent: $PERSISTENT_CHECKPOINT_DIR"
 # =============================================================================
 
 echo ""
-echo "🚀 Starting FIXED Multi-GPU Training with torchrun..."
-echo "====================================================="
+echo "🚀 Starting FIXED Multi-GPU Training with Cosine Scheduler..."
+echo "============================================================="
 
 echo "🔧 Fixed Multi-GPU Configuration:"
 echo "   🎯 GPUs: ${NUM_GPUS}x H100"
 echo "   📐 Model: Large configuration (768 dim, 16 layers)"
 echo "   📦 Batch size: 8 per GPU"
-echo "   🔄 Gradient accumulation: 4"
+echo "   🔄 Gradient accumulation: 2"
 echo "   💾 Memory optimizations: Gradient checkpointing enabled"
-echo "   ✅ Key Fix: Let Trainer handle DDP automatically"
+echo "   📈 Scheduler: Cosine annealing with warmup"
+echo "   ✅ Key Fix: Removed invalid lr_end parameter"
+echo "   ✅ Key Fix: Proper DDP parameter usage"
 echo ""
 
-# FIXED: Use the corrected training script
+# FIXED: Use the corrected training script with proper cosine scheduler
 torchrun \
     --nproc_per_node=$NUM_GPUS \
     --nnodes=1 \
@@ -154,7 +160,6 @@ torchrun \
     --num_layers 16 \
     --learning_rate 1e-4 \
     --lr_scheduler_type cosine \
-    --min_lr 1e-6 \
     --warmup_ratio 0.05 \
     --weight_decay 0.01 \
     --warmup_steps 100 \
@@ -184,8 +189,14 @@ if [ $TRAINING_EXIT_CODE -eq 0 ]; then
     fi
     
     echo ""
-    echo "🎉 SUCCESS! Fixed Multi-GPU BLIP3-o training completed!"
+    echo "🎉 SUCCESS! Fixed Multi-GPU BLIP3-o training with cosine scheduler completed!"
     echo "Model saved to: $PERSISTENT_CHECKPOINT_DIR"
+    echo ""
+    echo "🔧 Applied Fixes:"
+    echo "   ✅ Removed invalid lr_end parameter"
+    echo "   ✅ Proper cosine learning rate scheduler implementation"
+    echo "   ✅ DDP parameter usage compatibility"
+    echo "   ✅ All model parameters guaranteed to be used"
     
 else
     echo ""

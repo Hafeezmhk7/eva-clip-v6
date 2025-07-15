@@ -1,7 +1,7 @@
 """
 Custom HuggingFace Trainer for BLIP3-o DiT training with flow matching.
-FIXED: Updated parameter validation and compatibility issues.
-ADDED: Cosine learning rate scheduler support
+FIXED: Updated parameter validation and removed invalid lr_end parameter
+ADDED: Proper cosine learning rate scheduler support
 """
 
 import torch
@@ -31,7 +31,7 @@ class BLIP3oTrainer(Trainer):
     This trainer implements the exact BLIP3-o training methodology:
     - Flow matching loss computation with velocity prediction
     - EVA-CLIP conditioning for cross-attention
-    - Proper handling of 64-token embeddings
+    - Proper handling of 256-token embeddings (16x16 grid)
     - Detailed metrics and logging
     - Memory-efficient training with gradient checkpointing
     """
@@ -124,8 +124,8 @@ class BLIP3oTrainer(Trainer):
             Loss tensor, optionally with additional outputs
         """
         # Extract inputs from batch
-        eva_embeddings = inputs['eva_embeddings']      # [B, 64, 4096]
-        clip_embeddings = inputs['clip_embeddings']    # [B, 64, 1024]
+        eva_embeddings = inputs['eva_embeddings']      # [B, 256, 4096]
+        clip_embeddings = inputs['clip_embeddings']    # [B, 256, 1024]
         
         batch_size = eva_embeddings.shape[0]
         device = eva_embeddings.device
@@ -433,7 +433,7 @@ class BLIP3oTrainer(Trainer):
             with open(output_dir / 'blip3o_model_config.json', 'w') as f:
                 json.dump(model_config, f, indent=2)
         
-        # Save training configuration summary
+        # FIXED: Create training summary without invalid lr_end
         training_summary = {
             'total_steps': self.training_step_count,
             'num_parameters': self.model.get_num_parameters(),
@@ -441,8 +441,9 @@ class BLIP3oTrainer(Trainer):
             'memory_footprint': self.model.get_memory_footprint(),
             'gradient_checkpointing': self.model._gradient_checkpointing,
             'lr_scheduler_type': self.args.lr_scheduler_type,
-            'min_lr': self.args.lr_end,
+            'learning_rate': self.args.learning_rate,
             'warmup_ratio': self.args.warmup_ratio,
+            'warmup_steps': self.args.warmup_steps,
         }
         
         with open(output_dir / 'training_summary.json', 'w') as f:
@@ -486,7 +487,6 @@ class BLIP3oTrainer(Trainer):
         logger.info(f"Learning rate: {self.args.learning_rate}")
         logger.info(f"Weight decay: {self.args.weight_decay}")
         logger.info(f"LR Scheduler: {self.args.lr_scheduler_type}")
-        logger.info(f"Min LR: {self.args.lr_end}")
         logger.info(f"Warmup Ratio: {self.args.warmup_ratio}")
         
         return optimizer
@@ -540,9 +540,8 @@ def create_blip3o_training_args(
     per_device_train_batch_size: int = 32,
     per_device_eval_batch_size: int = 64,
     learning_rate: float = 1e-4,
-    lr_scheduler_type: str = "cosine",   # Add scheduler type parameter
-    min_lr: float = 1e-6,                # Add minimum LR parameter
-    warmup_ratio: float = 0.05,          # Add warmup ratio parameter
+    lr_scheduler_type: str = "cosine",   # Scheduler type parameter
+    warmup_ratio: float = 0.05,          # Warmup ratio parameter
     weight_decay: float = 0.01,
     warmup_steps: int = 1000,
     logging_steps: int = 100,
@@ -560,7 +559,7 @@ def create_blip3o_training_args(
 ) -> TrainingArguments:
     """
     Create TrainingArguments optimized for BLIP3-o DiT training.
-    FIXED: Automatic parameter validation to ensure compatibility.
+    FIXED: Removed invalid lr_end parameter and proper scheduler configuration.
     
     Args:
         output_dir: Output directory for checkpoints and logs
@@ -569,7 +568,6 @@ def create_blip3o_training_args(
         per_device_eval_batch_size: Evaluation batch size per device
         learning_rate: Learning rate
         lr_scheduler_type: Learning rate scheduler type
-        min_lr: Minimum learning rate for cosine scheduler
         warmup_ratio: Warmup steps as ratio of total steps
         weight_decay: Weight decay for regularization
         warmup_steps: Number of warmup steps for learning rate
@@ -614,8 +612,8 @@ def create_blip3o_training_args(
         per_device_train_batch_size=per_device_train_batch_size,
         per_device_eval_batch_size=per_device_eval_batch_size,
         learning_rate=learning_rate,
+        # FIXED: Proper cosine scheduler parameters (removed invalid lr_end)
         lr_scheduler_type=lr_scheduler_type,  # Set scheduler type
-        lr_end=min_lr,                        # Set minimum LR
         warmup_ratio=warmup_ratio,             # Set warmup ratio
         weight_decay=weight_decay,
         warmup_steps=warmup_steps,

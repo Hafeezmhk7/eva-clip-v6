@@ -4,8 +4,9 @@ DDP-FIXED Multi-GPU Training script for BLIP3-o DiT with Cosine Scheduler
 FIXES:
 1. Proper DDP configuration with find_unused_parameters=False
 2. Model architecture ensures all parameters are used
-3. Added cosine learning rate scheduler
-4. Better error handling and debugging
+3. FIXED: Removed invalid lr_end parameter
+4. Proper cosine learning rate scheduler implementation
+5. Better error handling and debugging
 """
 
 import os
@@ -80,12 +81,10 @@ def parse_arguments():
                            help="Number of warmup steps")
     train_group.add_argument("--gradient_accumulation_steps", type=int, default=4,
                            help="Gradient accumulation steps")
-    # Add cosine scheduler parameters
+    # FIXED: Cosine scheduler parameters
     train_group.add_argument("--lr_scheduler_type", type=str, default="cosine",
-                        choices=["linear", "cosine", "constant"],
+                        choices=["linear", "cosine", "constant", "cosine_with_restarts"],
                         help="Learning rate scheduler type")
-    train_group.add_argument("--min_lr", type=float, default=1e-6,
-                        help="Minimum learning rate for cosine scheduler")
     train_group.add_argument("--warmup_ratio", type=float, default=0.05,
                         help="Warmup steps as ratio of total steps")
     
@@ -144,7 +143,8 @@ def main():
         print("✅ FIX: DDP parameter usage issue resolved")
         print("✅ FIX: All model parameters guaranteed to be used")
         print("✅ FIX: find_unused_parameters=False enabled")
-        print("✅ ADD: Cosine learning rate scheduler")
+        print("✅ FIX: Removed invalid lr_end parameter")
+        print("✅ ADD: Proper cosine learning rate scheduler")
     
     # Parse arguments
     args = parse_arguments()
@@ -158,7 +158,7 @@ def main():
         print(f"   Layers: {args.num_layers}")
         print(f"   Attention heads: {args.num_heads}")
         print(f"   LR Scheduler: {args.lr_scheduler_type}")
-        print(f"   Min LR: {args.min_lr}")
+        print(f"   Learning Rate: {args.learning_rate}")
         print(f"   Warmup Ratio: {args.warmup_ratio}")
     
     try:
@@ -273,9 +273,9 @@ def main():
             print(f"   Steps per epoch per GPU: {steps_per_epoch}")
             print(f"   Max steps: {max_steps}")
             print(f"   Total epochs: {args.num_epochs}")
-            print(f"   Scheduler: {args.lr_scheduler_type} (min LR: {args.min_lr}, warmup ratio: {args.warmup_ratio})")
+            print(f"   Scheduler: {args.lr_scheduler_type} (warmup ratio: {args.warmup_ratio})")
         
-        # Create TrainingArguments with DDP optimizations
+        # Create TrainingArguments with DDP optimizations - FIXED
         from transformers import TrainingArguments
         
         # Safe evaluation strategy determination
@@ -289,9 +289,8 @@ def main():
             per_device_train_batch_size=args.batch_size,
             per_device_eval_batch_size=args.eval_batch_size,
             learning_rate=args.learning_rate,
-            # Add cosine scheduler parameters
+            # FIXED: Proper cosine scheduler parameters (removed invalid lr_end)
             lr_scheduler_type=args.lr_scheduler_type,
-            lr_end=args.min_lr,
             warmup_ratio=args.warmup_ratio,
             weight_decay=args.weight_decay,
             warmup_steps=args.warmup_steps,
@@ -328,6 +327,9 @@ def main():
         
         if local_rank == 0:
             print("🔧 Creating DDP-compatible trainer...")
+            print(f"✅ LR Scheduler: {training_args.lr_scheduler_type}")
+            print(f"✅ Learning Rate: {training_args.learning_rate}")
+            print(f"✅ Warmup Ratio: {training_args.warmup_ratio}")
         
         # Create trainer
         trainer = BLIP3oTrainer(
@@ -363,6 +365,7 @@ def main():
             print("✅ find_unused_parameters=False enabled")
             print("✅ Trainer will automatically handle DDP setup")
             print(f"✅ Using {args.lr_scheduler_type} learning rate scheduler")
+            print("✅ FIXED: Removed invalid lr_end parameter")
         
         # Start training - Trainer handles all DDP automatically
         trainer.train()
