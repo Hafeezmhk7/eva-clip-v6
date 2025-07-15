@@ -150,11 +150,11 @@ torchrun --nproc_per_node=$NUM_GPUS --nnodes=1 --node_rank=0 train_blip3o_dit_mu
     --output_dir "$TEMP_CHECKPOINT_DIR" \
     --batch_size 10 \
     --eval_batch_size 4 \
-    --num_epochs 8 \
+    --num_epochs 10 \
     --model_dim 1024 \
     --num_heads 16 \
     --num_layers 20 \
-    --learning_rate 3e-4 \
+    --learning_rate 1e-3 \
     --lr_scheduler_type cosine_with_restarts \
     --warmup_ratio 0.06 \
     --weight_decay 0.005 \
@@ -228,23 +228,23 @@ echo "🎯 FIXED MULTI-GPU TRAINING COMPLETED WITH EXIT CODE: $TRAINING_EXIT_COD
 #     --dataloader_num_workers 2
 
 ## 4th
-torchrun --nproc_per_node=$NUM_GPUS --nnodes=1 --node_rank=0 train_blip3o_dit_multi_gpu.py \
-    --chunked_embeddings_dir "$EMBEDDINGS_DIR" \
-    --output_dir "$TEMP_CHECKPOINT_DIR" \
-    --batch_size 10 \                           # ↑ Increased (if memory allows)
-    --eval_batch_size 4 \                       # ↑ Increased
-    --num_epochs 8 \                            # ✓ Keep (working well)
-    --model_dim 1024 \                          # ✓ Keep (working great)
-    --num_heads 16 \                            # ✓ Keep
-    --num_layers 20 \                           # ✓ Keep
-    --learning_rate 3e-4 \                      # ↑ INCREASED from 2.2e-4
-    --lr_scheduler_type cosine_with_restarts \   # ↑ Advanced scheduler for LR restarts
-    --warmup_ratio 0.06 \                       # ↓ Shorter warmup for higher LR
-    --weight_decay 0.005 \                      # ↓ Reduced (model learning well)
-    --warmup_steps 60 \                         # ↓ Adjusted
-    --gradient_accumulation_steps 2 \           # ✓ Keep
-    --fp16 \                                    # ✓ Keep
-    --dataloader_num_workers 2
+# torchrun --nproc_per_node=$NUM_GPUS --nnodes=1 --node_rank=0 train_blip3o_dit_multi_gpu.py \
+#     --chunked_embeddings_dir "$EMBEDDINGS_DIR" \
+#     --output_dir "$TEMP_CHECKPOINT_DIR" \
+#     --batch_size 10 \                           # ↑ Increased (if memory allows)
+#     --eval_batch_size 4 \                       # ↑ Increased
+#     --num_epochs 8 \                            # ✓ Keep (working well)
+#     --model_dim 1024 \                          # ✓ Keep (working great)
+#     --num_heads 16 \                            # ✓ Keep
+#     --num_layers 20 \                           # ✓ Keep
+#     --learning_rate 3e-4 \                      # ↑ INCREASED from 2.2e-4
+#     --lr_scheduler_type cosine_with_restarts \   # ↑ Advanced scheduler for LR restarts
+#     --warmup_ratio 0.06 \                       # ↓ Shorter warmup for higher LR
+#     --weight_decay 0.005 \                      # ↓ Reduced (model learning well)
+#     --warmup_steps 60 \                         # ↓ Adjusted
+#     --gradient_accumulation_steps 2 \           # ✓ Keep
+#     --fp16 \                                    # ✓ Keep
+#     --dataloader_num_workers 2
 
 
 if [ $TRAINING_EXIT_CODE -eq 0 ]; then
