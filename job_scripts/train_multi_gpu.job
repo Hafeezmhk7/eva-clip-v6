@@ -148,19 +148,19 @@ echo ""
 torchrun --nproc_per_node=$NUM_GPUS --nnodes=1 --node_rank=0 train_blip3o_dit_multi_gpu.py \
     --chunked_embeddings_dir "$EMBEDDINGS_DIR" \
     --output_dir "$TEMP_CHECKPOINT_DIR" \
-    --batch_size 10 \                          
-    --eval_batch_size 4 \                       
-    --num_epochs 8 \                            
-    --model_dim 1024 \                         
-    --num_heads 16 \                           
-    --num_layers 20 \                           
-    --learning_rate 3e-4 \                      
-    --lr_scheduler_type cosine_with_restarts \   
-    --warmup_ratio 0.06 \                       
-    --weight_decay 0.005 \                      
-    --warmup_steps 60 \                         
-    --gradient_accumulation_steps 2 \          
-    --fp16 \                                    
+    --batch_size 10 \
+    --eval_batch_size 4 \
+    --num_epochs 8 \
+    --model_dim 1024 \
+    --num_heads 16 \
+    --num_layers 20 \
+    --learning_rate 3e-4 \
+    --lr_scheduler_type cosine_with_restarts \
+    --warmup_ratio 0.06 \
+    --weight_decay 0.005 \
+    --warmup_steps 60 \
+    --gradient_accumulation_steps 2 \
+    --fp16 \
     --dataloader_num_workers 2
 
 TRAINING_EXIT_CODE=$?
