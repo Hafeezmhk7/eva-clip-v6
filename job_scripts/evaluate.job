@@ -188,15 +188,21 @@ if [ "$RUN_TASK_2" = "true" ]; then
 
         RECALL_START_TIME=$(date +%s)
 
-        python evaluate_recall.py \
+        # python evaluate_recall.py \
+        #     --blip3o_model_path "$MODEL_PATH" \
+        #     --coco_root "$COCO_ROOT" \
+        #     --max_samples $EVAL_MAX_SAMPLES \
+        #     --batch_size $BATCH_SIZE \
+        #     --k_values 1 5 10 \
+        #     --device cuda \
+        #     --results_dir "${RESULTS_DIR}/recall" \
+        #     --save_detailed \
+        #     --verbose
+
+            python evaluate_recall.py \
             --blip3o_model_path "$MODEL_PATH" \
             --coco_root "$COCO_ROOT" \
-            --max_samples $EVAL_MAX_SAMPLES \
-            --batch_size $BATCH_SIZE \
-            --k_values 1 5 10 \
-            --device cuda \
-            --results_dir "${RESULTS_DIR}/recall" \
-            --save_detailed \
+            --validate_clip_only \
             --verbose
 
         RECALL_EXIT_CODE=$?
