@@ -186,7 +186,7 @@ python src/data_hand/download_dataset.py
 python src/module/extract_embeddings_g.py
 ```
 
-This generates `embeddings/blip3o_grid_embeddings.pkl for each shard stored in the temp directory` containing:
+This generates `embeddings/blip3o_grid_embeddings.pkl for each shard stored in the temp directory`:
 /scratch-shared/scur2711/blip3o_workspace/embeddings/chunked_256_tokens/
 - `eva_blip3o_embeddings`: `[N, 256, 4096]` — EVA-CLIP conditioning
 - `clip_blip3o_embeddings`: `[N, 256, 1024]` — CLIP targets
