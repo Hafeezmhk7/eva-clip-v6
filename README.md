@@ -10,8 +10,6 @@ This repository implements:
 - **EVA-CLIP → CLIP**: Maps 4096-dim EVA features to 1024-dim CLIP embeddings
 - **256-Token Format**: Compatible with 16×16 grid embeddings (updated from 64-token)
 - **HuggingFace Integration**: Custom trainer with full training pipeline
-- **Comprehensive Evaluation**: Fair comparison framework with CLIP visual projection
-- **SLURM Support**: Cluster-ready training and evaluation scripts
 
 ## 📁 Project Structure
 
