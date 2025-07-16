@@ -1,0 +1,357 @@
+#!/bin/bash
+#SBATCH --job-name=blip3o_evaluation
+#SBATCH --partition=gpu_h100
+#SBATCH --nodes=1
+#SBATCH --gpus=1
+#SBATCH --cpus-per-gpu=18
+#SBATCH --time=4:00:00
+#SBATCH --mem=0
+#SBATCH --output=./slurm_out/evaluation_%j.out
+#SBATCH --error=./slurm_out/evaluation_%j.err
+
+echo "🔍 BLIP3-o DiT Model Evaluation on MS-COCO"
+echo "================================================================"
+echo "Tasks:"
+echo "  📊 Task 1: Alignment Evaluation (Cosine Similarity)"
+echo "  🎯 Task 2: Recall Evaluation (Image-to-Text Retrieval)"
+echo "================================================================"
+echo "Job ID: $SLURM_JOB_ID"
+echo "Node: $SLURMD_NODENAME"
+echo "Date: $(date)"
+echo "Working directory: $(pwd)"
+echo "User: $(whoami)"
+echo "GPUs requested: $SLURM_GPUS"
+echo "CPUs per GPU: $SLURM_CPUS_PER_GPU"
+echo "================================================================"
+
+# =============================================================================
+# ENVIRONMENT SETUP (Same as training script)
+# =============================================================================
+
+echo ""
+echo "🔧 Environment Setup..."
+echo "======================="
+
+# Load modules (same as training)
+module purge
+module load 2024
+module load Miniconda3/24.7.1-0
+module load CUDA/12.6.0
+
+# Activate conda environment
+source activate eva_clip_env
+
+# Environment check
+echo "=== Environment Check ==="
+python -c "import torch; print(f'PyTorch: {torch.__version__}'); print(f'CUDA: {torch.version.cuda}'); print(f'Devices: {torch.cuda.device_count()}')"
+echo "========================="
+
+# Check GPU availability
+if [ $(python -c "import torch; print(torch.cuda.device_count())") -eq 0 ]; then
+    echo "❌ No GPUs available! Check SLURM allocation."
+    exit 1
+fi
+
+echo "🎮 GPU setup:"
+echo "   GPUs available: $(python -c "import torch; print(torch.cuda.device_count())")"
+echo "   GPU name: $(python -c "import torch; print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'None')")"
+
+# Set up directories (same as training)
+export BLIP3O_USER=$(whoami)
+export BLIP3O_JOB_ID=${SLURM_JOB_ID}
+
+# Persistent workspace
+export BLIP3O_WORKSPACE="/scratch-shared/${BLIP3O_USER}/blip3o_workspace"
+export BLIP3O_CHECKPOINTS="${BLIP3O_WORKSPACE}/checkpoints"
+
+# Job-specific temp for evaluation results
+export BLIP3O_JOB_TEMP="/scratch-local/${BLIP3O_USER}.${BLIP3O_JOB_ID}/blip3o_eval_${BLIP3O_JOB_ID}"
+
+# Create directories
+mkdir -p "${BLIP3O_JOB_TEMP}"/{cache,results}
+
+# Redirect model caches to temp (avoid quota issues)
+export TORCH_HOME="${BLIP3O_JOB_TEMP}/cache/torch"
+export HF_HOME="${BLIP3O_JOB_TEMP}/cache/huggingface"
+export TRANSFORMERS_CACHE="${BLIP3O_JOB_TEMP}/cache/transformers"
+
+# Create cache directories
+mkdir -p "${TORCH_HOME}" "${HF_HOME}" "${TRANSFORMERS_CACHE}"
+
+echo "✅ Environment configured"
+echo "   Workspace: ${BLIP3O_WORKSPACE}"
+echo "   Job temp: ${BLIP3O_JOB_TEMP}"
+
+# =============================================================================
+# MODEL AND DATA PATHS
+# =============================================================================
+
+echo ""
+echo "📍 Setting up paths..."
+echo "======================"
+
+# Model path - UPDATE THIS to your specific model
+MODEL_PATH="/scratch-shared/scur2711/blip3o_workspace/checkpoints/blip3o_multi_gpu_fixed_cosine_13169051_20250715_205944"
+
+# COCO dataset path
+COCO_ROOT="./data/coco"
+
+# Results directory
+RESULTS_DIR="${BLIP3O_JOB_TEMP}/results"
+PERSISTENT_RESULTS_DIR="${BLIP3O_WORKSPACE}/evaluation_results/eval_${BLIP3O_JOB_ID}_$(date +%Y%m%d_%H%M%S)"
+
+# Create results directories
+mkdir -p "$RESULTS_DIR"
+mkdir -p "$PERSISTENT_RESULTS_DIR"
+
+# Verify paths
+echo "🔍 Verifying paths..."
+if [ ! -d "$MODEL_PATH" ]; then
+    echo "❌ Model not found: $MODEL_PATH"
+    echo "Available models:"
+    ls -la "${BLIP3O_CHECKPOINTS}/" | grep blip3o || echo "No models found"
+    exit 1
+fi
+
+if [ ! -d "$COCO_ROOT" ]; then
+    echo "❌ COCO dataset not found: $COCO_ROOT"
+    echo "Please ensure COCO is downloaded in ./data/coco/"
+    exit 1
+fi
+
+echo "✅ Model found: $MODEL_PATH"
+echo "✅ COCO found: $COCO_ROOT"
+echo "✅ Results will be saved to: $PERSISTENT_RESULTS_DIR"
+
+# =============================================================================
+# EVALUATION CONFIGURATION
+# =============================================================================
+
+echo ""
+echo "⚙️  Evaluation Configuration..."
+echo "=============================="
+
+# Evaluation parameters
+MAX_SAMPLES=1000        # Number of samples to evaluate (set to null for all)
+BATCH_SIZE=16           # Batch size for GPU evaluation
+DEVICE="cuda"           # Use GPU
+VERBOSE_FLAG="--verbose"
+
+# For testing, use smaller values
+if [ "${1:-}" = "test" ]; then
+    echo "🧪 TEST MODE: Using small sample size"
+    MAX_SAMPLES=20
+    BATCH_SIZE=4
+fi
+
+echo "📊 Evaluation settings:"
+echo "   Max samples: $MAX_SAMPLES"
+echo "   Batch size: $BATCH_SIZE"
+echo "   Device: $DEVICE"
+echo "   Model: $(basename $MODEL_PATH)"
+
+# =============================================================================
+# TASK 1: ALIGNMENT EVALUATION
+# =============================================================================
+
+echo ""
+echo "📊 Starting Task 1: Alignment Evaluation"
+echo "========================================"
+echo "Evaluating alignment between text and vision embeddings using cosine similarity"
+echo "Method (a): CLIP text + CLIP vision"
+echo "Method (b): CLIP text + Generated CLIP (EVA → BLIP3-o DiT)"
+
+ALIGNMENT_START_TIME=$(date +%s)
+
+python evaluate_alignment.py \
+    --blip3o_model_path "$MODEL_PATH" \
+    --coco_root "$COCO_ROOT" \
+    --max_samples $MAX_SAMPLES \
+    --batch_size $BATCH_SIZE \
+    --device $DEVICE \
+    --results_dir "${RESULTS_DIR}/alignment" \
+    --save_detailed \
+    $VERBOSE_FLAG
+
+ALIGNMENT_EXIT_CODE=$?
+ALIGNMENT_END_TIME=$(date +%s)
+ALIGNMENT_DURATION=$((ALIGNMENT_END_TIME - ALIGNMENT_START_TIME))
+
+if [ $ALIGNMENT_EXIT_CODE -eq 0 ]; then
+    echo "✅ Task 1 (Alignment) completed successfully in ${ALIGNMENT_DURATION}s"
+else
+    echo "❌ Task 1 (Alignment) failed with exit code: $ALIGNMENT_EXIT_CODE"
+fi
+
+# =============================================================================
+# TASK 2: RECALL EVALUATION  
+# =============================================================================
+
+echo ""
+echo "🎯 Starting Task 2: Recall Evaluation"
+echo "====================================="
+echo "Evaluating image-to-text retrieval performance using Recall@K metrics"
+echo "Method (a): Image → CLIP vision → text retrieval"
+echo "Method (b): Image → EVA-CLIP → BLIP3-o DiT → text retrieval"
+
+RECALL_START_TIME=$(date +%s)
+
+python evaluate_recall.py \
+    --blip3o_model_path "$MODEL_PATH" \
+    --coco_root "$COCO_ROOT" \
+    --max_samples $MAX_SAMPLES \
+    --batch_size $BATCH_SIZE \
+    --k_values 1 5 10 \
+    --device $DEVICE \
+    --results_dir "${RESULTS_DIR}/recall" \
+    --save_detailed \
+    $VERBOSE_FLAG
+
+RECALL_EXIT_CODE=$?
+RECALL_END_TIME=$(date +%s)
+RECALL_DURATION=$((RECALL_END_TIME - RECALL_START_TIME))
+
+if [ $RECALL_EXIT_CODE -eq 0 ]; then
+    echo "✅ Task 2 (Recall) completed successfully in ${RECALL_DURATION}s"
+else
+    echo "❌ Task 2 (Recall) failed with exit code: $RECALL_EXIT_CODE"
+fi
+
+# =============================================================================
+# RESULTS ARCHIVING
+# =============================================================================
+
+echo ""
+echo "📁 Archiving Results..."
+echo "======================"
+
+# Copy results to persistent storage
+if [ -d "$RESULTS_DIR" ] && [ "$(ls -A "$RESULTS_DIR")" ]; then
+    echo "📁 Copying results to persistent storage..."
+    cp -r "$RESULTS_DIR"/* "$PERSISTENT_RESULTS_DIR/"
+    
+    # Create summary file
+    SUMMARY_FILE="$PERSISTENT_RESULTS_DIR/evaluation_summary.txt"
+    
+    cat > "$SUMMARY_FILE" << EOF
+BLIP3-o DiT Evaluation Summary
+==============================
+Job ID: $SLURM_JOB_ID
+Date: $(date)
+Node: $SLURMD_NODENAME
+User: $BLIP3O_USER
+
+Model Information:
+- Path: $MODEL_PATH
+- Model: $(basename $MODEL_PATH)
+
+Evaluation Settings:
+- Max samples: $MAX_SAMPLES
+- Batch size: $BATCH_SIZE
+- Device: $DEVICE
+- COCO root: $COCO_ROOT
+
+Task Results:
+- Task 1 (Alignment): $([ $ALIGNMENT_EXIT_CODE -eq 0 ] && echo "SUCCESS" || echo "FAILED") (${ALIGNMENT_DURATION}s)
+- Task 2 (Recall): $([ $RECALL_EXIT_CODE -eq 0 ] && echo "SUCCESS" || echo "FAILED") (${RECALL_DURATION}s)
+
+Results Location: $PERSISTENT_RESULTS_DIR
+
+Files Generated:
+$(find "$PERSISTENT_RESULTS_DIR" -type f -name "*.json" | sed 's|^|  - |')
+EOF
+
+    echo "✅ Results saved to: $PERSISTENT_RESULTS_DIR"
+    echo "📄 Summary saved to: $SUMMARY_FILE"
+    
+    # Show quick summary
+    echo ""
+    echo "📈 Quick Results Preview:"
+    echo "========================"
+    
+    # Show alignment results if available
+    if [ -f "$PERSISTENT_RESULTS_DIR/alignment/alignment_summary.json" ]; then
+        echo "📊 Alignment Results:"
+        python -c "
+import json
+try:
+    with open('$PERSISTENT_RESULTS_DIR/alignment/alignment_summary.json', 'r') as f:
+        data = json.load(f)
+    print(f'  CLIP Text + CLIP Vision:     {data.get(\"clip_text_clip_vision_mean\", 0):.4f}')
+    print(f'  CLIP Text + Generated CLIP:  {data.get(\"clip_text_generated_mean\", 0):.4f}')
+    print(f'  Difference:                  {data.get(\"difference_mean\", 0):+.4f}')
+    print(f'  Samples evaluated:           {data.get(\"num_samples\", 0)}')
+except Exception as e:
+    print(f'  Could not parse alignment results: {e}')
+"
+    fi
+    
+    # Show recall results if available
+    if [ -f "$PERSISTENT_RESULTS_DIR/recall/recall_summary.json" ]; then
+        echo "🎯 Recall Results:"
+        python -c "
+import json
+try:
+    with open('$PERSISTENT_RESULTS_DIR/recall/recall_summary.json', 'r') as f:
+        data = json.load(f)
+    print('  Method (a) - Image→CLIP Vision→Text:')
+    for k in [1, 5, 10]:
+        recall = data.get(f'clip_vision_recall@{k}', 0)
+        print(f'    Recall@{k:2d}: {recall:.4f} ({recall*100:.2f}%)')
+    print('  Method (b) - Image→EVA→BLIP3o→Text:')
+    for k in [1, 5, 10]:
+        recall = data.get(f'generated_recall@{k}', 0)
+        print(f'    Recall@{k:2d}: {recall:.4f} ({recall*100:.2f}%)')
+    print('  Improvements:')
+    for k in [1, 5, 10]:
+        diff = data.get(f'recall@{k}_difference', 0)
+        print(f'    Recall@{k:2d}: {diff:+.4f} ({diff*100:+.2f}%)')
+except Exception as e:
+    print(f'  Could not parse recall results: {e}')
+"
+    fi
+    
+else
+    echo "⚠️  No results to archive"
+fi
+
+# =============================================================================
+# FINAL SUMMARY
+# =============================================================================
+
+echo ""
+echo "🎉 EVALUATION COMPLETED!"
+echo "======================="
+
+TOTAL_END_TIME=$(date +%s)
+TOTAL_DURATION=$((TOTAL_END_TIME - $(date -d "$(date)" +%s)))
+
+echo "📊 Final Summary:"
+echo "   Task 1 (Alignment): $([ $ALIGNMENT_EXIT_CODE -eq 0 ] && echo "✅ SUCCESS" || echo "❌ FAILED")"
+echo "   Task 2 (Recall): $([ $RECALL_EXIT_CODE -eq 0 ] && echo "✅ SUCCESS" || echo "❌ FAILED")"
+echo "   Total samples evaluated: $MAX_SAMPLES"
+echo "   Results location: $PERSISTENT_RESULTS_DIR"
+
+if [ $ALIGNMENT_EXIT_CODE -eq 0 ] && [ $RECALL_EXIT_CODE -eq 0 ]; then
+    echo ""
+    echo "🚀 Both evaluations completed successfully!"
+    echo "📊 Check the results in: $PERSISTENT_RESULTS_DIR"
+    echo "📈 Summary files:"
+    echo "   - alignment_summary.json (Task 1 results)"
+    echo "   - recall_summary.json (Task 2 results)"
+    echo "   - evaluation_summary.txt (Overall summary)"
+    
+    OVERALL_EXIT_CODE=0
+else
+    echo ""
+    echo "⚠️  Some evaluations failed. Check the logs for details."
+    echo "📁 Logs location: ./slurm_out/evaluation_${SLURM_JOB_ID}.{out,err}"
+    
+    OVERALL_EXIT_CODE=1
+fi
+
+echo ""
+echo "🎉 Job completed at: $(date)"
+echo "⏱️  Total runtime: $SECONDS seconds"
+
+exit $OVERALL_EXIT_CODE
