@@ -126,48 +126,48 @@ mark_task_completed() {
 # TASK 1: ALIGNMENT EVALUATION (OPTIMIZED)
 # =============================================================================
 
-if [ "$RUN_TASK_1" = "true" ]; then
-    if [ "$ENABLE_CHECKPOINTING" = "true" ] && check_task_completed "alignment"; then
-        echo ""
-        echo "⏭️  Task 1 (Alignment) already completed, skipping..."
-    else
-        echo ""
-        echo "📊 Starting Task 1: Alignment Evaluation (OPTIMIZED)"
-        echo "====================================================="
-        echo "🚀 OPTIMIZATIONS APPLIED:"
-        echo "   • Sample size: $EVAL_MAX_SAMPLES (reduced for speed)"
-        echo "   • Batch size: $BATCH_SIZE (increased for efficiency)"
-        echo "   • Fair comparison in CLIP's aligned space"
+# if [ "$RUN_TASK_1" = "true" ]; then
+#     if [ "$ENABLE_CHECKPOINTING" = "true" ] && check_task_completed "alignment"; then
+#         echo ""
+#         echo "⏭️  Task 1 (Alignment) already completed, skipping..."
+#     else
+#         echo ""
+#         echo "📊 Starting Task 1: Alignment Evaluation (OPTIMIZED)"
+#         echo "====================================================="
+#         echo "🚀 OPTIMIZATIONS APPLIED:"
+#         echo "   • Sample size: $EVAL_MAX_SAMPLES (reduced for speed)"
+#         echo "   • Batch size: $BATCH_SIZE (increased for efficiency)"
+#         echo "   • Fair comparison in CLIP's aligned space"
 
-        ALIGNMENT_START_TIME=$(date +%s)
+#         ALIGNMENT_START_TIME=$(date +%s)
 
-        python evaluate_alignment.py \
-            --blip3o_model_path "$MODEL_PATH" \
-            --coco_root "$COCO_ROOT" \
-            --max_samples $EVAL_MAX_SAMPLES \
-            --batch_size $BATCH_SIZE \
-            --device cuda \
-            --results_dir "${RESULTS_DIR}/alignment" \
-            --save_detailed \
-            --verbose
+#         python evaluate_alignment.py \
+#             --blip3o_model_path "$MODEL_PATH" \
+#             --coco_root "$COCO_ROOT" \
+#             --max_samples $EVAL_MAX_SAMPLES \
+#             --batch_size $BATCH_SIZE \
+#             --device cuda \
+#             --results_dir "${RESULTS_DIR}/alignment" \
+#             --save_detailed \
+#             --verbose
 
-        ALIGNMENT_EXIT_CODE=$?
-        ALIGNMENT_END_TIME=$(date +%s)
-        ALIGNMENT_DURATION=$((ALIGNMENT_END_TIME - ALIGNMENT_START_TIME))
+#         ALIGNMENT_EXIT_CODE=$?
+#         ALIGNMENT_END_TIME=$(date +%s)
+#         ALIGNMENT_DURATION=$((ALIGNMENT_END_TIME - ALIGNMENT_START_TIME))
 
-        if [ $ALIGNMENT_EXIT_CODE -eq 0 ]; then
-            echo "✅ Task 1 completed successfully in ${ALIGNMENT_DURATION}s"
-            if [ "$ENABLE_CHECKPOINTING" = "true" ]; then
-                mark_task_completed "alignment"
-            fi
-        else
-            echo "❌ Task 1 failed with exit code: $ALIGNMENT_EXIT_CODE"
-        fi
-    fi
-else
-    echo "⏭️  Skipping Task 1 (alignment) as requested"
-    ALIGNMENT_EXIT_CODE=0
-fi
+#         if [ $ALIGNMENT_EXIT_CODE -eq 0 ]; then
+#             echo "✅ Task 1 completed successfully in ${ALIGNMENT_DURATION}s"
+#             if [ "$ENABLE_CHECKPOINTING" = "true" ]; then
+#                 mark_task_completed "alignment"
+#             fi
+#         else
+#             echo "❌ Task 1 failed with exit code: $ALIGNMENT_EXIT_CODE"
+#         fi
+#     fi
+# else
+#     echo "⏭️  Skipping Task 1 (alignment) as requested"
+#     ALIGNMENT_EXIT_CODE=0
+# fi
 
 # =============================================================================
 # TASK 2: RECALL EVALUATION (OPTIMIZED)

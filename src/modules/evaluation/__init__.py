@@ -19,3 +19,17 @@ __all__ = [
     "compute_recall_metrics",
     "BLIP3oEvaluator",
 ]
+
+from .distance_metrics import (
+    compute_comprehensive_distance_metrics,
+    compute_per_sample_distances,
+    analyze_distance_distribution,
+    print_distance_metrics
+)
+
+__all__ = [
+    "compute_comprehensive_distance_metrics",
+    "compute_per_sample_distances", 
+    "analyze_distance_distribution",
+    "print_distance_metrics",
+ ]
