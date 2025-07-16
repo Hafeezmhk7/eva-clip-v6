@@ -8,7 +8,7 @@ This repository implements:
 - **BLIP3-o DiT Model**: NextDiT-based architecture for embedding generation
 - **Flow Matching Training**: Velocity prediction with optimal transport paths  
 - **EVA-CLIP → CLIP**: Maps 4096-dim EVA features to 1024-dim CLIP embeddings
-- **256-Token Format**: Compatible with 16×16 grid embeddings (updated from 64-token)
+- **256-Token Format**: Compatible with 16×16 grid embeddings 
 - **HuggingFace Integration**: Custom trainer with full training pipeline
 
 ## 📁 Project Structure
