@@ -178,13 +178,16 @@ wget http://images.cocodataset.org/annotations/annotations_trainval2017.zip
 unzip annotations_trainval2017.zip -d ./data/coco/
 ```
 
-2. **Extract Grid Embeddings**
+2. **Download tar files & Extract Grid Embeddings**
 ```bash
+# GPU-intensive step - recommend using SLURM
+python src/data_hand/download_dataset.py
 # GPU-intensive step - recommend using SLURM
 python src/module/extract_embeddings_g.py
 ```
 
-This generates `embeddings/blip3o_grid_embeddings.pkl` containing:
+This generates `embeddings/blip3o_grid_embeddings.pkl for each shard stored in the temp directory` containing:
+/scratch-shared/scur2711/blip3o_workspace/embeddings/chunked_256_tokens/
 - `eva_blip3o_embeddings`: `[N, 256, 4096]` — EVA-CLIP conditioning
 - `clip_blip3o_embeddings`: `[N, 256, 1024]` — CLIP targets
 
