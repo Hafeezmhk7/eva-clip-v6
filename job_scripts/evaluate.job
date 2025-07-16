@@ -91,7 +91,7 @@ echo "📍 Setting up paths..."
 echo "======================"
 
 # Model path - UPDATE THIS to your specific model
-MODEL_PATH="/scratch-shared/scur2711/blip3o_workspace/checkpoints/blip3o_multi_gpu_fixed_cosine_13169051_20250715_205944"
+MODEL_PATH="/scratch-shared/scur2711/blip3o_workspace/checkpoints/blip3o_multi_gpu_fixed_cosine_13169868_20250716_000555"
 
 # COCO dataset path
 COCO_ROOT="./data/coco"
