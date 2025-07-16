@@ -43,11 +43,12 @@ blip3o-dit/
 │           ├── evaluator.py            # Main evaluation pipeline
 │           ├── metrics.py              # Evaluation metrics
 │           └── coco_dataset.py         # COCO dataset loader
-├── train_blip3o_dit.py                 # Main training script
+├── train_blip3o_dit_multi_gpu.py                 # Main training script
 ├── evaluate_alignment.py              # Task 1: Alignment evaluation
 ├── evaluate_recall.py                 # Task 2: Recall evaluation
 ├── job_scripts/
-│   ├── train.job                      # SLURM training script
+│   ├── train_multi_gpu_1.job
+│   ├── extract_emb_256_chunk.job                     # SLURM training script
 │   └── evaluate.job                   # SLURM evaluation script
 ├── requirements.txt                    # Project dependencies
 └── README.md                          # This file
