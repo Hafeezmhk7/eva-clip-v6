@@ -191,14 +191,12 @@ This generates `embeddings/blip3o_grid_embeddings.pkl` containing:
 ```
 data/
 ├── coco/
-│   ├── images/
-│   │   └── val2017/
-│   │       ├── 000000000139.jpg
-│   │       └── ...
-│   └── annotations/
-│       └── captions_val2017.json
-└── embeddings/
-    └── blip3o_grid_embeddings.pkl
+   ├── images/
+   │   └── val2017/
+   │       ├── 000000000139.jpg
+   │       └── ...
+   └── annotations/
+      └── captions_val2017.json
 ```
 
 ## 🎯 Training
@@ -224,9 +222,9 @@ sbatch job_scripts/train.job
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `model_dim` | 1792 | Hidden dimension |
+| `model_dim` | 1024 | Hidden dimension |
 | `num_layers` | 24 | Transformer layers |
-| `num_heads` | 28 | Attention heads |
+| `num_heads` | 16 | Attention heads |
 | `eva_embedding_size` | 4096 | EVA-CLIP dimension (fixed) |
 | `in_channels` | 1024 | CLIP dimension (fixed) |
 | `input_size` | 16 | Grid size (16×16=256 tokens) |
@@ -466,21 +464,7 @@ sbatch job_scripts/evaluate.job
 | `recall@k_difference` | Performance difference per K |
 | `recall@k_relative_change` | Relative improvement % |
 
-## 🎛️ Key Features
 
-### Technical Improvements
-- ✅ **Fair Comparison**: CLIP visual projection ensures both methods compete in aligned space
-- ✅ **Literature Compliance**: Follows CLIP's standard evaluation methodology  
-- ✅ **Comprehensive Metrics**: Alignment similarity + retrieval recall
-- ✅ **Scale Support**: Handles full COCO validation set (~5K images)
-- ✅ **Robust Processing**: Device consistency, error handling, batch processing
-
-### Evaluation Advantages
-- **Meaningful Results**: Differences reflect actual model performance
-- **Reproducible**: Deterministic evaluation with proper random seeds
-- **Scalable**: Efficient batch processing with GPU acceleration
-- **Detailed Analysis**: Per-sample results + aggregate statistics
-- **Standard Metrics**: Industry-standard Recall@K and cosine similarity
 
 ## 📈 Monitoring
 
