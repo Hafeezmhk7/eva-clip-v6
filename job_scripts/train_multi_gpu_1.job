@@ -148,9 +148,9 @@ echo ""
 torchrun --nproc_per_node=$NUM_GPUS --nnodes=1 --node_rank=0 train_blip3o_dit_multi_gpu.py \
     --chunked_embeddings_dir "$EMBEDDINGS_DIR" \
     --output_dir "$TEMP_CHECKPOINT_DIR" \
-    --batch_size 64 \
+    --batch_size 128 \
     --eval_batch_size 4 \
-    --num_epochs 10 \
+    --num_epochs 15 \
     --model_dim 1024 \
     --num_heads 16 \
     --num_layers 20 \

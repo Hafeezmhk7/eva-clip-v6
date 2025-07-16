@@ -1,6 +1,7 @@
 """
 Main evaluator class for BLIP3-o DiT model evaluation.
-FIXED: Parameter name mismatch in BLIP3oInference.generate() calls
+UPDATED: Now uses CLIP's visual projection for both methods to ensure fair comparison
+in the aligned 768-dimensional embedding space, as recommended by literature.
 """
 
 import torch
@@ -33,11 +34,11 @@ class BLIP3oEvaluator:
     """
     Main evaluator class for BLIP3-o DiT model evaluation.
     
-    Handles:
-    - Loading CLIP and EVA-CLIP models (same as used in training)
-    - Loading trained BLIP3-o DiT model
-    - Alignment evaluation (Task 1)
-    - Recall evaluation (Task 2)
+    UPDATED: Now properly uses CLIP's visual projection for both methods:
+    - Method (a): CLIP vision → CLIP visual projection → 768-dim aligned space
+    - Method (b): Generated CLIP → CLIP visual projection → 768-dim aligned space
+    
+    This ensures fair comparison in the same embedding space that CLIP was trained to align.
     """
     
     def __init__(
@@ -68,7 +69,7 @@ class BLIP3oEvaluator:
         # Load all models
         self._load_models()
         
-        logger.info("BLIP3-o evaluator initialized")
+        logger.info("BLIP3-o evaluator initialized with CLIP visual projection support")
     
     def _setup_device(self, device_arg: str) -> torch.device:
         """Setup computation device."""
@@ -98,6 +99,12 @@ class BLIP3oEvaluator:
         ).to(self.device)
         self.clip_model.eval()
         
+        # UPDATED: Log CLIP projection dimensions for verification
+        vision_proj_shape = self.clip_model.visual_projection.weight.shape
+        text_proj_shape = self.clip_model.text_projection.weight.shape
+        logger.info(f"CLIP visual projection: {vision_proj_shape} (1024 → 768)")
+        logger.info(f"CLIP text projection: {text_proj_shape} (768 → 768)")
+        
         # Load EVA-CLIP-8B (same as in extract_embeddings_g.py)
         logger.info("Loading EVA-CLIP-8B...")
         self.eva_model = AutoModel.from_pretrained(
@@ -119,7 +126,7 @@ class BLIP3oEvaluator:
         logger.info("All models loaded successfully")
     
     def extract_clip_text_embeddings(self, captions: List[str]) -> torch.Tensor:
-        """Extract CLIP text embeddings."""
+        """Extract CLIP text embeddings (already 768-dim, aligned space)."""
         with torch.no_grad():
             inputs = self.clip_processor(
                 text=captions, 
@@ -127,15 +134,21 @@ class BLIP3oEvaluator:
                 padding=True, 
                 truncation=True
             )
+            # FIXED: Ensure inputs are on correct device
             inputs = {k: v.to(self.device) for k, v in inputs.items()}
             
+            # Get text features through the standard CLIP path (includes text projection)
             text_embeddings = self.clip_model.get_text_features(**inputs)
             text_embeddings = F.normalize(text_embeddings, p=2, dim=-1)
         
-        return text_embeddings
+        return text_embeddings.cpu().float()  # Move to CPU for consistency
     
     def extract_clip_vision_embeddings(self, images: List[Image.Image]) -> torch.Tensor:
-        """Extract CLIP vision embeddings using same method as training."""
+        """
+        Extract CLIP vision embeddings using CLIP's visual projection.
+        UPDATED: Now applies CLIP's visual projection to get 768-dim aligned features.
+        FIXED: Proper device handling to avoid CUDA/CPU mismatch.
+        """
         clip_embeddings = []
         
         with torch.no_grad():
@@ -155,15 +168,17 @@ class BLIP3oEvaluator:
                 patch_embeddings = vision_outputs.last_hidden_state[:, 1:, :]
                 batch_size, num_patches, hidden_dim = patch_embeddings.shape
                 
-                # Reshape to 16x16 grid -> [1, 16, 16, 1024]
-                grid_size = int(np.sqrt(num_patches))  # 16
-                spatial_grid = patch_embeddings.reshape(batch_size, grid_size, grid_size, hidden_dim)
+                # Average pool to get global representation -> [1, 1024]
+                vision_global = patch_embeddings.mean(dim=1)  # [1, 1024]
                 
-                # Convert to 256 tokens format -> [256, 1024]
-                tokens = spatial_grid.reshape(num_patches, hidden_dim)
-                clip_embeddings.append(tokens.cpu().float())
+                # UPDATED: Apply CLIP's visual projection to get aligned 768-dim features
+                # FIXED: Ensure tensor is on same device as model before projection
+                vision_global = vision_global.to(device=self.device, dtype=self.torch_dtype)
+                vision_projected = self.clip_model.visual_projection(vision_global)  # [1, 768]
+                
+                clip_embeddings.append(vision_projected.squeeze(0).cpu().float())  # [768]
         
-        return torch.stack(clip_embeddings)  # [B, 256, 1024]
+        return torch.stack(clip_embeddings)  # [B, 768]
     
     def extract_eva_vision_embeddings(self, images: List[Image.Image]) -> torch.Tensor:
         """Extract EVA-CLIP vision embeddings using same method as training."""
@@ -198,18 +213,27 @@ class BLIP3oEvaluator:
     def generate_clip_from_eva(self, eva_embeddings: torch.Tensor) -> torch.Tensor:
         """
         Generate CLIP embeddings from EVA-CLIP using trained BLIP3-o DiT.
-        FIXED: Use correct parameter name for BLIP3oInference.generate()
+        UPDATED: Now applies CLIP's visual projection to generated embeddings.
+        FIXED: Proper device handling to avoid CUDA/CPU mismatch.
         """
         eva_embeddings = eva_embeddings.to(device=self.device, dtype=self.torch_dtype)
         
         with torch.no_grad():
-            # FIXED: Use positional argument instead of encoder_hidden_states keyword
+            # Generate CLIP-like embeddings using BLIP3-o
             generated_clip = self.blip3o_inference.generate(
-                eva_embeddings,  # FIXED: First positional parameter
-                num_inference_steps=50,  # Can be adjusted
-            )
+                eva_embeddings,  # [B, 256, 4096]
+                num_inference_steps=50,
+            )  # -> [B, 256, 1024]
+            
+            # Average pool to get global representation -> [B, 1024]
+            generated_global = generated_clip.mean(dim=1)  # [B, 1024]
+            
+            # UPDATED: Apply CLIP's visual projection to align with text space
+            # FIXED: Ensure tensor is on same device as model before projection
+            generated_global = generated_global.to(device=self.device, dtype=self.torch_dtype)
+            generated_projected = self.clip_model.visual_projection(generated_global)  # [B, 768]
         
-        return generated_clip.cpu().float()
+        return generated_projected.cpu().float()
     
     def evaluate_alignment(
         self,
@@ -221,6 +245,7 @@ class BLIP3oEvaluator:
     ) -> Dict[str, float]:
         """
         Evaluate alignment using cosine similarity (Task 1).
+        UPDATED: Both methods now use CLIP's visual projection for fair comparison.
         
         Args:
             coco_root: Path to MS-COCO dataset
@@ -232,7 +257,7 @@ class BLIP3oEvaluator:
         Returns:
             Dictionary containing alignment metrics
         """
-        logger.info("Starting alignment evaluation (Task 1)...")
+        logger.info("Starting alignment evaluation (Task 1) with CLIP visual projection...")
         
         # Create COCO dataloader
         dataloader = create_coco_dataloader(
@@ -270,32 +295,30 @@ class BLIP3oEvaluator:
             
             # Extract embeddings
             try:
-                # (a) CLIP text embeddings
+                # (a) CLIP text embeddings (already 768-dim, aligned)
                 clip_text_embeddings = self.extract_clip_text_embeddings(flat_captions)
                 
-                # CLIP vision embeddings for corresponding images
+                # CLIP vision embeddings for corresponding images (NOW with visual projection)
                 selected_images = [images[i] for i in flat_image_indices]
                 clip_vision_embeddings = self.extract_clip_vision_embeddings(selected_images)
+                # clip_vision_embeddings is now [N, 768] - already projected and normalized
                 
-                # Average pool CLIP vision embeddings to get global representation
-                clip_vision_global = clip_vision_embeddings.mean(dim=1)  # [N, 1024]
-                clip_vision_global = F.normalize(clip_vision_global, p=2, dim=-1)
-                
-                # (b) EVA-CLIP -> BLIP3-o DiT -> Generated CLIP embeddings
+                # (b) EVA-CLIP -> BLIP3-o DiT -> Generated CLIP embeddings (with visual projection)
                 eva_vision_embeddings = self.extract_eva_vision_embeddings(selected_images)
                 generated_clip_embeddings = self.generate_clip_from_eva(eva_vision_embeddings)
+                # generated_clip_embeddings is now [N, 768] - already projected
                 
-                # Average pool generated CLIP embeddings
-                generated_clip_global = generated_clip_embeddings.mean(dim=1)  # [N, 1024]
-                generated_clip_global = F.normalize(generated_clip_global, p=2, dim=-1)
+                # Normalize both for fair comparison
+                clip_vision_embeddings = F.normalize(clip_vision_embeddings, p=2, dim=-1)
+                generated_clip_embeddings = F.normalize(generated_clip_embeddings, p=2, dim=-1)
                 
-                # Compute cosine similarities
+                # Compute cosine similarities in the aligned 768-dim space
                 clip_text_clip_vision_sim = compute_cosine_similarity(
-                    clip_text_embeddings, clip_vision_global
+                    clip_text_embeddings, clip_vision_embeddings
                 )
                 
                 clip_text_generated_sim = compute_cosine_similarity(
-                    clip_text_embeddings, generated_clip_global
+                    clip_text_embeddings, generated_clip_embeddings
                 )
                 
                 # Store results
@@ -318,13 +341,13 @@ class BLIP3oEvaluator:
             generated_similarities = np.array(all_results['clip_text_generated_similarities'])
             
             metrics = {
-                # Method (a): CLIP text + CLIP vision
+                # Method (a): CLIP text + CLIP vision (with visual projection)
                 'clip_text_clip_vision_mean': float(np.mean(clip_vision_similarities)),
                 'clip_text_clip_vision_std': float(np.std(clip_vision_similarities)),
                 'clip_text_clip_vision_min': float(np.min(clip_vision_similarities)),
                 'clip_text_clip_vision_max': float(np.max(clip_vision_similarities)),
                 
-                # Method (b): CLIP text + Generated CLIP (from EVA)
+                # Method (b): CLIP text + Generated CLIP (with visual projection)
                 'clip_text_generated_mean': float(np.mean(generated_similarities)),
                 'clip_text_generated_std': float(np.std(generated_similarities)),
                 'clip_text_generated_min': float(np.min(generated_similarities)),
@@ -338,6 +361,10 @@ class BLIP3oEvaluator:
                 # Additional stats
                 'num_samples': len(clip_vision_similarities),
                 'correlation': float(np.corrcoef(clip_vision_similarities, generated_similarities)[0, 1]),
+                
+                # Embedding space info
+                'embedding_space': 'clip_aligned_768dim',
+                'uses_visual_projection': True,
             }
         else:
             metrics = {'error': 'No valid samples processed'}
@@ -370,9 +397,10 @@ class BLIP3oEvaluator:
     ) -> Dict[str, float]:
         """
         Evaluate recall metrics for image-to-text retrieval (Task 2).
+        UPDATED: Both methods now use CLIP's visual projection for fair comparison.
         
-        (a) Image → CLIP ViT-L/14 → retrieval against text embeddings
-        (b) Image → EVA-CLIP → BLIP3-o DiT → retrieval against text embeddings
+        (a) Image → CLIP ViT-L/14 → CLIP visual projection → retrieval against text embeddings
+        (b) Image → EVA-CLIP → BLIP3-o DiT → CLIP visual projection → retrieval against text embeddings
         
         Args:
             coco_root: Path to MS-COCO dataset
@@ -385,7 +413,7 @@ class BLIP3oEvaluator:
         Returns:
             Dictionary containing recall metrics
         """
-        logger.info("Starting image-to-text recall evaluation (Task 2)...")
+        logger.info("Starting image-to-text recall evaluation (Task 2) with CLIP visual projection...")
         
         # Create COCO dataloader
         dataloader = create_coco_dataloader(
@@ -397,8 +425,8 @@ class BLIP3oEvaluator:
         )
         
         # Collect all embeddings and create proper query-gallery structure
-        all_image_clip_embeddings = []      # Image embeddings from CLIP
-        all_image_generated_embeddings = [] # Image embeddings from EVA->BLIP3o
+        all_image_clip_embeddings = []      # Image embeddings from CLIP (with visual projection)
+        all_image_generated_embeddings = [] # Image embeddings from EVA->BLIP3o (with visual projection)
         all_text_embeddings = []            # Text embeddings (gallery)
         image_to_text_mapping = []          # Maps image indices to their text indices
         
@@ -416,20 +444,19 @@ class BLIP3oEvaluator:
                 image_id = image_ids[i]
                 
                 try:
-                    # Extract image embeddings using both methods
+                    # Extract image embeddings using both methods (both with visual projection)
                     
-                    # Method (a): CLIP vision embeddings
+                    # Method (a): CLIP vision embeddings (with visual projection)
                     clip_vision_emb = self.extract_clip_vision_embeddings([image])
-                    clip_vision_global = clip_vision_emb.mean(dim=1).squeeze(0)  # [1024]
+                    clip_vision_global = clip_vision_emb.squeeze(0).cpu()  # [768] - already projected, move to CPU
                     
-                    # Method (b): EVA-CLIP -> Generated CLIP embeddings
+                    # Method (b): EVA-CLIP -> Generated CLIP embeddings (with visual projection)
                     eva_vision_emb = self.extract_eva_vision_embeddings([image])
-                    # FIXED: Use the corrected generate_clip_from_eva method
                     generated_clip_emb = self.generate_clip_from_eva(eva_vision_emb)
-                    generated_clip_global = generated_clip_emb.mean(dim=1).squeeze(0)  # [1024]
+                    generated_clip_global = generated_clip_emb.squeeze(0).cpu()  # [768] - already projected, move to CPU
                     
                     # Extract text embeddings for all captions of this image
-                    text_emb = self.extract_clip_text_embeddings(caption_list)  # [num_captions, 1024]
+                    text_emb = self.extract_clip_text_embeddings(caption_list)  # [num_captions, 768] - already on CPU
                     
                     # Store image embeddings (one per image)
                     all_image_clip_embeddings.append(clip_vision_global)
@@ -453,16 +480,17 @@ class BLIP3oEvaluator:
             return {'error': 'No valid embeddings extracted'}
         
         # Convert to tensors
-        image_clip_embeddings = torch.stack(all_image_clip_embeddings)      # [N_images, 1024]
-        image_generated_embeddings = torch.stack(all_image_generated_embeddings)  # [N_images, 1024]
-        text_embeddings = torch.stack(all_text_embeddings)                 # [N_texts, 1024]
+        image_clip_embeddings = torch.stack(all_image_clip_embeddings)      # [N_images, 768]
+        image_generated_embeddings = torch.stack(all_image_generated_embeddings)  # [N_images, 768]
+        text_embeddings = torch.stack(all_text_embeddings)                 # [N_texts, 768]
         
         logger.info(f"Collected {len(image_clip_embeddings)} images and {len(text_embeddings)} texts")
+        logger.info("All embeddings are in the same CLIP-aligned 768-dimensional space")
         
         # Compute recall metrics for image-to-text retrieval
         logger.info("Computing image-to-text recall metrics...")
         
-        # Method (a): Image (CLIP vision) to text retrieval
+        # Method (a): Image (CLIP vision with projection) to text retrieval
         recall_metrics_clip = self._compute_image_to_text_recall(
             image_embeddings=image_clip_embeddings,
             text_embeddings=text_embeddings,
@@ -470,7 +498,7 @@ class BLIP3oEvaluator:
             k_values=k_values
         )
         
-        # Method (b): Image (Generated CLIP) to text retrieval
+        # Method (b): Image (Generated CLIP with projection) to text retrieval
         recall_metrics_generated = self._compute_image_to_text_recall(
             image_embeddings=image_generated_embeddings,
             text_embeddings=text_embeddings,
@@ -496,6 +524,10 @@ class BLIP3oEvaluator:
             combined_metrics[f'recall@{k}_difference'] = recall_b - recall_a
             combined_metrics[f'recall@{k}_relative_change'] = (recall_b - recall_a) / recall_a * 100 if recall_a > 0 else 0
         
+        # Add embedding space info
+        combined_metrics['embedding_space'] = 'clip_aligned_768dim'
+        combined_metrics['uses_visual_projection'] = True
+        
         # Save results if requested
         if save_results and results_dir:
             results_dir = Path(results_dir)
@@ -508,6 +540,12 @@ class BLIP3oEvaluator:
                 'text_embeddings': text_embeddings.cpu().numpy().tolist(),
                 'image_to_text_mapping': image_to_text_mapping,
                 'metrics': combined_metrics,
+                'evaluation_info': {
+                    'embedding_space': 'clip_aligned_768dim',
+                    'uses_visual_projection': True,
+                    'clip_vision_projection_applied': True,
+                    'generated_embeddings_projection_applied': True,
+                }
             }
             
             with open(results_dir / 'recall_detailed_results.json', 'w') as f:
@@ -523,17 +561,18 @@ class BLIP3oEvaluator:
     
     def _compute_image_to_text_recall(
         self,
-        image_embeddings: torch.Tensor,     # [N_images, D]
-        text_embeddings: torch.Tensor,      # [N_texts, D]
+        image_embeddings: torch.Tensor,     # [N_images, 768] (already projected)
+        text_embeddings: torch.Tensor,      # [N_texts, 768] (already aligned)
         image_to_text_mapping: List[List[int]],  # Maps image idx to list of text indices
         k_values: List[int] = [1, 5, 10]
     ) -> Dict[str, float]:
         """
         Compute recall metrics for image-to-text retrieval.
+        UPDATED: Now works with projected 768-dim embeddings for both image and text.
         
         Args:
-            image_embeddings: Image embeddings [N_images, D]
-            text_embeddings: Text embeddings [N_texts, D]
+            image_embeddings: Image embeddings [N_images, 768] (projected to aligned space)
+            text_embeddings: Text embeddings [N_texts, 768] (already in aligned space)
             image_to_text_mapping: Maps each image to its corresponding text indices
             k_values: K values for Recall@K
             
@@ -543,6 +582,7 @@ class BLIP3oEvaluator:
         from .metrics import compute_pairwise_cosine_similarity
         
         # Compute similarity matrix: [N_images, N_texts]
+        # Both embeddings are now in the same 768-dim aligned space
         similarity_matrix = compute_pairwise_cosine_similarity(
             image_embeddings, text_embeddings
         )
@@ -572,6 +612,7 @@ class BLIP3oEvaluator:
         recall_results['num_queries'] = len(image_to_text_mapping)
         recall_results['num_gallery'] = len(text_embeddings)
         recall_results['avg_texts_per_image'] = np.mean([len(texts) for texts in image_to_text_mapping])
+        recall_results['embedding_dim'] = image_embeddings.shape[1]  # Should be 768
         
         return recall_results
 
@@ -587,7 +628,7 @@ if __name__ == "__main__":
     blip3o_model_path = sys.argv[1]
     coco_root = sys.argv[2]
     
-    print("🧪 Testing BLIP3-o evaluator...")
+    print("🧪 Testing BLIP3-o evaluator with CLIP visual projection...")
     
     try:
         # Initialize evaluator

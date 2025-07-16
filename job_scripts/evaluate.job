@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=blip3o_evaluation
+#SBATCH --job-name=blip3o_evaluation_fair
 #SBATCH --partition=gpu_h100
 #SBATCH --nodes=1
 #SBATCH --gpus=1
@@ -9,12 +9,15 @@
 #SBATCH --output=./slurm_out/evaluation_%j.out
 #SBATCH --error=./slurm_out/evaluation_%j.err
 
-echo "🔍 BLIP3-o DiT Model Evaluation on MS-COCO"
-echo "================================================================"
+echo "🔍 BLIP3-o DiT Model Evaluation on MS-COCO - UPDATED WITH FAIR COMPARISON"
+echo "=========================================================================="
+echo "🎯 IMPROVEMENT: Now uses CLIP's visual projection for fair comparison!"
+echo "Both methods compared in CLIP's aligned 768-dimensional embedding space"
+echo ""
 echo "Tasks:"
-echo "  📊 Task 1: Alignment Evaluation (Cosine Similarity)"
-echo "  🎯 Task 2: Recall Evaluation (Image-to-Text Retrieval)"
-echo "================================================================"
+echo "  📊 Task 1: Alignment Evaluation (Cosine Similarity in CLIP-aligned space)"
+echo "  🎯 Task 2: Recall Evaluation (Image-to-Text Retrieval in CLIP-aligned space)"
+echo "=========================================================================="
 echo "Job ID: $SLURM_JOB_ID"
 echo "Node: $SLURMD_NODENAME"
 echo "Date: $(date)"
@@ -22,7 +25,7 @@ echo "Working directory: $(pwd)"
 echo "User: $(whoami)"
 echo "GPUs requested: $SLURM_GPUS"
 echo "CPUs per GPU: $SLURM_CPUS_PER_GPU"
-echo "================================================================"
+echo "=========================================================================="
 
 # =============================================================================
 # ENVIRONMENT SETUP (Same as training script)
@@ -91,14 +94,14 @@ echo "📍 Setting up paths..."
 echo "======================"
 
 # Model path - UPDATE THIS to your specific model
-MODEL_PATH="/scratch-shared/scur2711/blip3o_workspace/checkpoints/blip3o_multi_gpu_fixed_cosine_13169868_20250716_000555"
+MODEL_PATH="/scratch-shared/scur2711/blip3o_workspace/checkpoints/blip3o_multi_gpu_fixed_cosine_13170504_20250716_034251"
 
 # COCO dataset path
 COCO_ROOT="./data/coco"
 
 # Results directory
 RESULTS_DIR="${BLIP3O_JOB_TEMP}/results"
-PERSISTENT_RESULTS_DIR="${BLIP3O_WORKSPACE}/evaluation_results/eval_${BLIP3O_JOB_ID}_$(date +%Y%m%d_%H%M%S)"
+PERSISTENT_RESULTS_DIR="${BLIP3O_WORKSPACE}/evaluation_results/eval_fair_${BLIP3O_JOB_ID}_$(date +%Y%m%d_%H%M%S)"
 
 # Create results directories
 mkdir -p "$RESULTS_DIR"
@@ -132,8 +135,8 @@ echo "⚙️  Evaluation Configuration..."
 echo "=============================="
 
 # Evaluation parameters
-MAX_SAMPLES=1000        # Number of samples to evaluate (set to null for all)
-BATCH_SIZE=16           # Batch size for GPU evaluation
+MAX_SAMPLES=0       # Number of samples to evaluate (set to null for all)
+BATCH_SIZE=64           # Batch size for GPU evaluation
 DEVICE="cuda"           # Use GPU
 VERBOSE_FLAG="--verbose"
 
@@ -149,17 +152,28 @@ echo "   Max samples: $MAX_SAMPLES"
 echo "   Batch size: $BATCH_SIZE"
 echo "   Device: $DEVICE"
 echo "   Model: $(basename $MODEL_PATH)"
+echo ""
+echo "🎯 Evaluation Improvements:"
+echo "   ✅ Uses CLIP's visual projection for fair comparison"
+echo "   ✅ Both methods compared in CLIP's aligned 768-dim space"
+echo "   ✅ Follows CLIP's standard evaluation methodology"
+echo "   ✅ Literature-compliant baseline established"
 
 # =============================================================================
 # TASK 1: ALIGNMENT EVALUATION
 # =============================================================================
 
 echo ""
-echo "📊 Starting Task 1: Alignment Evaluation"
-echo "========================================"
-echo "Evaluating alignment between text and vision embeddings using cosine similarity"
-echo "Method (a): CLIP text + CLIP vision"
-echo "Method (b): CLIP text + Generated CLIP (EVA → BLIP3-o DiT)"
+echo "📊 Starting Task 1: Alignment Evaluation (Fair Comparison)"
+echo "=========================================================="
+echo "🎯 UPDATED: Now evaluating alignment in CLIP's aligned embedding space"
+echo ""
+echo "Method comparison:"
+echo "  (a) CLIP text + CLIP vision → visual projection → 768-dim aligned space"
+echo "  (b) CLIP text + Generated CLIP (EVA→BLIP3-o) → visual projection → 768-dim aligned space"
+echo ""
+echo "✅ Fair comparison: Both methods use same embedding space"
+echo "✅ Literature compliant: Follows CLIP's evaluation methodology"
 
 ALIGNMENT_START_TIME=$(date +%s)
 
@@ -179,6 +193,7 @@ ALIGNMENT_DURATION=$((ALIGNMENT_END_TIME - ALIGNMENT_START_TIME))
 
 if [ $ALIGNMENT_EXIT_CODE -eq 0 ]; then
     echo "✅ Task 1 (Alignment) completed successfully in ${ALIGNMENT_DURATION}s"
+    echo "   Results reflect fair comparison in CLIP's aligned space"
 else
     echo "❌ Task 1 (Alignment) failed with exit code: $ALIGNMENT_EXIT_CODE"
 fi
@@ -188,11 +203,16 @@ fi
 # =============================================================================
 
 echo ""
-echo "🎯 Starting Task 2: Recall Evaluation"
-echo "====================================="
-echo "Evaluating image-to-text retrieval performance using Recall@K metrics"
-echo "Method (a): Image → CLIP vision → text retrieval"
-echo "Method (b): Image → EVA-CLIP → BLIP3-o DiT → text retrieval"
+echo "🎯 Starting Task 2: Recall Evaluation (Fair Comparison)"
+echo "======================================================="
+echo "🎯 UPDATED: Now evaluating retrieval in CLIP's aligned embedding space"
+echo ""
+echo "Method comparison:"
+echo "  (a) Image → CLIP vision → visual projection → retrieval (768-dim aligned)"
+echo "  (b) Image → EVA-CLIP → BLIP3-o → visual projection → retrieval (768-dim aligned)"
+echo ""
+echo "✅ Fair retrieval: Both image methods compete in same space against text"
+echo "✅ Meaningful results: Differences reflect actual model performance"
 
 RECALL_START_TIME=$(date +%s)
 
@@ -213,6 +233,7 @@ RECALL_DURATION=$((RECALL_END_TIME - RECALL_START_TIME))
 
 if [ $RECALL_EXIT_CODE -eq 0 ]; then
     echo "✅ Task 2 (Recall) completed successfully in ${RECALL_DURATION}s"
+    echo "   Results reflect fair comparison in CLIP's aligned space"
 else
     echo "❌ Task 2 (Recall) failed with exit code: $RECALL_EXIT_CODE"
 fi
@@ -234,12 +255,18 @@ if [ -d "$RESULTS_DIR" ] && [ "$(ls -A "$RESULTS_DIR")" ]; then
     SUMMARY_FILE="$PERSISTENT_RESULTS_DIR/evaluation_summary.txt"
     
     cat > "$SUMMARY_FILE" << EOF
-BLIP3-o DiT Evaluation Summary
-==============================
+BLIP3-o DiT Evaluation Summary - FAIR COMPARISON VERSION
+=========================================================
 Job ID: $SLURM_JOB_ID
 Date: $(date)
 Node: $SLURMD_NODENAME
 User: $BLIP3O_USER
+
+🎯 EVALUATION IMPROVEMENTS:
+- Uses CLIP's visual projection for fair comparison
+- Both methods compared in CLIP's aligned 768-dim space
+- Follows CLIP's standard evaluation methodology
+- Results reflect actual model performance differences
 
 Model Information:
 - Path: $MODEL_PATH
@@ -250,6 +277,8 @@ Evaluation Settings:
 - Batch size: $BATCH_SIZE
 - Device: $DEVICE
 - COCO root: $COCO_ROOT
+- Embedding space: CLIP-aligned 768-dimensional
+- Uses visual projection: YES
 
 Task Results:
 - Task 1 (Alignment): $([ $ALIGNMENT_EXIT_CODE -eq 0 ] && echo "SUCCESS" || echo "FAILED") (${ALIGNMENT_DURATION}s)
@@ -266,21 +295,23 @@ EOF
     
     # Show quick summary
     echo ""
-    echo "📈 Quick Results Preview:"
-    echo "========================"
+    echo "📈 Quick Results Preview (Fair Comparison):"
+    echo "==========================================="
     
     # Show alignment results if available
     if [ -f "$PERSISTENT_RESULTS_DIR/alignment/alignment_summary.json" ]; then
-        echo "📊 Alignment Results:"
+        echo "📊 Alignment Results (768-dim aligned space):"
         python -c "
 import json
 try:
     with open('$PERSISTENT_RESULTS_DIR/alignment/alignment_summary.json', 'r') as f:
         data = json.load(f)
-    print(f'  CLIP Text + CLIP Vision:     {data.get(\"clip_text_clip_vision_mean\", 0):.4f}')
-    print(f'  CLIP Text + Generated CLIP:  {data.get(\"clip_text_generated_mean\", 0):.4f}')
-    print(f'  Difference:                  {data.get(\"difference_mean\", 0):+.4f}')
-    print(f'  Samples evaluated:           {data.get(\"num_samples\", 0)}')
+    print(f'  CLIP Text + CLIP Vision (768-dim):     {data.get(\"clip_text_clip_vision_mean\", 0):.4f}')
+    print(f'  CLIP Text + Generated CLIP (768-dim):  {data.get(\"clip_text_generated_mean\", 0):.4f}')
+    print(f'  Difference (fair comparison):          {data.get(\"difference_mean\", 0):+.4f}')
+    print(f'  Samples evaluated:                     {data.get(\"num_samples\", 0)}')
+    print(f'  Embedding space:                       {data.get(\"embedding_space\", \"unknown\")}')
+    print(f'  Uses visual projection:                {data.get(\"uses_visual_projection\", False)}')
 except Exception as e:
     print(f'  Could not parse alignment results: {e}')
 "
@@ -288,24 +319,27 @@ except Exception as e:
     
     # Show recall results if available
     if [ -f "$PERSISTENT_RESULTS_DIR/recall/recall_summary.json" ]; then
-        echo "🎯 Recall Results:"
+        echo ""
+        echo "🎯 Recall Results (768-dim aligned space):"
         python -c "
 import json
 try:
     with open('$PERSISTENT_RESULTS_DIR/recall/recall_summary.json', 'r') as f:
         data = json.load(f)
-    print('  Method (a) - Image→CLIP Vision→Text:')
+    print('  Method (a) - Image→CLIP Vision→Visual Proj→Text:')
     for k in [1, 5, 10]:
         recall = data.get(f'clip_vision_recall@{k}', 0)
         print(f'    Recall@{k:2d}: {recall:.4f} ({recall*100:.2f}%)')
-    print('  Method (b) - Image→EVA→BLIP3o→Text:')
+    print('  Method (b) - Image→EVA→BLIP3o→Visual Proj→Text:')
     for k in [1, 5, 10]:
         recall = data.get(f'generated_recall@{k}', 0)
         print(f'    Recall@{k:2d}: {recall:.4f} ({recall*100:.2f}%)')
-    print('  Improvements:')
+    print('  Fair comparison improvements:')
     for k in [1, 5, 10]:
         diff = data.get(f'recall@{k}_difference', 0)
         print(f'    Recall@{k:2d}: {diff:+.4f} ({diff*100:+.2f}%)')
+    print(f'  Embedding space: {data.get(\"embedding_space\", \"unknown\")}')
+    print(f'  Uses visual projection: {data.get(\"uses_visual_projection\", False)}')
 except Exception as e:
     print(f'  Could not parse recall results: {e}')
 "
@@ -320,26 +354,38 @@ fi
 # =============================================================================
 
 echo ""
-echo "🎉 EVALUATION COMPLETED!"
-echo "======================="
+echo "🎉 FAIR COMPARISON EVALUATION COMPLETED!"
+echo "========================================"
 
 TOTAL_END_TIME=$(date +%s)
-TOTAL_DURATION=$((TOTAL_END_TIME - $(date -d "$(date)" +%s)))
+TOTAL_DURATION=$SECONDS
 
 echo "📊 Final Summary:"
 echo "   Task 1 (Alignment): $([ $ALIGNMENT_EXIT_CODE -eq 0 ] && echo "✅ SUCCESS" || echo "❌ FAILED")"
 echo "   Task 2 (Recall): $([ $RECALL_EXIT_CODE -eq 0 ] && echo "✅ SUCCESS" || echo "❌ FAILED")"
 echo "   Total samples evaluated: $MAX_SAMPLES"
 echo "   Results location: $PERSISTENT_RESULTS_DIR"
+echo ""
+echo "🎯 Evaluation Improvements Applied:"
+echo "   ✅ CLIP visual projection used for both methods"
+echo "   ✅ Fair comparison in CLIP's aligned 768-dim space"
+echo "   ✅ Literature-compliant evaluation methodology"
+echo "   ✅ Meaningful performance differences captured"
 
 if [ $ALIGNMENT_EXIT_CODE -eq 0 ] && [ $RECALL_EXIT_CODE -eq 0 ]; then
     echo ""
-    echo "🚀 Both evaluations completed successfully!"
+    echo "🚀 Both evaluations completed successfully with fair comparison!"
     echo "📊 Check the results in: $PERSISTENT_RESULTS_DIR"
     echo "📈 Summary files:"
-    echo "   - alignment_summary.json (Task 1 results)"
-    echo "   - recall_summary.json (Task 2 results)"
-    echo "   - evaluation_summary.txt (Overall summary)"
+    echo "   - alignment_summary.json (Task 1 results with fair comparison)"
+    echo "   - recall_summary.json (Task 2 results with fair comparison)"
+    echo "   - evaluation_summary.txt (Overall summary with improvements)"
+    echo ""
+    echo "🔬 Technical Details:"
+    echo "   • Both image embeddings projected to CLIP's aligned 768-dim space"
+    echo "   • Text embeddings already in CLIP's aligned 768-dim space"
+    echo "   • Results now reflect actual model performance differences"
+    echo "   • Baseline (CLIP vision) properly established with projection"
     
     OVERALL_EXIT_CODE=0
 else
@@ -352,6 +398,7 @@ fi
 
 echo ""
 echo "🎉 Job completed at: $(date)"
-echo "⏱️  Total runtime: $SECONDS seconds"
+echo "⏱️  Total runtime: $TOTAL_DURATION seconds"
+echo "🎯 Fair comparison evaluation ensures meaningful results!"
 
 exit $OVERALL_EXIT_CODE

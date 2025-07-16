@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """
 BLIP3-o DiT Alignment Evaluation Script (Task 1)
-FIXED: Compatible with corrected evaluator parameter names
+UPDATED: Now uses CLIP's visual projection for fair comparison in aligned embedding space
 
 This script evaluates the alignment between text and vision embeddings using cosine similarity:
-(a) CLIP text encoder + CLIP ViT-L/14 vision encoder
-(b) CLIP text encoder + Generated CLIP embeddings (EVA-CLIP -> BLIP3-o DiT)
+(a) CLIP text encoder + CLIP ViT-L/14 vision encoder (with visual projection → 768-dim)
+(b) CLIP text encoder + Generated CLIP embeddings (EVA-CLIP → BLIP3-o DiT → visual projection → 768-dim)
+
+IMPROVEMENT: Both methods now use CLIP's visual projection to ensure fair comparison in the 
+aligned 768-dimensional embedding space that CLIP was trained to optimize.
 
 Usage:
     python evaluate_alignment.py --blip3o_model_path <path> --coco_root <path> [options]
@@ -38,7 +41,7 @@ def setup_logging(verbose: bool = False):
 def parse_arguments():
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
-        description="BLIP3-o DiT Alignment Evaluation (Task 1)",
+        description="BLIP3-o DiT Alignment Evaluation (Task 1) with CLIP Visual Projection",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
     
@@ -138,12 +141,16 @@ def main():
     args = parse_arguments()
     logger = setup_logging(args.verbose)
     
-    print("🔍 BLIP3-o DiT Alignment Evaluation (Task 1)")
-    print("=" * 50)
-    print("This script evaluates alignment using cosine similarity:")
-    print("(a) CLIP text + CLIP vision embeddings")
-    print("(b) CLIP text + Generated CLIP embeddings (EVA -> BLIP3-o DiT)")
-    print("=" * 50)
+    print("🔍 BLIP3-o DiT Alignment Evaluation (Task 1) - UPDATED VERSION")
+    print("=" * 80)
+    print("🎯 IMPROVEMENT: Now uses CLIP's visual projection for fair comparison!")
+    print("This ensures both methods are compared in the same 768-dimensional")
+    print("aligned embedding space that CLIP was trained to optimize.")
+    print("")
+    print("Evaluation methods:")
+    print("(a) CLIP text + CLIP vision (1024-dim → visual projection → 768-dim)")
+    print("(b) CLIP text + Generated CLIP (EVA → BLIP3-o → 1024-dim → visual projection → 768-dim)")
+    print("=" * 80)
     
     try:
         # Validate paths
@@ -165,6 +172,7 @@ def main():
         print(f"   Max samples: {args.max_samples or 'All'}")
         print(f"   Batch size: {args.batch_size}")
         print(f"   Device: {evaluator.device}")
+        print("   🎯 Using CLIP visual projection for both methods")
         
         metrics = evaluator.evaluate_alignment(
             coco_root=args.coco_root,
@@ -180,25 +188,25 @@ def main():
             return 1
         
         # Print results
-        print("\n" + "=" * 60)
-        print("📊 ALIGNMENT EVALUATION RESULTS")
-        print("=" * 60)
+        print("\n" + "=" * 80)
+        print("📊 ALIGNMENT EVALUATION RESULTS (with CLIP Visual Projection)")
+        print("=" * 80)
         
-        print("\n🎯 Method (a): CLIP Text + CLIP Vision")
+        print("\n🎯 Method (a): CLIP Text + CLIP Vision (with visual projection)")
         method_a_metrics = {
             k.replace('clip_text_clip_vision_', ''): v 
             for k, v in metrics.items() 
             if k.startswith('clip_text_clip_vision_')
         }
-        print_metrics(method_a_metrics, "CLIP Text + CLIP Vision")
+        print_metrics(method_a_metrics, "CLIP Text + CLIP Vision (768-dim aligned)")
         
-        print("\n🎯 Method (b): CLIP Text + Generated CLIP (EVA -> BLIP3-o)")
+        print("\n🎯 Method (b): CLIP Text + Generated CLIP (with visual projection)")
         method_b_metrics = {
             k.replace('clip_text_generated_', ''): v 
             for k, v in metrics.items() 
             if k.startswith('clip_text_generated_')
         }
-        print_metrics(method_b_metrics, "CLIP Text + Generated CLIP")
+        print_metrics(method_b_metrics, "CLIP Text + Generated CLIP (768-dim aligned)")
         
         print("\n📈 Comparison and Differences")
         comparison_metrics = {
@@ -213,12 +221,14 @@ def main():
         difference = metrics.get('difference_mean', 0)
         correlation = metrics.get('correlation', 0)
         
-        print("\n🎯 SUMMARY")
-        print("-" * 40)
-        print(f"Method (a) - CLIP Text + CLIP Vision:     {method_a_mean:.4f}")
-        print(f"Method (b) - CLIP Text + Generated CLIP:  {method_b_mean:.4f}")
-        print(f"Difference (b - a):                       {difference:+.4f}")
-        print(f"Correlation between methods:              {correlation:.4f}")
+        print("\n🎯 SUMMARY (Fair Comparison in CLIP-Aligned Space)")
+        print("-" * 60)
+        print(f"Method (a) - CLIP Text + CLIP Vision (768-dim):     {method_a_mean:.4f}")
+        print(f"Method (b) - CLIP Text + Generated CLIP (768-dim):  {method_b_mean:.4f}")
+        print(f"Difference (b - a):                                 {difference:+.4f}")
+        print(f"Correlation between methods:                        {correlation:.4f}")
+        print(f"Embedding space:                                    {metrics.get('embedding_space', 'clip_aligned_768dim')}")
+        print(f"Uses visual projection:                             {metrics.get('uses_visual_projection', True)}")
         
         if difference > 0:
             print("✅ Generated CLIP embeddings show BETTER alignment with text")
@@ -226,6 +236,11 @@ def main():
             print("⚠️  Generated CLIP embeddings show LOWER alignment with text")
         else:
             print("➖ Generated CLIP embeddings show SIMILAR alignment with text")
+        
+        print("\n🔬 Technical Details:")
+        print("• Both image embeddings are projected to CLIP's aligned 768-dim space")
+        print("• This is the space where CLIP learned to align vision and text")
+        print("• Fair comparison ensures differences reflect model performance, not embedding space mismatch")
         
         # Save summary results
         summary_file = results_dir / "alignment_summary.json"
@@ -238,6 +253,7 @@ def main():
             print(f"📁 Detailed results saved to: {results_dir}")
         
         print("\n✅ Alignment evaluation completed successfully!")
+        print("🎯 Results now reflect fair comparison in CLIP's aligned embedding space!")
         return 0
         
     except KeyboardInterrupt:

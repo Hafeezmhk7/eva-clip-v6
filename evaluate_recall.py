@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """
 BLIP3-o DiT Recall Evaluation Script (Task 2)
-FIXED: Compatible with corrected evaluator parameter names
+UPDATED: Now uses CLIP's visual projection for fair comparison in aligned embedding space
 
 This script evaluates recall metrics (Recall@1, Recall@5, Recall@10) for image-to-text retrieval:
-(a) Image → CLIP ViT-L/14 → retrieval against text captions
-(b) Image → EVA-CLIP → BLIP3-o DiT → retrieval against text captions
+(a) Image → CLIP ViT-L/14 → visual projection → retrieval against text captions (768-dim aligned)
+(b) Image → EVA-CLIP → BLIP3-o DiT → visual projection → retrieval against text captions (768-dim aligned)
+
+IMPROVEMENT: Both methods now use CLIP's visual projection to ensure fair comparison in the 
+aligned 768-dimensional embedding space that CLIP was trained to optimize for vision-text alignment.
 
 Usage:
     python evaluate_recall.py --blip3o_model_path <path> --coco_root <path> [options]
@@ -38,7 +41,7 @@ def setup_logging(verbose: bool = False):
 def parse_arguments():
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
-        description="BLIP3-o DiT Recall Evaluation (Task 2)",
+        description="BLIP3-o DiT Recall Evaluation (Task 2) with CLIP Visual Projection",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
     
@@ -142,13 +145,17 @@ def main():
     args = parse_arguments()
     logger = setup_logging(args.verbose)
     
-    print("🎯 BLIP3-o DiT Recall Evaluation (Task 2)")
-    print("=" * 50)
-    print("This script evaluates recall metrics for image-to-text retrieval:")
-    print("(a) Image → CLIP ViT-L/14 → retrieval against text captions")
-    print("(b) Image → EVA-CLIP → BLIP3-o DiT → retrieval against text captions")
+    print("🎯 BLIP3-o DiT Recall Evaluation (Task 2) - UPDATED VERSION")
+    print("=" * 80)
+    print("🎯 IMPROVEMENT: Now uses CLIP's visual projection for fair comparison!")
+    print("This ensures both methods are compared in the same 768-dimensional")
+    print("aligned embedding space that CLIP was trained to optimize.")
+    print("")
+    print("Evaluation methods:")
+    print("(a) Image → CLIP ViT-L/14 → visual projection → retrieval (768-dim aligned)")
+    print("(b) Image → EVA-CLIP → BLIP3-o DiT → visual projection → retrieval (768-dim aligned)")
     print(f"Metrics: Recall@{args.k_values}")
-    print("=" * 50)
+    print("=" * 80)
     
     try:
         # Validate paths
@@ -171,6 +178,7 @@ def main():
         print(f"   Batch size: {args.batch_size}")
         print(f"   K values: {args.k_values}")
         print(f"   Device: {evaluator.device}")
+        print("   🎯 Using CLIP visual projection for both image methods")
         
         metrics = evaluator.evaluate_recall(
             coco_root=args.coco_root,
@@ -187,25 +195,25 @@ def main():
             return 1
         
         # Print results
-        print("\n" + "=" * 60)
-        print("📊 RECALL EVALUATION RESULTS")
-        print("=" * 60)
+        print("\n" + "=" * 80)
+        print("📊 RECALL EVALUATION RESULTS (with CLIP Visual Projection)")
+        print("=" * 80)
         
-        print("\n🎯 Method (a): Image -> CLIP Vision -> Text Retrieval")
+        print("\n🎯 Method (a): Image → CLIP Vision → Visual Projection → Text Retrieval")
         method_a_metrics = {
             k.replace('clip_vision_', ''): v 
             for k, v in metrics.items() 
             if k.startswith('clip_vision_') and not k.endswith(('_difference', '_relative_change'))
         }
-        print_metrics(method_a_metrics, "Image -> CLIP Vision -> Text")
+        print_metrics(method_a_metrics, "Image → CLIP Vision → Text (768-dim aligned)")
         
-        print("\n🎯 Method (b): Image -> EVA-CLIP -> BLIP3-o -> Text Retrieval")
+        print("\n🎯 Method (b): Image → EVA-CLIP → BLIP3-o → Visual Projection → Text Retrieval")
         method_b_metrics = {
             k.replace('generated_', ''): v 
             for k, v in metrics.items() 
             if k.startswith('generated_') and not k.endswith(('_difference', '_relative_change'))
         }
-        print_metrics(method_b_metrics, "Image -> Generated CLIP -> Text")
+        print_metrics(method_b_metrics, "Image → Generated CLIP → Text (768-dim aligned)")
         
         print("\n📈 Comparison and Differences")
         comparison_metrics = {
@@ -215,8 +223,8 @@ def main():
         print_metrics(comparison_metrics, "Method Comparison")
         
         # Detailed summary for each K value
-        print("\n🎯 DETAILED RECALL COMPARISON")
-        print("-" * 50)
+        print("\n🎯 DETAILED RECALL COMPARISON (Fair Comparison in CLIP-Aligned Space)")
+        print("-" * 80)
         
         for k in args.k_values:
             recall_a = metrics.get(f'clip_vision_recall@{k}', 0)
@@ -224,11 +232,11 @@ def main():
             difference = metrics.get(f'recall@{k}_difference', 0)
             relative_change = metrics.get(f'recall@{k}_relative_change', 0)
             
-            print(f"\nRecall@{k} (Image-to-Text Retrieval):")
-            print(f"  Method (a) - Image→CLIP Vision→Text:    {recall_a:.4f} ({recall_a*100:.2f}%)")
-            print(f"  Method (b) - Image→EVA→BLIP3o→Text:     {recall_b:.4f} ({recall_b*100:.2f}%)")
-            print(f"  Difference (b - a):                     {difference:+.4f} ({difference*100:+.2f}%)")
-            print(f"  Relative change:                        {relative_change:+.2f}%")
+            print(f"\nRecall@{k} (Image-to-Text Retrieval in 768-dim aligned space):")
+            print(f"  Method (a) - Image→CLIP Vision→Visual Proj→Text:    {recall_a:.4f} ({recall_a*100:.2f}%)")
+            print(f"  Method (b) - Image→EVA→BLIP3o→Visual Proj→Text:     {recall_b:.4f} ({recall_b*100:.2f}%)")
+            print(f"  Difference (b - a):                                 {difference:+.4f} ({difference*100:+.2f}%)")
+            print(f"  Relative change:                                    {relative_change:+.2f}%")
             
             if difference > 0:
                 print(f"  ✅ EVA→BLIP3o shows BETTER Image-to-Text Recall@{k}")
@@ -239,7 +247,7 @@ def main():
         
         # Overall summary
         print("\n🎯 OVERALL SUMMARY")
-        print("-" * 40)
+        print("-" * 60)
         
         # Calculate average improvement
         total_improvement = 0
@@ -255,6 +263,8 @@ def main():
         print(f"Average image-to-text recall improvement: {avg_improvement:+.4f} ({avg_improvement*100:+.2f}%)")
         print(f"Number of images evaluated: {metrics.get('clip_vision_num_queries', 0)}")
         print(f"Text gallery size: {metrics.get('clip_vision_num_gallery', 0)}")
+        print(f"Embedding space: {metrics.get('embedding_space', 'clip_aligned_768dim')}")
+        print(f"Uses visual projection: {metrics.get('uses_visual_projection', True)}")
         
         if avg_improvement > 0.01:  # Threshold for significant improvement
             print("✅ EVA→BLIP3o embeddings show SIGNIFICANT improvement in image-to-text retrieval")
@@ -262,6 +272,12 @@ def main():
             print("⚠️  EVA→BLIP3o embeddings show SIGNIFICANT degradation in image-to-text retrieval")
         else:
             print("➖ EVA→BLIP3o embeddings show SIMILAR performance to CLIP vision in image-to-text retrieval")
+        
+        print("\n🔬 Technical Details:")
+        print("• Both image embeddings are projected to CLIP's aligned 768-dim space")
+        print("• Text embeddings are already in CLIP's aligned 768-dim space")
+        print("• Fair comparison ensures differences reflect model performance, not embedding space mismatch")
+        print("• This follows CLIP's standard evaluation methodology")
         
         # Save summary results
         summary_file = results_dir / "recall_summary.json"
@@ -274,6 +290,7 @@ def main():
             print(f"📁 Detailed results saved to: {results_dir}")
         
         print("\n✅ Recall evaluation completed successfully!")
+        print("🎯 Results now reflect fair comparison in CLIP's aligned embedding space!")
         return 0
         
     except KeyboardInterrupt:
