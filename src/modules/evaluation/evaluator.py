@@ -1,5 +1,6 @@
 """
 Main evaluator class for BLIP3-o DiT model evaluation.
+FIXED: Parameter name mismatch in BLIP3oInference.generate() calls
 """
 
 import torch
@@ -195,12 +196,16 @@ class BLIP3oEvaluator:
         return torch.stack(eva_embeddings)  # [B, 256, 4096]
     
     def generate_clip_from_eva(self, eva_embeddings: torch.Tensor) -> torch.Tensor:
-        """Generate CLIP embeddings from EVA-CLIP using trained BLIP3-o DiT."""
+        """
+        Generate CLIP embeddings from EVA-CLIP using trained BLIP3-o DiT.
+        FIXED: Use correct parameter name for BLIP3oInference.generate()
+        """
         eva_embeddings = eva_embeddings.to(device=self.device, dtype=self.torch_dtype)
         
         with torch.no_grad():
+            # FIXED: Use positional argument instead of encoder_hidden_states keyword
             generated_clip = self.blip3o_inference.generate(
-                encoder_hidden_states=eva_embeddings,
+                eva_embeddings,  # FIXED: First positional parameter
                 num_inference_steps=50,  # Can be adjusted
             )
         
@@ -419,6 +424,7 @@ class BLIP3oEvaluator:
                     
                     # Method (b): EVA-CLIP -> Generated CLIP embeddings
                     eva_vision_emb = self.extract_eva_vision_embeddings([image])
+                    # FIXED: Use the corrected generate_clip_from_eva method
                     generated_clip_emb = self.generate_clip_from_eva(eva_vision_emb)
                     generated_clip_global = generated_clip_emb.mean(dim=1).squeeze(0)  # [1024]
                     

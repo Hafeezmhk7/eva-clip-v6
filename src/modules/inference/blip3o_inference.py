@@ -1,6 +1,7 @@
 """
 Inference utilities for BLIP3-o DiT model.
 Handles loading trained models and generating CLIP embeddings from EVA-CLIP conditioning.
+FIXED: Parameter handling in generate method for better compatibility
 """
 
 import torch
@@ -177,7 +178,7 @@ class BLIP3oInference:
     @torch.no_grad()
     def generate(
         self,
-        eva_embeddings: torch.Tensor,
+        eva_embeddings: torch.Tensor,  # FIXED: Clear parameter name
         num_inference_steps: int = 50,
         guidance_scale: float = 1.0,
         generator: Optional[torch.Generator] = None,
@@ -186,9 +187,10 @@ class BLIP3oInference:
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, List[torch.Tensor]]]:
         """
         Generate CLIP embeddings from EVA-CLIP conditioning.
+        FIXED: Clear parameter naming to avoid confusion with model.generate()
         
         Args:
-            eva_embeddings: EVA-CLIP conditioning [batch_size, 64, 1280]
+            eva_embeddings: EVA-CLIP conditioning [batch_size, num_tokens, eva_dim]
             num_inference_steps: Number of sampling steps
             guidance_scale: Guidance scale (currently not used)
             generator: Random number generator for reproducibility
@@ -196,7 +198,7 @@ class BLIP3oInference:
             eta: DDIM parameter for stochasticity
             
         Returns:
-            Generated CLIP embeddings [batch_size, 64, 768]
+            Generated CLIP embeddings [batch_size, num_tokens, clip_dim]
             Optionally with intermediate states if return_intermediate=True
         """
         # Validate input
@@ -209,9 +211,10 @@ class BLIP3oInference:
         self.model.eval()
         
         # Generate using model's built-in generation method
+        # FIXED: Use correct parameter name for the underlying model
         if return_intermediate:
             generated_clip, intermediate_states = self.model.generate(
-                encoder_hidden_states=eva_embeddings,
+                encoder_hidden_states=eva_embeddings,  # Model expects this parameter name
                 num_inference_steps=num_inference_steps,
                 generator=generator,
                 return_intermediate=True,
@@ -219,7 +222,7 @@ class BLIP3oInference:
             return generated_clip, intermediate_states
         else:
             generated_clip = self.model.generate(
-                encoder_hidden_states=eva_embeddings,
+                encoder_hidden_states=eva_embeddings,  # Model expects this parameter name
                 num_inference_steps=num_inference_steps,
                 generator=generator,
                 return_intermediate=False,
@@ -227,15 +230,17 @@ class BLIP3oInference:
             return generated_clip
     
     def _validate_eva_input(self, eva_embeddings: torch.Tensor):
-        """Validate EVA-CLIP input tensor."""
+        """Validate EVA-CLIP input tensor - FIXED: Support 256 tokens."""
         if eva_embeddings.dim() != 3:
-            raise ValueError(f"Expected 3D tensor [B, 64, 1280], got {eva_embeddings.dim()}D")
+            raise ValueError(f"Expected 3D tensor [B, num_tokens, eva_dim], got {eva_embeddings.dim()}D")
         
-        if eva_embeddings.shape[1] != 64:
-            raise ValueError(f"Expected 64 tokens, got {eva_embeddings.shape[1]}")
+        # FIXED: Support 256 tokens instead of hardcoded 64
+        expected_tokens = self.config.input_size * self.config.input_size  # Should be 256
+        if eva_embeddings.shape[1] != expected_tokens:
+            raise ValueError(f"Expected {expected_tokens} tokens, got {eva_embeddings.shape[1]}")
         
-        if eva_embeddings.shape[2] != 1280:
-            raise ValueError(f"Expected 1280-dim EVA features, got {eva_embeddings.shape[2]}")
+        if eva_embeddings.shape[2] != self.config.eva_embedding_size:
+            raise ValueError(f"Expected {self.config.eva_embedding_size}-dim EVA features, got {eva_embeddings.shape[2]}")
     
     def generate_from_dataset(
         self,
@@ -298,17 +303,17 @@ class BLIP3oInference:
             eva_emb = batch['eva_embeddings'].to(device=self.device, dtype=self.torch_dtype)
             clip_targets = batch['clip_embeddings']
             
-            # Generate CLIP embeddings
+            # Generate CLIP embeddings - FIXED: Use correct method signature
             if save_intermediate:
                 generated_clip, intermediate = self.generate(
-                    eva_embeddings=eva_emb,
+                    eva_emb,  # FIXED: Use positional argument
                     num_inference_steps=num_inference_steps,
                     return_intermediate=True,
                 )
                 results['intermediate_states'].append([state.cpu() for state in intermediate])
             else:
                 generated_clip = self.generate(
-                    eva_embeddings=eva_emb,
+                    eva_emb,  # FIXED: Use positional argument
                     num_inference_steps=num_inference_steps,
                 )
             
@@ -429,8 +434,8 @@ class BLIP3oInference:
     
     def interpolate_embeddings(
         self,
-        eva_start: torch.Tensor,      # [64, 1280]
-        eva_end: torch.Tensor,        # [64, 1280]
+        eva_start: torch.Tensor,      # [num_tokens, eva_dim]
+        eva_end: torch.Tensor,        # [num_tokens, eva_dim]
         num_steps: int = 10,
         num_inference_steps: int = 50,
     ) -> List[torch.Tensor]:
@@ -438,8 +443,8 @@ class BLIP3oInference:
         Generate interpolation between two EVA embeddings.
         
         Args:
-            eva_start: Starting EVA embedding [64, 1280]
-            eva_end: Ending EVA embedding [64, 1280]
+            eva_start: Starting EVA embedding [num_tokens, eva_dim]
+            eva_end: Ending EVA embedding [num_tokens, eva_dim]
             num_steps: Number of interpolation steps
             num_inference_steps: Steps for each generation
             
@@ -453,8 +458,9 @@ class BLIP3oInference:
             eva_interp = (1 - alpha) * eva_start + alpha * eva_end
             eva_interp = eva_interp.unsqueeze(0)  # Add batch dimension
             
+            # FIXED: Use correct method signature
             generated_clip = self.generate(
-                eva_embeddings=eva_interp,
+                eva_interp,  # FIXED: Use positional argument
                 num_inference_steps=num_inference_steps,
             ).squeeze(0)  # Remove batch dimension
             

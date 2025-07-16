@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 BLIP3-o DiT Recall Evaluation Script (Task 2)
+FIXED: Compatible with corrected evaluator parameter names
 
 This script evaluates recall metrics (Recall@1, Recall@5, Recall@10) for image-to-text retrieval:
 (a) Image → CLIP ViT-L/14 → retrieval against text captions

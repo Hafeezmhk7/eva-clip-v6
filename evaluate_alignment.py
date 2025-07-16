@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 BLIP3-o DiT Alignment Evaluation Script (Task 1)
+FIXED: Compatible with corrected evaluator parameter names
 
 This script evaluates the alignment between text and vision embeddings using cosine similarity:
 (a) CLIP text encoder + CLIP ViT-L/14 vision encoder
