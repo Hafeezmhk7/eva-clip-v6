@@ -1,0 +1,191 @@
+#!/bin/bash
+#SBATCH --job-name=simple_clip_eval
+#SBATCH --partition=gpu_h100
+#SBATCH --nodes=1
+#SBATCH --gpus=1
+#SBATCH --cpus-per-gpu=18
+#SBATCH --time=2:00:00
+#SBATCH --mem=0
+#SBATCH --output=./slurm_out/clip_eval_%j.out
+#SBATCH --error=./slurm_out/clip_eval_%j.err
+
+# =============================================================================
+# SIMPLE CLIP EVALUATION JOB
+# =============================================================================
+
+echo "🚀 Simple CLIP Evaluation on COCO"
+echo "=================================="
+
+# Setup environment
+module purge
+module load 2024
+module load Miniconda3/24.7.1-0
+module load CUDA/12.6.0
+
+source activate eva_clip_env
+
+# Configuration
+COCO_ROOT="./data/coco"
+NUM_SAMPLES=1000
+BATCH_SIZE=32
+DEVICE="cuda"
+
+# Setup temp directories for model cache
+export USER=$(whoami)
+export JOB_ID=${SLURM_JOB_ID}
+export JOB_TEMP="/scratch-local/${USER}.${JOB_ID}/clip_eval"
+
+export TORCH_HOME="${JOB_TEMP}/torch"
+export HF_HOME="${JOB_TEMP}/huggingface"
+export TRANSFORMERS_CACHE="${JOB_TEMP}/transformers"
+
+mkdir -p "${TORCH_HOME}" "${HF_HOME}" "${TRANSFORMERS_CACHE}"
+mkdir -p ./slurm_out
+
+echo "Configuration:"
+echo "  COCO Root: $COCO_ROOT"
+echo "  Samples: $NUM_SAMPLES"
+echo "  Batch Size: $BATCH_SIZE"
+echo "  Device: $DEVICE"
+echo "  Job ID: $JOB_ID"
+echo "  Node: $SLURMD_NODENAME"
+
+# Verify COCO data exists
+if [ ! -d "$COCO_ROOT" ]; then
+    echo "❌ ERROR: COCO data not found at $COCO_ROOT"
+    exit 1
+fi
+
+if [ ! -f "$COCO_ROOT/annotations/captions_val2017.json" ]; then
+    echo "❌ ERROR: COCO annotations not found"
+    exit 1
+fi
+
+echo "✅ COCO data verified"
+
+# Run evaluation
+echo ""
+echo "🔍 Starting CLIP evaluation..."
+echo "============================="
+
+python simple_clip_evaluation.py \
+    --coco_root "$COCO_ROOT" \
+    --num_samples $NUM_SAMPLES \
+    --batch_size $BATCH_SIZE \
+    --device $DEVICE
+
+EXIT_CODE=$?
+
+# Results summary - PARSE AND DISPLAY RESULTS IN JOB OUTPUT
+echo ""
+echo "======================================================================"
+echo "📊 JOB COMPLETION SUMMARY"
+echo "======================================================================"
+echo "Job ID: $JOB_ID"
+echo "Node: $SLURMD_NODENAME"
+echo "Runtime: $SECONDS seconds"
+echo "Date: $(date)"
+
+if [ $EXIT_CODE -eq 0 ]; then
+    echo "Status: ✅ SUCCESS - EVALUATION COMPLETED"
+    
+    # Find and display results from JSON file
+    RESULTS_FILE=$(ls clip_evaluation_results_*.json 2>/dev/null | tail -1)
+    if [ -n "$RESULTS_FILE" ] && [ -f "$RESULTS_FILE" ]; then
+        echo ""
+        echo "📊 CLIP EVALUATION RESULTS (from $RESULTS_FILE):"
+        echo "================================================"
+        
+        # Parse JSON results and display prominently
+        if command -v python3 &> /dev/null; then
+            python3 << EOF
+import json
+import sys
+
+try:
+    with open('$RESULTS_FILE', 'r') as f:
+        data = json.load(f)
+    
+    recalls = data['recalls']
+    status = data.get('status', 'UNKNOWN')
+    gap = data.get('similarity_gap', 0)
+    samples = data.get('num_samples', 0)
+    
+    print()
+    print("🎯 RECALL METRICS:")
+    print("-" * 30)
+    for k, v in recalls.items():
+        print(f"   {k}: {v*100:.2f}%")
+    print("-" * 30)
+    print()
+    print(f"📈 Performance Status: {status}")
+    print(f"📊 Samples Evaluated: {samples}")
+    print(f"📏 Similarity Gap: {gap:.4f}")
+    print()
+    
+    # Determine overall success
+    r1 = recalls.get('R@1', 0)
+    if r1 >= 0.25:
+        print("🎉 ✅ EXCELLENT: CLIP baseline validated!")
+        print(f"   R@1 = {r1*100:.1f}% is within expected range (25-35%)")
+        print("   Your CLIP evaluation is working correctly!")
+    elif r1 >= 0.15:
+        print("⚠️  MODERATE: CLIP performance below expected")
+        print(f"   R@1 = {r1*100:.1f}% is lower than expected (25-35%)")
+        print("   May indicate data or model issues")
+    else:
+        print("❌ LOW: CLIP performance significantly below expected")
+        print(f"   R@1 = {r1*100:.1f}% is much lower than expected (25-35%)")
+        print("   Indicates serious issues with data or model")
+
+except Exception as e:
+    print(f"❌ Could not parse results file: {e}")
+    sys.exit(1)
+EOF
+        else
+            echo "⚠️  Python not available to parse results"
+            echo "   Results file: $RESULTS_FILE"
+        fi
+    else
+        echo "⚠️  No results file found"
+        echo "   Evaluation may have completed without saving results"
+        echo "   Check the output above for inline results"
+    fi
+    
+    echo ""
+    echo "✅ EVALUATION COMPLETED SUCCESSFULLY"
+    
+else
+    echo "Status: ❌ FAILED"
+    echo ""
+    echo "❌ EVALUATION FAILED WITH EXIT CODE: $EXIT_CODE"
+    echo ""
+    echo "🔍 Troubleshooting:"
+    echo "   1. Check if COCO data exists and is accessible"
+    echo "   2. Verify GPU memory is sufficient"
+    echo "   3. Check Python environment and dependencies"
+    echo "   4. Look for error messages in the output above"
+    echo ""
+    echo "📂 Log files:"
+    echo "   Output: ./slurm_out/clip_eval_${JOB_ID}.out"
+    echo "   Error:  ./slurm_out/clip_eval_${JOB_ID}.err"
+fi
+
+echo ""
+echo "======================================================================"
+echo "🏁 JOB SUMMARY COMPLETE"
+echo "======================================================================"
+
+# Always show final status prominently
+if [ $EXIT_CODE -eq 0 ]; then
+    echo "🎉 SUCCESS: Check the results above for CLIP performance metrics!"
+else
+    echo "❌ FAILURE: Check error messages above and in log files"
+fi
+
+echo "======================================================================"
+
+# Cleanup
+rm -rf "${JOB_TEMP}"
+
+exit $EXIT_CODE

@@ -1,0 +1,19 @@
+Direct CLIP Evaluation Summary
+==============================
+Job ID: 13202871
+Date: Thu Jul 17 17:02:58 CEST 2025
+Node: gcn149
+Submitted from: /gpfs/home1/scur2711/eva-clip-flow-matching/eva-clip-v3
+
+Configuration:
+- COCO Root: /gpfs/home1/scur2711/eva-clip-flow-matching/eva-clip-v3/data/coco
+- Samples: 1000
+- Batch Size: 32
+- Device: CUDA
+
+Results Location: /scratch-shared/scur2711/direct_clip_eval_13202871/results
+
+Performance Notes:
+- Evaluation completed in 2 seconds
+- Used GPU: NVIDIA H100
+- CUDA Version: Cuda compilation tools, release 12.6, V12.6.20
