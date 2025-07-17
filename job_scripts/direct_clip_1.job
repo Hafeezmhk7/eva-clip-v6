@@ -1,20 +1,21 @@
 #!/bin/bash
-#SBATCH --job-name=simple_clip_eval
+#SBATCH --job-name=comprehensive_clip_blip3o_eval
 #SBATCH --partition=gpu_h100
 #SBATCH --nodes=1
 #SBATCH --gpus=1
 #SBATCH --cpus-per-gpu=18
-#SBATCH --time=2:00:00
+#SBATCH --time=3:00:00
 #SBATCH --mem=0
-#SBATCH --output=./slurm_out/clip_eval_%j.out
-#SBATCH --error=./slurm_out/clip_eval_%j.err
+#SBATCH --output=./slurm_out/comprehensive_eval_%j.out
+#SBATCH --error=./slurm_out/comprehensive_eval_%j.err
 
 # =============================================================================
-# SIMPLE CLIP EVALUATION JOB
+# COMPREHENSIVE CLIP AND BLIP3O EVALUATION JOB
+# Tests: Global Token, Patch-based, and BLIP3o recall methods
 # =============================================================================
 
-echo "🚀 Simple CLIP Evaluation on COCO"
-echo "=================================="
+echo "🚀 Comprehensive CLIP and BLIP3o Evaluation"
+echo "==========================================="
 
 # Setup environment
 module purge
@@ -29,28 +30,38 @@ COCO_ROOT="./data/coco"
 NUM_SAMPLES=1000
 BATCH_SIZE=32
 DEVICE="cuda"
+EVALUATION_METHOD="all"  # Test all methods: global, patch, blip3o
+
+# BLIP3o model path (your trained model)
+BLIP3O_MODEL_PATH="/scratch-shared/scur2711/blip3o_workspace/checkpoints/blip3o_multi_gpu_fixed_cosine_13173833_20250716_085748"
 
 # Setup temp directories for model cache
 export USER=$(whoami)
 export JOB_ID=${SLURM_JOB_ID}
-export JOB_TEMP="/scratch-local/${USER}.${JOB_ID}/clip_eval"
+export JOB_TEMP="/scratch-local/${USER}.${JOB_ID}/comprehensive_eval"
 
 export TORCH_HOME="${JOB_TEMP}/torch"
 export HF_HOME="${JOB_TEMP}/huggingface"
 export TRANSFORMERS_CACHE="${JOB_TEMP}/transformers"
 
 mkdir -p "${TORCH_HOME}" "${HF_HOME}" "${TRANSFORMERS_CACHE}"
-mkdir -p ./slurm_out
+mkdir -p ./slurm_out ./results
 
 echo "Configuration:"
 echo "  COCO Root: $COCO_ROOT"
 echo "  Samples: $NUM_SAMPLES"
 echo "  Batch Size: $BATCH_SIZE"
 echo "  Device: $DEVICE"
+echo "  Method: $EVALUATION_METHOD"
+echo "  BLIP3o Model: $BLIP3O_MODEL_PATH"
 echo "  Job ID: $JOB_ID"
 echo "  Node: $SLURMD_NODENAME"
 
 # Verify COCO data exists
+echo ""
+echo "🔍 Verifying data and model paths..."
+echo "==================================="
+
 if [ ! -d "$COCO_ROOT" ]; then
     echo "❌ ERROR: COCO data not found at $COCO_ROOT"
     exit 1
@@ -61,40 +72,61 @@ if [ ! -f "$COCO_ROOT/annotations/captions_val2017.json" ]; then
     exit 1
 fi
 
+if [ ! -d "$BLIP3O_MODEL_PATH" ]; then
+    echo "❌ ERROR: BLIP3o model not found at $BLIP3O_MODEL_PATH"
+    echo "   Available checkpoints:"
+    ls -la /scratch-shared/scur2711/blip3o_workspace/checkpoints/ 2>/dev/null || echo "   No checkpoints found"
+    exit 1
+fi
+
 echo "✅ COCO data verified"
+echo "✅ BLIP3o model verified"
 
-# Run evaluation
+# Run comprehensive evaluation
 echo ""
-echo "🔍 Starting CLIP evaluation..."
-echo "============================="
+echo "🔍 Starting comprehensive evaluation..."
+echo "====================================="
+echo "Testing methods:"
+echo "  1. 🎯 Global Token (CLS + visual projection)"
+echo "  2. 📊 Patch-based (averaged patches + visual projection)"
+echo "  3. 🤖 BLIP3o (EVA → DiT → visual projection)"
+echo ""
 
-python simple_clip_evaluation.py \
+EVAL_START_TIME=$(date +%s)
+
+python direct_clip_evaluation.py \
     --coco_root "$COCO_ROOT" \
     --num_samples $NUM_SAMPLES \
-    --batch_size $BATCH_SIZE \
-    --device $DEVICE
+    --device $DEVICE \
+    --method $EVALUATION_METHOD \
+    --blip3o_model_path "$BLIP3O_MODEL_PATH" \
+    --k_values 1 5 10 20 \
+    --save_results "results/comprehensive_evaluation_${JOB_ID}.json"
 
 EXIT_CODE=$?
+EVAL_END_TIME=$(date +%s)
+EVAL_DURATION=$((EVAL_END_TIME - EVAL_START_TIME))
 
 # Results summary - PARSE AND DISPLAY RESULTS IN JOB OUTPUT
 echo ""
-echo "======================================================================"
-echo "📊 JOB COMPLETION SUMMARY"
-echo "======================================================================"
+echo "========================================================================"
+echo "📊 COMPREHENSIVE EVALUATION RESULTS"
+echo "========================================================================"
 echo "Job ID: $JOB_ID"
 echo "Node: $SLURMD_NODENAME"
-echo "Runtime: $SECONDS seconds"
+echo "Evaluation Duration: $EVAL_DURATION seconds"
+echo "Total Runtime: $SECONDS seconds"
 echo "Date: $(date)"
 
 if [ $EXIT_CODE -eq 0 ]; then
-    echo "Status: ✅ SUCCESS - EVALUATION COMPLETED"
+    echo "Status: ✅ SUCCESS - COMPREHENSIVE EVALUATION COMPLETED"
     
     # Find and display results from JSON file
-    RESULTS_FILE=$(ls clip_evaluation_results_*.json 2>/dev/null | tail -1)
-    if [ -n "$RESULTS_FILE" ] && [ -f "$RESULTS_FILE" ]; then
+    RESULTS_FILE="results/comprehensive_evaluation_${JOB_ID}.json"
+    if [ -f "$RESULTS_FILE" ]; then
         echo ""
-        echo "📊 CLIP EVALUATION RESULTS (from $RESULTS_FILE):"
-        echo "================================================"
+        echo "📊 COMPREHENSIVE RESULTS SUMMARY:"
+        echo "=================================="
         
         # Parse JSON results and display prominently
         if command -v python3 &> /dev/null; then
@@ -106,37 +138,118 @@ try:
     with open('$RESULTS_FILE', 'r') as f:
         data = json.load(f)
     
-    recalls = data['recalls']
-    status = data.get('status', 'UNKNOWN')
-    gap = data.get('similarity_gap', 0)
-    samples = data.get('num_samples', 0)
+    method_results = data.get('method_results', {})
+    eval_info = data.get('evaluation_info', {})
     
     print()
-    print("🎯 RECALL METRICS:")
-    print("-" * 30)
-    for k, v in recalls.items():
-        print(f"   {k}: {v*100:.2f}%")
-    print("-" * 30)
-    print()
-    print(f"📈 Performance Status: {status}")
-    print(f"📊 Samples Evaluated: {samples}")
-    print(f"📏 Similarity Gap: {gap:.4f}")
-    print()
+    print("🎯 RECALL@1 COMPARISON:")
+    print("-" * 50)
     
-    # Determine overall success
-    r1 = recalls.get('R@1', 0)
-    if r1 >= 0.25:
-        print("🎉 ✅ EXCELLENT: CLIP baseline validated!")
-        print(f"   R@1 = {r1*100:.1f}% is within expected range (25-35%)")
-        print("   Your CLIP evaluation is working correctly!")
-    elif r1 >= 0.15:
-        print("⚠️  MODERATE: CLIP performance below expected")
-        print(f"   R@1 = {r1*100:.1f}% is lower than expected (25-35%)")
-        print("   May indicate data or model issues")
+    results_summary = {}
+    for method, results in method_results.items():
+        if 'error' not in results and 'recall@1' in results:
+            r1 = results['recall@1'] * 100
+            r5 = results.get('recall@5', 0) * 100
+            r10 = results.get('recall@10', 0) * 100
+            time_taken = results.get('evaluation_time', 0)
+            description = results.get('method_description', method)
+            
+            results_summary[method] = {
+                'r1': r1, 'r5': r5, 'r10': r10, 'time': time_taken, 'desc': description
+            }
+            
+            print(f"   {method.upper():>8s}: {r1:5.1f}% | R@5: {r5:5.1f}% | R@10: {r10:5.1f}% | Time: {time_taken:5.1f}s")
+            print(f"            {description[:65]}")
+            print()
+    
+    print("-" * 50)
+    
+    # Literature comparison
+    if 'global' in results_summary:
+        global_r1 = results_summary['global']['r1']
+        print(f"📚 Literature Comparison:")
+        print(f"   Expected CLIP ViT-L/14 R@1: ~58-60%")
+        print(f"   Your Global Token R@1:     {global_r1:.1f}%")
+        
+        if global_r1 >= 58:
+            print(f"   ✅ EXCELLENT: Matches/exceeds literature!")
+        elif global_r1 >= 55:
+            print(f"   ✅ GOOD: Close to literature values")
+        else:
+            print(f"   ⚠️  LOW: Below expected literature values")
+        print()
+    
+    # Method comparison
+    if len(results_summary) > 1:
+        print(f"📈 Method Performance Analysis:")
+        
+        # Compare against global token as baseline
+        if 'global' in results_summary:
+            baseline = results_summary['global']['r1']
+            baseline_method = 'global'
+        else:
+            baseline_method = list(results_summary.keys())[0]
+            baseline = results_summary[baseline_method]['r1']
+        
+        print(f"   Baseline ({baseline_method}): {baseline:.1f}%")
+        print()
+        
+        for method, result in results_summary.items():
+            if method != baseline_method:
+                diff = result['r1'] - baseline
+                diff_pct = (diff / baseline) * 100 if baseline > 0 else 0
+                
+                if method == 'patch':
+                    print(f"   📊 Patch vs Global:")
+                    print(f"      Difference: {diff:+.1f}% ({diff_pct:+.1f}%)")
+                    if abs(diff) < 2:
+                        print(f"      Status: ✅ Similar performance (expected)")
+                    elif diff > 0:
+                        print(f"      Status: 📈 Patch outperforms (unexpected but good)")
+                    else:
+                        print(f"      Status: 📉 Global outperforms (expected)")
+                    print()
+                
+                elif method == 'blip3o':
+                    print(f"   🤖 BLIP3o vs Global:")
+                    print(f"      Difference: {diff:+.1f}% ({diff_pct:+.1f}%)")
+                    if diff >= -2:  # Within 2% is good
+                        print(f"      Status: ✅ EXCELLENT - Preserves CLIP performance!")
+                        print(f"      Your BLIP3o model is working well!")
+                    elif diff >= -5:  # Within 5% is acceptable
+                        print(f"      Status: ✅ GOOD - Minor performance drop")
+                        print(f"      BLIP3o slightly underperforms but acceptable")
+                    else:
+                        print(f"      Status: ⚠️  NEEDS IMPROVEMENT - Significant drop")
+                        print(f"      Consider training adjustments or architecture changes")
+                    print()
+    
+    # Overall assessment
+    print("🎯 OVERALL ASSESSMENT:")
+    print("-" * 30)
+    
+    if 'blip3o' in results_summary and 'global' in results_summary:
+        blip3o_r1 = results_summary['blip3o']['r1']
+        global_r1 = results_summary['global']['r1']
+        
+        if blip3o_r1 >= global_r1 - 2:
+            print("🎉 SUCCESS: BLIP3o successfully learned EVA→CLIP mapping!")
+            print("   Your model preserves CLIP's retrieval capabilities.")
+            print("   Ready for production use or further research.")
+        elif blip3o_r1 >= global_r1 - 5:
+            print("✅ GOOD: BLIP3o shows promising results.")
+            print("   Minor performance gap suggests room for improvement.")
+            print("   Consider fine-tuning hyperparameters or training longer.")
+        else:
+            print("⚠️  IMPROVEMENT NEEDED: Significant performance gap.")
+            print("   Suggests issues with model architecture or training.")
+            print("   Review loss curves, data quality, and model design.")
     else:
-        print("❌ LOW: CLIP performance significantly below expected")
-        print(f"   R@1 = {r1*100:.1f}% is much lower than expected (25-35%)")
-        print("   Indicates serious issues with data or model")
+        print("📊 Partial evaluation completed.")
+        print("   Check individual method results above.")
+    
+    print()
+    print(f"💾 Full results saved to: $RESULTS_FILE")
 
 except Exception as e:
     print(f"❌ Could not parse results file: {e}")
@@ -153,39 +266,72 @@ EOF
     fi
     
     echo ""
-    echo "✅ EVALUATION COMPLETED SUCCESSFULLY"
+    echo "✅ COMPREHENSIVE EVALUATION COMPLETED SUCCESSFULLY"
     
 else
     echo "Status: ❌ FAILED"
     echo ""
-    echo "❌ EVALUATION FAILED WITH EXIT CODE: $EXIT_CODE"
+    echo "❌ COMPREHENSIVE EVALUATION FAILED WITH EXIT CODE: $EXIT_CODE"
     echo ""
     echo "🔍 Troubleshooting:"
     echo "   1. Check if COCO data exists and is accessible"
-    echo "   2. Verify GPU memory is sufficient"
-    echo "   3. Check Python environment and dependencies"
-    echo "   4. Look for error messages in the output above"
+    echo "   2. Verify BLIP3o model path is correct"
+    echo "   3. Ensure GPU memory is sufficient for all models"
+    echo "   4. Check Python environment and dependencies"
+    echo "   5. Verify BLIP3o inference module is available"
+    echo "   6. Look for error messages in the output above"
     echo ""
     echo "📂 Log files:"
-    echo "   Output: ./slurm_out/clip_eval_${JOB_ID}.out"
-    echo "   Error:  ./slurm_out/clip_eval_${JOB_ID}.err"
+    echo "   Output: ./slurm_out/comprehensive_eval_${JOB_ID}.out"
+    echo "   Error:  ./slurm_out/comprehensive_eval_${JOB_ID}.err"
+    echo ""
+    echo "🔧 Quick checks:"
+    echo "   • COCO path: $COCO_ROOT"
+    echo "   • BLIP3o model: $BLIP3O_MODEL_PATH"
+    echo "   • Available space: $(df -h . | tail -1 | awk '{print $4}')"
 fi
 
 echo ""
-echo "======================================================================"
-echo "🏁 JOB SUMMARY COMPLETE"
-echo "======================================================================"
+echo "========================================================================"
+echo "🏁 COMPREHENSIVE EVALUATION SUMMARY"
+echo "========================================================================"
 
 # Always show final status prominently
 if [ $EXIT_CODE -eq 0 ]; then
-    echo "🎉 SUCCESS: Check the results above for CLIP performance metrics!"
+    echo "🎉 SUCCESS: Check the comprehensive results above!"
+    echo ""
+    echo "📋 What was tested:"
+    echo "   ✅ Global Token Method (CLS + visual projection)"
+    echo "   ✅ Patch-based Method (averaged patches + visual projection)"
+    echo "   ✅ BLIP3o Method (EVA → DiT → visual projection)"
+    echo ""
+    echo "🎯 Key Questions Answered:"
+    echo "   • Does your CLIP implementation match literature? (Global method)"
+    echo "   • How does patch averaging compare to CLS token? (Patch vs Global)"
+    echo "   • Does BLIP3o preserve CLIP's capabilities? (BLIP3o vs Global)"
+    echo ""
+    echo "📊 Next Steps:"
+    echo "   • Review the method comparison above"
+    echo "   • Check if BLIP3o performance meets your requirements"
+    echo "   • Use results to guide further model development"
 else
     echo "❌ FAILURE: Check error messages above and in log files"
+    echo ""
+    echo "💡 Common Issues:"
+    echo "   • BLIP3o model path incorrect or model corrupted"
+    echo "   • Insufficient GPU memory for large models"
+    echo "   • Missing dependencies in eva_clip_env environment"
+    echo "   • COCO dataset path or permissions issues"
 fi
 
-echo "======================================================================"
+echo "========================================================================"
 
-# Cleanup
-rm -rf "${JOB_TEMP}"
+# Cleanup temp cache
+if [ -d "${JOB_TEMP}" ]; then
+    echo "🧹 Cleaning up temporary cache..."
+    rm -rf "${JOB_TEMP}"
+fi
+
+echo "🏁 Job completed at $(date)"
 
 exit $EXIT_CODE

@@ -1,0 +1,352 @@
+#!/bin/bash
+#SBATCH --job-name=patch_reconstruction_eval
+#SBATCH --partition=gpu_h100
+#SBATCH --nodes=1
+#SBATCH --gpus=1
+#SBATCH --cpus-per-gpu=18
+#SBATCH --time=4:00:00
+#SBATCH --mem=0
+#SBATCH --output=./slurm_out/patch_recon_%j.out
+#SBATCH --error=./slurm_out/patch_recon_%j.err
+
+# =============================================================================
+# CLIP vs BLIP3O PATCH RECONSTRUCTION EVALUATION
+# Compares patch-level embeddings [B, 256, 1024] between CLIP and BLIP3o
+# =============================================================================
+
+echo "🔬 CLIP vs BLIP3o Patch Reconstruction Evaluation"
+echo "=================================================="
+
+# Setup environment
+module purge
+module load 2024
+module load Miniconda3/24.7.1-0
+module load CUDA/12.6.0
+
+source activate eva_clip_env
+
+# Configuration
+COCO_ROOT="./data/coco"
+NUM_SAMPLES=1000
+DEVICE="cuda"
+
+# BLIP3o model path (your trained model)
+BLIP3O_MODEL_PATH="/scratch-shared/scur2711/blip3o_workspace/checkpoints/blip3o_multi_gpu_fixed_cosine_13173833_20250716_085748"
+
+# Results directory
+RESULTS_DIR="./results/patch_reconstruction"
+TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+RESULTS_FILE="${RESULTS_DIR}/patch_reconstruction_${SLURM_JOB_ID}_${TIMESTAMP}.json"
+PLOTS_DIR="${RESULTS_DIR}/plots_${SLURM_JOB_ID}"
+
+# Setup temp directories for model cache
+export USER=$(whoami)
+export JOB_ID=${SLURM_JOB_ID}
+export JOB_TEMP="/scratch-local/${USER}.${JOB_ID}/patch_recon"
+
+export TORCH_HOME="${JOB_TEMP}/torch"
+export HF_HOME="${JOB_TEMP}/huggingface"
+export TRANSFORMERS_CACHE="${JOB_TEMP}/transformers"
+
+mkdir -p "${TORCH_HOME}" "${HF_HOME}" "${TRANSFORMERS_CACHE}"
+mkdir -p ./slurm_out "${RESULTS_DIR}" "${PLOTS_DIR}"
+
+echo "Configuration:"
+echo "  COCO Root: $COCO_ROOT"
+echo "  Samples: $NUM_SAMPLES"
+echo "  Device: $DEVICE"
+echo "  BLIP3o Model: $BLIP3O_MODEL_PATH"
+echo "  Results File: $RESULTS_FILE"
+echo "  Plots Directory: $PLOTS_DIR"
+echo "  Job ID: $JOB_ID"
+echo "  Node: $SLURMD_NODENAME"
+
+# Verify data and model paths
+echo ""
+echo "🔍 Verifying paths..."
+echo "===================="
+
+if [ ! -d "$COCO_ROOT" ]; then
+    echo "❌ ERROR: COCO data not found at $COCO_ROOT"
+    exit 1
+fi
+
+if [ ! -f "$COCO_ROOT/annotations/captions_val2017.json" ]; then
+    echo "❌ ERROR: COCO annotations not found"
+    exit 1
+fi
+
+if [ ! -d "$BLIP3O_MODEL_PATH" ]; then
+    echo "❌ ERROR: BLIP3o model not found at $BLIP3O_MODEL_PATH"
+    echo "   Available checkpoints:"
+    ls -la /scratch-shared/scur2711/blip3o_workspace/checkpoints/ 2>/dev/null || echo "   No checkpoints found"
+    exit 1
+fi
+
+echo "✅ COCO data verified"
+echo "✅ BLIP3o model verified"
+
+# Run patch reconstruction evaluation
+echo ""
+echo "🔬 Starting patch reconstruction evaluation..."
+echo "=============================================="
+echo "This evaluation compares:"
+echo "  (a) CLIP ViT-L/14 patch embeddings [B, 256, 1024] (ground truth)"
+echo "  (b) EVA → BLIP3o DiT → patch embeddings [B, 256, 1024] (predicted)"
+echo ""
+echo "📏 Distance metrics computed:"
+echo "  • Token-wise L2 distances (per patch position)"
+echo "  • Per-sample L2 distances (reconstruction quality)"
+echo "  • Spatial reconstruction analysis (16×16 grid)"
+echo "  • Normalized and cosine distances"
+echo ""
+
+EVAL_START_TIME=$(date +%s)
+
+python patch_reconstruction_evaluation.py \
+    --coco_root "$COCO_ROOT" \
+    --blip3o_model_path "$BLIP3O_MODEL_PATH" \
+    --num_samples $NUM_SAMPLES \
+    --device $DEVICE \
+    --save_results "$RESULTS_FILE" \
+    --save_plots "$PLOTS_DIR"
+
+EXIT_CODE=$?
+EVAL_END_TIME=$(date +%s)
+EVAL_DURATION=$((EVAL_END_TIME - EVAL_START_TIME))
+
+# Results analysis and summary
+echo ""
+echo "========================================================================"
+echo "📊 PATCH RECONSTRUCTION EVALUATION RESULTS"
+echo "========================================================================"
+echo "Job ID: $JOB_ID"
+echo "Node: $SLURMD_NODENAME"
+echo "Evaluation Duration: $EVAL_DURATION seconds"
+echo "Total Runtime: $SECONDS seconds"
+echo "Date: $(date)"
+
+if [ $EXIT_CODE -eq 0 ]; then
+    echo "Status: ✅ SUCCESS - PATCH RECONSTRUCTION EVALUATION COMPLETED"
+    
+    # Parse and display results from JSON file
+    if [ -f "$RESULTS_FILE" ]; then
+        echo ""
+        echo "📊 RECONSTRUCTION QUALITY ANALYSIS:"
+        echo "===================================="
+        
+        # Parse JSON results and display key metrics
+        if command -v python3 &> /dev/null; then
+            python3 << EOF
+import json
+import sys
+
+try:
+    with open('$RESULTS_FILE', 'r') as f:
+        data = json.load(f)
+    
+    eval_info = data.get('evaluation_info', {})
+    stats = data.get('distance_statistics', {})
+    spatial = data.get('spatial_analysis', {})
+    
+    print()
+    print("🎯 EVALUATION SUMMARY:")
+    print(f"   Images evaluated: {eval_info.get('num_images', 'N/A')}")
+    print(f"   Target shape: {eval_info.get('target_shape', 'N/A')}")
+    print(f"   Predicted shape: {eval_info.get('predicted_shape', 'N/A')}")
+    print()
+    
+    print("📏 KEY DISTANCE METRICS:")
+    print("-" * 40)
+    
+    # Per-sample L2 distance (overall reconstruction quality)
+    if 'per_sample' in stats:
+        per_sample = stats['per_sample']
+        mean_dist = per_sample.get('mean', 0)
+        std_dist = per_sample.get('std', 0)
+        print(f"   Per-sample L2 distance:    {mean_dist:.6f} ± {std_dist:.6f}")
+        
+        # Interpretation
+        if mean_dist < 5.0:
+            print(f"   Status: ✅ EXCELLENT - Very low reconstruction error")
+        elif mean_dist < 10.0:
+            print(f"   Status: ✅ GOOD - Acceptable reconstruction quality")
+        elif mean_dist < 20.0:
+            print(f"   Status: ⚠️  MODERATE - Some reconstruction errors")
+        else:
+            print(f"   Status: ❌ POOR - High reconstruction error")
+    
+    # Token-wise average
+    if 'per_token_avg' in stats:
+        token_avg = stats['per_token_avg']
+        mean_token = token_avg.get('mean', 0)
+        std_token = token_avg.get('std', 0)
+        print(f"   Per-token avg L2 distance: {mean_token:.6f} ± {std_token:.6f}")
+    
+    # Global distance
+    if 'global' in stats:
+        global_dist = stats['global']
+        print(f"   Global L2 distance:        {global_dist.get('value', 0):.6f}")
+    
+    print()
+    print("🗺️  SPATIAL RECONSTRUCTION ANALYSIS:")
+    print("-" * 40)
+    
+    if spatial:
+        # Center vs edge analysis
+        center_vs_edge = spatial.get('center_vs_edge', {})
+        center_error = center_vs_edge.get('center_error', 0)
+        edge_error = center_vs_edge.get('edge_error', 0)
+        ratio = center_vs_edge.get('center_vs_edge_ratio', 0)
+        
+        print(f"   Center error:              {center_error:.6f}")
+        print(f"   Edge error:                {edge_error:.6f}")
+        print(f"   Center/Edge ratio:         {ratio:.4f}")
+        
+        if ratio < 0.9:
+            print(f"   Status: ✅ Center reconstructed better than edges (expected)")
+        elif ratio < 1.1:
+            print(f"   Status: ✅ Uniform reconstruction quality")
+        else:
+            print(f"   Status: ⚠️  Edges reconstructed better than center (unusual)")
+        
+        # Worst and best patches
+        worst_patches = spatial.get('worst_patches', {})
+        best_patches = spatial.get('best_patches', {})
+        
+        if worst_patches.get('coordinates'):
+            worst_coord = worst_patches['coordinates'][0]
+            worst_error = worst_patches['errors'][0] if worst_patches.get('errors') else 0
+            print(f"   Worst patch location:      {worst_coord} (error: {worst_error:.6f})")
+        
+        if best_patches.get('coordinates'):
+            best_coord = best_patches['coordinates'][0]
+            best_error = best_patches['errors'][0] if best_patches.get('errors') else 0
+            print(f"   Best patch location:       {best_coord} (error: {best_error:.6f})")
+        
+        # Quadrant analysis
+        quadrant_errors = spatial.get('quadrant_errors', {})
+        if quadrant_errors:
+            print(f"   Quadrant errors:")
+            for quadrant, error in quadrant_errors.items():
+                print(f"     {quadrant:15s}: {error:.6f}")
+    
+    print()
+    print("🎯 RECONSTRUCTION QUALITY ASSESSMENT:")
+    print("-" * 40)
+    
+    # Overall assessment based on per-sample distance
+    if 'per_sample' in stats:
+        mean_dist = stats['per_sample'].get('mean', 999)
+        
+        if mean_dist < 5.0:
+            print("🎉 EXCELLENT: BLIP3o produces high-quality patch reconstructions!")
+            print("   Your model successfully learns the EVA→CLIP spatial mapping.")
+            print("   Patch-level details are well preserved.")
+        elif mean_dist < 10.0:
+            print("✅ GOOD: BLIP3o produces acceptable patch reconstructions.")
+            print("   Minor reconstruction errors but overall structure preserved.")
+            print("   Consider fine-tuning for better patch-level accuracy.")
+        elif mean_dist < 20.0:
+            print("⚠️  MODERATE: BLIP3o shows partial reconstruction capability.")
+            print("   Significant reconstruction errors in some patches.")
+            print("   May need architecture improvements or longer training.")
+        else:
+            print("❌ POOR: BLIP3o struggles with patch-level reconstruction.")
+            print("   High reconstruction errors suggest fundamental issues.")
+            print("   Review model architecture, training data, or loss function.")
+    
+    print()
+    print(f"💾 Detailed results saved to: $RESULTS_FILE")
+    if '$PLOTS_DIR' != 'None':
+        print(f"📊 Visualization plots saved to: $PLOTS_DIR")
+
+except Exception as e:
+    print(f"❌ Could not parse results file: {e}")
+    import traceback
+    traceback.print_exc()
+    sys.exit(1)
+EOF
+        else
+            echo "⚠️  Python not available to parse results"
+            echo "   Results file: $RESULTS_FILE"
+        fi
+    else
+        echo "⚠️  No results file found"
+        echo "   Evaluation may have completed without saving results"
+        echo "   Check the output above for inline results"
+    fi
+    
+    echo ""
+    echo "✅ PATCH RECONSTRUCTION EVALUATION COMPLETED SUCCESSFULLY"
+    
+else
+    echo "Status: ❌ FAILED"
+    echo ""
+    echo "❌ PATCH RECONSTRUCTION EVALUATION FAILED WITH EXIT CODE: $EXIT_CODE"
+    echo ""
+    echo "🔍 Troubleshooting:"
+    echo "   1. Check if COCO data exists and is accessible"
+    echo "   2. Verify BLIP3o model path is correct"
+    echo "   3. Ensure GPU memory is sufficient for patch processing"
+    echo "   4. Check Python environment and dependencies"
+    echo "   5. Verify BLIP3o inference module is available"
+    echo "   6. Look for error messages in the output above"
+    echo ""
+    echo "📂 Log files:"
+    echo "   Output: ./slurm_out/patch_recon_${JOB_ID}.out"
+    echo "   Error:  ./slurm_out/patch_recon_${JOB_ID}.err"
+    echo ""
+    echo "🔧 Quick checks:"
+    echo "   • COCO path: $COCO_ROOT"
+    echo "   • BLIP3o model: $BLIP3O_MODEL_PATH" 
+    echo "   • Available space: $(df -h . | tail -1 | awk '{print $4}')"
+fi
+
+echo ""
+echo "========================================================================"
+echo "🏁 PATCH RECONSTRUCTION EVALUATION SUMMARY"
+echo "========================================================================"
+
+if [ $EXIT_CODE -eq 0 ]; then
+    echo "🎉 SUCCESS: Patch-level reconstruction analysis completed!"
+    echo ""
+    echo "📋 What was evaluated:"
+    echo "   ✅ CLIP patch embeddings extraction [B, 256, 1024]"
+    echo "   ✅ EVA patch embeddings extraction [B, 256, 4096]"
+    echo "   ✅ BLIP3o patch generation [B, 256, 4096] → [B, 256, 1024]"
+    echo "   ✅ 3D L2 distance computation and analysis"
+    echo "   ✅ Spatial reconstruction pattern analysis"
+    echo ""
+    echo "🎯 Key Questions Answered:"
+    echo "   • How well does BLIP3o reconstruct patch-level details?"
+    echo "   • Which spatial regions are harder to reconstruct?"
+    echo "   • What is the overall reconstruction quality?"
+    echo "   • Are there systematic spatial biases in reconstruction?"
+    echo ""
+    echo "📊 Next Steps:"
+    echo "   • Review the reconstruction quality metrics above"
+    echo "   • Analyze spatial patterns for potential improvements"
+    echo "   • Compare with global embedding performance"
+    echo "   • Use insights to guide model architecture changes"
+else
+    echo "❌ FAILURE: Check error messages above and in log files"
+    echo ""
+    echo "💡 Common Issues:"
+    echo "   • BLIP3o model path incorrect or model corrupted"
+    echo "   • Insufficient GPU memory for 3D tensor operations"
+    echo "   • Missing dependencies for patch processing"
+    echo "   • COCO dataset path or permissions issues"
+fi
+
+echo "========================================================================"
+
+# Cleanup temp cache
+if [ -d "${JOB_TEMP}" ]; then
+    echo "🧹 Cleaning up temporary cache..."
+    rm -rf "${JOB_TEMP}"
+fi
+
+echo "🏁 Job completed at $(date)"
+
+exit $EXIT_CODE

@@ -1,0 +1,71 @@
+{
+  "evaluation_info": {
+    "dataset": "MS-COCO 2017 Validation",
+    "num_images": 1000,
+    "num_captions": 5000,
+    "samples_requested": 1000,
+    "methods_evaluated": [
+      "global",
+      "patch",
+      "blip3o"
+    ],
+    "total_time": 464.407431602478,
+    "device": "cuda",
+    "k_values": [
+      1,
+      5,
+      10,
+      20
+    ]
+  },
+  "method_results": {
+    "global": {
+      "recall@1": 0.61,
+      "recall@5": 0.832,
+      "recall@10": 0.895,
+      "recall@20": 0.939,
+      "num_queries": 1000,
+      "num_gallery": 5000,
+      "avg_texts_per_image": 5.0,
+      "embedding_dim": 768,
+      "method": "global",
+      "method_description": "CLS token + visual projection",
+      "model": "clip-vit-large-patch14",
+      "evaluation_time": 17.237487316131592
+    },
+    "patch": {
+      "recall@1": 0.098,
+      "recall@5": 0.283,
+      "recall@10": 0.407,
+      "recall@20": 0.533,
+      "num_queries": 1000,
+      "num_gallery": 5000,
+      "avg_texts_per_image": 5.0,
+      "embedding_dim": 768,
+      "method": "patch",
+      "method_description": "Patch averaging + visual projection",
+      "model": "clip-vit-large-patch14",
+      "evaluation_time": 17.26719856262207
+    },
+    "blip3o": {
+      "recall@1": 0.0,
+      "recall@5": 0.003,
+      "recall@10": 0.007,
+      "recall@20": 0.018,
+      "num_queries": 1000,
+      "num_gallery": 5000,
+      "avg_texts_per_image": 5.0,
+      "embedding_dim": 768,
+      "method": "blip3o",
+      "method_description": "EVA \u2192 BLIP3o DiT \u2192 visual projection",
+      "model": "clip-vit-large-patch14",
+      "evaluation_time": 429.9023289680481
+    }
+  },
+  "model_info": {
+    "clip_model": "openai/clip-vit-large-patch14",
+    "eva_model": "BAAI/EVA-CLIP-8B",
+    "blip3o_model": "/scratch-shared/scur2711/blip3o_workspace/checkpoints/blip3o_multi_gpu_fixed_cosine_13173833_20250716_085748",
+    "blip3o_available": true
+  }
+}

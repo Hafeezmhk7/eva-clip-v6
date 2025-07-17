@@ -1,0 +1,40 @@
+{
+  "model_info": {
+    "model_name": "openai/clip-vit-large-patch14",
+    "method": "global_token_with_visual_projection",
+    "embedding_dimension": 768
+  },
+  "dataset_info": {
+    "dataset": "MS-COCO 2017 Validation",
+    "num_images": 1000,
+    "num_captions": 5000,
+    "samples_requested": 1000
+  },
+  "recall_metrics": {
+    "recall@1": 0.61,
+    "recall@5": 0.832,
+    "recall@10": 0.895,
+    "recall@20": 0.939,
+    "num_queries": 1000,
+    "num_gallery": 5000,
+    "avg_texts_per_image": 5.0,
+    "embedding_dim": 768
+  },
+  "timing": {
+    "image_embedding_time": 16.999715566635132,
+    "text_embedding_time": 1.1982331275939941,
+    "recall_computation_time": 0.05164456367492676
+  },
+  "evaluation_info": {
+    "device": "cuda",
+    "batch_size": 32,
+    "k_values": [
+      1,
+      5,
+      10,
+      20
+    ],
+    "normalization_applied": true,
+    "uses_visual_projection": true
+  }
+}
