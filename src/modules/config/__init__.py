@@ -10,17 +10,13 @@ Contains configuration classes for:
 from .blip3o_config import (
     BLIP3oDiTConfig,
     FlowMatchingConfig,
-    TrainingConfig,
     get_default_blip3o_config,
-    get_default_flow_matching_config,
-    get_default_training_config,
+    get_default_flow_matching_config
 )
 
 __all__ = [
     "BLIP3oDiTConfig",
     "FlowMatchingConfig",
-    "TrainingConfig",
     "get_default_blip3o_config",
-    "get_default_flow_matching_config",
-    "get_default_training_config",
+    "get_default_flow_matching_config"
 ]
