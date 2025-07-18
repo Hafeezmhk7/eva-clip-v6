@@ -1,12 +1,13 @@
 """
-UPDATED BLIP3-o Configuration with Dual Supervision Support
+UPDATED BLIP3-o Configuration with Dual Supervision Support - COMPLETE VERSION
 Place this file at: src/modules/config/blip3o_config.py
 
 Includes:
 1. Original BLIP3-o DiT configuration
 2. NEW: MLP configuration for dual supervision
 3. Flow matching configuration
-4. Factory functions and defaults
+4. NEW: Training configuration
+5. Factory functions and defaults
 """
 
 from dataclasses import dataclass, field
@@ -259,6 +260,60 @@ class FlowMatchingConfig:
         assert 0 <= self.min_timestep < self.max_timestep <= 1.0, "Invalid timestep range"
 
 
+@dataclass
+class TrainingConfig:
+    """
+    Configuration for training parameters.
+    """
+    
+    # Basic training parameters
+    num_train_epochs: int = 8
+    per_device_train_batch_size: int = 6
+    per_device_eval_batch_size: int = 4
+    learning_rate: float = 5e-5
+    weight_decay: float = 0.01
+    
+    # Learning rate scheduler
+    lr_scheduler_type: str = "cosine"
+    warmup_ratio: float = 0.05
+    warmup_steps: int = 100
+    
+    # Training optimization
+    gradient_accumulation_steps: int = 6
+    max_grad_norm: float = 1.0
+    fp16: bool = True
+    bf16: bool = False
+    
+    # Logging and evaluation
+    logging_steps: int = 50
+    eval_steps: int = 250
+    save_steps: int = 500
+    
+    # Memory optimization
+    dataloader_num_workers: int = 4
+    dataloader_pin_memory: bool = True
+    remove_unused_columns: bool = False
+    
+    # Model selection
+    load_best_model_at_end: bool = True
+    metric_for_best_model: str = "eval_global_cosine_mean"
+    greater_is_better: bool = True
+    
+    # Dual supervision specific
+    patch_loss_weight: float = 1.0
+    global_loss_weight: float = 2.0
+    flow_matching_loss_weight: float = 1.0
+    use_cosine_similarity: bool = False
+    
+    def __post_init__(self):
+        """Validate training configuration."""
+        assert self.num_train_epochs > 0, "Number of epochs must be positive"
+        assert self.per_device_train_batch_size > 0, "Batch size must be positive"
+        assert self.learning_rate > 0, "Learning rate must be positive"
+        assert 0 <= self.weight_decay <= 1.0, "Weight decay must be between 0 and 1"
+        assert self.gradient_accumulation_steps > 0, "Gradient accumulation steps must be positive"
+
+
 # ========================
 # Factory Functions
 # ========================
@@ -357,6 +412,23 @@ def get_dual_supervision_flow_matching_config() -> FlowMatchingConfig:
     )
 
 
+def get_default_training_config() -> TrainingConfig:
+    """Get default training configuration."""
+    return TrainingConfig()
+
+
+def get_dual_supervision_training_config() -> TrainingConfig:
+    """Get training configuration optimized for dual supervision."""
+    return TrainingConfig(
+        learning_rate=5e-5,  # Lower for dual supervision stability
+        gradient_accumulation_steps=6,
+        global_loss_weight=2.0,  # Higher weight for global alignment
+        patch_loss_weight=1.0,
+        flow_matching_loss_weight=1.0,
+        metric_for_best_model="eval_global_cosine_mean",
+    )
+
+
 # ========================
 # Configuration Validation
 # ========================
@@ -439,6 +511,7 @@ __all__ = [
     # Main configuration classes
     "BLIP3oDiTConfig",
     "FlowMatchingConfig",
+    "TrainingConfig",
     
     # Factory functions
     "get_default_blip3o_config",
@@ -448,6 +521,8 @@ __all__ = [
     "get_default_flow_matching_config",
     "get_enhanced_flow_matching_config",
     "get_dual_supervision_flow_matching_config",
+    "get_default_training_config",
+    "get_dual_supervision_training_config",
     
     # Utilities
     "validate_config_compatibility",
@@ -478,6 +553,10 @@ if __name__ == "__main__":
     # Test flow matching configuration
     flow_config = get_dual_supervision_flow_matching_config()
     print(f"✅ Flow matching config: {flow_config.prediction_type}, {flow_config.schedule_type}")
+    
+    # Test training configuration
+    training_config = get_default_training_config()
+    print(f"✅ Training config: {training_config.learning_rate} LR, {training_config.num_train_epochs} epochs")
     
     # Test compatibility
     validate_config_compatibility(dual_config, flow_config)

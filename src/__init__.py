@@ -1,5 +1,5 @@
 """
-BLIP3-o DiT Implementation
+BLIP3-o DiT Implementation - FIXED
 A PyTorch implementation of BLIP3-o Diffusion Transformer with Flow Matching.
 
 This package provides:
@@ -8,11 +8,6 @@ This package provides:
 - EVA-CLIP to CLIP embedding generation
 - Custom HuggingFace trainer integration
 - Inference utilities
-
-Usage:
-    from src.modules.models.blip3o_dit import BLIP3oDiTModel
-    from src.modules.config.blip3o_config import BLIP3oDiTConfig
-    from src.modules.losses.flow_matching_loss import BLIP3oFlowMatchingLoss
 """
 
 __version__ = "1.0.0"
@@ -42,8 +37,8 @@ from .modules.losses.flow_matching_loss import (
 
 from .modules.datasets.blip3o_dataset import (
     BLIP3oEmbeddingDataset,
-    create_blip3o_dataloader,
-    create_blip3o_dataloaders,
+    create_chunked_dataloader,
+    create_chunked_dataloaders,
 )
 
 from .modules.trainers.blip3o_trainer import (
@@ -76,8 +71,8 @@ __all__ = [
     
     # Datasets
     "BLIP3oEmbeddingDataset",
-    "create_blip3o_dataloader",
-    "create_blip3o_dataloaders",
+    "create_chunked_dataloader",
+    "create_chunked_dataloaders",
     
     # Trainers
     "BLIP3oTrainer",
