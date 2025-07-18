@@ -1,11 +1,17 @@
 """
-Flow Matching Loss Implementation for BLIP3-o DiT Training.
-Exact implementation following the flow matching methodology used in BLIP3-o.
+UPDATED: Dual Supervision Flow Matching Loss for BLIP3-o DiT Training
+Implements both patch-level and global-level supervision for improved recall performance.
+
+Loss Components:
+1. Patch Loss: MSE(dit_patches, clip_patches) - maintains local detail
+2. Global Loss: MSE(dit_global, clip_global) - ensures retrieval capability
+3. Flow Matching Loss: Standard velocity prediction loss
 """
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from transformers import CLIPModel, CLIPProcessor
 from typing import Optional, Tuple, Dict, Any
 import math
 
@@ -13,17 +19,7 @@ from ..config.blip3o_config import FlowMatchingConfig
 
 
 class FlowMatchingLoss(nn.Module):
-    """
-    Flow Matching Loss for BLIP3-o DiT training.
-    
-    Flow matching trains models to predict velocity fields that transport samples
-    from a source distribution (Gaussian noise) to a target distribution (CLIP features).
-    
-    This implementation follows the exact methodology from BLIP3-o paper:
-    - Linear interpolation paths between noise and data
-    - Velocity field prediction (v-parameterization)
-    - Optimal transport-inspired training objective
-    """
+    """Base Flow Matching Loss for BLIP3-o DiT training."""
     
     def __init__(
         self,
@@ -39,50 +35,22 @@ class FlowMatchingLoss(nn.Module):
         self.prediction_type = prediction_type
         self.schedule_type = schedule_type
         
-        # Validate parameters
         assert prediction_type in ["v_prediction", "epsilon"], f"Invalid prediction type: {prediction_type}"
         assert 0 <= sigma_min < sigma_max <= 10.0, f"Invalid sigma range: [{sigma_min}, {sigma_max}]"
         assert schedule_type in ["linear", "cosine"], f"Invalid schedule type: {schedule_type}"
     
     def sample_timesteps(self, batch_size: int, device: torch.device) -> torch.Tensor:
-        """
-        Sample random timesteps uniformly from [0, 1] for flow matching.
-        
-        Args:
-            batch_size: Number of timesteps to sample
-            device: Device to create tensors on
-            
-        Returns:
-            Random timesteps in [0, 1] with shape [batch_size]
-        """
+        """Sample random timesteps uniformly from [0, 1] for flow matching."""
         return torch.rand(batch_size, device=device, dtype=torch.float32)
     
     def get_noise_schedule(self, t: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        """
-        Get noise schedule parameters for flow matching interpolation.
-        
-        In BLIP3-o flow matching:
-        x_t = (1-t) * x_0 + t * x_1 + sigma_t * epsilon
-        where x_0 ~ N(0,I), x_1 is target data, and sigma_t provides additional noise
-        
-        Args:
-            t: Time values in [0, 1]
-            
-        Returns:
-            alpha_t: Weight for data interpolation
-            sigma_t: Additional noise level
-        """
+        """Get noise schedule parameters for flow matching interpolation."""
         if self.schedule_type == "linear":
-            # Linear interpolation: alpha increases linearly from 0 to 1
             alpha_t = t
-            # Noise decreases linearly
             sigma_t = self.sigma_min + (self.sigma_max - self.sigma_min) * (1 - t)
-        
         elif self.schedule_type == "cosine":
-            # Cosine schedule for smoother interpolation
             alpha_t = 0.5 * (1 - torch.cos(math.pi * t))
             sigma_t = self.sigma_min + (self.sigma_max - self.sigma_min) * torch.cos(math.pi * t / 2)
-        
         else:
             raise ValueError(f"Unknown schedule type: {self.schedule_type}")
         
@@ -90,91 +58,51 @@ class FlowMatchingLoss(nn.Module):
     
     def interpolate_data(
         self,
-        x_0: torch.Tensor,              # [B, 64, 768] - Source (noise)
-        x_1: torch.Tensor,              # [B, 64, 768] - Target (CLIP data)
-        t: torch.Tensor,                # [B] - Timesteps
-        noise: Optional[torch.Tensor] = None,  # [B, 64, 768] - Additional noise
+        x_0: torch.Tensor,
+        x_1: torch.Tensor,
+        t: torch.Tensor,
+        noise: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        """
-        Interpolate between source and target distributions.
-        
-        Flow matching interpolation:
-        x_t = (1-alpha_t) * x_0 + alpha_t * x_1 + sigma_t * epsilon
-        
-        Args:
-            x_0: Source distribution (typically Gaussian noise)
-            x_1: Target distribution (CLIP embeddings)
-            t: Interpolation times [0, 1]
-            noise: Additional noise term
-            
-        Returns:
-            Interpolated samples x_t
-        """
+        """Interpolate between source and target distributions."""
         batch_size = x_1.shape[0]
         
-        # Sample additional noise if not provided
         if noise is None:
             noise = torch.randn_like(x_1)
         
-        # Get interpolation weights
         alpha_t, sigma_t = self.get_noise_schedule(t)
         
-        # Reshape for broadcasting: [B] -> [B, 1, 1]
         alpha_t = alpha_t.view(batch_size, 1, 1)
         sigma_t = sigma_t.view(batch_size, 1, 1)
         
-        # Flow matching interpolation
         x_t = (1 - alpha_t) * x_0 + alpha_t * x_1 + sigma_t * noise
         
         return x_t
     
     def compute_velocity_target(
         self,
-        x_0: torch.Tensor,              # [B, 64, 768] - Source
-        x_1: torch.Tensor,              # [B, 64, 768] - Target
-        t: torch.Tensor,                # [B] - Timesteps
-        noise: Optional[torch.Tensor] = None,  # [B, 64, 768] - Additional noise
+        x_0: torch.Tensor,
+        x_1: torch.Tensor,
+        t: torch.Tensor,
+        noise: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        """
-        Compute the target velocity field for flow matching.
-        
-        The velocity field is the time derivative of the interpolation path:
-        v_t = d/dt[x_t] = x_1 - x_0 - d(sigma_t)/dt * epsilon
-        
-        Args:
-            x_0: Source samples
-            x_1: Target samples  
-            t: Timesteps
-            noise: Additional noise
-            
-        Returns:
-            Target velocity field
-        """
+        """Compute the target velocity field for flow matching."""
         if self.prediction_type == "v_prediction":
-            # For v-prediction, compute the analytical velocity
             if noise is None:
                 noise = torch.randn_like(x_1)
             
-            # Get noise schedule derivatives
             if self.schedule_type == "linear":
-                # d(sigma_t)/dt = -(sigma_max - sigma_min)
                 dsigma_dt = -(self.sigma_max - self.sigma_min)
                 dsigma_dt = torch.full_like(t, dsigma_dt).view(-1, 1, 1)
-            
             elif self.schedule_type == "cosine":
-                # d(sigma_t)/dt = -(sigma_max - sigma_min) * (-pi/2) * sin(pi*t/2)
                 dsigma_dt = (self.sigma_max - self.sigma_min) * (math.pi / 2) * torch.sin(math.pi * t / 2)
                 dsigma_dt = dsigma_dt.view(-1, 1, 1)
             
-            # Velocity: v_t = x_1 - x_0 - d(sigma_t)/dt * epsilon
             velocity_target = x_1 - x_0 - dsigma_dt * noise
             
         elif self.prediction_type == "epsilon":
-            # For epsilon prediction, target is the noise
             if noise is None:
                 noise = torch.randn_like(x_1)
             velocity_target = noise
-        
         else:
             raise ValueError(f"Unknown prediction type: {self.prediction_type}")
         
@@ -182,35 +110,20 @@ class FlowMatchingLoss(nn.Module):
     
     def forward(
         self,
-        model_output: torch.Tensor,      # [B, 64, 768] - Model predictions
-        target_samples: torch.Tensor,    # [B, 64, 768] - CLIP targets
-        timesteps: torch.Tensor,         # [B] - Timesteps
-        noise: Optional[torch.Tensor] = None,  # [B, 64, 768] - Noise
+        model_output: torch.Tensor,
+        target_samples: torch.Tensor,
+        timesteps: torch.Tensor,
+        noise: Optional[torch.Tensor] = None,
         reduction: str = "mean",
     ) -> torch.Tensor:
-        """
-        Compute flow matching loss.
-        
-        Args:
-            model_output: Predicted velocity/noise from the model
-            target_samples: Target CLIP embeddings
-            timesteps: Sampled timesteps
-            noise: Random noise (sampled if None)
-            reduction: Loss reduction method
-            
-        Returns:
-            Flow matching loss
-        """
+        """Compute flow matching loss."""
         batch_size = target_samples.shape[0]
         
-        # Sample noise if not provided
         if noise is None:
             noise = torch.randn_like(target_samples)
         
-        # Sample source distribution (Gaussian noise)
         x_0 = torch.randn_like(target_samples)
         
-        # Compute target velocity field
         velocity_target = self.compute_velocity_target(
             x_0=x_0,
             x_1=target_samples,
@@ -218,7 +131,6 @@ class FlowMatchingLoss(nn.Module):
             noise=noise
         )
         
-        # Compute MSE loss between predicted and target velocity
         if reduction == "mean":
             loss = F.mse_loss(model_output, velocity_target, reduction="mean")
         elif reduction == "sum":
@@ -231,15 +143,14 @@ class FlowMatchingLoss(nn.Module):
         return loss
 
 
-class BLIP3oFlowMatchingLoss(FlowMatchingLoss):
+class DualSupervisionFlowMatchingLoss(FlowMatchingLoss):
     """
-    Specialized Flow Matching Loss for BLIP3-o training.
+    UPDATED: Dual Supervision Flow Matching Loss for BLIP3-o training.
     
-    Extends the base flow matching loss with BLIP3-o specific features:
-    - CLIP/EVA-CLIP dimension handling
-    - Optional regularization terms
-    - Detailed metrics computation
-    - Integration with EVA-CLIP conditioning
+    Combines three loss components:
+    1. Flow Matching Loss: Standard velocity prediction for patch outputs
+    2. Patch Reconstruction Loss: MSE between DiT patches and CLIP patches  
+    3. Global Alignment Loss: MSE between DiT global output and CLIP global output
     """
     
     def __init__(
@@ -248,12 +159,17 @@ class BLIP3oFlowMatchingLoss(FlowMatchingLoss):
         sigma_min: float = 1e-4,
         sigma_max: float = 1.0,
         prediction_type: str = "v_prediction",
-        clip_dim: int = 768,
-        eva_dim: int = 1280,
-        regularization_weight: float = 0.0,
+        clip_dim: int = 1024,
+        eva_dim: int = 4096,
+        clip_global_dim: int = 768,
         schedule_type: str = "linear",
+        # NEW: Loss weighting parameters
+        patch_loss_weight: float = 1.0,
+        global_loss_weight: float = 1.0,
+        flow_matching_loss_weight: float = 1.0,
+        use_cosine_similarity: bool = False,
+        clip_model_name: str = "openai/clip-vit-large-patch14",
     ):
-        # Use config if provided, otherwise use individual parameters
         if config is not None:
             super().__init__(
                 sigma_min=config.sigma_min,
@@ -263,152 +179,318 @@ class BLIP3oFlowMatchingLoss(FlowMatchingLoss):
             )
             self.clip_dim = config.clip_dim
             self.eva_dim = config.eva_dim
-            self.regularization_weight = config.regularization_weight
         else:
             super().__init__(sigma_min, sigma_max, prediction_type, schedule_type)
             self.clip_dim = clip_dim
             self.eva_dim = eva_dim
-            self.regularization_weight = regularization_weight
+        
+        self.clip_global_dim = clip_global_dim
+        
+        # Loss weights
+        self.patch_loss_weight = patch_loss_weight
+        self.global_loss_weight = global_loss_weight
+        self.flow_matching_loss_weight = flow_matching_loss_weight
+        self.use_cosine_similarity = use_cosine_similarity
+        
+        # Load CLIP model for extracting ground truth targets
+        self.clip_model_name = clip_model_name
+        self.clip_model = None
+        self.clip_processor = None
+        self._load_clip_model()
+        
+        print(f"✅ Dual Supervision Loss initialized:")
+        print(f"   Patch loss weight: {patch_loss_weight}")
+        print(f"   Global loss weight: {global_loss_weight}")
+        print(f"   Flow matching weight: {flow_matching_loss_weight}")
+        print(f"   Use cosine similarity: {use_cosine_similarity}")
     
-    def compute_regularization_loss(
+    def _load_clip_model(self):
+        """Load CLIP model for extracting ground truth targets."""
+        print(f"📦 Loading CLIP model: {self.clip_model_name}")
+        
+        try:
+            self.clip_model = CLIPModel.from_pretrained(self.clip_model_name)
+            self.clip_processor = CLIPProcessor.from_pretrained(self.clip_model_name)
+            
+            # Set to eval mode and freeze
+            self.clip_model.eval()
+            for param in self.clip_model.parameters():
+                param.requires_grad = False
+            
+            print(f"✅ CLIP model loaded and frozen")
+            
+        except Exception as e:
+            print(f"⚠️  Failed to load CLIP model: {e}")
+            print("Will use provided targets instead of extracting from CLIP")
+    
+    def extract_clip_targets(self, images):
+        """
+        Extract both patch and global CLIP targets from images.
+        
+        Args:
+            images: List of PIL Images or tensor
+            
+        Returns:
+            Dict containing:
+            - patch_targets: [B, 256, 1024] CLIP patch embeddings
+            - global_targets: [B, 768] CLIP global embeddings
+        """
+        if self.clip_model is None:
+            raise ValueError("CLIP model not available for target extraction")
+        
+        batch_size = len(images)
+        device = next(self.clip_model.parameters()).device
+        
+        patch_targets = []
+        global_targets = []
+        
+        with torch.no_grad():
+            for img in images:
+                # Process image
+                inputs = self.clip_processor(images=img, return_tensors="pt")
+                inputs = {k: v.to(device) for k, v in inputs.items()}
+                
+                # Get vision model outputs
+                vision_outputs = self.clip_model.vision_model(
+                    pixel_values=inputs['pixel_values'],
+                    output_hidden_states=True,
+                    return_dict=True
+                )
+                
+                # Extract patch embeddings (remove CLS token)
+                patch_embeddings = vision_outputs.last_hidden_state[:, 1:, :]  # [1, 256, 1024]
+                patch_targets.append(patch_embeddings.squeeze(0))
+                
+                # Extract global embeddings (CLS token + visual projection)
+                cls_token = vision_outputs.last_hidden_state[:, 0, :]  # [1, 1024]
+                global_embedding = self.clip_model.visual_projection(cls_token)  # [1, 768]
+                global_embedding = F.normalize(global_embedding, p=2, dim=-1)
+                global_targets.append(global_embedding.squeeze(0))
+        
+        return {
+            'patch_targets': torch.stack(patch_targets),    # [B, 256, 1024]
+            'global_targets': torch.stack(global_targets),  # [B, 768]
+        }
+    
+    def compute_patch_reconstruction_loss(
         self,
-        model_output: torch.Tensor,      # [B, 64, 768] - Model predictions
-        eva_conditioning: torch.Tensor,  # [B, 64, 1280] - EVA conditioning
+        dit_patches: torch.Tensor,      # [B, 256, 1024]
+        clip_patches: torch.Tensor,    # [B, 256, 1024]
     ) -> torch.Tensor:
         """
-        Compute optional regularization loss.
+        Compute patch-level reconstruction loss.
         
-        This can help with training stability and encourage certain properties
-        in the generated embeddings.
+        Args:
+            dit_patches: DiT output patches [B, 256, 1024]
+            clip_patches: CLIP target patches [B, 256, 1024]
+            
+        Returns:
+            Patch reconstruction loss
         """
-        if self.regularization_weight <= 0:
-            return torch.tensor(0.0, device=model_output.device, dtype=model_output.dtype)
+        if self.use_cosine_similarity:
+            # Cosine similarity loss (better for normalized embeddings)
+            dit_norm = F.normalize(dit_patches, p=2, dim=-1)
+            clip_norm = F.normalize(clip_patches, p=2, dim=-1)
+            cosine_sim = (dit_norm * clip_norm).sum(dim=-1).mean()
+            loss = 1.0 - cosine_sim
+        else:
+            # MSE loss
+            loss = F.mse_loss(dit_patches, clip_patches, reduction="mean")
         
-        # L2 regularization on model output magnitude
-        output_norm_loss = torch.mean(torch.norm(model_output, dim=-1))
+        return loss
+    
+    def compute_global_alignment_loss(
+        self,
+        dit_global: torch.Tensor,       # [B, 768]
+        clip_global: torch.Tensor,     # [B, 768]
+    ) -> torch.Tensor:
+        """
+        Compute global-level alignment loss.
         
-        # Optional: Encourage similarity with EVA conditioning in some space
-        # (This is a simple example - more sophisticated regularization can be added)
+        Args:
+            dit_global: DiT global output [B, 768]
+            clip_global: CLIP target global [B, 768]
+            
+        Returns:
+            Global alignment loss
+        """
+        if dit_global is None:
+            return torch.tensor(0.0, device=clip_global.device, dtype=clip_global.dtype)
         
-        return self.regularization_weight * output_norm_loss
+        if self.use_cosine_similarity:
+            # Cosine similarity loss (better for retrieval)
+            dit_norm = F.normalize(dit_global, p=2, dim=-1)
+            clip_norm = F.normalize(clip_global, p=2, dim=-1)
+            cosine_sim = (dit_norm * clip_norm).sum(dim=-1).mean()
+            loss = 1.0 - cosine_sim
+        else:
+            # MSE loss
+            loss = F.mse_loss(dit_global, clip_global, reduction="mean")
+        
+        return loss
     
     def compute_detailed_metrics(
         self,
-        model_output: torch.Tensor,      # [B, 64, 768] - Model predictions
-        target_samples: torch.Tensor,    # [B, 64, 768] - CLIP targets
-        velocity_target: torch.Tensor,   # [B, 64, 768] - Target velocity
-        timesteps: torch.Tensor,         # [B] - Timesteps
+        dit_patches: torch.Tensor,
+        dit_global: Optional[torch.Tensor],
+        clip_patches: torch.Tensor,
+        clip_global: torch.Tensor,
+        timesteps: torch.Tensor,
     ) -> Dict[str, float]:
-        """
-        Compute detailed metrics for monitoring training.
+        """Compute detailed metrics for monitoring training."""
         
-        Returns:
-            Dictionary of metrics
-        """
         with torch.no_grad():
-            # Basic loss components
-            mse_loss = F.mse_loss(model_output, velocity_target).item()
+            metrics = {}
             
-            # Cosine similarity between prediction and target
-            pred_flat = model_output.flatten(1)
-            target_flat = velocity_target.flatten(1)
-            cosine_sim = F.cosine_similarity(pred_flat, target_flat, dim=1).mean().item()
+            # Patch-level metrics
+            patch_mse = F.mse_loss(dit_patches, clip_patches).item()
+            patch_cosine = F.cosine_similarity(
+                dit_patches.flatten(1), clip_patches.flatten(1), dim=1
+            ).mean().item()
             
-            # L2 norms
-            pred_norm = torch.norm(model_output, dim=-1).mean().item()
-            target_norm = torch.norm(velocity_target, dim=-1).mean().item()
-            data_norm = torch.norm(target_samples, dim=-1).mean().item()
+            metrics.update({
+                "patch_mse": patch_mse,
+                "patch_cosine_similarity": patch_cosine,
+                "patch_l2_norm": torch.norm(dit_patches, dim=-1).mean().item(),
+                "clip_patch_l2_norm": torch.norm(clip_patches, dim=-1).mean().item(),
+            })
+            
+            # Global-level metrics
+            if dit_global is not None:
+                global_mse = F.mse_loss(dit_global, clip_global).item()
+                global_cosine = F.cosine_similarity(dit_global, clip_global, dim=1).mean().item()
+                
+                metrics.update({
+                    "global_mse": global_mse,
+                    "global_cosine_similarity": global_cosine,
+                    "global_l2_norm": torch.norm(dit_global, dim=-1).mean().item(),
+                    "clip_global_l2_norm": torch.norm(clip_global, dim=-1).mean().item(),
+                })
             
             # Timestep statistics
-            t_mean = timesteps.mean().item()
-            t_std = timesteps.std().item()
+            metrics.update({
+                "timestep_mean": timesteps.mean().item(),
+                "timestep_std": timesteps.std().item(),
+            })
             
-            # Signal-to-noise ratio approximation
-            signal_power = torch.var(target_samples).item()
-            noise_power = torch.var(model_output - velocity_target).item()
-            snr = 10 * math.log10(signal_power / (noise_power + 1e-8))
-            
-            return {
-                "mse_loss": mse_loss,
-                "cosine_similarity": cosine_sim,
-                "pred_norm": pred_norm,
-                "target_norm": target_norm,
-                "data_norm": data_norm,
-                "timestep_mean": t_mean,
-                "timestep_std": t_std,
-                "snr_db": snr,
-            }
+            return metrics
     
     def forward(
         self,
-        model_output: torch.Tensor,           # [B, 64, 768] - Model predictions
-        target_samples: torch.Tensor,         # [B, 64, 768] - CLIP targets
-        timesteps: torch.Tensor,              # [B] - Timesteps
-        eva_conditioning: Optional[torch.Tensor] = None,  # [B, 64, 1280] - EVA conditioning
-        noise: Optional[torch.Tensor] = None, # [B, 64, 768] - Noise
+        # DiT model outputs
+        dit_patch_output: torch.Tensor,         # [B, 256, 1024] from DiT
+        dit_global_output: Optional[torch.Tensor],  # [B, 768] from global pipeline
+        
+        # Ground truth targets
+        clip_patch_targets: torch.Tensor,      # [B, 256, 1024] CLIP patches
+        clip_global_targets: torch.Tensor,     # [B, 768] CLIP global
+        
+        # Flow matching parameters
+        timesteps: torch.Tensor,               # [B] timesteps
+        eva_conditioning: Optional[torch.Tensor] = None,  # [B, 256, 4096]
+        noise: Optional[torch.Tensor] = None,  # [B, 256, 1024]
         return_metrics: bool = False,
     ) -> Tuple[torch.Tensor, Optional[Dict[str, float]]]:
         """
-        Compute BLIP3-o flow matching loss with optional detailed metrics.
+        Compute dual supervision loss.
         
+        Args:
+            dit_patch_output: DiT patch output [B, 256, 1024]
+            dit_global_output: DiT global output [B, 768] (can be None)
+            clip_patch_targets: CLIP patch targets [B, 256, 1024]
+            clip_global_targets: CLIP global targets [B, 768]
+            timesteps: Flow matching timesteps [B]
+            eva_conditioning: EVA-CLIP conditioning (optional)
+            noise: Noise for flow matching (optional)
+            return_metrics: Whether to return detailed metrics
+            
         Returns:
-            loss: Total loss tensor
-            metrics: Optional dictionary of detailed metrics
+            Tuple of (total_loss, optional_metrics)
         """
-        # Validate input dimensions
-        assert target_samples.shape[-1] == self.clip_dim, f"Expected CLIP dim {self.clip_dim}, got {target_samples.shape[-1]}"
-        if eva_conditioning is not None:
-            assert eva_conditioning.shape[-1] == self.eva_dim, f"Expected EVA dim {self.eva_dim}, got {eva_conditioning.shape[-1]}"
+        # Validate inputs
+        assert dit_patch_output.shape == clip_patch_targets.shape, \
+            f"Patch shape mismatch: {dit_patch_output.shape} vs {clip_patch_targets.shape}"
         
-        # Compute main flow matching loss
+        if dit_global_output is not None:
+            assert dit_global_output.shape == clip_global_targets.shape, \
+                f"Global shape mismatch: {dit_global_output.shape} vs {clip_global_targets.shape}"
+        
+        # 1. Flow Matching Loss (patch-level velocity prediction)
         flow_loss = super().forward(
-            model_output=model_output,
-            target_samples=target_samples,
+            model_output=dit_patch_output,
+            target_samples=clip_patch_targets,
             timesteps=timesteps,
             noise=noise,
             reduction="mean"
         )
         
-        # Compute regularization loss
-        reg_loss = torch.tensor(0.0, device=model_output.device, dtype=model_output.dtype)
-        if eva_conditioning is not None:
-            reg_loss = self.compute_regularization_loss(model_output, eva_conditioning)
+        # 2. Patch Reconstruction Loss
+        patch_loss = self.compute_patch_reconstruction_loss(
+            dit_patches=dit_patch_output,
+            clip_patches=clip_patch_targets
+        )
         
-        # Total loss
-        total_loss = flow_loss + reg_loss
+        # 3. Global Alignment Loss
+        global_loss = self.compute_global_alignment_loss(
+            dit_global=dit_global_output,
+            clip_global=clip_global_targets
+        )
+        
+        # Combine losses with weights
+        total_loss = (
+            self.flow_matching_loss_weight * flow_loss +
+            self.patch_loss_weight * patch_loss +
+            self.global_loss_weight * global_loss
+        )
         
         # Compute detailed metrics if requested
         metrics = None
         if return_metrics:
-            # Recompute velocity target for metrics
-            x_0 = torch.randn_like(target_samples)
-            if noise is None:
-                noise = torch.randn_like(target_samples)
-            velocity_target = self.compute_velocity_target(x_0, target_samples, timesteps, noise)
+            metrics = self.compute_detailed_metrics(
+                dit_patches=dit_patch_output,
+                dit_global=dit_global_output,
+                clip_patches=clip_patch_targets,
+                clip_global=clip_global_targets,
+                timesteps=timesteps,
+            )
             
-            metrics = self.compute_detailed_metrics(model_output, target_samples, velocity_target, timesteps)
+            # Add loss components to metrics
             metrics.update({
                 "flow_matching_loss": flow_loss.item(),
-                "regularization_loss": reg_loss.item(),
+                "patch_reconstruction_loss": patch_loss.item(),
+                "global_alignment_loss": global_loss.item(),
                 "total_loss": total_loss.item(),
+                "weighted_flow_loss": (self.flow_matching_loss_weight * flow_loss).item(),
+                "weighted_patch_loss": (self.patch_loss_weight * patch_loss).item(),
+                "weighted_global_loss": (self.global_loss_weight * global_loss).item(),
             })
         
         return total_loss, metrics
 
 
-def create_blip3o_flow_matching_loss(
+def create_dual_supervision_loss(
     config: Optional[FlowMatchingConfig] = None,
+    patch_loss_weight: float = 1.0,
+    global_loss_weight: float = 2.0,  # Higher weight for retrieval
+    flow_matching_loss_weight: float = 1.0,
+    use_cosine_similarity: bool = True,  # Better for retrieval tasks
+    clip_model_name: str = "openai/clip-vit-large-patch14",
     **kwargs
-) -> BLIP3oFlowMatchingLoss:
+) -> DualSupervisionFlowMatchingLoss:
     """
-    Factory function to create BLIP3-o flow matching loss.
+    Factory function to create dual supervision flow matching loss.
     
     Args:
         config: Flow matching configuration
-        **kwargs: Additional parameters to override config
+        patch_loss_weight: Weight for patch reconstruction loss
+        global_loss_weight: Weight for global alignment loss (higher for retrieval)
+        flow_matching_loss_weight: Weight for flow matching loss
+        use_cosine_similarity: Use cosine similarity instead of MSE
+        clip_model_name: CLIP model name for target extraction
+        **kwargs: Additional parameters
         
     Returns:
-        BLIP3oFlowMatchingLoss instance
+        DualSupervisionFlowMatchingLoss instance
     """
     if config is None:
         from ..config.blip3o_config import get_default_flow_matching_config
@@ -419,4 +501,16 @@ def create_blip3o_flow_matching_loss(
         if hasattr(config, key):
             setattr(config, key, value)
     
-    return BLIP3oFlowMatchingLoss(config=config)
+    return DualSupervisionFlowMatchingLoss(
+        config=config,
+        patch_loss_weight=patch_loss_weight,
+        global_loss_weight=global_loss_weight,
+        flow_matching_loss_weight=flow_matching_loss_weight,
+        use_cosine_similarity=use_cosine_similarity,
+        clip_model_name=clip_model_name,
+    )
+
+
+# Legacy compatibility
+BLIP3oFlowMatchingLoss = DualSupervisionFlowMatchingLoss
+create_blip3o_flow_matching_loss = create_dual_supervision_loss

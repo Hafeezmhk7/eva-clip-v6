@@ -6,8 +6,8 @@
 #SBATCH --cpus-per-gpu=18
 #SBATCH --time=12:00:00
 #SBATCH --mem=0
-#SBATCH --output=./slurm_out/multi_gpu_fixed_%j.out
-#SBATCH --error=./slurm_out/multi_gpu_fixed_%j.err
+#SBATCH --output=./slurm_out/multi_gpu_joint_%j.out
+#SBATCH --error=./slurm_out/multi_gpu_joint_%j.err
 
 echo "🚀 FIXED BLIP3-o DiT Multi-GPU Training (3x H100 GPUs) - Cosine Scheduler"
 echo "================================================================"
