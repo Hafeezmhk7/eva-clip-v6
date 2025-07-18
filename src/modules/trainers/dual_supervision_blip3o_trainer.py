@@ -525,21 +525,21 @@ def create_blip3o_training_args(
     num_train_epochs: int = 8,
     per_device_train_batch_size: int = 6,
     per_device_eval_batch_size: int = 4,
-    learning_rate: float = 5e-5,  # Lower for dual supervision stability
+    learning_rate: float = 5e-5,
     lr_scheduler_type: str = "cosine",
     warmup_ratio: float = 0.05,
     weight_decay: float = 0.01,
     warmup_steps: int = 100,
-    logging_steps: int = 50,  # More frequent for dual supervision
+    logging_steps: int = 50,
     save_steps: int = 500,
     eval_steps: int = 250,
-    gradient_accumulation_steps: int = 6,  # Higher for smaller batches
+    gradient_accumulation_steps: int = 6,
     fp16: bool = True,
     bf16: bool = False,
     dataloader_num_workers: int = 4,
     remove_unused_columns: bool = False,
     load_best_model_at_end: bool = True,
-    metric_for_best_model: str = "eval_global_cosine_mean",  # Focus on global alignment
+    metric_for_best_model: str = "eval_global_cosine_mean",
     greater_is_better: bool = True,
     **kwargs
 ) -> TrainingArguments:
@@ -581,10 +581,7 @@ def create_blip3o_training_args(
         prediction_loss_only=False,
         report_to=[],
         
-        # DDP optimizations
-        ddp_find_unused_parameters=False,
-        dataloader_pin_memory=True,
-        save_on_each_node=False,
-        push_to_hub=False,
+        # Only include essential parameters here
+        # Remove explicit DDP settings to avoid conflicts
         **kwargs
     )

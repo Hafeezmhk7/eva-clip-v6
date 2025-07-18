@@ -608,28 +608,28 @@ class BLIP3oDiTModel(PreTrainedModel):
     @torch.no_grad()
     def generate(
         self,
-        encoder_hidden_states: torch.Tensor,
+        encoder_hidden_states: torch.Tensor,  # [B, 256, 4096] - EVA-CLIP conditioning
         num_inference_steps: int = 50,
         guidance_scale: float = 1.0,
         generator: Optional[torch.Generator] = None,
-        eta: float = 0.0,
+        eta: float = 0.0,  # DDIM parameter
         return_intermediate: bool = False,
-        return_global_only: bool = True,
+        return_global_only: bool = True,  # FIXED: Default to global for better testing
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, List[torch.Tensor]]]:
         """
-        Generation with dual outputs
+        FIXED: Generation with proper dual supervision output handling.
         
         Args:
-            encoder_hidden_states: EVA-CLIP conditioning [batch_size, num_tokens, 4096]
+            encoder_hidden_states: EVA-CLIP conditioning [batch_size, 256, 4096]
             num_inference_steps: Number of sampling steps
             guidance_scale: Guidance scale
             generator: Random number generator
             eta: DDIM parameter
             return_intermediate: Whether to return intermediate states
-            return_global_only: If True, return only global embeddings [B, 768]
+            return_global_only: If True, return global embeddings [B, 768], else patch [B, 256, 1024]
             
         Returns:
-            Generated embeddings (global [B, 768] or patch [B, 256, 1024])
+            Generated embeddings - either global [B, 768] or patch [B, 256, 1024] based on return_global_only
         """
         batch_size = encoder_hidden_states.shape[0]
         num_tokens = encoder_hidden_states.shape[1]
@@ -639,7 +639,7 @@ class BLIP3oDiTModel(PreTrainedModel):
         if num_tokens != self.num_tokens:
             raise ValueError(f"Expected {self.num_tokens} conditioning tokens, got {num_tokens}")
         
-        # Initialize from random noise
+        # Initialize from random noise (source distribution)
         sample = torch.randn(
             (batch_size, num_tokens, self.config.in_channels),
             device=device,
@@ -647,13 +647,14 @@ class BLIP3oDiTModel(PreTrainedModel):
             generator=generator
         )
         
-        # Flow matching sampling
+        # Flow matching sampling with Euler integration
         dt = 1.0 / num_inference_steps
         intermediate_samples = [] if return_intermediate else None
         
         self.eval()
         
         for step in range(num_inference_steps):
+            # Current time in [0, 1]
             t = step * dt
             t_tensor = torch.full((batch_size,), t, device=device, dtype=dtype)
             
@@ -665,10 +666,10 @@ class BLIP3oDiTModel(PreTrainedModel):
                 return_dict=True
             )
             
-            # Use patch output for velocity
+            # Use patch output for velocity in flow matching
             velocity = outputs['patch_output']
             
-            # Euler integration
+            # Euler integration step: x_{t+dt} = x_t + dt * v_t
             sample = sample + dt * velocity
             
             if return_intermediate:
@@ -682,11 +683,11 @@ class BLIP3oDiTModel(PreTrainedModel):
             return_dict=True
         )
         
-        # Return appropriate output
-        if return_global_only and final_outputs['global_output'] is not None:
-            result = final_outputs['global_output']  # [B, 768]
+        # FIXED: Return appropriate output based on flag and availability
+        if return_global_only and final_outputs.get('global_output') is not None:
+            result = final_outputs['global_output']  # [B, 768] - preferred for testing
         else:
-            result = final_outputs['patch_output']   # [B, 256, 1024]
+            result = final_outputs['patch_output']   # [B, 256, 1024] - fallback
         
         if return_intermediate:
             return result, intermediate_samples

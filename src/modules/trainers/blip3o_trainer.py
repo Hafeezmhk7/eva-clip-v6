@@ -606,35 +606,36 @@ def create_blip3o_training_args(
         load_best_model_at_end = False  # Can't load best model if no evaluation
         logger.info("Evaluation disabled, setting load_best_model_at_end=False")
     
+    #
     return TrainingArguments(
         output_dir=output_dir,
         num_train_epochs=num_train_epochs,
         per_device_train_batch_size=per_device_train_batch_size,
         per_device_eval_batch_size=per_device_eval_batch_size,
         learning_rate=learning_rate,
-        # FIXED: Proper cosine scheduler parameters (removed invalid lr_end)
-        lr_scheduler_type=lr_scheduler_type,  # Set scheduler type
-        warmup_ratio=warmup_ratio,             # Set warmup ratio
+        lr_scheduler_type=lr_scheduler_type,
+        warmup_ratio=warmup_ratio,
         weight_decay=weight_decay,
         warmup_steps=warmup_steps,
         logging_steps=logging_steps,
         save_steps=save_steps,
-        eval_strategy=eval_strategy,  # FIXED: was evaluation_strategy
-        eval_steps=eval_steps_value,
+        eval_strategy=eval_strategy,
+        eval_steps=eval_steps if eval_steps > 0 else None,
         save_strategy="steps",
         gradient_accumulation_steps=gradient_accumulation_steps,
-        fp16=fp16 and not bf16,  # Don't use both fp16 and bf16
+        fp16=fp16 and not bf16,
         bf16=bf16,
         dataloader_num_workers=dataloader_num_workers,
         remove_unused_columns=remove_unused_columns,
         load_best_model_at_end=load_best_model_at_end,
         metric_for_best_model=metric_for_best_model,
         greater_is_better=greater_is_better,
-        save_total_limit=3,  # Keep only last 3 checkpoints
-        prediction_loss_only=False,  # We want to compute custom metrics
-        report_to=["wandb"] if wandb.run is not None else [],
-        run_name=f"blip3o-dit-{output_dir.split('/')[-1]}" if wandb.run is not None else None,
-        # Additional compatibility fixes
-        push_to_hub=False,  # Avoid any hub-related issues
+        save_total_limit=3,
+        prediction_loss_only=False,
+        report_to=[],
+        # REMOVED THIS LINE: ddp_find_unused_parameters=False,
+        dataloader_pin_memory=True,
+        save_on_each_node=False,
+        push_to_hub=False,
         **kwargs
     )

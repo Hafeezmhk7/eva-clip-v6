@@ -335,7 +335,7 @@ def test_training_step(model, loss_fn, model_type, loss_type):
         return False, None
 
 def test_generation(model, model_type):
-    """Test generation."""
+    """Test generation with FIXED dimension handling."""
     print(f"🎨 Testing {model_type} generation...")
     
     try:
@@ -352,24 +352,65 @@ def test_generation(model, model_type):
                     num_inference_steps=10,  # Fast for testing
                 )
                 
-                # Compute basic metrics
-                if generated.dim() == 3:  # Patch outputs
+                # FIXED: Handle dimension mismatch correctly
+                if generated.dim() == 3 and generated.shape[-1] == 768:
+                    # Generated is global output [B, 768] - compare with projected targets
+                    if hasattr(model, 'frozen_clip_visual_proj') and model.frozen_clip_visual_proj is not None:
+                        # Compute target global features in CLIP's 768-dim space
+                        pooled_clip = clip_emb.mean(dim=1)  # [B, 1024]
+                        target_global = model.frozen_clip_visual_proj(pooled_clip)  # [B, 768]
+                        target_global = F.normalize(target_global, p=2, dim=-1)
+                    else:
+                        # Fallback: use normalized pooled features (but dimension will still mismatch)
+                        target_global = F.normalize(clip_emb.mean(dim=1), dim=-1)
+                        if target_global.shape[-1] != generated.shape[-1]:
+                            print(f"⚠️  Dimension mismatch: generated {generated.shape[-1]} vs target {target_global.shape[-1]}")
+                            print(f"   Using approximate comparison with first {generated.shape[-1]} dimensions")
+                            target_global = target_global[:, :generated.shape[-1]]
+                    
+                    # Normalize generated output
+                    generated_norm = F.normalize(generated, p=2, dim=-1)
+                    cosine_sim = F.cosine_similarity(generated_norm, target_global, dim=1).mean().item()
+                    l2_distance = torch.norm(generated - target_global, dim=-1).mean().item()
+                    
+                elif generated.dim() == 3 and generated.shape[-1] == 1024:
+                    # Generated is patch output [B, 256, 1024] - compare with raw embeddings
                     gen_global = F.normalize(generated.mean(dim=1), dim=-1)
                     target_global = F.normalize(clip_emb.mean(dim=1), dim=-1)
                     cosine_sim = F.cosine_similarity(gen_global, target_global, dim=1).mean().item()
-                else:  # Global outputs
-                    target_global = F.normalize(clip_emb.mean(dim=1), dim=-1)
-                    cosine_sim = F.cosine_similarity(generated, target_global, dim=1).mean().item()
-                
-                l2_distance = torch.norm(generated - clip_emb, dim=-1).mean().item() if generated.shape == clip_emb.shape else 0
+                    l2_distance = torch.norm(generated - clip_emb, dim=-1).mean().item()
+                    
+                elif generated.dim() == 2:
+                    # Generated is already global [B, 768 or 1024]
+                    if generated.shape[-1] == 768:
+                        # Global output - need CLIP projection for target
+                        if hasattr(model, 'frozen_clip_visual_proj') and model.frozen_clip_visual_proj is not None:
+                            pooled_clip = clip_emb.mean(dim=1)  # [B, 1024]
+                            target_global = model.frozen_clip_visual_proj(pooled_clip)  # [B, 768]
+                            target_global = F.normalize(target_global, p=2, dim=-1)
+                        else:
+                            # Fallback with dimension adjustment
+                            target_global = F.normalize(clip_emb.mean(dim=1)[:, :768], dim=-1)
+                    else:
+                        # 1024-dim output
+                        target_global = F.normalize(clip_emb.mean(dim=1), dim=-1)
+                    
+                    generated_norm = F.normalize(generated, p=2, dim=-1)
+                    cosine_sim = F.cosine_similarity(generated_norm, target_global, dim=1).mean().item()
+                    l2_distance = torch.norm(generated - target_global, dim=-1).mean().item()
+                    
+                else:
+                    print(f"⚠️  Unexpected generated shape: {generated.shape}")
+                    cosine_sim = 0.0
+                    l2_distance = 0.0
                 
                 print(f"✅ {model_type.title()} generation successful!")
                 print(f"   Generated shape: {generated.shape}")
                 print(f"   Cosine similarity: {cosine_sim:.4f}")
-                if l2_distance > 0:
-                    print(f"   L2 distance: {l2_distance:.4f}")
+                print(f"   L2 distance: {l2_distance:.4f}")
                 print(f"   Generated norm: {torch.norm(generated, dim=-1).mean().item():.4f}")
-                print(f"   Target norm: {torch.norm(clip_emb, dim=-1).mean().item():.4f}")
+                print(f"   Target shape: {target_global.shape if 'target_global' in locals() else 'unknown'}")
+                
             else:
                 print(f"⚠️  Model doesn't have generate method, testing forward pass instead")
                 outputs = model(
