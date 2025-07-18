@@ -94,7 +94,7 @@ echo ""
 
 EVAL_START_TIME=$(date +%s)
 
-python direct_clip_evaluation.py \
+python evaluation/direct_clip_evaluation.py \
     --coco_root "$COCO_ROOT" \
     --num_samples $NUM_SAMPLES \
     --device $DEVICE \
