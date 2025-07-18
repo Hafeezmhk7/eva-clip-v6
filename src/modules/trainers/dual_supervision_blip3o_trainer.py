@@ -174,7 +174,7 @@ class DualSupervisionBLIP3oTrainer(Trainer):
             hidden_states=noisy_clip,
             timestep=timesteps,
             encoder_hidden_states=eva_embeddings,
-            return_dict=False
+            return_dict=True
         )
         
         # Extract dual outputs
