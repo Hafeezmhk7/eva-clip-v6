@@ -1,0 +1,221 @@
+#!/bin/bash
+#SBATCH --job-name=blip3o_diagnosis
+#SBATCH --partition=gpu_h100
+#SBATCH --nodes=1
+#SBATCH --gpus=1
+#SBATCH --cpus-per-gpu=18
+#SBATCH --time=1:00:00
+#SBATCH --mem=0
+#SBATCH --output=./slurm_out/diagnosis_%j.out
+#SBATCH --error=./slurm_out/diagnosis_%j.err
+
+# =============================================================================
+# EMERGENCY BLIP3O DIAGNOSTIC
+# Quickly identify why BLIP3o is giving 0% recall and patch averaging 9.8%
+# =============================================================================
+
+echo "🚨 EMERGENCY BLIP3O DIAGNOSTIC"
+echo "=============================="
+
+# Setup environment
+module purge
+module load 2024
+module load Miniconda3/24.7.1-0
+module load CUDA/12.6.0
+
+source activate eva_clip_env
+
+# Configuration
+BLIP3O_MODEL_PATH="/scratch-shared/scur2711/blip3o_workspace/checkpoints/blip3o_multi_gpu_fixed_cosine_13173833_20250716_085748"
+TEST_IMAGE="./data/coco/images/val2017/000000000139.jpg"  # First COCO image
+RESULTS_FILE="./results/emergency_diagnosis_${SLURM_JOB_ID}.json"
+
+# Setup temp directories
+export USER=$(whoami)
+export JOB_ID=${SLURM_JOB_ID}
+export JOB_TEMP="/scratch-local/${USER}.${JOB_ID}/diagnosis"
+
+export TORCH_HOME="${JOB_TEMP}/torch"
+export HF_HOME="${JOB_TEMP}/huggingface"
+export TRANSFORMERS_CACHE="${JOB_TEMP}/transformers"
+
+mkdir -p "${TORCH_HOME}" "${HF_HOME}" "${TRANSFORMERS_CACHE}"
+mkdir -p ./slurm_out ./results
+
+echo "Configuration:"
+echo "  BLIP3o Model: $BLIP3O_MODEL_PATH"
+echo "  Test Image: $TEST_IMAGE"
+echo "  Results: $RESULTS_FILE"
+echo "  Job ID: $JOB_ID"
+
+# Check if test image exists
+if [ ! -f "$TEST_IMAGE" ]; then
+    echo "❌ Test image not found: $TEST_IMAGE"
+    echo "Trying alternative test image..."
+    TEST_IMAGE=$(find ./data/coco/images/val2017/ -name "*.jpg" | head -1)
+    echo "Using: $TEST_IMAGE"
+fi
+
+if [ ! -f "$TEST_IMAGE" ]; then
+    echo "❌ No test images found in COCO dataset"
+    exit 1
+fi
+
+echo "✅ Test image found: $TEST_IMAGE"
+
+# Run emergency diagnosis
+echo ""
+echo "🔍 Running emergency diagnosis..."
+echo "================================"
+
+python blip3o_diagnostic.py \
+    --blip3o_model_path "$BLIP3O_MODEL_PATH" \
+    --test_image "$TEST_IMAGE" \
+    --device cuda \
+    --save_results "$RESULTS_FILE"
+
+EXIT_CODE=$?
+
+echo ""
+echo "========================================"
+echo "🚨 EMERGENCY DIAGNOSIS RESULTS"
+echo "========================================"
+
+if [ $EXIT_CODE -eq 0 ]; then
+    echo "Status: ✅ DIAGNOSIS COMPLETED"
+    
+    if [ -f "$RESULTS_FILE" ]; then
+        echo ""
+        echo "📊 CRITICAL ISSUES IDENTIFIED:"
+        echo "=============================="
+        
+        # Parse and display critical findings
+        python3 << EOF
+import json
+import sys
+
+try:
+    with open('$RESULTS_FILE', 'r') as f:
+        data = json.load(f)
+    
+    print()
+    print("🔍 PATCH AVERAGING ANALYSIS:")
+    print("-" * 40)
+    
+    patch_data = data.get('patch_averaging', {})
+    similarity = patch_data.get('global_vs_patch_similarity', 1.0)
+    diagnosis = patch_data.get('diagnosis', 'UNKNOWN')
+    
+    print(f"   Global vs Patch similarity: {similarity:.6f}")
+    print(f"   Diagnosis: {diagnosis}")
+    
+    if similarity < 0.5:
+        print("   🚨 CRITICAL: This explains 9.8% vs 61% performance gap!")
+        print("   🔧 FIX: The patch averaging implementation has a severe bug")
+        print("   📝 ACTION: Review patch averaging code in comprehensive_recall_evaluation.py")
+    else:
+        print("   ✅ Patch averaging working correctly")
+    
+    print()
+    print("🤖 BLIP3O PIPELINE ANALYSIS:")
+    print("-" * 40)
+    
+    blip3o_data = data.get('blip3o_pipeline', {})
+    
+    if 'error' in blip3o_data:
+        print(f"   ❌ BLIP3o Loading Error: {blip3o_data['error']}")
+        print("   📝 ACTION: Fix BLIP3o model loading issues")
+    else:
+        blip3o_sim = blip3o_data.get('blip3o_vs_clip_similarity', 0)
+        blip3o_diag = blip3o_data.get('diagnosis', 'UNKNOWN')
+        has_nan = blip3o_data.get('has_nan', False)
+        has_inf = blip3o_data.get('has_inf', False)
+        is_all_zeros = blip3o_data.get('is_all_zeros', False)
+        
+        print(f"   BLIP3o vs CLIP similarity: {blip3o_sim:.6f}")
+        print(f"   Diagnosis: {blip3o_diag}")
+        print(f"   Has NaN values: {has_nan}")
+        print(f"   Has Inf values: {has_inf}")
+        print(f"   All zeros: {is_all_zeros}")
+        
+        if has_nan or has_inf:
+            print("   🚨 CRITICAL: Numerical instability in BLIP3o generation")
+            print("   📝 ACTION: Check model weights and inference code")
+        elif is_all_zeros:
+            print("   🚨 CRITICAL: BLIP3o is not generating anything")
+            print("   📝 ACTION: Check if model was trained correctly")
+        elif blip3o_sim < 0.05:
+            print("   🚨 CRITICAL: BLIP3o output has no similarity to CLIP")
+            print("   📝 ACTION: This explains 0% recall - model mapping is completely wrong")
+            print("   🔧 POSSIBLE CAUSES:")
+            print("      • Model not trained properly")
+            print("      • Wrong loss function during training")
+            print("      • Architecture mismatch")
+            print("      • Training data corruption")
+        elif blip3o_sim < 0.3:
+            print("   ⚠️  WARNING: Poor BLIP3o mapping quality")
+            print("   📝 ACTION: Model needs more training or architecture improvements")
+        else:
+            print("   ✅ BLIP3o mapping seems reasonable - investigate other issues")
+    
+    print()
+    print("🎯 IMMEDIATE ACTION ITEMS:")
+    print("-" * 40)
+    
+    action_items = []
+    
+    if similarity < 0.5:
+        action_items.append("1. FIX PATCH AVERAGING BUG immediately")
+        action_items.append("   • Review extract_clip_vision_patch_averaged() function")
+        action_items.append("   • The bug is causing 50+ point performance drop")
+    
+    if 'error' not in blip3o_data:
+        blip3o_sim = blip3o_data.get('blip3o_vs_clip_similarity', 0)
+        if blip3o_sim < 0.05:
+            action_items.append("2. RETRAIN BLIP3o MODEL from scratch")
+            action_items.append("   • Current model is completely broken")
+            action_items.append("   • Check training logs for issues")
+            action_items.append("   • Verify loss function and training data")
+    
+    if not action_items:
+        action_items.append("1. Investigate other potential issues")
+        action_items.append("2. Check evaluation pipeline for bugs")
+    
+    for item in action_items:
+        print(f"   {item}")
+    
+    print()
+    print("📋 NEXT STEPS:")
+    print("-" * 40)
+    print("   1. Fix the patch averaging bug first (quick win)")
+    print("   2. Investigate BLIP3o training issues")
+    print("   3. Re-run evaluation after fixes")
+    print("   4. Check training logs and loss curves")
+
+except Exception as e:
+    print(f"❌ Could not parse diagnosis results: {e}")
+    sys.exit(1)
+EOF
+        
+        echo ""
+        echo "💾 Full diagnosis saved to: $RESULTS_FILE"
+    else
+        echo "⚠️  No results file found"
+    fi
+    
+else
+    echo "Status: ❌ DIAGNOSIS FAILED"
+    echo "Check error logs for details"
+fi
+
+echo ""
+echo "========================================"
+echo "🏁 EMERGENCY DIAGNOSIS COMPLETE"
+echo "========================================"
+
+# Cleanup
+if [ -d "${JOB_TEMP}" ]; then
+    rm -rf "${JOB_TEMP}"
+fi
+
+exit $EXIT_CODE
