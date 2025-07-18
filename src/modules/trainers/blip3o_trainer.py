@@ -1,50 +1,41 @@
 """
-UPDATED: BLIP3-o Trainer with Dual Supervision Support
-Handles both patch-level and global-level supervision for improved recall performance.
-
-Key Changes:
-1. Extracts both CLIP patch and global targets during training
-2. Handles dual model outputs (patch + global)
-3. Uses dual supervision loss function
-4. Updated logging for new metrics
+Enhanced BLIP3-o Trainer with comprehensive evaluation metrics including cosine similarity,
+recall-oriented metrics, and better monitoring for alignment performance.
 """
 
 import torch
 import torch.nn as nn
-from transformers import Trainer, TrainingArguments, CLIPModel, CLIPProcessor
-from transformers.trainer_utils import EvalPrediction
+import torch.nn.functional as F
+from transformers import Trainer, TrainingArguments
 from typing import Dict, Any, Optional, Union, Tuple, List
 import logging
 import wandb
-from pathlib import Path
-import json
 import numpy as np
 import math
 from collections import defaultdict
-
-from ..models.blip3o_dit import BLIP3oDiTModel
-from ..losses.flow_matching_loss import DualSupervisionFlowMatchingLoss
-from ..config.blip3o_config import BLIP3oDiTConfig, FlowMatchingConfig
+import json
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 
-class BLIP3oTrainer(Trainer):
+class EnhancedBLIP3oTrainer(Trainer):
     """
-    UPDATED: Custom trainer for BLIP3-o DiT training with dual supervision.
+    Enhanced trainer with comprehensive evaluation metrics for alignment and recall performance.
     
-    New training methodology:
-    1. Extract both patch and global targets from CLIP
-    2. Forward through DiT to get patch and global outputs
-    3. Apply dual supervision loss (patch + global + flow matching)
-    4. Detailed logging for both supervision levels
+    Key features:
+    - Cosine similarity tracking during training
+    - CLIP alignment evaluation
+    - Recall-oriented metrics
+    - Progressive training support
+    - Enhanced logging and monitoring
     """
     
     def __init__(
         self,
-        model: BLIP3oDiTModel,
+        model,
         args: TrainingArguments,
-        flow_matching_loss: DualSupervisionFlowMatchingLoss,
+        flow_matching_loss,
         train_dataset=None,
         eval_dataset=None,
         data_collator=None,
@@ -54,28 +45,16 @@ class BLIP3oTrainer(Trainer):
         callbacks=None,
         optimizers=(None, None),
         preprocess_logits_for_metrics=None,
-        clip_model_name: str = "openai/clip-vit-large-patch14",
+        
+        # Enhanced evaluation parameters
+        eval_alignment_frequency: int = 100,  # Evaluate alignment every N steps
+        eval_generation_steps: int = 20,      # Steps for generation evaluation
+        cosine_similarity_threshold: float = 0.7,  # Threshold for good alignment
+        track_token_diversity: bool = True,   # Track feature diversity
+        save_embeddings_samples: bool = False,  # Save embedding samples for analysis
+        
         **kwargs
     ):
-        """
-        Initialize the dual supervision BLIP3-o trainer.
-        
-        Args:
-            model: BLIP3oDiTModel instance with dual outputs
-            args: TrainingArguments for training configuration
-            flow_matching_loss: Dual supervision flow matching loss function
-            train_dataset: Training dataset
-            eval_dataset: Evaluation dataset (optional)
-            data_collator: Data collator (not used)
-            tokenizer: Not used for embedding training
-            model_init: Model initialization function
-            compute_metrics: Custom metrics computation function
-            callbacks: Training callbacks
-            optimizers: (optimizer, lr_scheduler) tuple
-            preprocess_logits_for_metrics: Not used
-            clip_model_name: CLIP model name for target extraction
-            **kwargs: Additional arguments
-        """
         super().__init__(
             model=model,
             args=args,
@@ -93,207 +72,102 @@ class BLIP3oTrainer(Trainer):
         
         self.flow_matching_loss = flow_matching_loss
         self.training_step_count = 0
-        self.clip_model_name = clip_model_name
         
-        # Load CLIP model for target extraction during training
-        self._load_clip_model()
-        
-        # Ensure model has frozen CLIP projection loaded
-        if not hasattr(model, 'frozen_clip_visual_proj') or model.frozen_clip_visual_proj is None:
-            logger.info("Loading frozen CLIP projection into model...")
-            model.load_frozen_clip_projection(clip_model_name)
+        # Enhanced evaluation parameters
+        self.eval_alignment_frequency = eval_alignment_frequency
+        self.eval_generation_steps = eval_generation_steps
+        self.cosine_similarity_threshold = cosine_similarity_threshold
+        self.track_token_diversity = track_token_diversity
+        self.save_embeddings_samples = save_embeddings_samples
         
         # Metrics tracking
         self.train_metrics_history = []
         self.eval_metrics_history = []
-        
-        # Loss components tracking (expanded for dual supervision)
+        self.alignment_metrics_history = []
         self.loss_components = defaultdict(list)
         
-        logger.info("Dual Supervision BLIP3-o trainer initialized")
-        logger.info(f"Using CLIP model: {clip_model_name}")
-    
-    def _load_clip_model(self):
-        """Load CLIP model for extracting ground truth targets during training."""
-        try:
-            logger.info(f"Loading CLIP model for target extraction: {self.clip_model_name}")
-            
-            self.clip_model = CLIPModel.from_pretrained(self.clip_model_name)
-            self.clip_processor = CLIPProcessor.from_pretrained(self.clip_model_name)
-            
-            # Move to same device as main model
-            if hasattr(self.model, 'device'):
-                self.clip_model = self.clip_model.to(self.model.device)
-            
-            # Set to eval mode and freeze
-            self.clip_model.eval()
-            for param in self.clip_model.parameters():
-                param.requires_grad = False
-            
-            logger.info("✅ CLIP model loaded and frozen for target extraction")
-            
-        except Exception as e:
-            logger.error(f"Failed to load CLIP model: {e}")
-            raise RuntimeError("CLIP model required for dual supervision training")
-    
-    def extract_clip_targets(self, images):
-        """
-        Extract both patch and global CLIP targets from images.
+        # For EMA tracking
+        self.ema_cosine_sim = 0.0
+        self.ema_alignment_score = 0.0
+        self.ema_decay = 0.99
         
-        Args:
-            images: List of PIL Images
-            
-        Returns:
-            Dict containing:
-            - patch_targets: [B, 256, 1024] CLIP patch embeddings
-            - global_targets: [B, 768] CLIP global embeddings
-        """
-        if not hasattr(self, 'clip_model') or self.clip_model is None:
-            raise ValueError("CLIP model not available for target extraction")
-        
-        batch_size = len(images)
-        device = next(self.clip_model.parameters()).device
-        
-        patch_targets = []
-        global_targets = []
-        
-        with torch.no_grad():
-            for img in images:
-                # Process image
-                inputs = self.clip_processor(images=img, return_tensors="pt")
-                inputs = {k: v.to(device) for k, v in inputs.items()}
-                
-                # Get vision model outputs
-                vision_outputs = self.clip_model.vision_model(
-                    pixel_values=inputs['pixel_values'],
-                    output_hidden_states=True,
-                    return_dict=True
-                )
-                
-                # Extract patch embeddings (remove CLS token)
-                # vision_outputs.last_hidden_state: [1, 257, 1024]
-                patch_embeddings = vision_outputs.last_hidden_state[:, 1:, :]  # [1, 256, 1024]
-                patch_targets.append(patch_embeddings.squeeze(0))
-                
-                # Extract global embeddings (CLS token + visual projection)
-                cls_token = vision_outputs.last_hidden_state[:, 0, :]  # [1, 1024]
-                global_embedding = self.clip_model.visual_projection(cls_token)  # [1, 768]
-                global_embedding = torch.nn.functional.normalize(global_embedding, p=2, dim=-1)
-                global_targets.append(global_embedding.squeeze(0))
-        
-        return {
-            'patch_targets': torch.stack(patch_targets),    # [B, 256, 1024]
-            'global_targets': torch.stack(global_targets),  # [B, 768]
-        }
+        logger.info("Enhanced BLIP3-o trainer initialized with alignment evaluation")
     
     def compute_loss(
         self,
-        model: BLIP3oDiTModel,
+        model,
         inputs: Dict[str, Any],
         return_outputs: bool = False,
         num_items_in_batch: Optional[int] = None,
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, Any]]:
-        """
-        UPDATED: Compute dual supervision loss for BLIP3-o training.
+        """Enhanced loss computation with detailed metrics tracking."""
         
-        Training procedure:
-        1. Extract EVA-CLIP conditioning and CLIP targets (patch + global)
-        2. Sample timesteps and create noisy samples for flow matching
-        3. Forward through DiT model to get patch and global outputs
-        4. Compute dual supervision loss (flow matching + patch + global)
-        
-        Args:
-            model: The BLIP3oDiTModel with dual outputs
-            inputs: Batch inputs from dataloader
-            return_outputs: Whether to return model outputs
-            num_items_in_batch: Compatibility parameter (unused)
-            
-        Returns:
-            Loss tensor, optionally with additional outputs
-        """
-        # Extract inputs from batch
+        # Extract inputs
         eva_embeddings = inputs['eva_embeddings']      # [B, 256, 4096]
-        clip_embeddings = inputs['clip_embeddings']    # [B, 256, 1024] - patch targets
+        clip_embeddings = inputs['clip_embeddings']    # [B, 256, 1024]
         
         batch_size = eva_embeddings.shape[0]
         device = eva_embeddings.device
         
-        # For dual supervision, we need both patch and global CLIP targets
-        # In the updated dataset, we should have both, but as fallback we'll extract global from patch
-        if 'clip_global_embeddings' in inputs:
-            clip_global_targets = inputs['clip_global_embeddings']  # [B, 768]
-        else:
-            # Fallback: extract global targets from patch embeddings using CLIP
-            # Average pool patch embeddings and apply CLIP visual projection
-            with torch.no_grad():
-                pooled_patches = clip_embeddings.mean(dim=1)  # [B, 1024]
-                clip_global_targets = self.clip_model.visual_projection(pooled_patches)  # [B, 768]
-                clip_global_targets = torch.nn.functional.normalize(clip_global_targets, p=2, dim=-1)
-        
-        # Sample random timesteps for flow matching
+        # Sample timesteps
         timesteps = self.flow_matching_loss.sample_timesteps(batch_size, device)
         
-        # Sample noise for flow matching
+        # Sample noise
         noise = torch.randn_like(clip_embeddings)
         
-        # Create noisy samples according to flow matching interpolation
-        x_0 = torch.randn_like(clip_embeddings)  # Source distribution
+        # Create noisy samples
+        x_0 = torch.randn_like(clip_embeddings)
         noisy_clip = self.flow_matching_loss.interpolate_data(
             x_0=x_0,
-            x_1=clip_embeddings,  # Use patch targets for flow matching
+            x_1=clip_embeddings,
             t=timesteps,
             noise=noise
         )
         
-        # Forward pass through DiT model (dual outputs)
-        model_outputs = model(
+        # Forward pass
+        model_output = model(
             hidden_states=noisy_clip,
             timestep=timesteps,
             encoder_hidden_states=eva_embeddings,
-            return_dict=True
+            return_dict=False
         )
         
-        dit_patch_output = model_outputs['patch_output']    # [B, 256, 1024]
-        dit_global_output = model_outputs['global_output']  # [B, 768] or None
-        
-        # Compute dual supervision loss
+        # Compute enhanced loss with metrics
         loss, metrics = self.flow_matching_loss(
-            dit_patch_output=dit_patch_output,
-            dit_global_output=dit_global_output,
-            clip_patch_targets=clip_embeddings,
-            clip_global_targets=clip_global_targets,
+            model_output=model_output,
+            target_samples=clip_embeddings,
             timesteps=timesteps,
             eva_conditioning=eva_embeddings,
             noise=noise,
             return_metrics=True
         )
         
-        # Store metrics for logging
+        # Store metrics
         if metrics is not None:
             for key, value in metrics.items():
                 self.loss_components[key].append(value)
         
-        # Log metrics periodically
+        # Enhanced logging and evaluation
         if self.training_step_count % self.args.logging_steps == 0:
-            self._log_training_metrics(
-                metrics, timesteps, dit_patch_output, dit_global_output, 
-                clip_embeddings, clip_global_targets
+            self._log_enhanced_training_metrics(
+                metrics, timesteps, model_output, clip_embeddings, eva_embeddings
             )
+        
+        # Periodic alignment evaluation
+        if (self.training_step_count % self.eval_alignment_frequency == 0 and 
+            self.training_step_count > 0):
+            self._evaluate_alignment_quality(model, eva_embeddings, clip_embeddings)
         
         self.training_step_count += 1
         
         # Prepare outputs
         outputs = {
-            'dit_patch_output': dit_patch_output,
-            'dit_global_output': dit_global_output,
-            'clip_patch_targets': clip_embeddings,
-            'clip_global_targets': clip_global_targets,
+            'model_output': model_output,
             'noisy_clip': noisy_clip,
             'timesteps': timesteps,
             'metrics': metrics,
             'eva_embeddings': eva_embeddings,
-            'pooled_features': model_outputs.get('pooled_features'),
-            'adapted_features': model_outputs.get('adapted_features'),
+            'clip_embeddings': clip_embeddings,
         } if return_outputs else None
         
         if return_outputs:
@@ -301,79 +175,91 @@ class BLIP3oTrainer(Trainer):
         else:
             return loss
     
-    def _log_training_metrics(
+    def _log_enhanced_training_metrics(
         self,
         metrics: Optional[Dict[str, float]],
         timesteps: torch.Tensor,
-        dit_patch_output: torch.Tensor,
-        dit_global_output: Optional[torch.Tensor],
-        clip_patch_targets: torch.Tensor,
-        clip_global_targets: torch.Tensor,
+        model_output: torch.Tensor,
+        target_clip: torch.Tensor,
+        eva_embeddings: torch.Tensor,
     ):
-        """Log detailed training metrics for dual supervision."""
+        """Enhanced logging with alignment and diversity metrics."""
         
         if metrics is None:
             return
         
-        # Create logging dictionary
+        # Compute additional real-time metrics
+        with torch.no_grad():
+            # CLIP-style alignment (key for recall performance)
+            pred_global = F.normalize(model_output.mean(dim=1), dim=-1)
+            target_global = F.normalize(target_clip.mean(dim=1), dim=-1)
+            global_cosine_sim = F.cosine_similarity(pred_global, target_global, dim=1).mean().item()
+            
+            # Update EMA
+            self.ema_cosine_sim = self.ema_decay * self.ema_cosine_sim + (1 - self.ema_decay) * global_cosine_sim
+            
+            # Token-level alignment distribution
+            pred_tokens_norm = F.normalize(model_output, dim=-1)
+            target_tokens_norm = F.normalize(target_clip, dim=-1)
+            token_cosine_sims = F.cosine_similarity(pred_tokens_norm, target_tokens_norm, dim=-1)
+            
+            # Feature diversity metrics
+            if self.track_token_diversity:
+                pred_diversity = torch.var(model_output.flatten(1), dim=0).mean().item()
+                target_diversity = torch.var(target_clip.flatten(1), dim=0).mean().item()
+                eva_diversity = torch.var(eva_embeddings.flatten(1), dim=0).mean().item()
+            else:
+                pred_diversity = target_diversity = eva_diversity = 0.0
+            
+            # Cross-modal alignment (EVA -> Generated CLIP similarity)
+            eva_global = F.normalize(eva_embeddings.mean(dim=1), dim=-1)
+            # Project EVA to CLIP space (approximate)
+            cross_modal_sim = F.cosine_similarity(
+                eva_global[:, :min(1024, eva_global.shape[-1])], 
+                pred_global, 
+                dim=1
+            ).mean().item()
+        
+        # Create comprehensive logging dictionary
         log_dict = {}
         
-        # Add dual supervision metrics
+        # Core flow matching metrics
         for key, value in metrics.items():
             log_dict[f"train/{key}"] = value
         
-        # Add timestep statistics
-        with torch.no_grad():
+        # Enhanced alignment metrics
+        log_dict.update({
+            "train/global_cosine_similarity": global_cosine_sim,
+            "train/ema_cosine_similarity": self.ema_cosine_sim,
+            "train/token_cosine_mean": token_cosine_sims.mean().item(),
+            "train/token_cosine_std": token_cosine_sims.std().item(),
+            "train/token_cosine_min": token_cosine_sims.min().item(),
+            "train/token_cosine_max": token_cosine_sims.max().item(),
+            "train/cross_modal_similarity": cross_modal_sim,
+            
+            # Alignment quality indicators
+            "train/good_alignment_ratio": (token_cosine_sims > self.cosine_similarity_threshold).float().mean().item(),
+            "train/alignment_quality_score": torch.clamp(global_cosine_sim * 2 - 1, 0, 1),  # 0-1 scale
+        })
+        
+        # Diversity metrics
+        if self.track_token_diversity:
             log_dict.update({
-                "train/timestep_mean": timesteps.mean().item(),
-                "train/timestep_std": timesteps.std().item(),
-                "train/timestep_min": timesteps.min().item(),
-                "train/timestep_max": timesteps.max().item(),
-            })
-            
-            # DiT patch output statistics
-            patch_mean = dit_patch_output.mean().item()
-            patch_std = dit_patch_output.std().item()
-            patch_norm = torch.norm(dit_patch_output, dim=-1).mean().item()
-            
-            log_dict.update({
-                "train/dit_patch_mean": patch_mean,
-                "train/dit_patch_std": patch_std,
-                "train/dit_patch_norm": patch_norm,
-            })
-            
-            # DiT global output statistics (if available)
-            if dit_global_output is not None:
-                global_mean = dit_global_output.mean().item()
-                global_std = dit_global_output.std().item()
-                global_norm = torch.norm(dit_global_output, dim=-1).mean().item()
-                
-                log_dict.update({
-                    "train/dit_global_mean": global_mean,
-                    "train/dit_global_std": global_std,
-                    "train/dit_global_norm": global_norm,
-                })
-                
-                # Global alignment quality
-                global_cosine = torch.nn.functional.cosine_similarity(
-                    dit_global_output, clip_global_targets, dim=1
-                ).mean().item()
-                log_dict["train/global_cosine_realtime"] = global_cosine
-            
-            # CLIP target statistics
-            clip_patch_norm = torch.norm(clip_patch_targets, dim=-1).mean().item()
-            clip_global_norm = torch.norm(clip_global_targets, dim=-1).mean().item()
-            
-            log_dict.update({
-                "train/clip_patch_norm": clip_patch_norm,
-                "train/clip_global_norm": clip_global_norm,
+                "train/pred_diversity": pred_diversity,
+                "train/target_diversity": target_diversity,
+                "train/eva_diversity": eva_diversity,
+                "train/diversity_ratio": pred_diversity / (target_diversity + 1e-8),
             })
         
-        # Add step information
-        log_dict["train/step"] = self.training_step_count
-        log_dict["train/epoch"] = self.state.epoch
+        # Timestep and training diagnostics
+        log_dict.update({
+            "train/timestep_mean": timesteps.mean().item(),
+            "train/timestep_std": timesteps.std().item(),
+            "train/training_step": self.training_step_count,
+            "train/epoch": self.state.epoch,
+        })
         
-        # Log to wandb if available
+        # Log to wandb
         if wandb.run is not None:
             wandb.log(log_dict, step=self.training_step_count)
         
@@ -384,58 +270,125 @@ class BLIP3oTrainer(Trainer):
             **log_dict
         })
         
-        # Print progress periodically with dual supervision info
-        if self.training_step_count % (self.args.logging_steps * 5) == 0:
-            total_loss = metrics.get('total_loss', 0)
-            flow_loss = metrics.get('flow_matching_loss', 0)
-            patch_loss = metrics.get('patch_reconstruction_loss', 0)
-            global_loss = metrics.get('global_alignment_loss', 0)
-            
-            patch_cosine = metrics.get('patch_cosine_similarity', 0)
-            global_cosine = metrics.get('global_cosine_similarity', 0)
-            
+        # Enhanced progress logging
+        if self.training_step_count % (self.args.logging_steps * 2) == 0:
             logger.info(
                 f"Step {self.training_step_count}: "
-                f"Total={total_loss:.4f} "
-                f"(Flow={flow_loss:.4f}, Patch={patch_loss:.4f}, Global={global_loss:.4f}) "
-                f"Cosine: Patch={patch_cosine:.3f}, Global={global_cosine:.3f}"
+                f"Loss={metrics.get('total_loss', 0):.4f}, "
+                f"FM_Loss={metrics.get('flow_matching_loss', 0):.4f}, "
+                f"Align_Loss={metrics.get('alignment_loss', 0):.4f}, "
+                f"Cosine_Sim={global_cosine_sim:.4f}, "
+                f"EMA_Cosine={self.ema_cosine_sim:.4f}, "
+                f"Good_Align%={log_dict['train/good_alignment_ratio']*100:.1f}%, "
+                f"Quality={log_dict['train/alignment_quality_score']:.3f}"
             )
+    
+    def _evaluate_alignment_quality(
+        self,
+        model,
+        eva_embeddings: torch.Tensor,
+        target_clip: torch.Tensor,
+        num_generation_samples: int = 4,
+    ):
+        """Evaluate alignment quality through generation and similarity analysis."""
+        
+        if eva_embeddings.shape[0] < num_generation_samples:
+            return
+        
+        model.eval()
+        with torch.no_grad():
+            # Sample a subset for evaluation
+            eval_eva = eva_embeddings[:num_generation_samples]
+            eval_target = target_clip[:num_generation_samples]
+            
+            # Generate CLIP embeddings using the model
+            try:
+                generated_clip = model.generate(
+                    encoder_hidden_states=eval_eva,
+                    num_inference_steps=self.eval_generation_steps,
+                )
+                
+                # Compute alignment metrics
+                gen_global = F.normalize(generated_clip.mean(dim=1), dim=-1)
+                target_global = F.normalize(eval_target.mean(dim=1), dim=-1)
+                
+                # Generation quality metrics
+                generation_cosine_sim = F.cosine_similarity(gen_global, target_global, dim=1).mean().item()
+                generation_l2_dist = torch.norm(generated_clip - eval_target, dim=-1).mean().item()
+                
+                # Feature magnitude analysis
+                gen_norm = torch.norm(generated_clip, dim=-1).mean().item()
+                target_norm = torch.norm(eval_target, dim=-1).mean().item()
+                
+                # Token-wise alignment analysis
+                gen_tokens_norm = F.normalize(generated_clip, dim=-1)
+                target_tokens_norm = F.normalize(eval_target, dim=-1)
+                token_alignment = F.cosine_similarity(gen_tokens_norm, target_tokens_norm, dim=-1)
+                
+                alignment_metrics = {
+                    "eval_align/generation_cosine_similarity": generation_cosine_sim,
+                    "eval_align/generation_l2_distance": generation_l2_dist,
+                    "eval_align/generated_norm": gen_norm,
+                    "eval_align/target_norm": target_norm,
+                    "eval_align/norm_ratio": gen_norm / (target_norm + 1e-8),
+                    "eval_align/token_alignment_mean": token_alignment.mean().item(),
+                    "eval_align/token_alignment_std": token_alignment.std().item(),
+                    "eval_align/good_tokens_ratio": (token_alignment > self.cosine_similarity_threshold).float().mean().item(),
+                    "eval_align/step": self.training_step_count,
+                }
+                
+                # Log alignment evaluation
+                if wandb.run is not None:
+                    wandb.log(alignment_metrics, step=self.training_step_count)
+                
+                self.alignment_metrics_history.append(alignment_metrics)
+                
+                logger.info(
+                    f"Alignment Eval Step {self.training_step_count}: "
+                    f"Gen_Cosine={generation_cosine_sim:.4f}, "
+                    f"L2_Dist={generation_l2_dist:.4f}, "
+                    f"Token_Align={token_alignment.mean().item():.4f}, "
+                    f"Good_Tokens%={alignment_metrics['eval_align/good_tokens_ratio']*100:.1f}%"
+                )
+                
+            except Exception as e:
+                logger.warning(f"Failed to evaluate alignment quality: {e}")
+        
+        model.train()
     
     def evaluate(
         self,
-        eval_dataset: Optional[torch.utils.data.Dataset] = None,
-        ignore_keys: Optional[List[str]] = None,
+        eval_dataset=None,
+        ignore_keys=None,
         metric_key_prefix: str = "eval",
     ) -> Dict[str, float]:
-        """
-        UPDATED: Run evaluation with dual supervision metrics.
-        """
+        """Enhanced evaluation with comprehensive alignment and recall metrics."""
+        
         eval_dataset = eval_dataset or self.eval_dataset
         if eval_dataset is None:
             logger.warning("No evaluation dataset provided")
             return {}
         
-        # Set model to evaluation mode
         model = self._wrap_model(self.model, training=False)
         model.eval()
         
-        # Create evaluation dataloader
         eval_dataloader = self.get_eval_dataloader(eval_dataset)
         
         # Collect evaluation metrics
         eval_losses = []
         all_metrics = defaultdict(list)
+        cosine_similarities = []
+        alignment_scores = []
+        generation_metrics = []
         
-        logger.info(f"Running dual supervision evaluation on {len(eval_dataloader)} batches")
+        logger.info(f"Running enhanced evaluation on {len(eval_dataloader)} batches")
         
         with torch.no_grad():
             for step, inputs in enumerate(eval_dataloader):
-                # Move inputs to device
                 inputs = self._prepare_inputs(inputs)
                 
                 # Compute loss and metrics
                 loss, outputs = self.compute_loss(model, inputs, return_outputs=True)
-                
                 eval_losses.append(loss.item())
                 
                 # Collect detailed metrics
@@ -443,118 +396,135 @@ class BLIP3oTrainer(Trainer):
                     for key, value in outputs['metrics'].items():
                         all_metrics[key].append(value)
                 
-                # Log progress
+                # Additional alignment analysis
+                eva_emb = outputs['eva_embeddings']
+                clip_emb = outputs['clip_embeddings']
+                model_out = outputs['model_output']
+                
+                # Compute real-time cosine similarities
+                pred_global = F.normalize(model_out.mean(dim=1), dim=-1)
+                target_global = F.normalize(clip_emb.mean(dim=1), dim=-1)
+                batch_cosine_sim = F.cosine_similarity(pred_global, target_global, dim=1)
+                cosine_similarities.extend(batch_cosine_sim.cpu().numpy())
+                
+                # Alignment quality score
+                alignment_score = torch.clamp(batch_cosine_sim * 2 - 1, 0, 1)
+                alignment_scores.extend(alignment_score.cpu().numpy())
+                
+                # Generation evaluation (subset of batches)
+                if step % 5 == 0 and step < 20:  # Evaluate generation every 5th batch, up to 20 batches
+                    try:
+                        gen_metrics = self._evaluate_generation_subset(model, eva_emb, clip_emb)
+                        if gen_metrics:
+                            generation_metrics.append(gen_metrics)
+                    except Exception as e:
+                        logger.warning(f"Generation evaluation failed at step {step}: {e}")
+                
                 if step % max(1, len(eval_dataloader) // 10) == 0:
                     logger.info(f"Evaluation step {step}/{len(eval_dataloader)}")
         
-        # Aggregate metrics
+        # Aggregate results
         eval_results = {
             f'{metric_key_prefix}_loss': np.mean(eval_losses),
             f'{metric_key_prefix}_loss_std': np.std(eval_losses),
         }
         
-        # Aggregate detailed dual supervision metrics
+        # Aggregate detailed metrics
         for key, values in all_metrics.items():
             eval_results[f'{metric_key_prefix}_{key}'] = np.mean(values)
             eval_results[f'{metric_key_prefix}_{key}_std'] = np.std(values)
         
-        # Generate sample embeddings for quality assessment
-        sample_metrics = self._evaluate_generation_quality(model, eval_dataloader)
-        eval_results.update({f'{metric_key_prefix}_{k}': v for k, v in sample_metrics.items()})
+        # Cosine similarity analysis
+        if cosine_similarities:
+            cosine_array = np.array(cosine_similarities)
+            eval_results.update({
+                f'{metric_key_prefix}_cosine_similarity_mean': np.mean(cosine_array),
+                f'{metric_key_prefix}_cosine_similarity_std': np.std(cosine_array),
+                f'{metric_key_prefix}_cosine_similarity_median': np.median(cosine_array),
+                f'{metric_key_prefix}_cosine_similarity_min': np.min(cosine_array),
+                f'{metric_key_prefix}_cosine_similarity_max': np.max(cosine_array),
+                f'{metric_key_prefix}_good_alignment_ratio': np.mean(cosine_array > self.cosine_similarity_threshold),
+            })
+        
+        # Alignment quality analysis
+        if alignment_scores:
+            alignment_array = np.array(alignment_scores)
+            eval_results.update({
+                f'{metric_key_prefix}_alignment_quality_mean': np.mean(alignment_array),
+                f'{metric_key_prefix}_alignment_quality_std': np.std(alignment_array),
+                f'{metric_key_prefix}_high_quality_ratio': np.mean(alignment_array > 0.7),
+            })
+        
+        # Generation metrics aggregation
+        if generation_metrics:
+            for key in generation_metrics[0].keys():
+                values = [m[key] for m in generation_metrics if key in m]
+                if values:
+                    eval_results[f'{metric_key_prefix}_gen_{key}'] = np.mean(values)
+        
+        # Overall quality score (weighted combination)
+        if cosine_similarities and alignment_scores:
+            quality_score = (
+                0.4 * eval_results[f'{metric_key_prefix}_cosine_similarity_mean'] +
+                0.3 * eval_results[f'{metric_key_prefix}_alignment_quality_mean'] +
+                0.3 * eval_results[f'{metric_key_prefix}_good_alignment_ratio']
+            )
+            eval_results[f'{metric_key_prefix}_overall_quality_score'] = quality_score
         
         # Log evaluation results
         if wandb.run is not None:
             wandb.log(eval_results, step=self.training_step_count)
         
-        # Store in history
         self.eval_metrics_history.append({
             'step': self.training_step_count,
             'epoch': self.state.epoch,
             **eval_results
         })
         
-        logger.info(f"Dual supervision evaluation results: {eval_results}")
-        
+        logger.info(f"Enhanced evaluation results: {eval_results}")
         return eval_results
     
-    def _evaluate_generation_quality(
+    def _evaluate_generation_subset(
         self,
-        model: BLIP3oDiTModel,
-        eval_dataloader: torch.utils.data.DataLoader,
-        num_samples: int = 4,
-        num_inference_steps: int = 20,
+        model,
+        eva_embeddings: torch.Tensor,
+        target_clip: torch.Tensor,
+        num_samples: int = 2,
     ) -> Dict[str, float]:
-        """
-        UPDATED: Evaluate generation quality with dual outputs.
-        """
+        """Evaluate generation quality on a small subset."""
+        
+        if eva_embeddings.shape[0] < num_samples:
+            return {}
+        
         try:
-            # Get a batch for generation
-            sample_batch = next(iter(eval_dataloader))
-            eva_conditioning = sample_batch['eva_embeddings'][:num_samples]
-            target_clip_patches = sample_batch['clip_embeddings'][:num_samples]
+            # Sample subset
+            subset_eva = eva_embeddings[:num_samples]
+            subset_target = target_clip[:num_samples]
             
-            # Extract global targets if available
-            if 'clip_global_embeddings' in sample_batch:
-                target_clip_global = sample_batch['clip_global_embeddings'][:num_samples]
-            else:
-                # Fallback: create global targets from patches
-                with torch.no_grad():
-                    pooled_patches = target_clip_patches.mean(dim=1)
-                    target_clip_global = self.clip_model.visual_projection(pooled_patches)
-                    target_clip_global = torch.nn.functional.normalize(target_clip_global, p=2, dim=-1)
-            
-            # Generate samples (get global output)
-            generated_global = model.generate(
-                encoder_hidden_states=eva_conditioning,
-                num_inference_steps=num_inference_steps,
-                return_global_only=True,  # Get global embeddings for retrieval evaluation
+            # Generate
+            generated = model.generate(
+                encoder_hidden_states=subset_eva,
+                num_inference_steps=self.eval_generation_steps,
             )
             
-            # Compute generation metrics
-            metrics = {}
+            # Compute metrics
+            gen_flat = generated.flatten(1)
+            target_flat = subset_target.flatten(1)
             
-            with torch.no_grad():
-                if generated_global is not None:
-                    # Global generation metrics (most important for retrieval)
-                    global_cosine = nn.functional.cosine_similarity(
-                        generated_global, target_clip_global, dim=1
-                    ).mean().item()
-                    
-                    global_l2 = torch.norm(generated_global - target_clip_global, dim=-1).mean().item()
-                    
-                    # Generated embedding statistics
-                    gen_global_norm = torch.norm(generated_global, dim=-1).mean().item()
-                    target_global_norm = torch.norm(target_clip_global, dim=-1).mean().item()
-                    
-                    metrics.update({
-                        'generation_global_cosine': global_cosine,
-                        'generation_global_l2': global_l2,
-                        'generation_global_norm': gen_global_norm,
-                        'target_global_norm': target_global_norm,
-                        'generation_global_norm_ratio': gen_global_norm / (target_global_norm + 1e-8),
-                    })
-                    
-                    # Retrieval simulation (cosine similarity distribution)
-                    similarities = nn.functional.cosine_similarity(
-                        generated_global.unsqueeze(1), target_clip_global.unsqueeze(0), dim=2
-                    )
-                    diagonal_similarities = similarities.diag().mean().item()
-                    off_diagonal_similarities = similarities.fill_diagonal_(0).mean().item()
-                    
-                    metrics.update({
-                        'retrieval_self_similarity': diagonal_similarities,
-                        'retrieval_cross_similarity': off_diagonal_similarities,
-                        'retrieval_separation': diagonal_similarities - off_diagonal_similarities,
-                    })
+            cosine_sim = F.cosine_similarity(gen_flat, target_flat, dim=1).mean().item()
+            l2_dist = torch.norm(generated - subset_target, dim=-1).mean().item()
             
-            return metrics
-        
-        except Exception as e:
-            logger.warning(f"Failed to evaluate generation quality: {e}")
+            return {
+                'cosine_similarity': cosine_sim,
+                'l2_distance': l2_dist,
+                'norm_generated': torch.norm(generated, dim=-1).mean().item(),
+                'norm_target': torch.norm(subset_target, dim=-1).mean().item(),
+            }
+        except Exception:
             return {}
     
     def save_model(self, output_dir: Optional[str] = None, _internal_call: bool = False):
-        """UPDATED: Save model with dual supervision configurations."""
+        """Enhanced model saving with comprehensive metrics."""
         
         output_dir = output_dir or self.args.output_dir
         output_dir = Path(output_dir)
@@ -563,211 +533,85 @@ class BLIP3oTrainer(Trainer):
         # Save model using parent class
         super().save_model(output_dir, _internal_call)
         
-        # Save dual supervision specific configurations
-        self._save_dual_supervision_configs(output_dir)
+        # Save enhanced metrics and configs
+        self._save_enhanced_configs(output_dir)
         
-        # Save training metrics history
-        self._save_metrics_history(output_dir)
-        
-        logger.info(f"Dual supervision BLIP3-o model and configs saved to {output_dir}")
+        logger.info(f"Enhanced BLIP3-o model and metrics saved to {output_dir}")
     
-    def _save_dual_supervision_configs(self, output_dir: Path):
-        """Save dual supervision specific configurations."""
+    def _save_enhanced_configs(self, output_dir: Path):
+        """Save enhanced configurations and metrics."""
         
-        # Save dual supervision loss configuration
-        dual_loss_config = {
-            'sigma_min': self.flow_matching_loss.sigma_min,
-            'sigma_max': self.flow_matching_loss.sigma_max,
-            'prediction_type': self.flow_matching_loss.prediction_type,
-            'schedule_type': self.flow_matching_loss.schedule_type,
-            'clip_dim': self.flow_matching_loss.clip_dim,
-            'eva_dim': self.flow_matching_loss.eva_dim,
-            'clip_global_dim': self.flow_matching_loss.clip_global_dim,
-            'patch_loss_weight': self.flow_matching_loss.patch_loss_weight,
-            'global_loss_weight': self.flow_matching_loss.global_loss_weight,
-            'flow_matching_loss_weight': self.flow_matching_loss.flow_matching_loss_weight,
-            'use_cosine_similarity': self.flow_matching_loss.use_cosine_similarity,
-            'clip_model_name': self.flow_matching_loss.clip_model_name,
-        }
-        
-        with open(output_dir / 'dual_supervision_loss_config.json', 'w') as f:
-            json.dump(dual_loss_config, f, indent=2)
-        
-        # Save model configuration
-        if hasattr(self.model, 'config'):
-            model_config = self.model.config.to_dict()
-            with open(output_dir / 'blip3o_dual_model_config.json', 'w') as f:
-                json.dump(model_config, f, indent=2)
-        
-        # Training summary
-        training_summary = {
-            'architecture': 'dual_supervision',
+        # Save enhanced training summary
+        enhanced_summary = {
             'total_steps': self.training_step_count,
-            'num_parameters': self.model.get_num_parameters(),
-            'num_trainable_parameters': self.model.get_num_parameters(trainable_only=True),
-            'memory_footprint': self.model.get_memory_footprint(),
-            'gradient_checkpointing': self.model._gradient_checkpointing,
-            'lr_scheduler_type': self.args.lr_scheduler_type,
-            'learning_rate': self.args.learning_rate,
-            'warmup_ratio': self.args.warmup_ratio,
-            'warmup_steps': self.args.warmup_steps,
-            'dual_supervision': {
-                'patch_supervision': True,
-                'global_supervision': True,
-                'frozen_clip_projection': True,
-                'custom_mlp_layers': True,
-            }
+            'ema_cosine_similarity': self.ema_cosine_sim,
+            'ema_alignment_score': self.ema_alignment_score,
+            'eval_alignment_frequency': self.eval_alignment_frequency,
+            'cosine_similarity_threshold': self.cosine_similarity_threshold,
+            'best_alignment_score': max([m.get('train/global_cosine_similarity', 0) for m in self.train_metrics_history] + [0]),
+            'final_quality_metrics': self._compute_final_quality_metrics(),
         }
         
-        with open(output_dir / 'dual_supervision_training_summary.json', 'w') as f:
-            json.dump(training_summary, f, indent=2)
-    
-    def _save_metrics_history(self, output_dir: Path):
-        """Save dual supervision training metrics history."""
+        with open(output_dir / 'enhanced_training_summary.json', 'w') as f:
+            json.dump(enhanced_summary, f, indent=2)
         
-        # Save training metrics
-        if self.train_metrics_history:
-            with open(output_dir / 'dual_supervision_train_metrics.json', 'w') as f:
-                json.dump(self.train_metrics_history, f, indent=2)
+        # Save all metrics histories
+        histories = {
+            'train_metrics': self.train_metrics_history[-1000:],  # Last 1000 for space
+            'eval_metrics': self.eval_metrics_history,
+            'alignment_metrics': self.alignment_metrics_history,
+        }
         
-        # Save evaluation metrics
-        if self.eval_metrics_history:
-            with open(output_dir / 'dual_supervision_eval_metrics.json', 'w') as f:
-                json.dump(self.eval_metrics_history, f, indent=2)
+        with open(output_dir / 'enhanced_metrics_histories.json', 'w') as f:
+            json.dump(histories, f, indent=2)
         
-        # Save loss components summary
-        loss_summary = {}
+        # Save loss components analysis
+        loss_analysis = {}
         for key, values in self.loss_components.items():
             if values:
-                loss_summary[key] = {
-                    'mean': np.mean(values),
-                    'std': np.std(values),
-                    'min': np.min(values),
-                    'max': np.max(values),
-                    'final': values[-1] if values else 0,
-                    'count': len(values),
+                loss_analysis[key] = {
+                    'mean': np.mean(values[-100:]),  # Last 100 steps
+                    'trend': np.mean(values[-50:]) - np.mean(values[-100:-50]) if len(values) >= 100 else 0,
+                    'stability': np.std(values[-50:]) if len(values) >= 50 else 0,
                 }
         
-        with open(output_dir / 'dual_supervision_loss_summary.json', 'w') as f:
-            json.dump(loss_summary, f, indent=2)
+        with open(output_dir / 'loss_components_analysis.json', 'w') as f:
+            json.dump(loss_analysis, f, indent=2)
     
-    def create_optimizer(self):
-        """Create optimizer for dual supervision training."""
-        optimizer = super().create_optimizer()
+    def _compute_final_quality_metrics(self) -> Dict[str, float]:
+        """Compute final quality assessment metrics."""
+        if not self.train_metrics_history:
+            return {}
         
-        logger.info(f"Created optimizer for dual supervision: {type(optimizer).__name__}")
-        logger.info(f"Learning rate: {self.args.learning_rate}")
-        logger.info(f"Weight decay: {self.args.weight_decay}")
-        logger.info(f"LR Scheduler: {self.args.lr_scheduler_type}")
-        logger.info(f"Warmup Ratio: {self.args.warmup_ratio}")
+        # Get recent metrics (last 10% of training)
+        recent_count = max(10, len(self.train_metrics_history) // 10)
+        recent_metrics = self.train_metrics_history[-recent_count:]
         
-        # Log parameter groups for dual supervision
-        trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
-        frozen_params = sum(p.numel() for p in self.model.parameters() if not p.requires_grad)
+        quality_metrics = {}
         
-        logger.info(f"Trainable parameters: {trainable_params:,}")
-        logger.info(f"Frozen parameters: {frozen_params:,}")
-        logger.info(f"Frozen CLIP projection: {self.model.frozen_clip_visual_proj is not None}")
+        # Cosine similarity trends
+        cosine_sims = [m.get('train/global_cosine_similarity', 0) for m in recent_metrics]
+        if cosine_sims:
+            quality_metrics.update({
+                'final_cosine_similarity_mean': np.mean(cosine_sims),
+                'cosine_similarity_stability': 1.0 - np.std(cosine_sims),  # Higher = more stable
+                'cosine_similarity_trend': np.polyfit(range(len(cosine_sims)), cosine_sims, 1)[0],  # Positive = improving
+            })
         
-        return optimizer
-
-
-def create_blip3o_training_args(
-    output_dir: str,
-    num_train_epochs: int = 10,
-    per_device_train_batch_size: int = 8,  # Smaller for dual supervision
-    per_device_eval_batch_size: int = 4,
-    learning_rate: float = 5e-5,  # Lower LR for dual supervision
-    lr_scheduler_type: str = "cosine",
-    warmup_ratio: float = 0.05,
-    weight_decay: float = 0.01,
-    warmup_steps: int = 1000,
-    logging_steps: int = 50,  # More frequent logging for dual supervision
-    save_steps: int = 1000,
-    eval_steps: int = 500,  # More frequent evaluation
-    gradient_accumulation_steps: int = 4,  # Higher accumulation for smaller batches
-    fp16: bool = True,
-    bf16: bool = False,
-    dataloader_num_workers: int = 4,
-    remove_unused_columns: bool = False,
-    load_best_model_at_end: bool = True,
-    metric_for_best_model: str = "eval_global_cosine_similarity",  # Focus on global alignment
-    greater_is_better: bool = True,  # Higher cosine similarity is better
-    **kwargs
-) -> TrainingArguments:
-    """
-    Create TrainingArguments optimized for dual supervision BLIP3-o training.
-    
-    Args:
-        output_dir: Output directory for checkpoints and logs
-        num_train_epochs: Number of training epochs
-        per_device_train_batch_size: Training batch size per device (smaller for dual supervision)
-        per_device_eval_batch_size: Evaluation batch size per device
-        learning_rate: Learning rate (lower for dual supervision stability)
-        lr_scheduler_type: Learning rate scheduler type
-        warmup_ratio: Warmup steps as ratio of total steps
-        weight_decay: Weight decay for regularization
-        warmup_steps: Number of warmup steps
-        logging_steps: Log every N steps (more frequent for dual supervision)
-        save_steps: Save checkpoint every N steps
-        eval_steps: Evaluate every N steps (more frequent)
-        gradient_accumulation_steps: Gradient accumulation steps (higher for smaller batches)
-        fp16: Use mixed precision training
-        bf16: Use bfloat16 (alternative to fp16)
-        dataloader_num_workers: Number of dataloader workers
-        remove_unused_columns: Remove unused columns from dataset
-        load_best_model_at_end: Load best model at end of training
-        metric_for_best_model: Metric to use for best model selection (global cosine similarity)
-        greater_is_better: Whether higher metric values are better
-        **kwargs: Additional TrainingArguments parameters
+        # Alignment quality trends
+        align_scores = [m.get('train/alignment_quality_score', 0) for m in recent_metrics]
+        if align_scores:
+            quality_metrics.update({
+                'final_alignment_quality': np.mean(align_scores),
+                'alignment_consistency': 1.0 - np.std(align_scores),
+            })
         
-    Returns:
-        TrainingArguments configured for dual supervision BLIP3-o training
-    """
-    # Ensure save_steps is compatible with eval_steps
-    if load_best_model_at_end and eval_steps > 0:
-        if save_steps % eval_steps != 0:
-            adjusted_save_steps = ((save_steps // eval_steps) + 1) * eval_steps
-            logger.warning(f"Adjusting save_steps from {save_steps} to {adjusted_save_steps}")
-            save_steps = adjusted_save_steps
-    
-    # Determine evaluation strategy
-    if eval_steps > 0:
-        eval_strategy = "steps"
-        eval_steps_value = eval_steps
-    else:
-        eval_strategy = "no"
-        eval_steps_value = None
-        load_best_model_at_end = False
-        logger.info("Evaluation disabled for dual supervision training")
-    
-    return TrainingArguments(
-        output_dir=output_dir,
-        num_train_epochs=num_train_epochs,
-        per_device_train_batch_size=per_device_train_batch_size,
-        per_device_eval_batch_size=per_device_eval_batch_size,
-        learning_rate=learning_rate,
-        lr_scheduler_type=lr_scheduler_type,
-        warmup_ratio=warmup_ratio,
-        weight_decay=weight_decay,
-        warmup_steps=warmup_steps,
-        logging_steps=logging_steps,
-        save_steps=save_steps,
-        eval_strategy=eval_strategy,
-        eval_steps=eval_steps_value,
-        save_strategy="steps",
-        gradient_accumulation_steps=gradient_accumulation_steps,
-        fp16=fp16 and not bf16,
-        bf16=bf16,
-        dataloader_num_workers=dataloader_num_workers,
-        remove_unused_columns=remove_unused_columns,
-        load_best_model_at_end=load_best_model_at_end,
-        metric_for_best_model=metric_for_best_model,
-        greater_is_better=greater_is_better,
-        save_total_limit=3,
-        prediction_loss_only=False,
-        report_to=["wandb"] if wandb.run is not None else [],
-        run_name=f"dual-supervision-blip3o-{output_dir.split('/')[-1]}" if wandb.run is not None else None,
-        push_to_hub=False,
-        **kwargs
-    )
+        # Loss convergence
+        losses = [m.get('train/total_loss', float('inf')) for m in recent_metrics]
+        if losses:
+            quality_metrics.update({
+                'final_loss': np.mean(losses),
+                'loss_stability': 1.0 / (1.0 + np.std(losses)),  # Higher = more stable
+            })
+        
+        return quality_metrics

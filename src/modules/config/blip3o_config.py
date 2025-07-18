@@ -1,437 +1,485 @@
 """
-UPDATED configuration classes for BLIP3-o DiT architecture with 256 tokens.
-Changes: input_size from 8 to 16 (16x16 = 256 tokens instead of 8x8 = 64 tokens)
+UPDATED BLIP3-o Configuration with Dual Supervision Support
+Place this file at: src/modules/config/blip3o_config.py
+
+Includes:
+1. Original BLIP3-o DiT configuration
+2. NEW: MLP configuration for dual supervision
+3. Flow matching configuration
+4. Factory functions and defaults
 """
 
-from typing import Optional
-from transformers import PretrainedConfig
+from dataclasses import dataclass, field
+from typing import Optional, Dict, Any, Union
+import math
 
 
-class BLIP3oDiTConfig(PretrainedConfig):
+@dataclass
+class BLIP3oDiTConfig:
     """
-    UPDATED Configuration class for BLIP3-o DiT model with 256 tokens.
+    Configuration class for BLIP3-o Diffusion Transformer with Dual Supervision support.
     
-    This configuration ensures that head_dim is compatible with 3D RoPE (divisible by 4)
-    and follows the exact BLIP3-o architecture with 256 tokens (16x16 grid).
+    This configuration supports both standard and dual supervision training modes.
     """
     
-    model_type = "blip3o-dit"
-
-    def __init__(
-        self,
-        # Spatial configuration - UPDATED for 256 tokens
-        input_size: int = 16,                   # UPDATED: 16x16 grid = 256 tokens (was 8)
-        patch_size: int = 1,                    # Already tokenized features
-        
-        # Model dimensions - COMPATIBLE with your extracted embeddings
-        in_channels: int = 1024,                # CLIP feature dimension (ViT-L/14)
-        dim: int = 512,                         # Hidden dimension (3D RoPE compatible)
-        eva_embedding_size: int = 4096,         # EVA-CLIP conditioning dimension (EVA-CLIP-8B)
-        
-        # Transformer architecture - 3D RoPE COMPATIBLE
-        n_layers: int = 24,                     # Number of transformer layers
-        n_heads: int = 8,                       # Number of attention heads (dim=512 -> head_dim=64, divisible by 4)
-        n_kv_heads: Optional[int] = None,       # KV heads for GQA (defaults to n_heads)
-        
-        # FFN configuration
-        multiple_of: int = 256,                 # FFN dimension multiple
-        ffn_dim_multiplier: Optional[float] = None,  # FFN multiplier
-        
-        # Normalization
-        norm_eps: float = 1e-5,                 # Layer norm epsilon
-        qk_norm: bool = True,                   # Query-key normalization
-        
-        # Training configuration
-        learn_sigma: bool = False,              # Don't learn sigma for flow matching
-        _gradient_checkpointing: bool = True,   # Memory optimization
-        
-        **kwargs,
-    ):
-        super().__init__(**kwargs)
-        
-        # Set n_kv_heads to n_heads if not specified (standard attention)
-        if n_kv_heads is None:
-            n_kv_heads = n_heads
-        
-        # Validate and adjust for 3D RoPE compatibility BEFORE storing
-        self._validate_and_adjust_for_3d_rope(dim, n_heads)
-        
-        # Store configuration (after potential adjustments)
-        self.input_size = input_size
-        self.patch_size = patch_size
-        self.in_channels = in_channels
-        self.eva_embedding_size = eva_embedding_size
-        self.n_layers = n_layers
-        self.multiple_of = multiple_of
-        self.ffn_dim_multiplier = ffn_dim_multiplier
-        self.norm_eps = norm_eps
-        self.qk_norm = qk_norm
-        self.learn_sigma = learn_sigma
-        self._gradient_checkpointing = _gradient_checkpointing
-        
-        # Validate configuration
-        self._validate_config()
+    # ========================
+    # Core Model Architecture
+    # ========================
     
-    def _validate_and_adjust_for_3d_rope(self, dim: int, n_heads: int):
-        """
-        Validate and adjust dimensions for 3D RoPE compatibility.
-        Ensures head_dim is divisible by 4.
-        """
-        head_dim = dim // n_heads
+    # Input configuration
+    input_size: int = 16              # Grid size (16x16 = 256 tokens)
+    patch_size: int = 1               # Patch size (pre-tokenized, so 1)
+    in_channels: int = 1024           # CLIP embedding dimension
+    
+    # Model dimensions
+    dim: int = 768                    # Hidden dimension
+    n_layers: int = 16                # Number of transformer layers
+    n_heads: int = 12                 # Number of attention heads
+    n_kv_heads: Optional[int] = None  # Number of key-value heads (defaults to n_heads)
+    
+    # Attention configuration
+    qk_norm: bool = True              # Query-key normalization
+    norm_eps: float = 1e-5            # Layer norm epsilon
+    
+    # Cross-attention configuration
+    eva_embedding_size: int = 4096    # EVA-CLIP conditioning dimension
+    
+    # ========================
+    # NEW: Dual Supervision MLP Configuration
+    # ========================
+    
+    # Global adaptation MLP parameters
+    mlp_hidden_dim: int = 2048        # Hidden dimension for adaptation MLP
+    mlp_num_layers: int = 3           # Number of layers in adaptation MLP  
+    mlp_dropout: float = 0.1          # Dropout rate for adaptation MLP
+    mlp_activation: str = "gelu"      # Activation function for MLP
+    
+    # ========================
+    # Training Configuration
+    # ========================
+    
+    # Diffusion configuration
+    learn_sigma: bool = False         # Whether to learn noise variance (False for flow matching)
+    
+    # Memory optimization
+    _gradient_checkpointing: bool = True    # Enable gradient checkpointing
+    
+    # RoPE configuration  
+    rope_base: float = 10000.0        # RoPE base frequency
+    rope_scaling: Optional[Dict[str, Any]] = None  # RoPE scaling configuration
+    
+    # Initialization
+    initializer_range: float = 0.02   # Standard deviation for weight initialization
+    
+    # ========================
+    # Advanced Configuration
+    # ========================
+    
+    # Attention optimizations
+    use_flash_attention: bool = False     # Use Flash Attention (if available)
+    attention_dropout: float = 0.0       # Attention dropout rate
+    
+    # Feed-forward configuration
+    intermediate_size: Optional[int] = None  # FFN intermediate size (defaults to 4 * dim)
+    hidden_dropout: float = 0.0          # Hidden layer dropout rate
+    
+    # Position encoding
+    max_position_embeddings: int = 1024  # Maximum sequence length
+    
+    # Model type identification
+    model_type: str = "blip3o_dit"
+    
+    # ========================
+    # Compatibility and Validation
+    # ========================
+    
+    def __post_init__(self):
+        """Post-initialization validation and setup."""
         
+        # Set default n_kv_heads if not specified
+        if self.n_kv_heads is None:
+            self.n_kv_heads = self.n_heads
+        
+        # Set default intermediate_size if not specified
+        if self.intermediate_size is None:
+            self.intermediate_size = 4 * self.dim
+        
+        # Validate dimensions
+        self._validate_dimensions()
+        
+        # Adjust for RoPE compatibility if needed
+        self._adjust_rope_compatibility()
+    
+    def _validate_dimensions(self):
+        """Validate model dimensions and configuration."""
+        
+        # Basic dimension checks
+        assert self.dim > 0, "Model dimension must be positive"
+        assert self.n_layers > 0, "Number of layers must be positive"
+        assert self.n_heads > 0, "Number of heads must be positive"
+        assert self.n_kv_heads > 0, "Number of key-value heads must be positive"
+        
+        # Check head dimension compatibility
+        assert self.dim % self.n_heads == 0, f"dim ({self.dim}) must be divisible by n_heads ({self.n_heads})"
+        
+        # Input validation
+        assert self.input_size > 0, "Input size must be positive"
+        assert self.patch_size > 0, "Patch size must be positive"
+        assert self.in_channels > 0, "Input channels must be positive"
+        assert self.eva_embedding_size > 0, "EVA embedding size must be positive"
+        
+        # MLP validation
+        assert self.mlp_hidden_dim > 0, "MLP hidden dimension must be positive"
+        assert self.mlp_num_layers > 0, "MLP number of layers must be positive"
+        assert 0.0 <= self.mlp_dropout <= 1.0, "MLP dropout must be between 0 and 1"
+        assert self.mlp_activation in ["gelu", "relu", "silu"], f"Unknown activation: {self.mlp_activation}"
+        
+        # Flow matching validation
+        assert self.learn_sigma is False, "BLIP3-o uses flow matching, learn_sigma must be False"
+        
+        # BLIP3-o specific validation
+        assert self.in_channels == 1024, "CLIP embedding dimension must be 1024"
+        assert self.eva_embedding_size == 4096, "EVA-CLIP dimension must be 4096"
+        assert self.patch_size == 1, "Features are pre-tokenized, patch_size must be 1"
+        assert self.input_size == 16, "Input size must be 16 for 256 tokens (16×16)"
+    
+    def _adjust_rope_compatibility(self):
+        """Adjust dimensions for 3D RoPE compatibility."""
+        head_dim = self.dim // self.n_heads
+        
+        # RoPE requires head_dim to be divisible by 4 for 3D
         if head_dim % 4 != 0:
-            print(f"⚠️  Adjusting config for 3D RoPE compatibility...")
-            print(f"   Original: dim={dim}, n_heads={n_heads}, head_dim={head_dim}")
-            
-            # Strategy 1: Find compatible number of heads
-            compatible_found = False
-            for candidate_heads in [4, 8, 16, 32, 64]:  # Common head counts
-                if dim % candidate_heads == 0:
-                    candidate_head_dim = dim // candidate_heads
-                    if candidate_head_dim % 4 == 0 and candidate_head_dim >= 32:  # Reasonable head size
-                        n_heads = candidate_heads
+            # Find compatible configuration
+            for candidate_heads in range(1, self.dim + 1):
+                if self.dim % candidate_heads == 0:
+                    candidate_head_dim = self.dim // candidate_heads
+                    if candidate_head_dim % 4 == 0:
+                        print(f"⚠️ Adjusting n_heads from {self.n_heads} to {candidate_heads} for RoPE compatibility")
+                        self.n_heads = candidate_heads
+                        self.n_kv_heads = candidate_heads
                         head_dim = candidate_head_dim
-                        compatible_found = True
-                        print(f"   ✅ Adjusted n_heads to {n_heads} (head_dim={head_dim})")
                         break
             
-            # Strategy 2: Use known compatible configurations
-            if not compatible_found:
-                # Use proven compatible configs
-                known_configs = [
-                    (512, 8, 64),    # head_dim=64 (64%4=0)
-                    (768, 12, 64),   # head_dim=64 (64%4=0) 
-                    (1024, 16, 64),  # head_dim=64 (64%4=0)
-                    (1536, 24, 64),  # head_dim=64 (64%4=0)
-                    (2048, 32, 64),  # head_dim=64 (64%4=0)
-                ]
-                
-                # Find closest compatible config
-                best_config = None
-                min_diff = float('inf')
-                
-                for cfg_dim, cfg_heads, cfg_head_dim in known_configs:
-                    diff = abs(cfg_dim - dim) + abs(cfg_heads - n_heads)
-                    if diff < min_diff:
-                        min_diff = diff
-                        best_config = (cfg_dim, cfg_heads, cfg_head_dim)
-                
-                if best_config:
-                    dim, n_heads, head_dim = best_config
-                    print(f"   ✅ Using compatible config: dim={dim}, n_heads={n_heads}, head_dim={head_dim}")
-                else:
-                    # Final fallback
-                    dim, n_heads, head_dim = 512, 8, 64
-                    print(f"   ✅ Using safe fallback: dim={dim}, n_heads={n_heads}, head_dim={head_dim}")
+            # If still not compatible, use safe defaults
+            if head_dim % 4 != 0:
+                print(f"⚠️ Using safe defaults for RoPE compatibility")
+                self.dim = 512
+                self.n_heads = 8
+                self.n_kv_heads = 8
         
-        # Store the (potentially adjusted) values
-        self.dim = dim
-        self.n_heads = n_heads
-        self.n_kv_heads = n_heads  # Keep them the same
-        
-        print(f"✅ Final 3D RoPE compatible config:")
-        print(f"   dim={self.dim}, n_heads={self.n_heads}, head_dim={self.dim // self.n_heads}")
-        print(f"   head_dim % 4 = {(self.dim // self.n_heads) % 4} (must be 0)")
+        final_head_dim = self.dim // self.n_heads
+        assert final_head_dim % 4 == 0, f"Head dimension {final_head_dim} must be divisible by 4 for 3D RoPE"
     
-    def _validate_config(self):
-        """Validate the configuration parameters."""
-        assert self.dim % self.n_heads == 0, f"Hidden dim {self.dim} must be divisible by num_heads {self.n_heads}"
-        assert (self.dim // self.n_heads) % 4 == 0, f"head_dim {self.dim // self.n_heads} must be divisible by 4 for 3D RoPE"
-        assert self.learn_sigma is False, "BLIP3-o uses flow matching, which doesn't require sigma learning"
-        
-        # UPDATED: Check for 256 tokens (16x16 grid)
-        assert self.input_size * self.input_size == 256, f"Input size {self.input_size}x{self.input_size} must equal 256 tokens"
-        print(f"✅ Validated 256-token configuration: {self.input_size}x{self.input_size} = {self.input_size * self.input_size} tokens")
+    def get_num_tokens(self) -> int:
+        """Get total number of tokens (patches)."""
+        return self.input_size * self.input_size
+    
+    def get_head_dim(self) -> int:
+        """Get attention head dimension."""
+        return self.dim // self.n_heads
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert config to dictionary."""
+        return {
+            # Core architecture
+            "input_size": self.input_size,
+            "patch_size": self.patch_size,
+            "in_channels": self.in_channels,
+            "dim": self.dim,
+            "n_layers": self.n_layers,
+            "n_heads": self.n_heads,
+            "n_kv_heads": self.n_kv_heads,
+            "qk_norm": self.qk_norm,
+            "norm_eps": self.norm_eps,
+            "eva_embedding_size": self.eva_embedding_size,
+            
+            # Dual supervision MLP
+            "mlp_hidden_dim": self.mlp_hidden_dim,
+            "mlp_num_layers": self.mlp_num_layers,
+            "mlp_dropout": self.mlp_dropout,
+            "mlp_activation": self.mlp_activation,
+            
+            # Training
+            "learn_sigma": self.learn_sigma,
+            "_gradient_checkpointing": self._gradient_checkpointing,
+            "rope_base": self.rope_base,
+            "rope_scaling": self.rope_scaling,
+            "initializer_range": self.initializer_range,
+            
+            # Advanced
+            "use_flash_attention": self.use_flash_attention,
+            "attention_dropout": self.attention_dropout,
+            "intermediate_size": self.intermediate_size,
+            "hidden_dropout": self.hidden_dropout,
+            "max_position_embeddings": self.max_position_embeddings,
+            "model_type": self.model_type,
+        }
+    
+    @classmethod
+    def from_dict(cls, config_dict: Dict[str, Any]) -> "BLIP3oDiTConfig":
+        """Create config from dictionary."""
+        return cls(**config_dict)
 
 
+@dataclass
 class FlowMatchingConfig:
     """
-    Configuration for flow matching training objective.
-    Based on BLIP3-o's flow matching implementation.
-    Updated for compatibility with your embeddings.
+    Configuration for flow matching loss computation.
     """
     
-    def __init__(
-        self,
-        # Flow matching parameters
-        sigma_min: float = 1e-4,                # Minimum noise level
-        sigma_max: float = 1.0,                 # Maximum noise level
-        prediction_type: str = "v_prediction",  # "v_prediction" or "epsilon"
-        
-        # Training parameters - CORRECT for your extracted embeddings
-        clip_dim: int = 1024,                   # CLIP embedding dimension (ViT-L/14)
-        eva_dim: int = 4096,                    # EVA-CLIP dimension (EVA-CLIP-8B)
-        
-        # Regularization
-        regularization_weight: float = 0.0,    # Additional regularization
-        
-        # Scheduling
-        schedule_type: str = "linear",          # Noise schedule type
-    ):
-        self.sigma_min = sigma_min
-        self.sigma_max = sigma_max
-        self.prediction_type = prediction_type
-        self.clip_dim = clip_dim
-        self.eva_dim = eva_dim
-        self.regularization_weight = regularization_weight
-        self.schedule_type = schedule_type
-        
-        # Validate
-        assert prediction_type in ["v_prediction", "epsilon"], f"Invalid prediction type: {prediction_type}"
-        assert 0 <= sigma_min < sigma_max, "Invalid sigma range"
-        assert clip_dim == 1024, "CLIP dimension must match your embeddings (1024 for ViT-L/14)"
-        assert eva_dim == 4096, "EVA-CLIP dimension must match your embeddings (4096 for EVA-CLIP-8B)"
-
-
-class TrainingConfig:
-    """
-    Training configuration for BLIP3-o DiT.
-    """
+    # Flow matching parameters
+    sigma_min: float = 1e-4           # Minimum noise level
+    sigma_max: float = 1.0            # Maximum noise level
+    prediction_type: str = "v_prediction"  # Prediction type ("v_prediction" or "epsilon")
+    schedule_type: str = "linear"     # Noise schedule ("linear", "cosine", "sigmoid")
     
-    def __init__(
-        self,
-        # Data configuration
-        batch_size: int = 32,
-        eval_batch_size: int = 64,
-        num_workers: int = 4,
-        
-        # Training parameters
-        num_epochs: int = 10,
-        learning_rate: float = 1e-4,
-        weight_decay: float = 0.01,
-        warmup_steps: int = 1000,
-        gradient_accumulation_steps: int = 1,
-        
-        # Optimization
-        optimizer_type: str = "adamw",
-        lr_scheduler_type: str = "cosine",
-        fp16: bool = True,
-        gradient_checkpointing: bool = True,
-        
-        # Evaluation
-        eval_split: float = 0.1,
-        eval_steps: int = 1000,
-        
-        # Logging
-        logging_steps: int = 100,
-        save_steps: int = 1000,
-        
-        # Paths
-        output_dir: str = "./checkpoints/blip3o-dit",
-        embeddings_path: str = "",
-        
-        # Experiment tracking
-        wandb_project: str = "blip3o-dit",
-        wandb_run_name: Optional[str] = None,
-        use_wandb: bool = True,
-        
-        # Data subset (for debugging)
-        subset_size: Optional[int] = None,
-        normalize_embeddings: bool = True,
-    ):
-        self.batch_size = batch_size
-        self.eval_batch_size = eval_batch_size
-        self.num_workers = num_workers
-        self.num_epochs = num_epochs
-        self.learning_rate = learning_rate
-        self.weight_decay = weight_decay
-        self.warmup_steps = warmup_steps
-        self.gradient_accumulation_steps = gradient_accumulation_steps
-        self.optimizer_type = optimizer_type
-        self.lr_scheduler_type = lr_scheduler_type
-        self.fp16 = fp16
-        self.gradient_checkpointing = gradient_checkpointing
-        self.eval_split = eval_split
-        self.eval_steps = eval_steps
-        self.logging_steps = logging_steps
-        self.save_steps = save_steps
-        self.output_dir = output_dir
-        self.embeddings_path = embeddings_path
-        self.wandb_project = wandb_project
-        self.wandb_run_name = wandb_run_name
-        self.use_wandb = use_wandb
-        self.subset_size = subset_size
-        self.normalize_embeddings = normalize_embeddings
+    # Embedding dimensions
+    clip_dim: int = 1024             # CLIP embedding dimension
+    eva_dim: int = 4096              # EVA-CLIP embedding dimension
+    
+    # Loss weights
+    regularization_weight: float = 0.01  # Regularization loss weight
+    
+    # Enhanced loss parameters (for dual supervision)
+    alignment_loss_weight: float = 0.1    # Alignment loss weight
+    temporal_loss_weight: float = 0.05    # Temporal consistency weight
+    
+    # Progressive training
+    use_progressive_training: bool = True  # Enable progressive timestep training
+    min_timestep: float = 0.001       # Minimum timestep for progressive training
+    max_timestep: float = 0.999       # Maximum timestep for progressive training
+    
+    def __post_init__(self):
+        """Validate flow matching configuration."""
+        assert self.prediction_type in ["v_prediction", "epsilon"], f"Invalid prediction type: {self.prediction_type}"
+        assert self.schedule_type in ["linear", "cosine", "sigmoid"], f"Invalid schedule type: {self.schedule_type}"
+        assert 0 <= self.sigma_min < self.sigma_max <= 10.0, f"Invalid sigma range: [{self.sigma_min}, {self.sigma_max}]"
+        assert self.clip_dim > 0, "CLIP dimension must be positive"
+        assert self.eva_dim > 0, "EVA dimension must be positive"
+        assert 0 <= self.min_timestep < self.max_timestep <= 1.0, "Invalid timestep range"
 
+
+# ========================
+# Factory Functions
+# ========================
 
 def get_default_blip3o_config() -> BLIP3oDiTConfig:
-    """Get default BLIP3-o configuration with 3D RoPE compatibility and 256 tokens."""
+    """Get default BLIP3-o configuration."""
+    return BLIP3oDiTConfig()
+
+
+def get_small_blip3o_config() -> BLIP3oDiTConfig:
+    """Get small BLIP3-o configuration for testing."""
     return BLIP3oDiTConfig(
-        input_size=16,                   # UPDATED: 16x16 = 256 tokens (was 8)
-        patch_size=1,                    # Pre-tokenized
-        in_channels=1024,                # CLIP dimension (ViT-L/14)
-        dim=512,                         # Hidden dimension (3D RoPE compatible)
-        eva_embedding_size=4096,         # EVA-CLIP dimension (EVA-CLIP-8B)
-        n_layers=24,                     # Transformer layers
-        n_heads=8,                       # Attention heads (head_dim=64, divisible by 4)
-        n_kv_heads=8,                    # KV heads
-        multiple_of=256,                 # FFN multiple
-        norm_eps=1e-5,                   # Normalization
-        qk_norm=True,                    # Query-key norm
-        learn_sigma=False,               # Flow matching
-        _gradient_checkpointing=True,    # Memory optimization
+        dim=512,
+        n_layers=8,
+        n_heads=8,
+        mlp_hidden_dim=1024,
+        mlp_num_layers=2,
     )
 
 
 def get_large_blip3o_config() -> BLIP3oDiTConfig:
-    """Get large BLIP3-o configuration with 3D RoPE compatibility and 256 tokens."""
+    """Get large BLIP3-o configuration for production."""
     return BLIP3oDiTConfig(
-        input_size=16,                   # UPDATED: 16x16 = 256 tokens (was 8)
-        patch_size=1,                    # Pre-tokenized
-        in_channels=1024,                # CLIP dimension (ViT-L/14)
-        dim=1024,                        # Larger hidden dimension
-        eva_embedding_size=4096,         # EVA-CLIP dimension (EVA-CLIP-8B)
-        n_layers=32,                     # More transformer layers
-        n_heads=16,                      # More attention heads (head_dim=64, divisible by 4)
-        n_kv_heads=16,                   # KV heads
-        multiple_of=256,                 # FFN multiple
-        norm_eps=1e-5,                   # Normalization
-        qk_norm=True,                    # Query-key norm
-        learn_sigma=False,               # Flow matching
-        _gradient_checkpointing=True,    # Memory optimization
+        dim=1024,
+        n_layers=24,
+        n_heads=16,
+        mlp_hidden_dim=4096,
+        mlp_num_layers=4,
     )
 
 
-def get_small_blip3o_config() -> BLIP3oDiTConfig:
-    """Get small BLIP3-o configuration for testing/debugging with 256 tokens."""
-    return BLIP3oDiTConfig(
-        input_size=16,                   # UPDATED: 16x16 = 256 tokens (was 8)
-        patch_size=1,                    # Pre-tokenized
-        in_channels=1024,                # CLIP dimension (ViT-L/14)
-        dim=256,                         # Smaller hidden dimension
-        eva_embedding_size=4096,         # EVA-CLIP dimension (EVA-CLIP-8B)
-        n_layers=8,                      # Fewer transformer layers
-        n_heads=4,                       # Fewer attention heads (head_dim=64, divisible by 4)
-        n_kv_heads=4,                    # KV heads
-        multiple_of=256,                 # FFN multiple
-        norm_eps=1e-5,                   # Normalization
-        qk_norm=True,                    # Query-key norm
-        learn_sigma=False,               # Flow matching
-        _gradient_checkpointing=False,   # Disabled for testing
-    )
+def get_dual_supervision_config(
+    base_config: Optional[BLIP3oDiTConfig] = None,
+    **kwargs
+) -> BLIP3oDiTConfig:
+    """
+    Get configuration optimized for dual supervision training.
+    
+    Args:
+        base_config: Base configuration to modify
+        **kwargs: Additional parameters to override
+        
+    Returns:
+        Configuration optimized for dual supervision
+    """
+    if base_config is None:
+        base_config = get_default_blip3o_config()
+    
+    # Dual supervision optimizations
+    dual_supervision_params = {
+        "mlp_hidden_dim": 2048,      # Larger MLP for better adaptation
+        "mlp_num_layers": 3,         # Deeper MLP for complex mappings
+        "mlp_dropout": 0.1,          # Moderate dropout for regularization
+        "_gradient_checkpointing": True,  # Memory optimization
+        **kwargs  # Allow custom overrides
+    }
+    
+    # Create new config with dual supervision parameters
+    config_dict = base_config.to_dict()
+    config_dict.update(dual_supervision_params)
+    
+    return BLIP3oDiTConfig.from_dict(config_dict)
 
 
 def get_default_flow_matching_config() -> FlowMatchingConfig:
-    """Get default flow matching configuration for your embeddings."""
+    """Get default flow matching configuration."""
+    return FlowMatchingConfig()
+
+
+def get_enhanced_flow_matching_config() -> FlowMatchingConfig:
+    """Get enhanced flow matching configuration with alignment optimization."""
     return FlowMatchingConfig(
+        alignment_loss_weight=0.1,
+        temporal_loss_weight=0.05,
+        use_progressive_training=True,
+        schedule_type="cosine",  # Smoother transitions
+    )
+
+
+def get_dual_supervision_flow_matching_config() -> FlowMatchingConfig:
+    """Get flow matching configuration optimized for dual supervision."""
+    return FlowMatchingConfig(
+        # Standard flow matching
         sigma_min=1e-4,
         sigma_max=1.0,
-        prediction_type="v_prediction",  # BLIP3-o uses v-prediction
-        clip_dim=1024,                   # CLIP dimension (ViT-L/14) - matches your embeddings
-        eva_dim=4096,                    # EVA-CLIP dimension (EVA-CLIP-8B) - matches your embeddings
-        regularization_weight=0.0,
+        prediction_type="v_prediction",
         schedule_type="linear",
+        
+        # Dual supervision optimizations
+        alignment_loss_weight=0.15,     # Higher alignment emphasis
+        temporal_loss_weight=0.05,
+        use_progressive_training=True,
+        
+        # Regularization
+        regularization_weight=0.01,
     )
 
 
-def get_default_training_config() -> TrainingConfig:
-    """Get default training configuration for BLIP3-o."""
-    return TrainingConfig(
-        batch_size=32,
-        eval_batch_size=64,
-        num_workers=4,
-        num_epochs=10,
-        learning_rate=1e-4,
-        weight_decay=0.01,
-        warmup_steps=1000,
-        gradient_accumulation_steps=1,
-        optimizer_type="adamw",
-        lr_scheduler_type="cosine",
-        fp16=True,
-        gradient_checkpointing=True,
-        eval_split=0.1,
-        eval_steps=1000,
-        logging_steps=100,
-        save_steps=1000,
-        output_dir="./checkpoints/blip3o-dit",
-        embeddings_path="",
-        wandb_project="blip3o-dit",
-        use_wandb=True,
-        normalize_embeddings=True,
-    )
+# ========================
+# Configuration Validation
+# ========================
 
-
-# Configuration validation functions
-def validate_3d_rope_compatibility(config: BLIP3oDiTConfig) -> bool:
+def validate_config_compatibility(
+    model_config: BLIP3oDiTConfig,
+    flow_config: FlowMatchingConfig
+) -> bool:
     """
-    Validate that a configuration is compatible with 3D RoPE.
+    Validate compatibility between model and flow matching configurations.
     
     Args:
-        config: BLIP3oDiTConfig to validate
+        model_config: Model configuration
+        flow_config: Flow matching configuration
         
     Returns:
         True if compatible, raises assertion error if not
     """
-    head_dim = config.dim // config.n_heads
+    # Check dimension compatibility
+    assert model_config.in_channels == flow_config.clip_dim, \
+        f"Model input channels ({model_config.in_channels}) must match flow CLIP dim ({flow_config.clip_dim})"
     
-    # Check divisibility requirements
-    assert config.dim % config.n_heads == 0, f"dim {config.dim} must be divisible by n_heads {config.n_heads}"
-    assert head_dim % 4 == 0, f"head_dim {head_dim} must be divisible by 4 for 3D RoPE"
-    assert head_dim >= 32, f"head_dim {head_dim} should be at least 32 for reasonable attention"
+    assert model_config.eva_embedding_size == flow_config.eva_dim, \
+        f"Model EVA size ({model_config.eva_embedding_size}) must match flow EVA dim ({flow_config.eva_dim})"
     
-    print(f"✅ Configuration is 3D RoPE compatible:")
-    print(f"   dim={config.dim}, n_heads={config.n_heads}, head_dim={head_dim}")
+    # Check training compatibility
+    assert model_config.learn_sigma is False, \
+        "Model must use flow matching (learn_sigma=False)"
     
+    print("✅ Configuration compatibility validated")
     return True
 
 
-def print_model_size_estimate(config: BLIP3oDiTConfig):
-    """Print estimated model size for a configuration - UPDATED for 256 tokens."""
+# ========================
+# Preset Configurations
+# ========================
+
+# Standard configurations
+BLIP3O_SMALL = get_small_blip3o_config()
+BLIP3O_DEFAULT = get_default_blip3o_config()
+BLIP3O_LARGE = get_large_blip3o_config()
+
+# Dual supervision configurations
+BLIP3O_DUAL_SUPERVISION = get_dual_supervision_config()
+FLOW_MATCHING_DUAL_SUPERVISION = get_dual_supervision_flow_matching_config()
+
+# Enhanced configurations
+FLOW_MATCHING_ENHANCED = get_enhanced_flow_matching_config()
+
+
+def get_preset_config(preset_name: str) -> BLIP3oDiTConfig:
+    """
+    Get a preset configuration by name.
     
-    # Rough parameter estimation for 256 tokens
-    embed_params = config.in_channels * config.dim + config.eva_embedding_size * config.dim
+    Args:
+        preset_name: Name of the preset configuration
+        
+    Returns:
+        BLIP3oDiTConfig instance
+    """
+    presets = {
+        "small": BLIP3O_SMALL,
+        "default": BLIP3O_DEFAULT, 
+        "large": BLIP3O_LARGE,
+        "dual_supervision": BLIP3O_DUAL_SUPERVISION,
+    }
     
-    # Transformer layers
-    layer_params = config.n_layers * (
-        # Self-attention
-        3 * config.dim * config.dim +  # Q, K, V projections
-        config.dim * config.dim +       # Output projection
-        # Cross-attention
-        config.dim * config.dim +       # Q projection
-        2 * config.dim * config.dim +   # K, V projections
-        config.dim * config.dim +       # Output projection
-        # FFN
-        config.dim * config.dim * 4 +   # Up projection
-        config.dim * 4 * config.dim +   # Down projection
-        # LayerNorms and other
-        config.dim * 8                  # Various norms and projections
-    )
+    if preset_name not in presets:
+        available = ", ".join(presets.keys())
+        raise ValueError(f"Unknown preset '{preset_name}'. Available: {available}")
     
-    output_params = config.dim * config.in_channels
+    return presets[preset_name]
+
+
+# ========================
+# Export Summary
+# ========================
+
+__all__ = [
+    # Main configuration classes
+    "BLIP3oDiTConfig",
+    "FlowMatchingConfig",
     
-    total_params = embed_params + layer_params + output_params
-    memory_mb = total_params * 4 / (1024 * 1024)  # 4 bytes per float32 parameter
+    # Factory functions
+    "get_default_blip3o_config",
+    "get_small_blip3o_config", 
+    "get_large_blip3o_config",
+    "get_dual_supervision_config",
+    "get_default_flow_matching_config",
+    "get_enhanced_flow_matching_config",
+    "get_dual_supervision_flow_matching_config",
     
-    print(f"📊 Estimated model size for config (256 tokens):")
-    print(f"   Parameters: {total_params:,}")
-    print(f"   Memory (FP32): {memory_mb:.1f} MB")
-    print(f"   Memory (FP16): {memory_mb/2:.1f} MB")
-    print(f"   Tokens: 256 (16x16 grid)")
+    # Utilities
+    "validate_config_compatibility",
+    "get_preset_config",
+    
+    # Presets
+    "BLIP3O_SMALL",
+    "BLIP3O_DEFAULT",
+    "BLIP3O_LARGE",
+    "BLIP3O_DUAL_SUPERVISION",
+    "FLOW_MATCHING_DUAL_SUPERVISION",
+    "FLOW_MATCHING_ENHANCED",
+]
 
 
 if __name__ == "__main__":
-    # Test the configurations
-    print("Testing BLIP3-o configurations with 256 tokens...")
+    # Test configuration creation and validation
+    print("🧪 Testing BLIP3-o configurations...")
     
-    configs = [
-        ("Small", get_small_blip3o_config()),
-        ("Default", get_default_blip3o_config()),
-        ("Large", get_large_blip3o_config()),
-    ]
+    # Test default configuration
+    default_config = get_default_blip3o_config()
+    print(f"✅ Default config: {default_config.dim}D, {default_config.n_layers}L, {default_config.n_heads}H")
     
-    for name, config in configs:
-        print(f"\n{name} Configuration:")
-        print(f"  dim={config.dim}, n_heads={config.n_heads}, n_layers={config.n_layers}")
-        print(f"  tokens={config.input_size}x{config.input_size}={config.input_size*config.input_size}")
-        
-        # Validate 3D RoPE compatibility
-        try:
-            validate_3d_rope_compatibility(config)
-        except AssertionError as e:
-            print(f"  ❌ Not 3D RoPE compatible: {e}")
-            continue
-        
-        # Print size estimate
-        print_model_size_estimate(config)
+    # Test dual supervision configuration
+    dual_config = get_dual_supervision_config()
+    print(f"✅ Dual supervision config: MLP {dual_config.mlp_hidden_dim}D, {dual_config.mlp_num_layers}L")
     
-    print("\n✅ All configurations are 3D RoPE compatible with 256 tokens!")
+    # Test flow matching configuration
+    flow_config = get_dual_supervision_flow_matching_config()
+    print(f"✅ Flow matching config: {flow_config.prediction_type}, {flow_config.schedule_type}")
+    
+    # Test compatibility
+    validate_config_compatibility(dual_config, flow_config)
+    
+    print("🎉 All configuration tests passed!")
