@@ -1,10 +1,13 @@
 """
-UPDATED BLIP3-o DiT Model with Dual Supervision Architecture
+FIXED BLIP3-o DiT Model with Dual Supervision Architecture
+IMPORTANT: This is our own implementation inspired by BLIP3-o paper, NOT using any pre-trained models
+
 Key Changes:
 1. Added average pooling after DiT output
 2. Added custom MLP layers for domain adaptation  
 3. Added frozen CLIP visual projection layer
 4. Dual output: patch-level + global embeddings
+5. FIXED: Proper PretrainedConfig compatibility
 """
 
 import torch
@@ -14,6 +17,7 @@ from typing import Optional, Dict, Any, Tuple, List, Union
 from transformers import PreTrainedModel, CLIPModel
 import math
 
+# Import our fixed config
 from ..config.blip3o_config import BLIP3oDiTConfig
 
 
@@ -253,7 +257,7 @@ class BLIP3oAttentionBlock(nn.Module):
 
 class GlobalAdaptationMLP(nn.Module):
     """
-    NEW: Custom MLP for domain adaptation after average pooling
+    Custom MLP for domain adaptation after average pooling
     Maps DiT features [1024] → CLIP space [1024] before visual projection
     """
     
@@ -318,7 +322,10 @@ class GlobalAdaptationMLP(nn.Module):
 
 class BLIP3oDiTModel(PreTrainedModel):
     """
-    UPDATED: BLIP3-o DiT Model with Dual Supervision Architecture
+    BLIP3-o DiT Model with Dual Supervision Architecture
+    
+    IMPORTANT: This is our own implementation inspired by BLIP3-o paper.
+    We are NOT using any pre-trained BLIP3-o models.
     
     New Architecture:
     EVA [B,256,4096] → DiT → [B,256,1024] → {
@@ -330,7 +337,9 @@ class BLIP3oDiTModel(PreTrainedModel):
     config_class = BLIP3oDiTConfig
     
     def __init__(self, config: BLIP3oDiTConfig):
+        # FIXED: Pass config directly to parent
         super().__init__(config)
+        
         self.config = config
         self._gradient_checkpointing = config._gradient_checkpointing
         self._validate_blip3o_config(config)
@@ -391,7 +400,7 @@ class BLIP3oDiTModel(PreTrainedModel):
         self.norm_out = nn.LayerNorm(config.dim, eps=config.norm_eps)
         self.proj_out = nn.Linear(config.dim, config.in_channels, bias=True)
         
-        # NEW: Global adaptation pipeline
+        # Global adaptation pipeline
         self.global_avg_pool = nn.AdaptiveAvgPool1d(1)  # Pool over token dimension
         self.global_adaptation_mlp = GlobalAdaptationMLP(
             input_dim=config.in_channels,  # 1024 after proj_out
@@ -401,7 +410,7 @@ class BLIP3oDiTModel(PreTrainedModel):
             dropout=getattr(config, 'mlp_dropout', 0.1),
         )
         
-        # NEW: Frozen CLIP visual projection layer (will be loaded separately)
+        # Frozen CLIP visual projection layer (will be loaded separately)
         self.frozen_clip_visual_proj = None
         self.clip_output_dim = 768  # CLIP text embedding dimension
         
@@ -410,6 +419,7 @@ class BLIP3oDiTModel(PreTrainedModel):
         print(f"✅ DUAL SUPERVISION BLIP3-o DiT model initialized for {self.num_tokens} tokens")
         print(f"   Patch output: [B, {self.num_tokens}, {config.in_channels}]")
         print(f"   Global output: [B, {self.clip_output_dim}]")
+        print(f"   NOTE: This is our own implementation, NOT using pre-trained BLIP3-o models")
 
     def _create_sinusoidal_timestep_embedding(self, embed_dim: int):
         half_dim = embed_dim // 2
@@ -438,9 +448,10 @@ class BLIP3oDiTModel(PreTrainedModel):
         Load and freeze CLIP visual projection layer
         
         Args:
-            clip_model_name: Name of CLIP model to load
+            clip_model_name: Name of CLIP model to load projection from
         """
         print(f"🔒 Loading frozen CLIP visual projection from {clip_model_name}")
+        print(f"   NOTE: Only loading the visual projection layer, not full BLIP3-o model")
         
         clip_model = CLIPModel.from_pretrained(clip_model_name)
         
@@ -489,7 +500,7 @@ class BLIP3oDiTModel(PreTrainedModel):
         **kwargs
     ):
         """
-        UPDATED: Forward pass with dual outputs
+        Forward pass with dual outputs
         
         Returns:
             Dict containing:
@@ -557,7 +568,7 @@ class BLIP3oDiTModel(PreTrainedModel):
         hidden_states = self.norm_out(hidden_states)
         patch_output = self.proj_out(hidden_states)  # [B, 256, 1024]
         
-        # NEW: Global adaptation pipeline
+        # Global adaptation pipeline
         # 1. Average pooling over token dimension
         pooled_features = patch_output.mean(dim=1)  # [B, 1024]
         
@@ -606,7 +617,7 @@ class BLIP3oDiTModel(PreTrainedModel):
         return_global_only: bool = True,
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, List[torch.Tensor]]]:
         """
-        UPDATED: Generation with dual outputs
+        Generation with dual outputs
         
         Args:
             encoder_hidden_states: EVA-CLIP conditioning [batch_size, num_tokens, 4096]
@@ -705,6 +716,9 @@ def create_blip3o_dit_model(
     """
     Factory function to create a BLIP3-o DiT model with dual supervision.
     
+    IMPORTANT: This creates our own implementation inspired by BLIP3-o paper.
+    We are NOT loading any pre-trained BLIP3-o models.
+    
     Args:
         config: Model configuration
         load_clip_projection: Whether to load frozen CLIP projection
@@ -725,6 +739,10 @@ def create_blip3o_dit_model(
         else:
             print(f"Warning: Unknown config parameter '{key}' ignored")
     
+    print("🏗️ Creating BLIP3-o DiT model (our own implementation)")
+    print(f"   NOTE: This is NOT loading any pre-trained BLIP3-o models")
+    print(f"   NOTE: We only load CLIP's visual projection layer for fair comparison")
+    
     model = BLIP3oDiTModel(config)
     
     # Load frozen CLIP projection if requested
@@ -740,6 +758,9 @@ def load_blip3o_dit_model(
     torch_dtype: Optional[torch.dtype] = None
 ) -> BLIP3oDiTModel:
     """Load a pre-trained BLIP3-o DiT model with dual supervision."""
+    print(f"📁 Loading our trained BLIP3-o model from: {model_path}")
+    print(f"   NOTE: This loads our own trained model, not a pre-trained BLIP3-o")
+    
     from transformers import AutoModel
     
     model = AutoModel.from_pretrained(

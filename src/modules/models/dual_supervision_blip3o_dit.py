@@ -1,9 +1,12 @@
 """
-Dual Supervision BLIP3-o DiT Model Implementation
+FIXED Dual Supervision BLIP3-o DiT Model Implementation
 Place this file as: src/modules/models/dual_supervision_blip3o_dit.py
 
 This is a wrapper around the main BLIP3-o DiT model that provides dual supervision
 architecture with enhanced global alignment for retrieval performance.
+
+IMPORTANT: This is our own implementation inspired by BLIP3-o paper.
+We are NOT using any pre-trained BLIP3-o models.
 
 Architecture:
 EVA [B,256,4096] → DiT → [B,256,1024] → {
@@ -29,19 +32,22 @@ class DualSupervisionBLIP3oDiTModel(BLIP3oDiTModel):
     This is essentially the same as the base BLIP3oDiTModel but with explicit
     dual supervision interface. The base model already has the dual supervision
     architecture built-in.
+    
+    IMPORTANT: This is our own implementation inspired by BLIP3-o paper.
+    We are NOT using any pre-trained BLIP3-o models.
     """
     
     def __init__(self, config: BLIP3oDiTConfig):
+        # FIXED: Config is already a PretrainedConfig, pass directly
         super().__init__(config)
         
         # Verify dual supervision components are present
         assert hasattr(self, 'global_adaptation_mlp'), "Global adaptation MLP not found"
-        assert hasattr(self, 'frozen_clip_visual_proj'), "Frozen CLIP projection not initialized"
         
         print(f"✅ DualSupervisionBLIP3oDiTModel initialized")
         print(f"   Dual supervision architecture: Enabled")
         print(f"   Global adaptation MLP: {self.global_adaptation_mlp}")
-        print(f"   Frozen CLIP projection: {self.frozen_clip_visual_proj is not None}")
+        print(f"   NOTE: Our own implementation, NOT pre-trained BLIP3-o")
     
     def forward(
         self,
@@ -96,6 +102,7 @@ class DualSupervisionBLIP3oDiTModel(BLIP3oDiTModel):
             'clip_proj_shape': self.frozen_clip_visual_proj.weight.shape if self.frozen_clip_visual_proj else None,
             'expected_patch_output_shape': f"[batch_size, 256, {self.config.in_channels}]",
             'expected_global_output_shape': "[batch_size, 768]",
+            'implementation_note': "Our own implementation inspired by BLIP3-o, not pre-trained model",
         }
 
 
@@ -108,6 +115,9 @@ def create_blip3o_dit_model(
 ) -> DualSupervisionBLIP3oDiTModel:
     """
     Factory function to create a dual supervision BLIP3-o DiT model.
+    
+    IMPORTANT: This creates our own implementation inspired by BLIP3-o paper.
+    We are NOT loading any pre-trained BLIP3-o models.
     
     Args:
         config: Model configuration
@@ -130,6 +140,11 @@ def create_blip3o_dit_model(
         else:
             print(f"Warning: Unknown config parameter '{key}' ignored")
     
+    print("🏗️ Creating dual supervision BLIP3-o DiT model")
+    print(f"   NOTE: This is our own implementation inspired by BLIP3-o paper")
+    print(f"   NOTE: We are NOT loading any pre-trained BLIP3-o models")
+    print(f"   NOTE: Only CLIP's visual projection layer is loaded for fair comparison")
+    
     # Create dual supervision model
     model = DualSupervisionBLIP3oDiTModel(config)
     
@@ -150,6 +165,7 @@ def create_blip3o_dit_model(
     print(f"   Expected outputs:")
     print(f"     Patch: {dual_info['expected_patch_output_shape']}")
     print(f"     Global: {dual_info['expected_global_output_shape']}")
+    print(f"   Implementation: {dual_info['implementation_note']}")
     
     return model
 
@@ -160,6 +176,9 @@ def load_dual_supervision_blip3o_dit_model(
     torch_dtype: Optional[torch.dtype] = None
 ) -> DualSupervisionBLIP3oDiTModel:
     """Load a pre-trained dual supervision BLIP3-o DiT model."""
+    print(f"📁 Loading our trained dual supervision BLIP3-o model from: {model_path}")
+    print(f"   NOTE: This loads our own trained model, not a pre-trained BLIP3-o")
+    
     from transformers import AutoModel
     
     model = AutoModel.from_pretrained(
