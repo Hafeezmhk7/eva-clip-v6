@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 FIXED Multi-GPU Training Script for BLIP3-o DiT with Dual Supervision
-All import and interface issues resolved.
+FIXED: Removed duplicate DDP parameters causing TypeError
 """
 
 import os
@@ -138,7 +138,7 @@ def main():
     if local_rank == 0:
         print("🚀 FIXED Dual Supervision Multi-GPU BLIP3-o DiT Training")
         print("=" * 60)
-        print("✅ ALL IMPORT AND INTERFACE ISSUES RESOLVED")
+        print("✅ FIXED: Removed duplicate DDP parameters")
         print("=" * 60)
         print(f"World size: {world_size}")
         print(f"Local rank: {local_rank}")
@@ -151,8 +151,8 @@ def main():
         # ✅ FIXED IMPORTS - All corrected
         from src.modules.config.blip3o_config import BLIP3oDiTConfig
         from src.modules.models.blip3o_dit import create_blip3o_dit_model
-        from src.modules.losses.dual_supervision_flow_matching_loss import create_dual_supervision_loss  # ✅ CORRECT MODULE
-        from src.modules.trainers.dual_supervision_blip3o_trainer import DualSupervisionBLIP3oTrainer, create_blip3o_training_args  # ✅ CORRECT TRAINER
+        from src.modules.losses.dual_supervision_flow_matching_loss import create_dual_supervision_loss
+        from src.modules.trainers.dual_supervision_blip3o_trainer import DualSupervisionBLIP3oTrainer, create_blip3o_training_args
         from src.modules.datasets.blip3o_dataset import create_chunked_dataloaders
         
         if local_rank == 0:
@@ -285,7 +285,7 @@ def main():
             print(f"   Max steps: {max_steps}")
             print(f"   Total epochs: {args.num_epochs}")
         
-        # ✅ FIXED: Create TrainingArguments with correct function
+        # ✅ FIXED: Create TrainingArguments without duplicate DDP parameters
         training_args = create_blip3o_training_args(
             output_dir=args.output_dir,
             num_train_epochs=args.num_epochs,
@@ -307,11 +307,8 @@ def main():
             metric_for_best_model="eval_global_cosine_mean",  # Focus on global alignment
             greater_is_better=True,
             
-            # DDP settings
-            ddp_find_unused_parameters=False,
-            dataloader_pin_memory=True,
-            save_on_each_node=False,
-            local_rank=local_rank,
+            # FIXED: Removed duplicate DDP settings - handled in function
+            # The function already sets these, so don't pass them here
         )
         
         if local_rank == 0:
@@ -324,7 +321,7 @@ def main():
             flow_matching_loss=flow_matching_loss,
             train_dataset=train_dataset,
             eval_dataset=eval_dataset,
-            clip_model_name=args.clip_model_name,  # ✅ This parameter exists in DualSupervisionBLIP3oTrainer
+            clip_model_name=args.clip_model_name,
         )
         
         if local_rank == 0:
@@ -350,8 +347,8 @@ def main():
         
         if local_rank == 0:
             print("🚀 Starting FIXED dual supervision multi-GPU training...")
-            print("✅ All imports and interfaces corrected")
-            print("✅ Dual supervision architecture verified")
+            print("✅ Device mismatch issues resolved")
+            print("✅ Duplicate parameter issues resolved")
             print("✅ Expected recall improvement: 0% → 60%+")
         
         # Start training - Trainer handles all DDP automatically
