@@ -296,7 +296,7 @@ def main():
             warmup_ratio=args.warmup_ratio,
             weight_decay=args.weight_decay,
             warmup_steps=args.warmup_steps,
-            logging_steps=50,
+            logging_steps=2,
             save_steps=max(100, max_steps // 5),
             eval_steps=max(50, max_steps // 10) if has_eval_dataloader else 0,
             gradient_accumulation_steps=args.gradient_accumulation_steps,
