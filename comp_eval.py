@@ -1,651 +1,788 @@
 #!/usr/bin/env python3
 """
-Comprehensive Evaluation and Analysis Script for BLIP3-o DiT
-Combines recall evaluation, alignment analysis, and performance metrics
+BLIP3-o Recall Evaluation Script (with Cosine Similarity)
+Tests image-to-text recall performance and compares embedding similarity between:
+1. OpenAI CLIP ViT-L/14 baseline
+2. Trained BLIP3-o model with dual supervision
+
+Usage:
+python evaluation/blip3o_recall_evaluation.py \
+    --coco_root ./data/coco \
+    --blip3o_model_path /scratch-shared/scur2711/blip3o_workspace/checkpoints/blip3o_multi_gpu_fixed_cosine_13218794_20250719_021513 \
+    --num_samples 1000 \
+    --save_results results/blip3o_recall_evaluation.json
 """
 
 import os
 import sys
-import argparse
 import torch
 import torch.nn.functional as F
+from transformers import CLIPProcessor, CLIPModel, CLIPImageProcessor, AutoModel
+from PIL import Image
 import numpy as np
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional, Any
-import json
-from tqdm import tqdm
+from typing import Dict, List, Optional, Tuple, Union
 import logging
-from datetime import datetime
-import matplotlib.pyplot as plt
-import seaborn as sns
+from tqdm import tqdm
+import json
+import argparse
+import time
+import gc
+from scipy.stats import pearsonr
 
-# Add src to path
-sys.path.insert(0, str(Path(__file__).parent / "src"))
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-def setup_logging():
-    """Setup logging"""
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s'
-    )
-    return logging.getLogger(__name__)
+# Add project root to path
+script_dir = Path(__file__).parent
+project_root = script_dir.parent
+sys.path.insert(0, str(project_root))
+sys.path.insert(0, str(project_root / "src"))
 
-def parse_arguments():
-    """Parse command line arguments"""
-    parser = argparse.ArgumentParser(description="Comprehensive BLIP3-o Evaluation")
+class BLIP3oRecallEvaluator:
+    """
+    Comprehensive evaluator for BLIP3-o recall evaluation.
+    Tests both CLIP baseline and trained BLIP3-o model.
+    """
     
-    # Model and data paths
-    parser.add_argument("--model_path", type=str, required=True,
-                       help="Path to trained BLIP3-o model")
-    parser.add_argument("--coco_root", type=str, required=True,
-                       help="Path to COCO dataset root")
-    
-    # Evaluation parameters
-    parser.add_argument("--batch_size", type=int, default=32,
-                       help="Batch size for evaluation")
-    parser.add_argument("--max_samples", type=int, default=5000,
-                       help="Maximum number of samples to evaluate")
-    parser.add_argument("--k_values", type=int, nargs="+", default=[1, 5, 10],
-                       help="K values for recall@K evaluation")
-    
-    # Output parameters
-    parser.add_argument("--output_dir", type=str, default="./comprehensive_evaluation",
-                       help="Output directory for results")
-    parser.add_argument("--create_visualizations", action="store_true",
-                       help="Create evaluation visualizations")
-    
-    # Analysis parameters
-    parser.add_argument("--analyze_embeddings", action="store_true",
-                       help="Analyze embedding quality and distribution")
-    parser.add_argument("--compare_methods", action="store_true",
-                       help="Compare multiple evaluation methods")
-    
-    return parser.parse_args()
-
-class ComprehensiveEvaluator:
-    """Comprehensive evaluator for BLIP3-o model"""
-    
-    def __init__(self, model, clip_model, clip_processor, eva_model, eva_processor, device):
-        self.model = model
-        self.clip_model = clip_model
-        self.clip_processor = clip_processor
-        self.eva_model = eva_model
-        self.eva_processor = eva_processor
-        self.device = device
+    def __init__(
+        self, 
+        device: str = "auto",
+        torch_dtype: Optional[torch.dtype] = None,
+    ):
+        """Initialize the evaluator."""
+        self.device = self._setup_device(device)
+        self.torch_dtype = torch_dtype or torch.float32
         
-        # Set models to eval mode
-        self.model.eval()
-        self.clip_model.eval()
-        self.eva_model.eval()
+        # Will be loaded when needed
+        self.clip_processor = None
+        self.clip_model = None
+        self.eva_processor = None
+        self.eva_model = None
+        self.blip3o_model = None
+        
+        logger.info("BLIP3-o Recall Evaluator initialized")
+        logger.info(f"Device: {self.device}")
     
-    def extract_blip3o_features(self, images: List, method: str = "global") -> torch.Tensor:
-        """Extract features using BLIP3-o with different output methods"""
-        with torch.no_grad():
-            # Step 1: Extract EVA-CLIP features for conditioning
-            eva_features = []
-            for img in images:
-                inputs = self.eva_processor(images=img, return_tensors="pt")
-                pixel_values = inputs['pixel_values'].to(self.device).half()
-                
-                outputs = self.eva_model.vision_model(pixel_values=pixel_values)
-                patch_embeddings = outputs.last_hidden_state[:, 1:, :]
-                
-                # Reshape to 256 tokens
-                batch_size, num_patches, hidden_dim = patch_embeddings.shape
-                grid_size = int(np.sqrt(num_patches))
-                spatial_grid = patch_embeddings.reshape(batch_size, grid_size, grid_size, hidden_dim)
-                tokens = spatial_grid.reshape(batch_size, 256, hidden_dim)
-                
-                eva_features.append(tokens.squeeze().cpu().float())
-                del outputs, patch_embeddings, spatial_grid, tokens, pixel_values
-            
-            eva_conditioning = torch.stack(eva_features).to(self.device)
-            
-            # Step 2: Generate using BLIP3-o
-            if method == "global":
-                # Generate global features for recall
-                generated = self.model.generate(
-                    encoder_hidden_states=eva_conditioning,
-                    num_inference_steps=50,
-                    return_global_only=True,  # Get [B, 768]
-                )
-                return generated
-            
-            elif method == "patch_averaged":
-                # Generate patch features and average
-                generated = self.model.generate(
-                    encoder_hidden_states=eva_conditioning,
-                    num_inference_steps=50,
-                    return_global_only=False,  # Get [B, 256, 1024]
-                )
-                # Average pool and apply CLIP projection
-                if generated.dim() == 3:  # [B, 256, 1024]
-                    pooled = generated.mean(dim=1)  # [B, 1024]
-                    if hasattr(self.model, 'frozen_clip_visual_proj') and self.model.frozen_clip_visual_proj:
-                        projected = self.model.frozen_clip_visual_proj(pooled)  # [B, 768]
-                        return F.normalize(projected, p=2, dim=-1)
-                    else:
-                        # Use CLIP model projection
-                        projected = self.clip_model.visual_projection(pooled)
-                        return F.normalize(projected, p=2, dim=-1)
-                else:
-                    return generated
-            
+    def _setup_device(self, device_arg: str) -> torch.device:
+        """Setup computation device."""
+        if device_arg == "auto":
+            if torch.cuda.is_available():
+                device = torch.device("cuda")
+                logger.info(f"Using GPU: {torch.cuda.get_device_name()}")
             else:
-                raise ValueError(f"Unknown method: {method}")
+                device = torch.device("cpu")
+                logger.info("Using CPU")
+        else:
+            device = torch.device(device_arg)
+            logger.info(f"Using device: {device}")
+        
+        return device
     
-    def extract_clip_baseline_features(self, images: List, method: str = "cls") -> torch.Tensor:
-        """Extract baseline CLIP features with different methods"""
-        with torch.no_grad():
-            clip_features = []
-            for img in images:
-                inputs = self.clip_processor(images=img, return_tensors="pt")
-                inputs = {k: v.to(self.device) for k, v in inputs.items()}
-                
-                outputs = self.clip_model.vision_model(**inputs)
-                
-                if method == "cls":
-                    # Use CLS token (standard approach)
-                    cls_token = outputs.last_hidden_state[:, 0, :]  # [1, 1024]
-                    projected = self.clip_model.visual_projection(cls_token)  # [1, 768]
-                    clip_features.append(projected.squeeze().cpu().float())
-                
-                elif method == "patch_averaged":
-                    # Average patch embeddings
-                    patch_embeddings = outputs.last_hidden_state[:, 1:, :]  # Remove CLS
-                    global_features = patch_embeddings.mean(dim=1)  # [1, 1024]
-                    projected = self.clip_model.visual_projection(global_features)  # [1, 768]
-                    clip_features.append(projected.squeeze().cpu().float())
-                
-                del outputs
-            
-            return torch.stack(clip_features).to(self.device)
+    def load_clip_models(self):
+        """Load CLIP ViT-L/14 and EVA-CLIP models."""
+        logger.info("Loading CLIP ViT-L/14...")
+        
+        self.clip_processor = CLIPProcessor.from_pretrained("openai/clip-vit-large-patch14")
+        self.clip_model = CLIPModel.from_pretrained(
+            "openai/clip-vit-large-patch14",
+            torch_dtype=self.torch_dtype
+        ).to(self.device)
+        self.clip_model.eval()
+        
+        logger.info("Loading EVA-CLIP-8B...")
+        
+        self.eva_model = AutoModel.from_pretrained(
+            "BAAI/EVA-CLIP-8B",
+            trust_remote_code=True,
+            torch_dtype=self.torch_dtype
+        ).to(self.device)
+        self.eva_processor = CLIPImageProcessor.from_pretrained("openai/clip-vit-large-patch14")
+        self.eva_model.eval()
+        
+        logger.info("✅ CLIP models loaded successfully")
     
-    def extract_text_features(self, texts: List[str]) -> torch.Tensor:
-        """Extract text features using CLIP"""
-        with torch.no_grad():
-            text_features = []
-            batch_size = 32
+    def load_blip3o_model(self, model_path: str):
+        """Load trained BLIP3-o model."""
+        logger.info(f"Loading BLIP3-o model from: {model_path}")
+        
+        try:
+            # Import BLIP3-o modules
+            from src.modules.models.blip3o_dit import BLIP3oDiTModel
+            from src.modules.config.blip3o_config import BLIP3oDiTConfig
             
-            for i in range(0, len(texts), batch_size):
-                batch_texts = texts[i:i + batch_size]
-                inputs = self.clip_processor(text=batch_texts, return_tensors="pt", padding=True, truncation=True)
-                inputs = {k: v.to(self.device) for k, v in inputs.items()}
-                
-                outputs = self.clip_model.text_model(**inputs)
-                pooled_output = outputs.pooler_output  # [batch, 768]
-                
-                text_features.append(pooled_output.cpu().float())
-                del outputs, pooled_output
+            model_path = Path(model_path)
             
-            return torch.cat(text_features, dim=0).to(self.device)
-    
-    def compute_comprehensive_recall(
-        self,
-        image_features: torch.Tensor,
-        text_features: torch.Tensor,
-        caption_to_image: Dict[int, int],
-        image_ids: List[int],
-        k_values: List[int]
-    ) -> Dict[str, Any]:
-        """Compute comprehensive recall metrics with analysis"""
-        
-        # Normalize features
-        image_features = F.normalize(image_features, p=2, dim=1)
-        text_features = F.normalize(text_features, p=2, dim=1)
-        
-        # Compute similarity matrix
-        similarity_matrix = torch.mm(image_features, text_features.t())
-        
-        # Initialize results
-        recall_results = {f'recall@{k}': 0.0 for k in k_values}
-        detailed_results = []
-        similarity_scores = []
-        
-        # For each image query
-        for i, image_id in enumerate(image_ids):
-            image_similarities = similarity_matrix[i]
+            # Load configuration
+            config_file = model_path / "config.json"
+            if not config_file.exists():
+                config_file = model_path / "blip3o_model_config.json"
             
-            # Get ground truth caption indices for this image
-            gt_caption_indices = [
-                idx for idx, img_id in caption_to_image.items() 
-                if img_id == image_id
+            if not config_file.exists():
+                raise FileNotFoundError(f"No config file found in {model_path}")
+            
+            with open(config_file, 'r') as f:
+                config_dict = json.load(f)
+            
+            # Create configuration
+            config = BLIP3oDiTConfig(**config_dict)
+            
+            # Create model
+            self.blip3o_model = BLIP3oDiTModel(config)
+            
+            # Load weights
+            model_files = [
+                model_path / "pytorch_model.bin",
+                model_path / "model.safetensors",
+                model_path / "pytorch_model.safetensors"
             ]
             
-            # Get top-K caption indices
-            top_k_indices = torch.topk(image_similarities, max(k_values), dim=0)[1]
+            model_file = None
+            for file_path in model_files:
+                if file_path.exists():
+                    model_file = file_path
+                    break
             
-            # Check recall for each K
-            query_results = {'image_id': image_id, 'gt_captions': len(gt_caption_indices)}
+            if model_file is None:
+                raise FileNotFoundError(f"No model weights found in {model_path}")
             
-            for k in k_values:
-                top_k = top_k_indices[:k]
+            # Load weights
+            if model_file.suffix == ".bin":
+                state_dict = torch.load(model_file, map_location=self.device)
+            else:
+                from safetensors.torch import load_file
+                state_dict = load_file(str(model_file))
+            
+            # Load state dict
+            missing_keys, unexpected_keys = self.blip3o_model.load_state_dict(state_dict, strict=False)
+            
+            if missing_keys:
+                logger.warning(f"Missing keys: {missing_keys}")
+            if unexpected_keys:
+                logger.warning(f"Unexpected keys: {unexpected_keys}")
+            
+            # Move to device
+            self.blip3o_model = self.blip3o_model.to(device=self.device, dtype=self.torch_dtype)
+            self.blip3o_model.eval()
+            
+            # Load frozen CLIP projection if not already loaded
+            if self.blip3o_model.frozen_clip_visual_proj is None:
+                logger.info("Loading frozen CLIP projection for BLIP3-o model...")
+                self.blip3o_model.load_frozen_clip_projection()
+            
+            logger.info(f"✅ BLIP3-o model loaded successfully")
+            logger.info(f"   Parameters: {self.blip3o_model.get_num_parameters():,}")
+            logger.info(f"   Has frozen CLIP projection: {self.blip3o_model.frozen_clip_visual_proj is not None}")
+            
+        except Exception as e:
+            logger.error(f"Failed to load BLIP3-o model: {e}")
+            raise
+    
+    def extract_clip_text_embeddings(self, captions: List[str]) -> torch.Tensor:
+        """Extract CLIP text embeddings."""
+        with torch.no_grad():
+            inputs = self.clip_processor(
+                text=captions, 
+                return_tensors="pt", 
+                padding=True, 
+                truncation=True
+            )
+            inputs = {k: v.to(self.device) for k, v in inputs.items()}
+            
+            # Get text features (normalized)
+            text_embeddings = self.clip_model.get_text_features(**inputs)
+            text_embeddings = F.normalize(text_embeddings, p=2, dim=-1)
+        
+        return text_embeddings.cpu().float()
+    
+    def extract_clip_vision_global_embeddings(self, images: List[Image.Image]) -> torch.Tensor:
+        """Extract CLIP vision global embeddings (CLS token + visual projection)."""
+        global_embeddings = []
+        
+        with torch.no_grad():
+            for img in images:
+                inputs = self.clip_processor(images=img, return_tensors="pt")
+                inputs = {k: v.to(device=self.device, dtype=self.torch_dtype) 
+                         for k, v in inputs.items()}
                 
-                # Check if any ground truth caption is in top-k
-                correct = any(
-                    caption_idx.item() in [idx for idx in gt_caption_indices]
-                    for caption_idx in top_k
+                # Get vision features (this includes visual projection and normalization)
+                vision_embeddings = self.clip_model.get_image_features(**inputs)  # [1, 768]
+                vision_embeddings = F.normalize(vision_embeddings, p=2, dim=-1)
+                
+                global_embeddings.append(vision_embeddings.squeeze(0).cpu().float())  # [768]
+        
+        return torch.stack(global_embeddings)  # [B, 768]
+    
+    def extract_eva_vision_embeddings(self, images: List[Image.Image]) -> torch.Tensor:
+        """Extract EVA-CLIP vision embeddings for BLIP3-o conditioning."""
+        eva_embeddings = []
+        
+        logger.info(f"Extracting EVA embeddings for {len(images)} images...")
+        
+        with torch.no_grad():
+            for i, img in enumerate(images):
+                if i % 100 == 0:
+                    logger.debug(f"Processing EVA image {i}/{len(images)}")
+                
+                inputs = self.eva_processor(images=img, return_tensors="pt")
+                pixel_values = inputs['pixel_values'].to(device=self.device, dtype=self.torch_dtype)
+                
+                # Get vision model outputs
+                vision_outputs = self.eva_model.vision_model(
+                    pixel_values=pixel_values,
+                    output_hidden_states=True,
+                    return_dict=True
                 )
                 
-                query_results[f'recall@{k}'] = correct
-                if correct:
-                    recall_results[f'recall@{k}'] += 1.0
-            
-            # Store similarity statistics
-            gt_similarities = [image_similarities[idx].item() for idx in gt_caption_indices]
-            query_results['max_gt_similarity'] = max(gt_similarities) if gt_similarities else 0.0
-            query_results['mean_gt_similarity'] = np.mean(gt_similarities) if gt_similarities else 0.0
-            
-            detailed_results.append(query_results)
-            similarity_scores.extend(gt_similarities)
+                # Get patch embeddings (remove CLS token) → [1, 256, hidden_dim]
+                patch_embeddings = vision_outputs.last_hidden_state[:, 1:, :]  # Remove CLS token
+                batch_size, num_patches, hidden_dim = patch_embeddings.shape
+                
+                # Verify dimensions
+                assert num_patches == 256, f"Expected 256 patches, got {num_patches}"
+                assert hidden_dim == 4096, f"Expected 4096 dimensions, got {hidden_dim}"
+                
+                # Reshape to 16x16 grid → [1, 16, 16, hidden_dim]
+                grid_size = int(np.sqrt(num_patches))  # Should be 16
+                spatial_grid = patch_embeddings.reshape(batch_size, grid_size, grid_size, hidden_dim)
+                
+                # Convert to tokens format → [256, hidden_dim]
+                tokens = spatial_grid.reshape(1, num_patches, hidden_dim)  # [1, 256, 4096]
+                
+                eva_embeddings.append(tokens.squeeze(0).cpu().float())  # [256, 4096]
         
-        # Normalize recall scores
-        total_queries = len(image_ids)
-        for k in k_values:
-            recall_results[f'recall@{k}'] /= total_queries
-            recall_results[f'recall@{k}'] *= 100.0
+        result = torch.stack(eva_embeddings)  # [B, 256, 4096]
+        logger.info(f"EVA embeddings extracted: {result.shape}")
         
-        # Add comprehensive analysis
-        comprehensive_results = {
-            'recall_scores': recall_results,
-            'detailed_results': detailed_results,
-            'similarity_analysis': {
-                'mean_similarity': np.mean(similarity_scores) if similarity_scores else 0.0,
-                'std_similarity': np.std(similarity_scores) if similarity_scores else 0.0,
-                'min_similarity': np.min(similarity_scores) if similarity_scores else 0.0,
-                'max_similarity': np.max(similarity_scores) if similarity_scores else 0.0,
-                'similarity_distribution': np.histogram(similarity_scores, bins=20)[0].tolist() if similarity_scores else [],
-            },
-            'performance_analysis': {
-                'queries_with_high_similarity': sum(1 for s in similarity_scores if s > 0.8) / len(similarity_scores) * 100 if similarity_scores else 0.0,
-                'queries_with_medium_similarity': sum(1 for s in similarity_scores if 0.5 < s <= 0.8) / len(similarity_scores) * 100 if similarity_scores else 0.0,
-                'queries_with_low_similarity': sum(1 for s in similarity_scores if s <= 0.5) / len(similarity_scores) * 100 if similarity_scores else 0.0,
-            }
-        }
-        
-        return comprehensive_results
+        return result
     
-    def evaluate_comprehensive(
+    def generate_blip3o_embeddings(self, eva_embeddings: torch.Tensor, num_inference_steps: int = 50) -> torch.Tensor:
+        """Generate CLIP embeddings using trained BLIP3-o model."""
+        if self.blip3o_model is None:
+            raise ValueError("BLIP3-o model not loaded. Call load_blip3o_model() first.")
+        
+        logger.info(f"Generating CLIP embeddings using BLIP3-o model...")
+        logger.info(f"Input EVA embeddings shape: {eva_embeddings.shape}")
+        
+        # Move to correct device
+        eva_embeddings = eva_embeddings.to(device=self.device, dtype=self.torch_dtype)
+        
+        generated_embeddings = []
+        
+        with torch.no_grad():
+            # Process in batches to manage memory
+            batch_size = 8
+            num_samples = eva_embeddings.shape[0]
+            
+            for i in range(0, num_samples, batch_size):
+                end_idx = min(i + batch_size, num_samples)
+                batch_eva = eva_embeddings[i:end_idx]  # [batch_size, 256, 4096]
+                
+                logger.debug(f"Processing BLIP3-o batch {i//batch_size + 1}/{(num_samples + batch_size - 1)//batch_size}")
+                
+                try:
+                    # Generate using the model's generation method
+                    # This returns global embeddings [batch_size, 768] by default
+                    generated_global = self.blip3o_model.generate(
+                        encoder_hidden_states=batch_eva,
+                        num_inference_steps=num_inference_steps,
+                        return_global_only=True,  # Get global embeddings for recall
+                    )
+                    
+                    logger.debug(f"Generated global embeddings shape: {generated_global.shape}")
+                    
+                    # Verify shape
+                    if generated_global.shape[-1] != 768:
+                        logger.warning(f"Expected 768-dim embeddings, got {generated_global.shape[-1]}")
+                    
+                    # Ensure normalization
+                    generated_global = F.normalize(generated_global, p=2, dim=-1)
+                    
+                    generated_embeddings.append(generated_global.cpu().float())
+                    
+                except Exception as e:
+                    logger.error(f"Error in BLIP3-o generation for batch {i//batch_size + 1}: {e}")
+                    raise
+        
+        # Concatenate all batches
+        result = torch.cat(generated_embeddings, dim=0)  # [B, 768]
+        
+        logger.info(f"BLIP3-o generation completed: {result.shape}")
+        
+        # Final verification
+        final_norms = torch.norm(result, p=2, dim=-1)
+        logger.info(f"Generated embedding norms: mean={final_norms.mean():.6f}, std={final_norms.std():.6f}")
+        
+        return result  # [B, 768] - normalized
+    
+    def compute_image_to_text_recall(
         self,
-        dataset,
-        batch_size: int = 32,
+        image_embeddings: torch.Tensor,
+        text_embeddings: torch.Tensor,
+        image_to_text_mapping: List[List[int]],
         k_values: List[int] = [1, 5, 10]
-    ) -> Dict[str, Any]:
-        """Run comprehensive evaluation with multiple methods"""
+    ) -> Dict[str, float]:
+        """Compute image-to-text recall metrics."""
+        # Ensure embeddings are normalized
+        image_embeddings = F.normalize(image_embeddings, p=2, dim=-1)
+        text_embeddings = F.normalize(text_embeddings, p=2, dim=-1)
         
-        print(f"Extracting text features for {len(dataset.all_captions)} captions...")
-        text_features = self.extract_text_features(dataset.all_captions)
+        # Compute similarity matrix: [N_images, N_texts]
+        similarity_matrix = torch.mm(image_embeddings, text_embeddings.t())
         
-        print(f"Extracting image features using multiple methods...")
+        logger.info(f"Similarity matrix shape: {similarity_matrix.shape}")
+        logger.info(f"Similarity range: [{similarity_matrix.min():.4f}, {similarity_matrix.max():.4f}]")
+        logger.info(f"Similarity mean: {similarity_matrix.mean():.4f} ± {similarity_matrix.std():.4f}")
         
-        # Methods to evaluate
-        methods = {
-            'blip3o_global': ('blip3o', 'global'),
-            'blip3o_patch_averaged': ('blip3o', 'patch_averaged'),
-            'clip_cls': ('clip', 'cls'),
-            'clip_patch_averaged': ('clip', 'patch_averaged'),
-        }
+        # Compute recall for each K value
+        recall_results = {}
         
-        all_results = {}
-        all_features = {}
-        
-        for method_name, (model_type, feature_type) in methods.items():
-            print(f"Evaluating method: {method_name}")
-            
-            method_features = []
-            
-            for i in tqdm(range(0, len(dataset.image_ids), batch_size), desc=f"Processing {method_name}"):
-                batch_image_ids = dataset.image_ids[i:i + batch_size]
-                batch_images = []
-                
-                # Load images
-                for image_id in batch_image_ids:
-                    image_path = dataset.get_image_path(image_id)
-                    from PIL import Image
-                    image = Image.open(image_path).convert('RGB')
-                    batch_images.append(image)
-                
-                # Extract features
-                if model_type == 'blip3o':
-                    batch_features = self.extract_blip3o_features(batch_images, feature_type)
-                else:  # clip
-                    batch_features = self.extract_clip_baseline_features(batch_images, feature_type)
-                
-                method_features.append(batch_features.cpu())
-                
-                del batch_images, batch_features
-                torch.cuda.empty_cache()
-            
-            # Concatenate features
-            method_features = torch.cat(method_features, dim=0).to(self.device)
-            all_features[method_name] = method_features
-            
-            # Compute comprehensive recall
-            method_results = self.compute_comprehensive_recall(
-                method_features, text_features, dataset.caption_to_image, dataset.image_ids, k_values
-            )
-            
-            all_results[method_name] = method_results
-        
-        # Compute comparisons
-        comparison_results = self._compute_method_comparisons(all_results, k_values)
-        
-        return {
-            'method_results': all_results,
-            'comparisons': comparison_results,
-            'evaluation_info': {
-                'num_images': len(dataset.image_ids),
-                'num_captions': len(dataset.all_captions),
-                'methods_evaluated': list(methods.keys()),
-                'k_values': k_values,
-                'timestamp': datetime.now().isoformat(),
-            }
-        }
-    
-    def _compute_method_comparisons(self, all_results: Dict, k_values: List[int]) -> Dict:
-        """Compute detailed comparisons between methods"""
-        
-        # Extract recall scores for easier comparison
-        method_scores = {}
-        for method_name, results in all_results.items():
-            method_scores[method_name] = results['recall_scores']
-        
-        # Compute improvements relative to baselines
-        baseline_methods = ['clip_cls', 'clip_patch_averaged']
-        blip3o_methods = ['blip3o_global', 'blip3o_patch_averaged']
-        
-        improvements = {}
-        for blip3o_method in blip3o_methods:
-            for baseline_method in baseline_methods:
-                comparison_key = f"{blip3o_method}_vs_{baseline_method}"
-                improvements[comparison_key] = {}
-                
-                for k in k_values:
-                    blip3o_score = method_scores[blip3o_method][f'recall@{k}']
-                    baseline_score = method_scores[baseline_method][f'recall@{k}']
-                    
-                    abs_improvement = blip3o_score - baseline_score
-                    rel_improvement = (abs_improvement / baseline_score * 100) if baseline_score > 0 else 0
-                    
-                    improvements[comparison_key][f'recall@{k}'] = {
-                        'absolute': abs_improvement,
-                        'relative': rel_improvement,
-                        'blip3o_score': blip3o_score,
-                        'baseline_score': baseline_score
-                    }
-        
-        # Find best performing methods
-        best_methods = {}
         for k in k_values:
-            best_score = 0
-            best_method = None
-            for method_name, scores in method_scores.items():
-                if scores[f'recall@{k}'] > best_score:
-                    best_score = scores[f'recall@{k}']
-                    best_method = method_name
+            correct_retrievals = 0
+            total_queries = len(image_to_text_mapping)
             
-            best_methods[f'recall@{k}'] = {
-                'method': best_method,
-                'score': best_score
-            }
+            # Get top-k text indices for each image
+            _, top_k_indices = torch.topk(similarity_matrix, k=k, dim=1)  # [N_images, k]
+            
+            # Debug first few retrievals for k=1
+            if k == 1:
+                logger.info("Sample image-to-text retrievals (first 5):")
+                for i in range(min(5, len(image_to_text_mapping))):
+                    correct_texts = image_to_text_mapping[i]
+                    retrieved_text = top_k_indices[i, 0].item()
+                    similarity_score = similarity_matrix[i, retrieved_text].item()
+                    is_correct = retrieved_text in correct_texts
+                    logger.info(f"  Image {i}: retrieved text {retrieved_text} (sim={similarity_score:.4f}), "
+                               f"correct={is_correct}, target_texts={correct_texts}")
+            
+            # Check if any of the top-k retrieved texts belong to the query image
+            for img_idx, correct_text_indices in enumerate(image_to_text_mapping):
+                retrieved_indices = top_k_indices[img_idx].cpu().numpy()
+                
+                # Check if any retrieved index is in the correct text indices
+                if any(ret_idx in correct_text_indices for ret_idx in retrieved_indices):
+                    correct_retrievals += 1
+            
+            recall_at_k = correct_retrievals / total_queries if total_queries > 0 else 0
+            recall_results[f'recall@{k}'] = recall_at_k
+            
+            logger.info(f"Recall@{k}: {correct_retrievals}/{total_queries} = {recall_at_k:.4f} ({recall_at_k*100:.2f}%)")
+        
+        # Additional metrics
+        recall_results['num_queries'] = len(image_to_text_mapping)
+        recall_results['num_gallery'] = len(text_embeddings)
+        recall_results['avg_texts_per_image'] = np.mean([len(texts) for texts in image_to_text_mapping])
+        recall_results['embedding_dim'] = image_embeddings.shape[1]
+        
+        return recall_results
+    
+    def compute_cosine_similarity(
+        self, 
+        embeddings1: torch.Tensor, 
+        embeddings2: torch.Tensor
+    ) -> Dict[str, float]:
+        """
+        Compute cosine similarity metrics between two sets of embeddings.
+        
+        Args:
+            embeddings1: Tensor of shape [N, D]
+            embeddings2: Tensor of shape [N, D] (same N and D)
+            
+        Returns:
+            Dictionary of similarity metrics
+        """
+        # Ensure embeddings are normalized
+        embeddings1 = F.normalize(embeddings1, p=2, dim=-1)
+        embeddings2 = F.normalize(embeddings2, p=2, dim=-1)
+        
+        # Compute pairwise cosine similarities
+        sim_matrix = embeddings1 @ embeddings2.t()  # [N, N]
+        
+        # Extract diagonal (matching pairs)
+        diagonal_sims = torch.diag(sim_matrix).cpu().numpy()
+        
+        # Compute statistics
+        mean_sim = np.mean(diagonal_sims)
+        std_sim = np.std(diagonal_sims)
+        min_sim = np.min(diagonal_sims)
+        max_sim = np.max(diagonal_sims)
+        
+        # Compute off-diagonal similarities (non-matching pairs)
+        mask = torch.eye(sim_matrix.size(0), dtype=torch.bool)
+        off_diag_sims = sim_matrix[~mask].cpu().numpy()
+        
+        # Compute Pearson correlation
+        pearson_corr, _ = pearsonr(embeddings1.flatten().cpu().numpy(), 
+                                   embeddings2.flatten().cpu().numpy())
         
         return {
-            'improvements': improvements,
-            'best_methods': best_methods,
-            'method_ranking': self._rank_methods(method_scores, k_values)
+            'mean_cosine_sim': mean_sim,
+            'std_cosine_sim': std_sim,
+            'min_cosine_sim': min_sim,
+            'max_cosine_sim': max_sim,
+            'mean_non_matching_sim': np.mean(off_diag_sims),
+            'pearson_correlation': pearson_corr,
+            'num_pairs': len(diagonal_sims)
         }
     
-    def _rank_methods(self, method_scores: Dict, k_values: List[int]) -> Dict:
-        """Rank methods by performance"""
+    def evaluate_method(
+        self,
+        images: List[Image.Image],
+        captions_per_image: List[List[str]],
+        method: str,
+        k_values: List[int] = [1, 5, 10],
+        num_inference_steps: int = 50,
+    ) -> Tuple[Dict[str, float], torch.Tensor]:
+        """Evaluate a specific method and return embeddings."""
+        logger.info(f"Evaluating method: {method}")
         
-        # Calculate overall scores (weighted average)
-        weights = {1: 0.5, 5: 0.3, 10: 0.2}  # R@1 most important
+        # Extract text embeddings (same for all methods)
+        logger.info("Extracting text embeddings...")
+        all_text_embeddings = []
+        image_to_text_mapping = []
+        text_idx = 0
         
-        overall_scores = {}
-        for method_name, scores in method_scores.items():
-            weighted_score = sum(
-                scores[f'recall@{k}'] * weights.get(k, 1.0/len(k_values))
-                for k in k_values
-            )
-            overall_scores[method_name] = weighted_score
+        # Flatten captions and create mapping
+        for img_idx, caption_list in enumerate(captions_per_image):
+            current_text_indices = []
+            for caption in caption_list:
+                current_text_indices.append(text_idx)
+                text_idx += 1
+            image_to_text_mapping.append(current_text_indices)
         
-        # Sort by overall score
-        ranked_methods = sorted(overall_scores.items(), key=lambda x: x[1], reverse=True)
+        # Extract all captions
+        all_captions = [caption for caption_list in captions_per_image for caption in caption_list]
+        text_embeddings = self.extract_clip_text_embeddings(all_captions)
         
-        return {
-            'overall_ranking': ranked_methods,
-            'individual_rankings': {
-                f'recall@{k}': sorted(
-                    [(method, scores[f'recall@{k}']) for method, scores in method_scores.items()],
-                    key=lambda x: x[1], reverse=True
-                )
-                for k in k_values
-            }
-        }
+        # Extract image embeddings based on method
+        logger.info(f"Extracting image embeddings using {method} method...")
+        
+        if method == "clip_baseline":
+            # Use CLIP's standard image features
+            image_embeddings = self.extract_clip_vision_global_embeddings(images)
+            method_description = "CLIP ViT-L/14 image features"
+            
+        elif method == "blip3o":
+            if self.blip3o_model is None:
+                raise ValueError("BLIP3-o model not loaded. Call load_blip3o_model() first.")
+            
+            logger.info("=== BLIP3-o Evaluation Pipeline ===")
+            logger.info("Step 1: Extracting EVA-CLIP embeddings...")
+            
+            # Extract EVA embeddings first
+            eva_embeddings = self.extract_eva_vision_embeddings(images)
+            logger.info(f"EVA embeddings extracted: {eva_embeddings.shape}")
+            
+            logger.info("Step 2: Generating CLIP embeddings using BLIP3-o...")
+            
+            # Generate CLIP embeddings using BLIP3-o
+            image_embeddings = self.generate_blip3o_embeddings(eva_embeddings, num_inference_steps)
+            logger.info(f"BLIP3-o embeddings generated: {image_embeddings.shape}")
+            
+            method_description = "BLIP3-o generated embeddings (EVA → DiT → pooling → MLP → CLIP projection)"
+            
+            logger.info("=== BLIP3-o Evaluation Complete ===")
+            
+        else:
+            raise ValueError(f"Unknown method: {method}. Use 'clip_baseline' or 'blip3o'.")
+        
+        logger.info(f"Image embeddings shape: {image_embeddings.shape}")
+        logger.info(f"Text embeddings shape: {text_embeddings.shape}")
+        
+        # Verify embedding normalization
+        img_norms = torch.norm(image_embeddings, p=2, dim=-1)
+        text_norms = torch.norm(text_embeddings, p=2, dim=-1)
+        logger.info(f"Image embedding norms - mean: {img_norms.mean():.6f}, std: {img_norms.std():.6f}")
+        logger.info(f"Text embedding norms - mean: {text_norms.mean():.6f}, std: {text_norms.std():.6f}")
+        
+        # Compute recall metrics
+        recall_results = self.compute_image_to_text_recall(
+            image_embeddings=image_embeddings,
+            text_embeddings=text_embeddings,
+            image_to_text_mapping=image_to_text_mapping,
+            k_values=k_values
+        )
+        
+        # Add method info
+        recall_results.update({
+            'method': method,
+            'method_description': method_description,
+            'embedding_dim': image_embeddings.shape[-1]
+        })
+        
+        # Memory cleanup
+        if method == "blip3o":
+            del eva_embeddings
+        gc.collect()
+        torch.cuda.empty_cache()
+        
+        return recall_results, image_embeddings
 
-def create_evaluation_visualizations(results: Dict, output_dir: Path):
-    """Create comprehensive evaluation visualizations"""
+
+def load_coco_samples(coco_root: Path, num_samples: int = 1000) -> Tuple[List[Image.Image], List[List[str]], List[int]]:
+    """Load COCO validation samples."""
+    logger.info(f"Loading {num_samples} COCO validation samples...")
     
-    # Set up plotting style
-    plt.style.use('seaborn-v0_8')
-    sns.set_palette("husl")
+    # Load COCO annotations
+    annotations_file = coco_root / "annotations" / "captions_val2017.json"
+    images_dir = coco_root / "images" / "val2017"
     
-    # Extract data for visualization
-    methods = list(results['method_results'].keys())
-    k_values = results['evaluation_info']['k_values']
+    if not annotations_file.exists():
+        raise FileNotFoundError(f"COCO annotations not found: {annotations_file}")
+    if not images_dir.exists():
+        raise FileNotFoundError(f"COCO images not found: {images_dir}")
     
-    # 1. Recall scores comparison
-    fig, axes = plt.subplots(1, len(k_values), figsize=(5*len(k_values), 6))
-    if len(k_values) == 1:
-        axes = [axes]
+    with open(annotations_file, 'r') as f:
+        coco_data = json.load(f)
     
-    for i, k in enumerate(k_values):
-        scores = [
-            results['method_results'][method]['recall_scores'][f'recall@{k}']
-            for method in methods
-        ]
+    # Create image info mapping
+    images_info = {img['id']: img for img in coco_data['images']}
+    
+    # Group annotations by image
+    image_captions = {}
+    for ann in coco_data['annotations']:
+        image_id = ann['image_id']
+        if image_id not in image_captions:
+            image_captions[image_id] = []
+        image_captions[image_id].append(ann['caption'])
+    
+    # Load samples
+    images = []
+    captions_per_image = []
+    image_ids = []
+    
+    loaded_count = 0
+    for image_id, captions in image_captions.items():
+        if loaded_count >= num_samples:
+            break
         
-        bars = axes[i].bar(range(len(methods)), scores)
-        axes[i].set_title(f'Recall@{k} Comparison')
-        axes[i].set_ylabel('Recall (%)')
-        axes[i].set_xticks(range(len(methods)))
-        axes[i].set_xticklabels(methods, rotation=45, ha='right')
+        if image_id not in images_info:
+            continue
         
-        # Add value labels on bars
-        for bar, score in zip(bars, scores):
-            axes[i].text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.5,
-                        f'{score:.1f}%', ha='center', va='bottom')
-    
-    plt.tight_layout()
-    plt.savefig(output_dir / 'recall_comparison.png', dpi=300, bbox_inches='tight')
-    plt.close()
-    
-    # 2. Similarity distribution analysis
-    fig, axes = plt.subplots(2, 2, figsize=(12, 10))
-    axes = axes.flatten()
-    
-    for i, method in enumerate(methods):
-        similarity_data = results['method_results'][method]['similarity_analysis']
+        image_info = images_info[image_id]
+        image_path = images_dir / image_info['file_name']
         
-        # Create histogram
-        bins = np.linspace(0, 1, 21)
-        hist_data = similarity_data['similarity_distribution']
-        if hist_data:
-            axes[i].hist(bins[:-1], bins=bins, weights=hist_data, alpha=0.7, edgecolor='black')
+        # Check if image file exists
+        if not image_path.exists():
+            logger.warning(f"Image file not found: {image_path}")
+            continue
         
-        axes[i].set_title(f'{method} - Similarity Distribution')
-        axes[i].set_xlabel('Similarity Score')
-        axes[i].set_ylabel('Frequency')
-        axes[i].grid(True, alpha=0.3)
-        
-        # Add statistics
-        mean_sim = similarity_data['mean_similarity']
-        std_sim = similarity_data['std_similarity']
-        axes[i].axvline(mean_sim, color='red', linestyle='--', label=f'Mean: {mean_sim:.3f}')
-        axes[i].legend()
+        try:
+            # Load image
+            image = Image.open(image_path).convert('RGB')
+            
+            images.append(image)
+            captions_per_image.append(captions[:5])  # Max 5 captions per image
+            image_ids.append(image_id)
+            loaded_count += 1
+            
+        except Exception as e:
+            logger.warning(f"Error loading image {image_path}: {e}")
+            continue
     
-    plt.tight_layout()
-    plt.savefig(output_dir / 'similarity_distributions.png', dpi=300, bbox_inches='tight')
-    plt.close()
-    
-    # 3. Improvement heatmap
-    improvements_data = results['comparisons']['improvements']
-    
-    # Create improvement matrix
-    improvement_matrix = []
-    labels = []
-    
-    for comparison_name, comparison_data in improvements_data.items():
-        row = []
-        for k in k_values:
-            row.append(comparison_data[f'recall@{k}']['absolute'])
-        improvement_matrix.append(row)
-        labels.append(comparison_name.replace('_', ' ').title())
-    
-    fig, ax = plt.subplots(figsize=(8, 6))
-    im = ax.imshow(improvement_matrix, cmap='RdYlGn', aspect='auto')
-    
-    # Set ticks and labels
-    ax.set_xticks(range(len(k_values)))
-    ax.set_xticklabels([f'R@{k}' for k in k_values])
-    ax.set_yticks(range(len(labels)))
-    ax.set_yticklabels(labels)
-    
-    # Add text annotations
-    for i in range(len(labels)):
-        for j in range(len(k_values)):
-            text = ax.text(j, i, f'{improvement_matrix[i][j]:.1f}%',
-                         ha="center", va="center", color="black", weight="bold")
-    
-    ax.set_title('Recall Improvements (Absolute %)')
-    plt.colorbar(im, ax=ax, label='Improvement (%)')
-    plt.tight_layout()
-    plt.savefig(output_dir / 'improvement_heatmap.png', dpi=300, bbox_inches='tight')
-    plt.close()
+    logger.info(f"Successfully loaded {len(images)} images with {sum(len(caps) for caps in captions_per_image)} captions")
+    return images, captions_per_image, image_ids
+
 
 def main():
-    """Main comprehensive evaluation function"""
-    logger = setup_logging()
-    args = parse_arguments()
+    parser = argparse.ArgumentParser(description="BLIP3-o Recall Evaluation")
+    parser.add_argument("--coco_root", type=str, required=True,
+                       help="Path to MS-COCO dataset root directory")
+    parser.add_argument("--blip3o_model_path", type=str, required=True,
+                       help="Path to trained BLIP3-o model")
+    parser.add_argument("--num_samples", type=int, default=1000,
+                       help="Number of COCO samples to evaluate")
+    parser.add_argument("--device", type=str, default="auto",
+                       help="Device to use (auto, cuda, cpu)")
+    parser.add_argument("--save_results", type=str, default=None,
+                       help="Path to save results JSON file")
+    parser.add_argument("--k_values", nargs="+", type=int, default=[1, 5, 10],
+                       help="K values for Recall@K computation")
+    parser.add_argument("--num_inference_steps", type=int, default=50,
+                       help="Number of inference steps for BLIP3-o generation")
     
-    # Setup device
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    logger.info(f"Using device: {device}")
+    args = parser.parse_args()
     
-    # Create output directory
-    output_dir = Path(args.output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
+    # Convert paths
+    coco_root = Path(args.coco_root)
+    blip3o_model_path = Path(args.blip3o_model_path)
     
-    try:
-        # Load models
-        logger.info("Loading models for comprehensive evaluation...")
-        
-        from src.modules.models.blip3o_dit import load_blip3o_dit_model
-        from transformers import CLIPModel, CLIPProcessor, AutoModel, CLIPImageProcessor
-        
-        # Load BLIP3-o model
-        model = load_blip3o_dit_model(args.model_path, device=str(device))
-        
-        # Load CLIP models
-        clip_model = CLIPModel.from_pretrained("openai/clip-vit-large-patch14").to(device)
-        clip_processor = CLIPProcessor.from_pretrained("openai/clip-vit-large-patch14")
-        
-        # Load EVA-CLIP
-        eva_model = AutoModel.from_pretrained("BAAI/EVA-CLIP-8B", trust_remote_code=True).to(device)
-        eva_processor = CLIPImageProcessor.from_pretrained("openai/clip-vit-large-patch14")
-        
-        logger.info("✅ All models loaded successfully")
-        
-        # Load dataset
-        logger.info("Loading COCO evaluation dataset...")
-        from recall_evaluation import COCOEvaluationDataset
-        dataset = COCOEvaluationDataset(args.coco_root, max_samples=args.max_samples)
-        
-        # Create comprehensive evaluator
-        evaluator = ComprehensiveEvaluator(
-            model=model,
-            clip_model=clip_model,
-            clip_processor=clip_processor,
-            eva_model=eva_model,
-            eva_processor=eva_processor,
-            device=device
-        )
-        
-        # Run comprehensive evaluation
-        logger.info("Starting comprehensive evaluation...")
-        results = evaluator.evaluate_comprehensive(
-            dataset=dataset,
-            batch_size=args.batch_size,
-            k_values=args.k_values
-        )
-        
-        # Print comprehensive results
-        print("\n" + "="*80)
-        print("COMPREHENSIVE BLIP3-o EVALUATION RESULTS")
-        print("="*80)
-        
-        # Print method results
-        for method_name, method_results in results['method_results'].items():
-            print(f"\n📊 {method_name.upper()} Results:")
-            for k in args.k_values:
-                score = method_results['recall_scores'][f'recall@{k}']
-                print(f"   Recall@{k}: {score:.1f}%")
-            
-            # Print similarity analysis
-            sim_analysis = method_results['similarity_analysis']
-            print(f"   Mean Similarity: {sim_analysis['mean_similarity']:.3f}")
-            print(f"   High Similarity Queries: {method_results['performance_analysis']['queries_with_high_similarity']:.1f}%")
-        
-        # Print best methods
-        print(f"\n🏆 BEST PERFORMING METHODS:")
-        for k in args.k_values:
-            best = results['comparisons']['best_methods'][f'recall@{k}']
-            print(f"   Recall@{k}: {best['method']} ({best['score']:.1f}%)")
-        
-        # Print key improvements
-        print(f"\n📈 KEY IMPROVEMENTS:")
-        best_improvement = results['comparisons']['improvements']['blip3o_global_vs_clip_cls']
-        for k in args.k_values:
-            improvement = best_improvement[f'recall@{k}']
-            print(f"   BLIP3-o vs CLIP Baseline R@{k}: {improvement['absolute']:+.1f}% ({improvement['relative']:+.1f}% relative)")
-        
-        # Save detailed results
-        results_file = output_dir / f"comprehensive_evaluation_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-        with open(results_file, 'w') as f:
-            json.dump(results, f, indent=2, default=str)
-        
-        logger.info(f"Detailed results saved to: {results_file}")
-        
-        # Create visualizations
-        if args.create_visualizations:
-            logger.info("Creating evaluation visualizations...")
-            create_evaluation_visualizations(results, output_dir)
-            logger.info("✅ Visualizations saved")
-        
-        # Final assessment
-        best_blip3o_improvement = max(
-            results['comparisons']['improvements']['blip3o_global_vs_clip_cls'][f'recall@{k}']['absolute']
-            for k in args.k_values
-        )
-        
-        if best_blip3o_improvement > 20:
-            print(f"\n🎉 OUTSTANDING! BLIP3-o shows major improvement (up to {best_blip3o_improvement:.1f}%)")
-        elif best_blip3o_improvement > 10:
-            print(f"\n✅ EXCELLENT! BLIP3-o shows significant improvement (up to {best_blip3o_improvement:.1f}%)")
-        elif best_blip3o_improvement > 0:
-            print(f"\n👍 GOOD! BLIP3-o shows improvement (up to {best_blip3o_improvement:.1f}%)")
-        else:
-            print(f"\n⚠️  BLIP3-o needs further optimization")
-        
-        print("="*80)
-        
-        return 0
-        
-    except Exception as e:
-        logger.error(f"Comprehensive evaluation failed: {e}")
-        import traceback
-        traceback.print_exc()
+    # Validate paths
+    if not coco_root.exists():
+        logger.error(f"COCO root not found: {coco_root}")
         return 1
+    
+    if not blip3o_model_path.exists():
+        logger.error(f"BLIP3-o model path not found: {blip3o_model_path}")
+        return 1
+    
+    # Initialize evaluator
+    logger.info("Initializing BLIP3-o Recall Evaluator...")
+    evaluator = BLIP3oRecallEvaluator(device=args.device)
+    
+    # Load CLIP models
+    evaluator.load_clip_models()
+    
+    # Load BLIP3-o model
+    evaluator.load_blip3o_model(str(blip3o_model_path))
+    
+    # Load COCO samples
+    logger.info(f"Loading {args.num_samples} COCO validation samples...")
+    images, captions_per_image, image_ids = load_coco_samples(coco_root, args.num_samples)
+    
+    # Run evaluations
+    methods_to_evaluate = ["clip_baseline", "blip3o"]
+    
+    all_results = {}
+    all_embeddings = {}
+    
+    start_time = time.time()
+    
+    for method in methods_to_evaluate:
+        logger.info(f"\n{'='*60}")
+        logger.info(f"🔍 Evaluating method: {method.upper()}")
+        logger.info(f"{'='*60}")
+        
+        method_start_time = time.time()
+        
+        try:
+            results, embeddings = evaluator.evaluate_method(
+                images=images,
+                captions_per_image=captions_per_image,
+                method=method,
+                k_values=args.k_values,
+                num_inference_steps=args.num_inference_steps,
+            )
+            
+            method_time = time.time() - method_start_time
+            results['evaluation_time'] = method_time
+            
+            all_results[method] = results
+            all_embeddings[method] = embeddings
+            
+            # Print results for this method
+            print(f"\n📊 {method.upper()} Results:")
+            print(f"Method: {results['method_description']}")
+            print(f"Time: {method_time:.2f}s")
+            for k in args.k_values:
+                if f'recall@{k}' in results:
+                    recall_k = results[f'recall@{k}']
+                    print(f"  Recall@{k:2d}: {recall_k:.4f} ({recall_k*100:.2f}%)")
+            
+        except Exception as e:
+            logger.error(f"Failed to evaluate method {method}: {e}")
+            all_results[method] = {'error': str(e)}
+    
+    # Compute cosine similarity between CLIP and BLIP3-o embeddings
+    similarity_metrics = {}
+    if "clip_baseline" in all_embeddings and "blip3o" in all_embeddings:
+        logger.info("\nComputing cosine similarity between CLIP and BLIP3-o embeddings...")
+        clip_emb = all_embeddings["clip_baseline"]
+        blip3o_emb = all_embeddings["blip3o"]
+        
+        similarity_metrics = evaluator.compute_cosine_similarity(clip_emb, blip3o_emb)
+        
+        # Print similarity results
+        print("\n🔍 Cosine Similarity Metrics (CLIP vs BLIP3-o):")
+        print(f"  Mean Cosine Similarity: {similarity_metrics['mean_cosine_sim']:.4f}")
+        print(f"  Std of Cosine Similarity: {similarity_metrics['std_cosine_sim']:.4f}")
+        print(f"  Min Cosine Similarity: {similarity_metrics['min_cosine_sim']:.4f}")
+        print(f"  Max Cosine Similarity: {similarity_metrics['max_cosine_sim']:.4f}")
+        print(f"  Mean Non-matching Similarity: {similarity_metrics['mean_non_matching_sim']:.4f}")
+        print(f"  Pearson Correlation: {similarity_metrics['pearson_correlation']:.4f}")
+    
+    total_time = time.time() - start_time
+    
+    # Print comprehensive results
+    print("\n" + "="*80)
+    print("📊 BLIP3-O RECALL EVALUATION RESULTS")
+    print("="*80)
+    print(f"Dataset: MS-COCO 2017 Validation ({len(images)} images, {sum(len(caps) for caps in captions_per_image)} captions)")
+    print(f"Total evaluation time: {total_time:.2f}s")
+    
+    # Results table
+    print(f"\n📋 Results Summary:")
+    print(f"{'Method':<15} {'Description':<40} {'R@1':<8} {'R@5':<8} {'R@10':<8} {'Time':<8}")
+    print("-" * 85)
+    
+    for method, results in all_results.items():
+        if 'error' in results:
+            print(f"{method:<15} {'ERROR: ' + results['error']:<40} {'N/A':<8} {'N/A':<8} {'N/A':<8} {'N/A':<8}")
+        else:
+            description = results.get('method_description', 'Unknown')[:39]
+            r1 = f"{results.get('recall@1', 0)*100:.1f}%" if 'recall@1' in results else "N/A"
+            r5 = f"{results.get('recall@5', 0)*100:.1f}%" if 'recall@5' in results else "N/A"
+            r10 = f"{results.get('recall@10', 0)*100:.1f}%" if 'recall@10' in results else "N/A"
+            eval_time = f"{results.get('evaluation_time', 0):.1f}s"
+            print(f"{method:<15} {description:<40} {r1:<8} {r5:<8} {r10:<8} {eval_time:<8}")
+    
+    # Performance comparison
+    if 'clip_baseline' in all_results and 'blip3o' in all_results:
+        if 'error' not in all_results['clip_baseline'] and 'error' not in all_results['blip3o']:
+            print(f"\n🎯 Performance Comparison:")
+            baseline_r1 = all_results['clip_baseline']['recall@1']
+            blip3o_r1 = all_results['blip3o']['recall@1']
+            
+            print(f"   CLIP Baseline R@1: {baseline_r1*100:.2f}%")
+            print(f"   BLIP3-o R@1:       {blip3o_r1*100:.2f}%")
+            
+            if blip3o_r1 > baseline_r1:
+                improvement = ((blip3o_r1 - baseline_r1) / baseline_r1) * 100
+                print(f"   🎉 BLIP3-o IMPROVEMENT: +{improvement:.1f}%")
+            elif blip3o_r1 < baseline_r1:
+                degradation = ((baseline_r1 - blip3o_r1) / baseline_r1) * 100
+                print(f"   ⚠️  BLIP3-o degradation: -{degradation:.1f}%")
+            else:
+                print(f"   📊 Performance equivalent")
+    
+    # Literature comparison
+    if 'clip_baseline' in all_results and 'error' not in all_results['clip_baseline']:
+        baseline_r1 = all_results['clip_baseline']['recall@1']
+        print(f"\n📚 Literature Comparison:")
+        print(f"   Expected CLIP ViT-L/14 R@1: ~58-60%")
+        print(f"   Your CLIP baseline R@1:     {baseline_r1*100:.2f}%")
+        
+        if baseline_r1*100 >= 58:
+            print(f"   ✅ Baseline looks reasonable!")
+        else:
+            print(f"   ⚠️  Baseline seems low - check implementation")
+    
+    # Add similarity metrics to results
+    if similarity_metrics:
+        print(f"\n🔍 Embedding Similarity:")
+        print(f"   Mean Cosine Sim: {similarity_metrics['mean_cosine_sim']:.4f}")
+        print(f"   Pearson Corr:    {similarity_metrics['pearson_correlation']:.4f}")
+    
+    print("="*80)
+    
+    # Save results if requested
+    if args.save_results:
+        results_to_save = {
+            'evaluation_info': {
+                'dataset': 'MS-COCO 2017 Validation',
+                'num_images': len(images),
+                'num_captions': sum(len(caps) for caps in captions_per_image),
+                'blip3o_model_path': str(blip3o_model_path),
+                'total_time': total_time,
+                'device': str(evaluator.device),
+                'k_values': args.k_values,
+                'num_inference_steps': args.num_inference_steps,
+            },
+            'method_results': all_results,
+            'similarity_metrics': similarity_metrics,
+        }
+        
+        save_path = Path(args.save_results)
+        save_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        with open(save_path, 'w') as f:
+            json.dump(results_to_save, f, indent=2)
+        
+        logger.info(f"Results saved to: {save_path}")
+    
+    return 0
+
 
 if __name__ == "__main__":
     exit_code = main()
