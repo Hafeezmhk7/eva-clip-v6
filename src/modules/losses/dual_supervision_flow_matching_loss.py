@@ -13,6 +13,8 @@ from typing import Optional, Tuple, Dict, Any
 import math
 from transformers import CLIPModel
 
+# FIXED: Import from the correct module
+from .flow_matching_loss import BLIP3oFlowMatchingLoss  # ← FIXED: Import from standard loss
 from ..config.blip3o_config import FlowMatchingConfig
 
 
@@ -414,7 +416,7 @@ def create_dual_supervision_loss(
     use_cosine_similarity: bool = False,
     clip_model_name: str = "openai/clip-vit-large-patch14",
     **kwargs
-) ->DualSupervisionFlowMatchingLoss:
+) -> DualSupervisionFlowMatchingLoss:
     """Factory function for FIXED dual supervision flow matching loss."""
     
     return DualSupervisionFlowMatchingLoss(
