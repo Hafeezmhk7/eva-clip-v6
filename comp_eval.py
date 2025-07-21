@@ -123,19 +123,32 @@ class FixedBLIP3oRecallEvaluator:
         
         logger.info("✅ CLIP models loaded successfully")
     
+    """
+    FIXED: Model loading section for comp_eval.py
+    Replace the model loading section (around line 125) with this corrected version.
+    """
+
     def load_blip3o_model(self, model_path: str):
         """FIXED: Load trained BLIP3-o model with proper dual supervision support."""
         logger.info(f"Loading BLIP3-o model from: {model_path}")
         
         try:
-            # FIXED: Try importing FIXED model first with better error handling
+            # FIXED: Import with correct class names and proper error handling
             dual_supervision_available = False
             try:
+                # Import the dual supervision model with CORRECT imports
                 from src.modules.models.dual_supervision_blip3o_dit import (
-                    DualSupervisionBLIP3oDiTModel, 
+                    DualSupervisionBLIP3oDiTModel,  # CORRECT class name
                     create_blip3o_dit_model
                 )
-                logger.info("🎯 Successfully imported FIXED dual supervision model")
+                
+                # Import the dual supervision loss with CORRECT class name  
+                from src.modules.losses.dual_supervision_flow_matching_loss import (
+                    DualSupervisionFlowMatchingLoss,  # CORRECT class name (NOT BLIP3oFlowMatchingLoss)
+                    create_dual_supervision_loss
+                )
+                
+                logger.info("✅ Successfully imported FIXED dual supervision model")
                 dual_supervision_available = True
                 ModelCreator = create_blip3o_dit_model
                 ModelClass = DualSupervisionBLIP3oDiTModel
@@ -174,21 +187,23 @@ class FixedBLIP3oRecallEvaluator:
             # Create configuration
             config = BLIP3oDiTConfig(**config_dict)
             
-            # FIXED: Create model using the correct approach
+            # FIXED: Create model using the correct approach for dual supervision
             if dual_supervision_available:
-                logger.info("Creating dual supervision model...")
+                logger.info("🎯 Creating FIXED dual supervision model...")
                 self.blip3o_model = ModelCreator(
                     config=config,
                     load_clip_projection=True,
                     enable_dual_supervision=True,
                 )
+                logger.info("✅ Created dual supervision model")
             else:
-                logger.info("Creating standard model...")
+                logger.info("⚠️  Creating standard model...")
                 self.blip3o_model = ModelClass(config)
                 # Try to load CLIP projection manually
                 if hasattr(self.blip3o_model, 'load_frozen_clip_projection'):
                     try:
                         self.blip3o_model.load_frozen_clip_projection()
+                        logger.info("✅ Loaded CLIP projection")
                     except Exception as e:
                         logger.warning(f"Could not load CLIP projection: {e}")
             
@@ -219,12 +234,14 @@ class FixedBLIP3oRecallEvaluator:
             
             logger.info(f"Loaded state dict with {len(state_dict)} keys")
             
-            # Check for dual supervision keys
+            # Check for dual supervision keys - THIS IS CRITICAL
             dual_keys = [k for k in state_dict.keys() if 'global_velocity_proj' in k]
             if dual_keys:
                 logger.info(f"✅ Found dual supervision keys: {dual_keys}")
+                logger.info("🎯 CONFIRMED: This checkpoint has dual supervision!")
             else:
-                logger.warning("⚠️  No dual supervision keys found in checkpoint")
+                logger.warning("❌ No dual supervision keys found in checkpoint")
+                logger.warning("⚠️  This checkpoint was NOT trained with dual supervision")
             
             # FIXED: Load state dict with better error handling
             try:
@@ -256,7 +273,7 @@ class FixedBLIP3oRecallEvaluator:
                 except Exception as e:
                     logger.warning(f"Could not enable dual supervision: {e}")
             
-            # Check model capabilities
+            # FIXED: Check model capabilities properly
             self.model_capabilities = self._check_model_capabilities()
             
             logger.info(f"✅ BLIP3-o model loaded successfully")
@@ -264,24 +281,35 @@ class FixedBLIP3oRecallEvaluator:
             logger.info(f"   Model type: {'FIXED Dual Supervision' if dual_supervision_available else 'Standard'}")
             logger.info(f"   Capabilities: {self.model_capabilities}")
             
+            # CRITICAL: Verify the model actually has dual supervision
+            if self.model_capabilities.get('has_global_velocity_proj', False):
+                logger.info("🎉 SUCCESS: Model has global velocity projection!")
+                logger.info("🎯 Expected performance: 50-70% recall")
+            else:
+                logger.error("❌ PROBLEM: Model missing global velocity projection!")
+                logger.error("🎯 Expected performance: 0-2% recall")
+                logger.error("💡 Check model loading and imports")
+            
         except Exception as e:
             logger.error(f"Failed to load BLIP3-o model: {e}")
             import traceback
             traceback.print_exc()
             raise
-    
+
     def _check_model_capabilities(self) -> Dict[str, bool]:
-        """Check what capabilities the loaded model has."""
+        """FIXED: Check what capabilities the loaded model has."""
         capabilities = {
             'has_frozen_clip_proj': hasattr(self.blip3o_model, 'frozen_clip_visual_proj') and self.blip3o_model.frozen_clip_visual_proj is not None,
             'has_global_adaptation_mlp': hasattr(self.blip3o_model, 'global_adaptation_mlp'),
-            'has_global_velocity_proj': hasattr(self.blip3o_model, 'global_velocity_proj'),  # NEW: FIXED model feature
+            'has_global_velocity_proj': hasattr(self.blip3o_model, 'global_velocity_proj'),  # KEY CAPABILITY!
             'supports_training_modes': hasattr(self.blip3o_model, 'forward') and 'training_mode' in str(self.blip3o_model.forward.__code__.co_varnames),
             'supports_generation_modes': hasattr(self.blip3o_model, 'generate') and 'generation_mode' in str(self.blip3o_model.generate.__code__.co_varnames),
-            'is_fixed_model': hasattr(self.blip3o_model, 'global_velocity_proj'),
+            'is_fixed_model': hasattr(self.blip3o_model, 'global_velocity_proj'),  # This should be True for your model!
         }
         
         return capabilities
+
+    
     
     def _get_num_parameters(self) -> int:
         """Get number of model parameters."""
@@ -362,18 +390,10 @@ class FixedBLIP3oRecallEvaluator:
         self, 
         eva_embeddings: torch.Tensor, 
         num_inference_steps: int = 50,
-        generation_mode: str = "global"  # FIXED: Default to global for better recall
+        generation_mode: str = "global"  # FIXED: Use global mode for your dual supervision model
     ) -> torch.Tensor:
         """
-        FIXED: Generate CLIP embeddings using FIXED BLIP3-o model with proper mode selection.
-        
-        Args:
-            eva_embeddings: EVA-CLIP conditioning [B, 256, 4096]
-            num_inference_steps: Number of sampling steps
-            generation_mode: "auto", "global", "patch", or "dual"
-        
-        Returns:
-            Generated CLIP embeddings [B, 768] (global) or [B, 256, 1024] (patch)
+        FIXED: Generate CLIP embeddings using dual supervision model with proper mode selection.
         """
         if self.blip3o_model is None:
             raise ValueError("BLIP3-o model not loaded. Call load_blip3o_model() first.")
@@ -424,32 +444,6 @@ class FixedBLIP3oRecallEvaluator:
                             generation_mode="global",  # Generate directly in global space
                             return_global_only=True,
                         )
-                        
-                    elif (generation_mode == "patch" and 
-                          hasattr(self.blip3o_model, 'generate') and
-                          self.model_capabilities.get('supports_generation_modes', False)):
-                        
-                        # Use patch generation mode  
-                        logger.debug("Using PATCH generation mode")
-                        generated = self.blip3o_model.generate(
-                            encoder_hidden_states=batch_eva,
-                            num_inference_steps=num_inference_steps,
-                            generation_mode="patch",
-                            return_global_only=True,  # Convert to global for evaluation
-                        )
-                        
-                    elif (generation_mode == "dual" and 
-                          hasattr(self.blip3o_model, 'generate') and
-                          self.model_capabilities.get('supports_generation_modes', False)):
-                        
-                        # Generate both for comparison
-                        logger.debug("Using DUAL generation mode")
-                        results = self.blip3o_model.generate(
-                            encoder_hidden_states=batch_eva,
-                            num_inference_steps=num_inference_steps,
-                            generation_mode="dual",
-                        )
-                        generated = results['global_generation']  # Use global result
                         
                     elif hasattr(self.blip3o_model, 'generate'):
                         # Standard generation (fallback)
