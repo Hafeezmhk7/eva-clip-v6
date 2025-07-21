@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-FIXED: BLIP3-o Recall Evaluation Script with Proper Dual Supervision Support
-This script can now correctly load your trained dual supervision model!
+FIXED: BLIP3-o Recall Evaluation Script with Robust Import Handling
+This script fixes the import issues and can correctly load your trained dual supervision model!
 """
 
 import os
@@ -19,7 +19,7 @@ import json
 import argparse
 import time
 import gc
-from scipy.stats import pearsonr
+import importlib.util
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -52,11 +52,23 @@ def convert_to_serializable(obj):
         return obj
 
 
+def load_module_directly(file_path: str, module_name: str):
+    """Load a module directly from file path to avoid import issues."""
+    try:
+        spec = importlib.util.spec_from_file_location(module_name, file_path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+    except Exception as e:
+        logger.error(f"Failed to load module {module_name} from {file_path}: {e}")
+        return None
+
+
 class FixedBLIP3oRecallEvaluator:
     """
-    FIXED: Evaluator for BLIP3-o recall with proper dual supervision support.
+    FIXED: Evaluator for BLIP3-o recall with robust dual supervision support.
     
-    Now correctly loads and tests dual supervision models!
+    This version handles import issues and can correctly load your trained model!
     """
     
     def __init__(
@@ -74,6 +86,7 @@ class FixedBLIP3oRecallEvaluator:
         self.eva_processor = None
         self.eva_model = None
         self.blip3o_model = None
+        self.model_capabilities = {}
         
         logger.info("FIXED BLIP3-o Recall Evaluator initialized")
         logger.info(f"Device: {self.device}")
@@ -117,42 +130,47 @@ class FixedBLIP3oRecallEvaluator:
         logger.info("✅ CLIP models loaded successfully")
 
     def load_blip3o_model(self, model_path: str):
-        """FIXED: Load trained BLIP3-o model with proper dual supervision support."""
+        """FIXED: Load trained BLIP3-o model with robust import handling."""
         logger.info(f"Loading BLIP3-o model from: {model_path}")
         
         try:
-            # FIXED: Direct imports to avoid module loading issues
-            import importlib.util
+            # FIXED: Load modules directly to avoid import issues
+            print("🔧 Loading modules directly to avoid import issues...")
             
-            # Load config directly
-            config_module_path = Path("src/modules/config/blip3o_config.py")
-            spec = importlib.util.spec_from_file_location("blip3o_config", config_module_path)
-            config_module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(config_module)
+            # Load config module
+            config_module = load_module_directly(
+                "src/modules/config/blip3o_config.py", 
+                "blip3o_config"
+            )
+            if config_module is None:
+                raise ImportError("Failed to load config module")
+            
             BLIP3oDiTConfig = config_module.BLIP3oDiTConfig
             
-            # Load dual supervision model directly
-            model_module_path = Path("src/modules/models/dual_supervision_blip3o_dit.py")
-            if model_module_path.exists():
+            # Try to load dual supervision model first
+            dual_model_module = load_module_directly(
+                "src/modules/models/dual_supervision_blip3o_dit.py",
+                "dual_supervision_model"
+            )
+            
+            if dual_model_module is not None:
                 logger.info("✅ Found dual supervision model file")
-                spec = importlib.util.spec_from_file_location("dual_supervision_model", model_module_path)
-                model_module = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(model_module)
-                
-                DualSupervisionBLIP3oDiTModel = model_module.DualSupervisionBLIP3oDiTModel
-                create_blip3o_dit_model = model_module.create_blip3o_dit_model
+                DualSupervisionBLIP3oDiTModel = dual_model_module.DualSupervisionBLIP3oDiTModel
+                create_blip3o_dit_model = dual_model_module.create_blip3o_dit_model
                 dual_supervision_available = True
                 logger.info("✅ Successfully loaded dual supervision model")
             else:
                 # Fallback to standard model
                 logger.warning("Dual supervision model not found, using standard model")
-                standard_model_path = Path("src/modules/models/blip3o_dit.py")
-                spec = importlib.util.spec_from_file_location("blip3o_dit", standard_model_path)
-                model_module = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(model_module)
+                standard_model_module = load_module_directly(
+                    "src/modules/models/blip3o_dit.py",
+                    "blip3o_dit"
+                )
+                if standard_model_module is None:
+                    raise ImportError("Failed to load any model module")
                 
-                BLIP3oDiTModel = model_module.BLIP3oDiTModel
-                create_blip3o_dit_model = model_module.create_blip3o_dit_model
+                BLIP3oDiTModel = standard_model_module.BLIP3oDiTModel
+                create_blip3o_dit_model = standard_model_module.create_blip3o_dit_model
                 dual_supervision_available = False
             
             model_path = Path(model_path)
@@ -397,27 +415,19 @@ class FixedBLIP3oRecallEvaluator:
                 try:
                     # FIXED: Try different generation approaches based on model type
                     if (generation_mode == "global" and 
-                        hasattr(self.blip3o_model, 'generate')):
+                        hasattr(self.blip3o_model, 'generate') and
+                        'generation_mode' in str(self.blip3o_model.generate.__code__.co_varnames)):
                         
-                        # Try to use generation_mode parameter if supported
-                        try:
-                            generated = self.blip3o_model.generate(
-                                encoder_hidden_states=batch_eva,
-                                num_inference_steps=num_inference_steps,
-                                generation_mode="global",
-                                return_global_only=True,
-                            )
-                            logger.debug("Used global generation mode")
-                        except TypeError:
-                            # Fallback if generation_mode parameter not supported
-                            generated = self.blip3o_model.generate(
-                                encoder_hidden_states=batch_eva,
-                                num_inference_steps=num_inference_steps,
-                                return_global_only=True,
-                            )
-                            logger.debug("Used standard generation with global return")
+                        # Use generation_mode parameter if supported
+                        generated = self.blip3o_model.generate(
+                            encoder_hidden_states=batch_eva,
+                            num_inference_steps=num_inference_steps,
+                            generation_mode="global",
+                            return_global_only=True,
+                        )
+                        logger.debug("Used global generation mode")
                         
-                    else:
+                    elif hasattr(self.blip3o_model, 'generate'):
                         # Standard generation
                         generated = self.blip3o_model.generate(
                             encoder_hidden_states=batch_eva,
@@ -434,6 +444,30 @@ class FixedBLIP3oRecallEvaluator:
                                 self.blip3o_model.frozen_clip_visual_proj is not None):
                                 generated = self.blip3o_model.frozen_clip_visual_proj(generated)
                                 logger.debug("Applied CLIP projection")
+                    else:
+                        # Fallback: manual forward pass
+                        logger.warning("No generate method found, using manual forward pass")
+                        # Create dummy noisy input
+                        dummy_noisy = torch.randn(batch_eva.shape[0], 256, 1024, device=self.device, dtype=self.torch_dtype)
+                        dummy_timestep = torch.zeros(batch_eva.shape[0], device=self.device, dtype=self.torch_dtype)
+                        
+                        model_output = self.blip3o_model(
+                            hidden_states=dummy_noisy,
+                            timestep=dummy_timestep,
+                            encoder_hidden_states=batch_eva,
+                            return_dict=True
+                        )
+                        
+                        # Use global output if available
+                        if 'global_output' in model_output and model_output['global_output'] is not None:
+                            generated = model_output['global_output']
+                        else:
+                            # Pool patch output
+                            patch_output = model_output.get('patch_output', model_output.get('last_hidden_state'))
+                            generated = patch_output.mean(dim=1)
+                            if (hasattr(self.blip3o_model, 'frozen_clip_visual_proj') and 
+                                self.blip3o_model.frozen_clip_visual_proj is not None):
+                                generated = self.blip3o_model.frozen_clip_visual_proj(generated)
                     
                     # Ensure normalization for CLIP compatibility
                     generated = F.normalize(generated, p=2, dim=-1)
