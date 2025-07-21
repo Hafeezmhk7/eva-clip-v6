@@ -12,7 +12,7 @@
 echo "🚀 FIXED BLIP3-o DiT Multi-GPU Training (3x H100 GPUs) - Cosine Scheduler"
 echo "================================================================"
 echo "Key Fixes:"
-echo "  ✅ Removed invalid lr_end parameter"
+echo "  ✅ Removed invalid flow_matching_loss_weight parameter"
 echo "  ✅ Proper cosine learning rate scheduler"
 echo "  ✅ DDP parameter usage compatibility"
 echo "  ✅ All model parameters guaranteed to be used"
@@ -140,31 +140,32 @@ echo "   📦 Batch size: 8 per GPU"
 echo "   🔄 Gradient accumulation: 2"
 echo "   💾 Memory optimizations: Gradient checkpointing enabled"
 echo "   📈 Scheduler: Cosine annealing with warmup"
-echo "   ✅ Key Fix: Removed invalid lr_end parameter"
+echo "   ✅ Key Fix: Removed invalid flow_matching_loss_weight parameter"
 echo "   ✅ Key Fix: Proper DDP parameter usage"
 echo ""
 
-# FIXED: Proper line continuation for torchrun command
+# FIXED: Removed the invalid --flow_matching_loss_weight parameter
 torchrun --nproc_per_node=$NUM_GPUS --nnodes=1 --node_rank=0 train_blip3o_dit_multi_gpu.py \
     --chunked_embeddings_dir "$EMBEDDINGS_DIR" \
     --output_dir "$TEMP_CHECKPOINT_DIR" \
-    --batch_size 8\
-    --eval_batch_size 64 \
-    --num_epochs 8 \
+    --batch_size 64 \
+    --eval_batch_size 8 \
+    --num_epochs 15 \
     --model_dim 768 \
     --num_heads 12 \
     --num_layers 16 \
     --mlp_hidden_dim 2048 \
     --mlp_num_layers 3 \
     --mlp_dropout 0.1 \
-    --learning_rate 5e-5 \
+    --learning_rate 5e-4 \
     --lr_scheduler_type cosine \
     --warmup_ratio 0.05 \
     --weight_decay 0.01 \
     --gradient_accumulation_steps 6 \
     --patch_loss_weight 1.0 \
     --global_loss_weight 2.0 \
-    --flow_matching_loss_weight 1.0 \
+    --patch_flow_weight 1.0 \
+    --global_flow_weight 3.0 \
     --dataloader_num_workers 2 \
     --fp16
 
@@ -176,81 +177,6 @@ echo "🎯 FIXED MULTI-GPU TRAINING COMPLETED WITH EXIT CODE: $TRAINING_EXIT_COD
 # =============================================================================
 # MODEL ARCHIVING
 # =============================================================================
-
-### 1st Trial
-# Try larger model
-#--model_dim 768 \
-#--num_layers 10 \
-#--num_heads 12
-# Try higher peak LR with longer training
-#--learning_rate 2e-4 \
-#--num_epochs 10 \
-#--warmup_ratio 0.1
-
-## 2nd 
-#--nproc_per_node=$NUM_GPUS \
-#   --nnodes=1 \
-    # --node_rank=0 \
-    # train_blip3o_dit_multi_gpu.py \
-    # --chunked_embeddings_dir "$EMBEDDINGS_DIR" \
-    # --output_dir "$TEMP_CHECKPOINT_DIR" \
-    # --batch_size 8 \
-    # --eval_batch_size 2 \
-    # --num_epochs 5 \
-    # --model_dim 1024 \
-    # --num_heads 16 \
-    # --num_layers 20 \
-    # --learning_rate 2e-4 \
-    # --lr_scheduler_type cosine \
-    # --warmup_ratio 0.1 \
-    # --weight_decay 0.01 \
-    # --warmup_steps 100 \
-    # --gradient_accumulation_steps 2 \
-    # --fp16 \
-    # --dataloader_num_workers 2
-
-## 3rd
-# torchrun \
-#     --nproc_per_node=$NUM_GPUS \
-#     --nnodes=1 \
-#     --node_rank=0 \
-#     train_blip3o_dit_multi_gpu.py \
-#     --chunked_embeddings_dir "$EMBEDDINGS_DIR" \
-#     --output_dir "$TEMP_CHECKPOINT_DIR" \
-#     --batch_size 8 \
-#     --eval_batch_size 2 \
-#     --num_epochs 8 \
-#     --model_dim 1024 \
-#     --num_heads 16 \
-#     --num_layers 20 \
-#     --learning_rate 2.2e-4 \
-#     --lr_scheduler_type cosine \
-#     --warmup_ratio 0.08 \
-#     --weight_decay 0.007 \
-#     --warmup_steps 80 \
-#     --gradient_accumulation_steps 2 \
-#     --fp16 \
-#     --dataloader_num_workers 2
-
-## 4th
-# torchrun --nproc_per_node=$NUM_GPUS --nnodes=1 --node_rank=0 train_blip3o_dit_multi_gpu.py \
-#     --chunked_embeddings_dir "$EMBEDDINGS_DIR" \
-#     --output_dir "$TEMP_CHECKPOINT_DIR" \
-#     --batch_size 10 \                           # ↑ Increased (if memory allows)
-#     --eval_batch_size 4 \                       # ↑ Increased
-#     --num_epochs 8 \                            # ✓ Keep (working well)
-#     --model_dim 1024 \                          # ✓ Keep (working great)
-#     --num_heads 16 \                            # ✓ Keep
-#     --num_layers 20 \                           # ✓ Keep
-#     --learning_rate 3e-4 \                      # ↑ INCREASED from 2.2e-4
-#     --lr_scheduler_type cosine_with_restarts \   # ↑ Advanced scheduler for LR restarts
-#     --warmup_ratio 0.06 \                       # ↓ Shorter warmup for higher LR
-#     --weight_decay 0.005 \                      # ↓ Reduced (model learning well)
-#     --warmup_steps 60 \                         # ↓ Adjusted
-#     --gradient_accumulation_steps 2 \           # ✓ Keep
-#     --fp16 \                                    # ✓ Keep
-#     --dataloader_num_workers 2
-
 
 if [ $TRAINING_EXIT_CODE -eq 0 ]; then
     echo ""
@@ -269,7 +195,7 @@ if [ $TRAINING_EXIT_CODE -eq 0 ]; then
     echo "Model saved to: $PERSISTENT_CHECKPOINT_DIR"
     echo ""
     echo "🔧 Applied Fixes:"
-    echo "   ✅ Removed invalid lr_end parameter"
+    echo "   ✅ Removed invalid flow_matching_loss_weight parameter"
     echo "   ✅ Proper cosine learning rate scheduler implementation"
     echo "   ✅ DDP parameter usage compatibility"
     echo "   ✅ All model parameters guaranteed to be used"

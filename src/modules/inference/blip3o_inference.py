@@ -16,7 +16,7 @@ from tqdm import tqdm
 
 from ..models.blip3o_dit import BLIP3oDiTModel
 from ..config.blip3o_config import BLIP3oDiTConfig
-from ..losses.flow_matching_loss import BLIP3oFlowMatchingLoss, create_blip3o_flow_matching_loss
+from ..losses.dual_supervision_flow_matching_loss import BLIP3oFlowMatchingLoss, create_blip3o_flow_matching_loss
 from ..datasets.blip3o_dataset import BLIP3oEmbeddingDataset, create_blip3o_dataloader
 
 logger = logging.getLogger(__name__)

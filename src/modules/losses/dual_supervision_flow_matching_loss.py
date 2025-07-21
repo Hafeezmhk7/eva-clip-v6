@@ -16,7 +16,7 @@ from transformers import CLIPModel
 from ..config.blip3o_config import FlowMatchingConfig
 
 
-class FixedDualSupervisionFlowMatchingLoss(nn.Module):
+class DualSupervisionFlowMatchingLoss(nn.Module):
     """
     FIXED: Dual Supervision Flow Matching Loss with Global Generation Training
     
@@ -405,7 +405,7 @@ class FixedDualSupervisionFlowMatchingLoss(nn.Module):
         return total_loss, metrics
 
 
-def create_fixed_dual_supervision_loss(
+def create_dual_supervision_loss(
     config: Optional[FlowMatchingConfig] = None,
     patch_loss_weight: float = 1.0,
     global_loss_weight: float = 2.0,
@@ -414,10 +414,10 @@ def create_fixed_dual_supervision_loss(
     use_cosine_similarity: bool = False,
     clip_model_name: str = "openai/clip-vit-large-patch14",
     **kwargs
-) -> FixedDualSupervisionFlowMatchingLoss:
+) ->DualSupervisionFlowMatchingLoss:
     """Factory function for FIXED dual supervision flow matching loss."""
     
-    return FixedDualSupervisionFlowMatchingLoss(
+    return DualSupervisionFlowMatchingLoss(
         config=config,
         patch_loss_weight=patch_loss_weight,
         global_loss_weight=global_loss_weight,
@@ -430,4 +430,4 @@ def create_fixed_dual_supervision_loss(
 
 
 # Alias for backward compatibility
-create_dual_supervision_loss = create_fixed_dual_supervision_loss
+create_dual_supervision_loss = create_dual_supervision_loss

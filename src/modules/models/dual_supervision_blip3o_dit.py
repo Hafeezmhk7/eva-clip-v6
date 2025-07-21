@@ -9,14 +9,14 @@ during training, resolving the training-inference mismatch.
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Optional, Dict, Any, Tuple, Union
+from typing import Optional, Dict, Any, Tuple, Union, List  # FIXED: Added List import
 from transformers import PreTrainedModel
 
 from .blip3o_dit import BLIP3oDiTModel
 from ..config.blip3o_config import BLIP3oDiTConfig
 
 
-class FixedDualSupervisionBLIP3oDiTModel(BLIP3oDiTModel):
+class DualSupervisionBLIP3oDiTModel(BLIP3oDiTModel):
     """
     FIXED: Dual Supervision BLIP3-o DiT Model with Global Generation Training.
     
@@ -311,7 +311,7 @@ def create_blip3o_dit_model(
     clip_model_name: str = "openai/clip-vit-large-patch14",
     enable_dual_supervision: bool = True,
     **kwargs
-) -> FixedDualSupervisionBLIP3oDiTModel:
+) -> DualSupervisionBLIP3oDiTModel:
     """
     Factory function to create FIXED dual supervision BLIP3-o DiT model.
     
@@ -333,7 +333,7 @@ def create_blip3o_dit_model(
     print(f"   Expected recall improvement: 0% → 60%+")
     
     # Create FIXED dual supervision model
-    model = FixedDualSupervisionBLIP3oDiTModel(config)
+    model = DualSupervisionBLIP3oDiTModel(config)
     
     # Load frozen CLIP projection if requested
     if load_clip_projection:
@@ -361,7 +361,7 @@ def load_dual_supervision_blip3o_dit_model(
     model_path: str,
     device: str = "auto",
     torch_dtype: Optional[torch.dtype] = None
-) -> FixedDualSupervisionBLIP3oDiTModel:
+) -> DualSupervisionBLIP3oDiTModel:
     """Load a FIXED dual supervision BLIP3-o DiT model."""
     print(f"📁 Loading FIXED dual supervision BLIP3-o model from: {model_path}")
     
@@ -378,7 +378,7 @@ def load_dual_supervision_blip3o_dit_model(
 
 # Export functions for compatibility
 __all__ = [
-    "FixedDualSupervisionBLIP3oDiTModel",
+    "DualSupervisionBLIP3oDiTModel",
     "create_blip3o_dit_model",
     "load_dual_supervision_blip3o_dit_model",
 ]

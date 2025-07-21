@@ -1,9 +1,10 @@
 """
-FIXED: Dual Supervision BLIP3-o Trainer with Global Flow Matching
+FIXED: Dual Supervision BLIP3-o Trainer with Global Flow Matching and DDP Fix
 Replace: src/modules/trainers/dual_supervision_blip3o_trainer.py
 
 KEY FIX: Uses the new dual flow matching loss to train both patch and global generation,
 resolving the training-inference mismatch for recall performance.
+ADDITIONAL FIX: Resolves DDP unused parameters issue.
 """
 
 import torch
@@ -22,12 +23,14 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 
-class FixedDualSupervisionBLIP3oTrainer(Trainer):
+class DualSupervisionBLIP3oTrainer(Trainer):
     """
     FIXED: Enhanced trainer for dual supervision BLIP3-o training with global flow matching.
     
     KEY FIX: Trains the model to generate in BOTH patch and global spaces,
     resolving the training-inference mismatch that caused poor recall (0% → 60%+).
+    
+    DDP FIX: Handles unused parameters properly for multi-GPU training.
     """
     
     def __init__(
@@ -197,7 +200,7 @@ class FixedDualSupervisionBLIP3oTrainer(Trainer):
             else:
                 raise e
         
-        # Extract outputs
+        # Extract outputs - ensure all outputs participate in loss computation
         patch_velocity = outputs.get('patch_velocity', outputs.get('patch_output'))  # [B, 256, 1024]
         global_velocity = outputs.get('global_velocity')                             # [B, 768]
         global_output = outputs.get('global_output')                                 # [B, 768]
@@ -208,13 +211,17 @@ class FixedDualSupervisionBLIP3oTrainer(Trainer):
                 global_velocity = global_output
                 logger.debug("Using global_output as global_velocity (fallback)")
             else:
-                # Create dummy global velocity
-                global_velocity = torch.zeros(batch_size, 768, device=device, dtype=clip_embeddings.dtype)
+                # Create dummy global velocity that participates in loss
+                global_velocity = torch.zeros(batch_size, 768, device=device, dtype=clip_embeddings.dtype, requires_grad=True)
                 logger.warning("Created dummy global_velocity (model may need updating)")
         
         # Ensure all tensors are on the same device
         if global_velocity.device != target_global.device:
             target_global = target_global.to(global_velocity.device)
+        
+        # FIXED: Ensure all model outputs participate in loss computation
+        # This fixes the DDP unused parameters issue
+        total_loss = torch.tensor(0.0, device=device, requires_grad=True)
         
         # FIXED: Compute dual supervision loss with BOTH flow matching components
         try:
@@ -233,6 +240,10 @@ class FixedDualSupervisionBLIP3oTrainer(Trainer):
                 noise=patch_noise,
                 return_metrics=True
             )
+            
+            # Ensure loss contributes to total
+            total_loss = total_loss + loss
+            
         except Exception as e:
             logger.error(f"Error in loss computation: {e}")
             logger.error(f"Tensor shapes:")
@@ -241,6 +252,22 @@ class FixedDualSupervisionBLIP3oTrainer(Trainer):
             logger.error(f"  clip_embeddings: {clip_embeddings.shape}")
             logger.error(f"  target_global: {target_global.shape}")
             raise e
+        
+        # FIXED: Add small regularization to ensure ALL parameters are used
+        # This prevents DDP unused parameter issues
+        if hasattr(model, 'module'):  # DDP wrapped model
+            model_for_reg = model.module
+        else:
+            model_for_reg = model
+        
+        # Add tiny regularization term that uses all parameters
+        param_reg = torch.tensor(0.0, device=device, requires_grad=True)
+        for param in model_for_reg.parameters():
+            if param.requires_grad:
+                param_reg = param_reg + 1e-8 * torch.sum(param * param)
+        
+        # Combine losses
+        final_loss = total_loss + param_reg
         
         # Store metrics
         if metrics is not None:
@@ -271,9 +298,9 @@ class FixedDualSupervisionBLIP3oTrainer(Trainer):
         } if return_outputs else None
         
         if return_outputs:
-            return loss, enhanced_outputs
+            return final_loss, enhanced_outputs
         else:
-            return loss
+            return final_loss
     
     def _log_fixed_dual_supervision_metrics(
         self,
@@ -598,6 +625,7 @@ class FixedDualSupervisionBLIP3oTrainer(Trainer):
                 'training_inference_mismatch_resolution',
                 'enhanced_global_generation_metrics',
                 'robust_device_handling',
+                'ddp_unused_parameters_fix',  # NEW
             ],
             
             # Expected improvements
@@ -606,6 +634,7 @@ class FixedDualSupervisionBLIP3oTrainer(Trainer):
                 'training_stability': 'Both patch and global pathways trained',
                 'inference_consistency': 'Training and inference now aligned',
                 'generation_quality': 'Direct global space generation',
+                'multi_gpu_stability': 'DDP unused parameters handled',  # NEW
             },
             
             # Troubleshooting info
@@ -614,6 +643,7 @@ class FixedDualSupervisionBLIP3oTrainer(Trainer):
                 'device_errors': 'Check CLIP projection device placement',
                 'poor_recall': 'Monitor recall_readiness_score during training',
                 'training_instability': 'Adjust loss weights, check gradient accumulation',
+                'ddp_unused_parameters': 'Enable find_unused_parameters=True in DDP',  # NEW
             }
         }
         
@@ -663,7 +693,7 @@ def create_blip3o_training_args(
     greater_is_better: bool = True,
     **kwargs
 ) -> TrainingArguments:
-    """Create TrainingArguments optimized for FIXED dual supervision training."""
+    """Create TrainingArguments optimized for FIXED dual supervision training with DDP fix."""
     
     # Ensure evaluation strategy compatibility
     if load_best_model_at_end and eval_steps > 0:
@@ -701,8 +731,8 @@ def create_blip3o_training_args(
         prediction_loss_only=False,
         report_to=[],
         
-        # Multi-GPU DDP settings
-        ddp_find_unused_parameters=False,
+        # FIXED: Multi-GPU DDP settings with unused parameters fix
+        ddp_find_unused_parameters=True,  # KEY FIX: Enable unused parameter handling
         dataloader_pin_memory=True,
         save_on_each_node=False,
         **kwargs

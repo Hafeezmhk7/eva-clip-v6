@@ -159,8 +159,8 @@ def main():
             print("📦 Importing FIXED dual supervision components...")
         
         from src.modules.config.blip3o_config import BLIP3oDiTConfig
-        from src.modules.losses.dual_supervision_flow_matching_loss import create_fixed_dual_supervision_loss
-        from src.modules.trainers.dual_supervision_blip3o_trainer import FixedDualSupervisionBLIP3oTrainer, create_blip3o_training_args
+        from src.modules.losses.dual_supervision_flow_matching_loss import create_dual_supervision_loss
+        from src.modules.trainers.dual_supervision_blip3o_trainer import DualSupervisionBLIP3oTrainer, create_blip3o_training_args
         from src.modules.datasets.blip3o_dataset import create_chunked_dataloaders
         
         # FIXED: Import the fixed model
@@ -171,7 +171,7 @@ def main():
             # Try to import the fixed model first
             from src.modules.models.dual_supervision_blip3o_dit import create_blip3o_dit_model
             if local_rank == 0:
-                print("✅ Using FixedDualSupervisionBLIP3oDiTModel")
+                print("✅ Using DualSupervisionBLIP3oDiTModel")
             use_fixed_model = True
         except ImportError as e:
             if local_rank == 0:
@@ -255,7 +255,7 @@ def main():
         if local_rank == 0:
             print(f"🎯 Creating FIXED dual supervision loss with global flow matching...")
         
-        flow_matching_loss = create_fixed_dual_supervision_loss(
+        flow_matching_loss = create_dual_supervision_loss(
             patch_loss_weight=args.patch_loss_weight,
             global_loss_weight=args.global_loss_weight,
             patch_flow_weight=args.patch_flow_weight,        # NEW: Patch flow weight
@@ -339,7 +339,7 @@ def main():
             warmup_ratio=args.warmup_ratio,
             weight_decay=args.weight_decay,
             warmup_steps=args.warmup_steps,
-            logging_steps=2,
+            logging_steps=10,
             save_steps=max(100, max_steps // 5),
             eval_steps=max(50, max_steps // 10) if has_eval_dataloader else 0,
             gradient_accumulation_steps=args.gradient_accumulation_steps,
@@ -355,7 +355,7 @@ def main():
             print("🔧 Creating FIXED dual supervision trainer with global flow matching...")
         
         # Create FIXED trainer
-        trainer = FixedDualSupervisionBLIP3oTrainer(
+        trainer = DualSupervisionBLIP3oTrainer(
             model=model,
             args=training_args,
             flow_matching_loss=flow_matching_loss,

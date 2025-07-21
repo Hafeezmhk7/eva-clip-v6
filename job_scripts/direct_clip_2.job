@@ -27,7 +27,7 @@ source activate eva_clip_env
 
 # Configuration
 COCO_ROOT="./data/coco"
-BLIP3O_MODEL_PATH="/scratch-shared/scur2711/blip3o_workspace/checkpoints/blip3o_multi_gpu_fixed_cosine_13218794_20250719_021513"
+BLIP3O_MODEL_PATH="/scratch-shared/scur2711/blip3o_workspace/checkpoints/blip3o_multi_gpu_fixed_cosine_13219643_20250719_081230"
 NUM_SAMPLES=1000
 DEVICE="cuda"
 K_VALUES="1 5 10"
