@@ -4,10 +4,11 @@ FIXED: BLIP3-o Recall Evaluation Script with Proper Dual Supervision Support
 Replace: comp_eval.py
 
 KEY FIXES:
-1. Proper dual supervision model loading
+1. Proper dual supervision model loading with correct imports
 2. Fixed JSON serialization
 3. Better generation mode handling
 4. Enhanced error handling and logging
+5. Correct caption handling (using all 5 captions per image as standard)
 """
 
 import os
@@ -122,11 +123,6 @@ class FixedBLIP3oRecallEvaluator:
         self.eva_model.eval()
         
         logger.info("✅ CLIP models loaded successfully")
-    
-    """
-    FIXED: Model loading section for comp_eval.py
-    Replace the model loading section (around line 125) with this corrected version.
-    """
 
     def load_blip3o_model(self, model_path: str):
         """FIXED: Load trained BLIP3-o model with proper dual supervision support."""
@@ -138,13 +134,13 @@ class FixedBLIP3oRecallEvaluator:
             try:
                 # Import the dual supervision model with CORRECT imports
                 from src.modules.models.dual_supervision_blip3o_dit import (
-                    DualSupervisionBLIP3oDiTModel,  # CORRECT class name
+                    DualSupervisionBLIP3oDiTModel,
                     create_blip3o_dit_model
                 )
                 
                 # Import the dual supervision loss with CORRECT class name  
                 from src.modules.losses.dual_supervision_flow_matching_loss import (
-                    DualSupervisionFlowMatchingLoss,  # CORRECT class name (NOT BLIP3oFlowMatchingLoss)
+                    DualSupervisionFlowMatchingLoss,
                     create_dual_supervision_loss
                 )
                 
@@ -309,8 +305,6 @@ class FixedBLIP3oRecallEvaluator:
         
         return capabilities
 
-    
-    
     def _get_num_parameters(self) -> int:
         """Get number of model parameters."""
         if hasattr(self.blip3o_model, 'get_num_parameters'):
@@ -608,7 +602,8 @@ class FixedBLIP3oRecallEvaluator:
         image_to_text_mapping = []
         text_idx = 0
         
-        # Flatten captions and create mapping
+        # CORRECT: Flatten captions and create mapping (using all 5 captions per image)
+        # This is the STANDARD approach for image-text retrieval evaluation
         for img_idx, caption_list in enumerate(captions_per_image):
             current_text_indices = []
             for caption in caption_list:
@@ -619,6 +614,9 @@ class FixedBLIP3oRecallEvaluator:
         # Extract all captions
         all_captions = [caption for caption_list in captions_per_image for caption in caption_list]
         text_embeddings = self.extract_clip_text_embeddings(all_captions)
+        
+        logger.info(f"Total captions: {len(all_captions)}")
+        logger.info(f"Average captions per image: {len(all_captions) / len(images):.2f}")
         
         # Extract image embeddings based on method
         logger.info(f"Extracting image embeddings using {method} method...")
@@ -744,7 +742,7 @@ def load_coco_samples(coco_root: Path, num_samples: int = 1000) -> Tuple[List[Im
             image = Image.open(image_path).convert('RGB')
             
             images.append(image)
-            captions_per_image.append(captions[:5])  # Max 5 captions per image
+            captions_per_image.append(captions[:5])  # Max 5 captions per image (STANDARD)
             image_ids.append(image_id)
             loaded_count += 1
             
@@ -753,6 +751,8 @@ def load_coco_samples(coco_root: Path, num_samples: int = 1000) -> Tuple[List[Im
             continue
     
     logger.info(f"Successfully loaded {len(images)} images with {sum(len(caps) for caps in captions_per_image)} captions")
+    logger.info(f"Average captions per image: {sum(len(caps) for caps in captions_per_image) / len(images):.2f}")
+    
     return images, captions_per_image, image_ids
 
 
@@ -881,6 +881,7 @@ def main():
     print("📊 FIXED BLIP3-O RECALL EVALUATION RESULTS")
     print("="*80)
     print(f"Dataset: MS-COCO 2017 Validation ({len(images)} images, {sum(len(caps) for caps in captions_per_image)} captions)")
+    print(f"Caption usage: ALL 5 captions per image (STANDARD for retrieval evaluation)")
     print(f"Total evaluation time: {total_time:.2f}s")
     print(f"Generation mode: {args.generation_mode}")
     
@@ -961,6 +962,7 @@ def main():
                 'dataset': 'MS-COCO 2017 Validation',
                 'num_images': len(images),
                 'num_captions': sum(len(caps) for caps in captions_per_image),
+                'caption_usage': 'all_5_captions_per_image_standard_evaluation',
                 'blip3o_model_path': str(blip3o_model_path),
                 'generation_mode': args.generation_mode,
                 'total_time': total_time,
