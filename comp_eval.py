@@ -106,7 +106,7 @@ class FixedBLIP3oRecallEvaluator:
         try:
             # Try importing FIXED model first
             try:
-                from src.modules.models.dual_supervision_blip3o_dit import FixedDualSupervisionBLIP3oDiTModel, create_blip3o_dit_model
+                from src.modules.models.dual_supervision_blip3o_dit import DualSupervisionBLIP3oDiTModel, create_blip3o_dit_model
                 logger.info("🎯 Attempting to load FIXED model architecture")
                 is_fixed_model = True
             except ImportError:
