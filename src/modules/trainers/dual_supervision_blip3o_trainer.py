@@ -1,7 +1,5 @@
 """
 FIXED: Dual Supervision BLIP3-o Trainer with Global Flow Matching and DDP Fix
-Replace: src/modules/trainers/dual_supervision_blip3o_trainer.py
-
 KEY FIX: Uses the new dual flow matching loss to train both patch and global generation,
 resolving the training-inference mismatch for recall performance.
 ADDITIONAL FIX: Resolves DDP unused parameters issue.

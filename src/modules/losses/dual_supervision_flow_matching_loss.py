@@ -1,7 +1,5 @@
 """
 FIXED: Dual Supervision Flow Matching Loss with Global Generation Training
-Place this file at: src/modules/losses/dual_supervision_flow_matching_loss.py
-
 KEY FIX: Adds global flow matching to train the model to generate directly in global space,
 not just post-process from patches. This resolves the training-inference mismatch.
 """
@@ -13,8 +11,8 @@ from typing import Optional, Tuple, Dict, Any
 import math
 from transformers import CLIPModel
 
-# FIXED: Import from the correct module
-from .flow_matching_loss import BLIP3oFlowMatchingLoss  # ← FIXED: Import from standard loss
+# Import from the correct module
+from .flow_matching_loss import BLIP3oFlowMatchingLoss
 from ..config.blip3o_config import FlowMatchingConfig
 
 

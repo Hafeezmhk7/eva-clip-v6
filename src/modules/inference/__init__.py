@@ -7,11 +7,11 @@ Contains:
 """
 
 from .blip3o_inference import (
-    BLIP3oInference,
-    load_blip3o_inference,
+    DualSupervisionBLIP3oInference,
+    load_dual_supervision_blip3o_inference,
 )
 
 __all__ = [
-    "BLIP3oInference",
-    "load_blip3o_inference",
+    "DualSupervisionBLIP3oInference",
+    "load_dual_supervision_blip3o_inference",
 ]

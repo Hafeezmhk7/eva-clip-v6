@@ -136,6 +136,7 @@ python comp_eval.py \
     --device $DEVICE \
     --k_values $K_VALUES \
     --num_inference_steps $NUM_INFERENCE_STEPS \
+    --generation_mode auto
     --save_results "results/blip3o_recall_evaluation_${JOB_ID}.json"
 
 EXIT_CODE=$?

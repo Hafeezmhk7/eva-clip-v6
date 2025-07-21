@@ -1,7 +1,5 @@
 """
 FIXED: Dual Supervision BLIP3-o DiT Model with Global Generation Training
-Replace: src/modules/models/dual_supervision_blip3o_dit.py
-
 KEY FIX: Enables the model to output velocity predictions for BOTH patch and global spaces
 during training, resolving the training-inference mismatch.
 """
@@ -9,7 +7,7 @@ during training, resolving the training-inference mismatch.
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Optional, Dict, Any, Tuple, Union, List  # FIXED: Added List import
+from typing import Optional, Dict, Any, Tuple, Union, List
 from transformers import PreTrainedModel
 
 from .blip3o_dit import BLIP3oDiTModel
@@ -30,7 +28,7 @@ class DualSupervisionBLIP3oDiTModel(BLIP3oDiTModel):
     def __init__(self, config: BLIP3oDiTConfig):
         super().__init__(config)
         
-        # Add global velocity prediction layer
+        # Add global velocity prediction layer - KEY FIX
         self.global_velocity_proj = nn.Linear(config.in_channels, 768, bias=True)
         
         # Initialize the new layer

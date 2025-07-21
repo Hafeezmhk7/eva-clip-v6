@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-FIXED: BLIP3-o Recall Evaluation Script with Robust Import Handling
-This script fixes the import issues and can correctly load your trained dual supervision model!
+FIXED: BLIP3-o Recall Evaluation Script with Proper Import Handling
+This script fixes the import issues and correctly loads your trained dual supervision model!
 """
 
 import os
@@ -19,17 +19,34 @@ import json
 import argparse
 import time
 import gc
-import importlib.util
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Add project root to path
+# FIXED: Add project root to path FIRST
 script_dir = Path(__file__).parent
 project_root = script_dir
 sys.path.insert(0, str(project_root))
 sys.path.insert(0, str(project_root / "src"))
+
+# FIXED: Import directly from the module structure
+try:
+    from src.modules.config.blip3o_config import BLIP3oDiTConfig
+    from src.modules.models.dual_supervision_blip3o_dit import DualSupervisionBLIP3oDiTModel, create_blip3o_dit_model
+    DUAL_SUPERVISION_AVAILABLE = True
+    print("✅ Successfully imported dual supervision components")
+except ImportError as e:
+    print(f"❌ Failed to import dual supervision model: {e}")
+    try:
+        from src.modules.config.blip3o_config import BLIP3oDiTConfig
+        from src.modules.models.blip3o_dit import BLIP3oDiTModel, create_blip3o_dit_model
+        DUAL_SUPERVISION_AVAILABLE = False
+        print("⚠️ Using standard model as fallback")
+    except ImportError as e2:
+        print(f"❌ Failed to import any model: {e2}")
+        print("Unable to load the model properly")
+        sys.exit(1)
 
 
 def convert_to_serializable(obj):
@@ -52,23 +69,9 @@ def convert_to_serializable(obj):
         return obj
 
 
-def load_module_directly(file_path: str, module_name: str):
-    """Load a module directly from file path to avoid import issues."""
-    try:
-        spec = importlib.util.spec_from_file_location(module_name, file_path)
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        return module
-    except Exception as e:
-        logger.error(f"Failed to load module {module_name} from {file_path}: {e}")
-        return None
-
-
 class FixedBLIP3oRecallEvaluator:
     """
-    FIXED: Evaluator for BLIP3-o recall with robust dual supervision support.
-    
-    This version handles import issues and can correctly load your trained model!
+    FIXED: Evaluator for BLIP3-o recall with proper dual supervision support.
     """
     
     def __init__(
@@ -90,6 +93,7 @@ class FixedBLIP3oRecallEvaluator:
         
         logger.info("FIXED BLIP3-o Recall Evaluator initialized")
         logger.info(f"Device: {self.device}")
+        logger.info(f"Dual supervision available: {DUAL_SUPERVISION_AVAILABLE}")
     
     def _setup_device(self, device_arg: str) -> torch.device:
         """Setup computation device."""
@@ -130,49 +134,10 @@ class FixedBLIP3oRecallEvaluator:
         logger.info("✅ CLIP models loaded successfully")
 
     def load_blip3o_model(self, model_path: str):
-        """FIXED: Load trained BLIP3-o model with robust import handling."""
+        """FIXED: Load trained BLIP3-o model with proper import handling."""
         logger.info(f"Loading BLIP3-o model from: {model_path}")
         
         try:
-            # FIXED: Load modules directly to avoid import issues
-            print("🔧 Loading modules directly to avoid import issues...")
-            
-            # Load config module
-            config_module = load_module_directly(
-                "src/modules/config/blip3o_config.py", 
-                "blip3o_config"
-            )
-            if config_module is None:
-                raise ImportError("Failed to load config module")
-            
-            BLIP3oDiTConfig = config_module.BLIP3oDiTConfig
-            
-            # Try to load dual supervision model first
-            dual_model_module = load_module_directly(
-                "src/modules/models/dual_supervision_blip3o_dit.py",
-                "dual_supervision_model"
-            )
-            
-            if dual_model_module is not None:
-                logger.info("✅ Found dual supervision model file")
-                DualSupervisionBLIP3oDiTModel = dual_model_module.DualSupervisionBLIP3oDiTModel
-                create_blip3o_dit_model = dual_model_module.create_blip3o_dit_model
-                dual_supervision_available = True
-                logger.info("✅ Successfully loaded dual supervision model")
-            else:
-                # Fallback to standard model
-                logger.warning("Dual supervision model not found, using standard model")
-                standard_model_module = load_module_directly(
-                    "src/modules/models/blip3o_dit.py",
-                    "blip3o_dit"
-                )
-                if standard_model_module is None:
-                    raise ImportError("Failed to load any model module")
-                
-                BLIP3oDiTModel = standard_model_module.BLIP3oDiTModel
-                create_blip3o_dit_model = standard_model_module.create_blip3o_dit_model
-                dual_supervision_available = False
-            
             model_path = Path(model_path)
             
             # Load configuration
@@ -191,8 +156,8 @@ class FixedBLIP3oRecallEvaluator:
             # Create configuration
             config = BLIP3oDiTConfig(**config_dict)
             
-            # FIXED: Create model using the correct approach
-            if dual_supervision_available:
+            # FIXED: Create model using the proper approach
+            if DUAL_SUPERVISION_AVAILABLE:
                 logger.info("🎯 Creating dual supervision model...")
                 self.blip3o_model = create_blip3o_dit_model(
                     config=config,
@@ -231,7 +196,7 @@ class FixedBLIP3oRecallEvaluator:
             
             logger.info(f"Loaded state dict with {len(state_dict)} keys")
             
-            # Check for dual supervision keys - THIS IS CRITICAL
+            # Check for dual supervision keys
             dual_keys = [k for k in state_dict.keys() if 'global_velocity_proj' in k]
             if dual_keys:
                 logger.info(f"✅ Found dual supervision keys: {dual_keys}")
@@ -240,14 +205,14 @@ class FixedBLIP3oRecallEvaluator:
                 logger.warning("❌ No dual supervision keys found in checkpoint")
                 logger.warning("⚠️  This checkpoint was NOT trained with dual supervision")
             
-            # FIXED: Load state dict with better error handling
+            # Load state dict with better error handling
             try:
                 missing_keys, unexpected_keys = self.blip3o_model.load_state_dict(state_dict, strict=False)
                 
                 if missing_keys:
-                    logger.warning(f"Missing keys: {missing_keys[:5]}...")  # Show first 5
+                    logger.warning(f"Missing keys: {missing_keys[:5]}...")
                 if unexpected_keys:
-                    logger.warning(f"Unexpected keys: {unexpected_keys[:5]}...")  # Show first 5
+                    logger.warning(f"Unexpected keys: {unexpected_keys[:5]}...")
                 
                 logger.info("✅ Model weights loaded successfully")
                 
@@ -259,15 +224,15 @@ class FixedBLIP3oRecallEvaluator:
             self.blip3o_model = self.blip3o_model.to(device=self.device, dtype=self.torch_dtype)
             self.blip3o_model.eval()
             
-            # FIXED: Check model capabilities properly
+            # Check model capabilities
             self.model_capabilities = self._check_model_capabilities()
             
             logger.info(f"✅ BLIP3-o model loaded successfully")
             logger.info(f"   Parameters: {self._get_num_parameters():,}")
-            logger.info(f"   Model type: {'FIXED Dual Supervision' if dual_supervision_available else 'Standard'}")
+            logger.info(f"   Model type: {'FIXED Dual Supervision' if DUAL_SUPERVISION_AVAILABLE else 'Standard'}")
             logger.info(f"   Capabilities: {self.model_capabilities}")
             
-            # CRITICAL: Verify the model actually has dual supervision
+            # Verify the model actually has dual supervision
             if self.model_capabilities.get('has_global_velocity_proj', False):
                 logger.info("🎉 SUCCESS: Model has global velocity projection!")
                 logger.info("🎯 Expected performance: 50-70% recall")
@@ -282,11 +247,11 @@ class FixedBLIP3oRecallEvaluator:
             raise
 
     def _check_model_capabilities(self) -> Dict[str, bool]:
-        """FIXED: Check what capabilities the loaded model has."""
+        """Check what capabilities the loaded model has."""
         capabilities = {
             'has_frozen_clip_proj': hasattr(self.blip3o_model, 'frozen_clip_visual_proj') and self.blip3o_model.frozen_clip_visual_proj is not None,
             'has_global_adaptation_mlp': hasattr(self.blip3o_model, 'global_adaptation_mlp'),
-            'has_global_velocity_proj': hasattr(self.blip3o_model, 'global_velocity_proj'),  # KEY CAPABILITY!
+            'has_global_velocity_proj': hasattr(self.blip3o_model, 'global_velocity_proj'),
             'supports_generation_modes': hasattr(self.blip3o_model, 'generate'),
             'is_dual_supervision_model': hasattr(self.blip3o_model, 'global_velocity_proj'),
         }
@@ -326,12 +291,12 @@ class FixedBLIP3oRecallEvaluator:
                 inputs = {k: v.to(device=self.device, dtype=self.torch_dtype) 
                          for k, v in inputs.items()}
                 
-                vision_embeddings = self.clip_model.get_image_features(**inputs)  # [1, 768]
+                vision_embeddings = self.clip_model.get_image_features(**inputs)
                 vision_embeddings = F.normalize(vision_embeddings, p=2, dim=-1)
                 
-                global_embeddings.append(vision_embeddings.squeeze(0).cpu().float())  # [768]
+                global_embeddings.append(vision_embeddings.squeeze(0).cpu().float())
         
-        return torch.stack(global_embeddings)  # [B, 768]
+        return torch.stack(global_embeddings)
     
     def extract_eva_vision_embeddings(self, images: List[Image.Image]) -> torch.Tensor:
         """Extract EVA-CLIP vision embeddings for BLIP3-o conditioning."""
@@ -361,9 +326,9 @@ class FixedBLIP3oRecallEvaluator:
                 assert num_patches == 256, f"Expected 256 patches, got {num_patches}"
                 assert hidden_dim == 4096, f"Expected 4096 dimensions, got {hidden_dim}"
                 
-                eva_embeddings.append(patch_embeddings.squeeze(0).cpu().float())  # [256, 4096]
+                eva_embeddings.append(patch_embeddings.squeeze(0).cpu().float())
         
-        result = torch.stack(eva_embeddings)  # [B, 256, 4096]
+        result = torch.stack(eva_embeddings)
         logger.info(f"EVA embeddings extracted: {result.shape}")
         
         return result
@@ -388,13 +353,13 @@ class FixedBLIP3oRecallEvaluator:
         # Move to correct device
         eva_embeddings = eva_embeddings.to(device=self.device, dtype=self.torch_dtype)
         
-        # FIXED: Determine generation mode based on model capabilities
+        # Determine generation mode based on model capabilities
         if generation_mode == "auto":
             if self.model_capabilities.get('has_global_velocity_proj', False):
-                generation_mode = "global"  # Use global for dual supervision models
+                generation_mode = "global"
                 logger.info("🎯 Auto-selected GLOBAL generation mode (dual supervision model)")
             else:
-                generation_mode = "standard"  # Fallback for standard models
+                generation_mode = "standard"
                 logger.info("🔄 Auto-selected STANDARD generation mode (standard model)")
         
         logger.info(f"Generation mode: {generation_mode}")
@@ -402,7 +367,6 @@ class FixedBLIP3oRecallEvaluator:
         generated_embeddings = []
         
         with torch.no_grad():
-            # Process in batches to manage memory
             batch_size = 8
             num_samples = eva_embeddings.shape[0]
             
@@ -413,12 +377,12 @@ class FixedBLIP3oRecallEvaluator:
                 logger.debug(f"Processing batch {i//batch_size + 1}/{(num_samples + batch_size - 1)//batch_size}")
                 
                 try:
-                    # FIXED: Try different generation approaches based on model type
-                    if (generation_mode == "global" and 
+                    # FIXED: Use the proper generation method based on model type
+                    if (DUAL_SUPERVISION_AVAILABLE and 
                         hasattr(self.blip3o_model, 'generate') and
-                        'generation_mode' in str(self.blip3o_model.generate.__code__.co_varnames)):
+                        generation_mode == "global"):
                         
-                        # Use generation_mode parameter if supported
+                        # Use global generation mode if supported
                         generated = self.blip3o_model.generate(
                             encoder_hidden_states=batch_eva,
                             num_inference_steps=num_inference_steps,
@@ -437,7 +401,7 @@ class FixedBLIP3oRecallEvaluator:
                         # Convert to global if needed
                         if generated.dim() == 3 and generated.shape[1] == 256:
                             logger.debug("Converting patch output to global")
-                            generated = generated.mean(dim=1)  # Average pool
+                            generated = generated.mean(dim=1)
                             
                             # Apply CLIP projection if available
                             if (hasattr(self.blip3o_model, 'frozen_clip_visual_proj') and 
@@ -447,27 +411,40 @@ class FixedBLIP3oRecallEvaluator:
                     else:
                         # Fallback: manual forward pass
                         logger.warning("No generate method found, using manual forward pass")
-                        # Create dummy noisy input
                         dummy_noisy = torch.randn(batch_eva.shape[0], 256, 1024, device=self.device, dtype=self.torch_dtype)
                         dummy_timestep = torch.zeros(batch_eva.shape[0], device=self.device, dtype=self.torch_dtype)
                         
-                        model_output = self.blip3o_model(
-                            hidden_states=dummy_noisy,
-                            timestep=dummy_timestep,
-                            encoder_hidden_states=batch_eva,
-                            return_dict=True
-                        )
-                        
-                        # Use global output if available
-                        if 'global_output' in model_output and model_output['global_output'] is not None:
-                            generated = model_output['global_output']
+                        if DUAL_SUPERVISION_AVAILABLE:
+                            model_output = self.blip3o_model(
+                                hidden_states=dummy_noisy,
+                                timestep=dummy_timestep,
+                                encoder_hidden_states=batch_eva,
+                                training_mode="dual_supervision",
+                                return_dict=True
+                            )
+                            
+                            if 'global_output' in model_output and model_output['global_output'] is not None:
+                                generated = model_output['global_output']
+                            else:
+                                patch_output = model_output.get('patch_output', model_output.get('last_hidden_state'))
+                                generated = patch_output.mean(dim=1)
+                                if (hasattr(self.blip3o_model, 'frozen_clip_visual_proj') and 
+                                    self.blip3o_model.frozen_clip_visual_proj is not None):
+                                    generated = self.blip3o_model.frozen_clip_visual_proj(generated)
                         else:
-                            # Pool patch output
-                            patch_output = model_output.get('patch_output', model_output.get('last_hidden_state'))
+                            model_output = self.blip3o_model(
+                                hidden_states=dummy_noisy,
+                                timestep=dummy_timestep,
+                                encoder_hidden_states=batch_eva,
+                                return_dict=True
+                            )
+                            
+                            if hasattr(model_output, 'last_hidden_state'):
+                                patch_output = model_output.last_hidden_state
+                            else:
+                                patch_output = model_output
+                            
                             generated = patch_output.mean(dim=1)
-                            if (hasattr(self.blip3o_model, 'frozen_clip_visual_proj') and 
-                                self.blip3o_model.frozen_clip_visual_proj is not None):
-                                generated = self.blip3o_model.frozen_clip_visual_proj(generated)
                     
                     # Ensure normalization for CLIP compatibility
                     generated = F.normalize(generated, p=2, dim=-1)
@@ -479,13 +456,11 @@ class FixedBLIP3oRecallEvaluator:
                     dummy_output = torch.zeros(batch_eva.shape[0], 768)
                     generated_embeddings.append(dummy_output)
         
-        # Concatenate all batches
-        result = torch.cat(generated_embeddings, dim=0)  # [B, 768]
+        result = torch.cat(generated_embeddings, dim=0)
         
         logger.info(f"BLIP3-o generation completed: {result.shape}")
         logger.info(f"Generation mode used: {generation_mode}")
         
-        # Final verification
         final_norms = torch.norm(result, p=2, dim=-1)
         logger.info(f"Generated embedding norms: mean={final_norms.mean():.6f}, std={final_norms.std():.6f}")
         logger.info(f"=== FIXED BLIP3-o Evaluation Complete ===")
@@ -519,7 +494,7 @@ class FixedBLIP3oRecallEvaluator:
             total_queries = len(image_to_text_mapping)
             
             # Get top-k text indices for each image
-            _, top_k_indices = torch.topk(similarity_matrix, k=k, dim=1)  # [N_images, k]
+            _, top_k_indices = torch.topk(similarity_matrix, k=k, dim=1)
             
             # Debug first few retrievals for k=1
             if k == 1:
@@ -536,7 +511,6 @@ class FixedBLIP3oRecallEvaluator:
             for img_idx, correct_text_indices in enumerate(image_to_text_mapping):
                 retrieved_indices = top_k_indices[img_idx].cpu().numpy()
                 
-                # Check if any retrieved index is in the correct text indices
                 if any(ret_idx in correct_text_indices for ret_idx in retrieved_indices):
                     correct_retrievals += 1
             
@@ -571,7 +545,7 @@ class FixedBLIP3oRecallEvaluator:
         image_to_text_mapping = []
         text_idx = 0
         
-        # Flatten captions and create mapping (using all 5 captions per image)
+        # Flatten captions and create mapping
         for img_idx, caption_list in enumerate(captions_per_image):
             current_text_indices = []
             for caption in caption_list:
@@ -590,7 +564,6 @@ class FixedBLIP3oRecallEvaluator:
         logger.info(f"Extracting image embeddings using {method} method...")
         
         if method == "clip_baseline":
-            # Use CLIP's standard image features
             image_embeddings = self.extract_clip_vision_global_embeddings(images)
             method_description = "CLIP ViT-L/14 image features"
             
@@ -601,13 +574,11 @@ class FixedBLIP3oRecallEvaluator:
             logger.info("=== FIXED BLIP3-o Evaluation Pipeline ===")
             logger.info("Step 1: Extracting EVA-CLIP embeddings...")
             
-            # Extract EVA embeddings first
             eva_embeddings = self.extract_eva_vision_embeddings(images)
             logger.info(f"EVA embeddings extracted: {eva_embeddings.shape}")
             
             logger.info("Step 2: Generating CLIP embeddings using FIXED BLIP3-o...")
             
-            # Generate CLIP embeddings using FIXED BLIP3-o
             image_embeddings = self.generate_blip3o_embeddings_fixed(
                 eva_embeddings, 
                 num_inference_steps, 
@@ -700,17 +671,15 @@ def load_coco_samples(coco_root: Path, num_samples: int = 1000) -> Tuple[List[Im
         image_info = images_info[image_id]
         image_path = images_dir / image_info['file_name']
         
-        # Check if image file exists
         if not image_path.exists():
             logger.warning(f"Image file not found: {image_path}")
             continue
         
         try:
-            # Load image
             image = Image.open(image_path).convert('RGB')
             
             images.append(image)
-            captions_per_image.append(captions[:5])  # Max 5 captions per image (STANDARD)
+            captions_per_image.append(captions[:5])
             image_ids.append(image_id)
             loaded_count += 1
             
@@ -773,7 +742,7 @@ def main():
     logger.info(f"Loading {args.num_samples} COCO validation samples...")
     images, captions_per_image, image_ids = load_coco_samples(coco_root, args.num_samples)
     
-    # Run evaluations - test both CLIP baseline and FIXED BLIP3-o
+    # Run evaluations
     methods_to_evaluate = ["clip_baseline", "blip3o_fixed"]
     
     all_results = {}
@@ -858,17 +827,17 @@ def main():
             print(f"   CLIP Baseline R@1: {baseline_r1*100:.2f}%")
             print(f"   FIXED BLIP3-o R@1: {blip3o_r1*100:.2f}%")
             
-            if blip3o_r1 > 0.001:  # Avoid division by zero
-                improvement_factor = blip3o_r1 / 0.001  # Compare to previous ~0.1%
+            if blip3o_r1 > 0.001:
+                improvement_factor = blip3o_r1 / 0.001
                 print(f"   Improvement over old model: {improvement_factor:.0f}x")
             
             if blip3o_r1 > baseline_r1:
                 improvement = ((blip3o_r1 - baseline_r1) / baseline_r1) * 100
                 print(f"   🎉 BLIP3-o IMPROVEMENT: +{improvement:.1f}% vs CLIP")
                 print(f"   ✅ SUCCESS: Model outperforms CLIP baseline!")
-            elif blip3o_r1 >= baseline_r1 * 0.8:  # Within 20% of baseline
+            elif blip3o_r1 >= baseline_r1 * 0.8:
                 print(f"   ✅ SUCCESS: Model competitive with CLIP baseline")
-            elif blip3o_r1 >= baseline_r1 * 0.5:  # Within 50% of baseline
+            elif blip3o_r1 >= baseline_r1 * 0.5:
                 print(f"   ⚠️  PARTIAL SUCCESS: Significant improvement but below CLIP")
             else:
                 print(f"   ❌ NEEDS IMPROVEMENT: Still below expectations")
@@ -897,7 +866,7 @@ def main():
                 'evaluation_type': 'fixed_dual_supervision_blip3o',
             },
             'method_results': convert_to_serializable(all_results),
-            'model_capabilities': evaluator.model_capabilities if hasattr(evaluator, 'model_capabilities') else {},
+            'model_capabilities': evaluator.model_capabilities,
         }
         
         save_path = Path(args.save_results)
