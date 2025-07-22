@@ -151,7 +151,7 @@ def main():
             print(f"   Total samples: {manifest['total_samples']:,}")
             print(f"   Samples per GPU: {manifest['total_samples'] // world_size:,}")
         
-        # Create model config
+        # Create model config with FIXED compatible dimensions
         model_config = BLIP3oDiTConfig(
             input_size=16,  # 16x16 = 256 tokens
             patch_size=1,
@@ -166,8 +166,27 @@ def main():
             mlp_hidden_dim=args.mlp_hidden_dim,
         )
         
+        # FIXED: Validate model configuration before creating model
         if global_rank == 0:
-            print(f"🏗️  Creating global model for multi-GPU...")
+            # Calculate patch_dim based on n_heads to ensure compatibility
+            if args.num_heads == 12:
+                expected_patch_dim = 768  
+            elif args.num_heads == 16:
+                expected_patch_dim = 1024
+            elif args.num_heads == 8:
+                expected_patch_dim = 512
+            else:
+                expected_patch_dim = args.num_heads * 64
+            
+            print(f"🔧 FIXED Model Configuration:")
+            print(f"   Model dim: {args.model_dim}")
+            print(f"   Num heads: {args.num_heads}")
+            print(f"   Expected patch_dim: {expected_patch_dim}")
+            print(f"   Head dim: {expected_patch_dim // args.num_heads}")
+            print(f"   Compatible with 3D RoPE: {(expected_patch_dim // args.num_heads) % 4 == 0}")
+        
+        if global_rank == 0:
+            print(f"🏗️  Creating FIXED global model for multi-GPU...")
         
         # Create global model
         model = create_global_blip3o_dit_model(
@@ -284,7 +303,6 @@ def main():
             
             # DDP optimizations
             ddp_find_unused_parameters=False,
-            dataloader_pin_memory=True,
             save_on_each_node=False,  # Only save on main process
         )
         

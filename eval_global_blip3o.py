@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Global BLIP3-o Evaluation Script
-Replace: comp_eval.py
+File: eval_global_blip3o.py
 
 Evaluates the simplified global model that trains directly on [B, 768] features.
 """

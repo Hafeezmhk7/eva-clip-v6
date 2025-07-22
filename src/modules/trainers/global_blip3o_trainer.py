@@ -246,7 +246,11 @@ class GlobalBLIP3oTrainer(Trainer):
         all_metrics = defaultdict(list)
         global_cosines = []
         
-        logger.info(f"Running global evaluation on {len(eval_dataloader)} batches")
+        # Limit evaluation batches for memory efficiency
+        MAX_EVAL_BATCHES = 20
+        eval_batch_count = 0
+        
+        logger.info(f"Running global evaluation (max {MAX_EVAL_BATCHES} batches)")
         
         with torch.no_grad():
             for step, inputs in enumerate(eval_dataloader):
@@ -274,8 +278,12 @@ class GlobalBLIP3oTrainer(Trainer):
                     
                     global_cosines.append(global_cosine)
                     
-                    if step % max(1, len(eval_dataloader) // 10) == 0:
-                        logger.info(f"Evaluation step {step}/{len(eval_dataloader)}")
+                    eval_batch_count += 1
+                    if eval_batch_count >= MAX_EVAL_BATCHES:
+                        break
+                        
+                    if step % max(1, min(len(eval_dataloader), MAX_EVAL_BATCHES) // 5) == 0:
+                        logger.info(f"Evaluation step {step}")
                 
                 except Exception as e:
                     logger.error(f"Error in evaluation step {step}: {e}")
@@ -426,6 +434,8 @@ def create_global_training_args(
     load_best_model_at_end: bool = True,
     metric_for_best_model: str = "eval_global_cosine_mean",
     greater_is_better: bool = True,
+    ddp_find_unused_parameters: bool = False,  # Add this parameter
+    save_on_each_node: bool = False,  # Add this parameter
     **kwargs
 ) -> TrainingArguments:
     """Create optimized training arguments for global training"""
@@ -463,5 +473,7 @@ def create_global_training_args(
         prediction_loss_only=False,
         report_to=[],
         dataloader_pin_memory=True,
+        ddp_find_unused_parameters=ddp_find_unused_parameters,
+        save_on_each_node=save_on_each_node,
         **kwargs
     )

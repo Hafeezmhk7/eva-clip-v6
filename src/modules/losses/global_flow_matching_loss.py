@@ -40,7 +40,7 @@ class GlobalFlowMatchingLoss(nn.Module):
         # Load CLIP for target computation
         self._load_clip_model(clip_model_name)
         
-        # EMA metrics
+        # EMA metrics for monitoring
         self.register_buffer('ema_cosine', torch.tensor(0.0))
         self.register_buffer('ema_l2', torch.tensor(0.0))
         self.ema_decay = 0.99
@@ -214,6 +214,13 @@ class GlobalFlowMatchingLoss(nn.Module):
                 target_norm = torch.norm(target_global, dim=-1).mean().item()
                 pred_norm = torch.norm(predicted_global, dim=-1).mean().item()
                 
+                # Direct comparison metrics (most important)
+                direct_cosine = F.cosine_similarity(
+                    F.normalize(predicted_global, dim=-1),
+                    F.normalize(target_global, dim=-1),
+                    dim=-1
+                ).mean().item()
+                
                 metrics = {
                     'global_flow_loss': loss.item(),
                     'global_cosine_similarity': cosine_sim,
@@ -224,10 +231,14 @@ class GlobalFlowMatchingLoss(nn.Module):
                     'prediction_norm': pred_norm,
                     'timestep_mean': timesteps.mean().item(),
                     'timestep_std': timesteps.std().item(),
-                    # Recall readiness indicators
-                    'recall_readiness': cosine_sim,
-                    'predicted_recall_percent': min(cosine_sim * 100, 100),
-                    'training_quality': 'excellent' if cosine_sim > 0.8 else 'good' if cosine_sim > 0.6 else 'needs_improvement',
+                    
+                    # Most important: direct target comparison
+                    'direct_global_cosine': direct_cosine,
+                    'expected_recall_percent': min(direct_cosine * 70, 70),  # Rough estimate
+                    
+                    # Training quality indicators
+                    'training_quality': 'excellent' if direct_cosine > 0.8 else 'good' if direct_cosine > 0.6 else 'needs_improvement',
+                    'convergence_indicator': direct_cosine,
                 }
         
         return loss, metrics
