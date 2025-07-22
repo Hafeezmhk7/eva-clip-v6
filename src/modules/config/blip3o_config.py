@@ -97,6 +97,12 @@ class BLIP3oDiTConfig(PretrainedConfig):
         
         **kwargs
     ):
+        # Move head_dim_divisible_by assignment BEFORE validation call
+        self.head_dim_divisible_by = head_dim_divisible_by
+
+        # FIXED: Now validation can safely access self.head_dim_divisible_by
+        dim, n_heads = self._validate_and_fix_dimensions(dim, n_heads)
+        
         # FIXED: Auto-validate and correct dimensions
         dim, n_heads = self._validate_and_fix_dimensions(dim, n_heads)
         

@@ -1,6 +1,6 @@
 {
-  "error": "Global BLIP3-o trainer is required but not available",
-  "traceback": "Traceback (most recent call last):\n  File \"/gpfs/home1/scur2711/eva-clip-flow-matching/eva-clip-v3/train_global_blip3o_multi_gpu.py\", line 379, in main\n    from src.modules.config.blip3o_config import get_global_blip3o_config\n  File \"/gpfs/home1/scur2711/eva-clip-flow-matching/eva-clip-v3/src/modules/__init__.py\", line 48, in <module>\n    from .trainers import *\n  File \"/gpfs/home1/scur2711/eva-clip-flow-matching/eva-clip-v3/src/modules/trainers/__init__.py\", line 62, in <module>\n    raise ImportError(\"Global BLIP3-o trainer is required but not available\")\nImportError: Global BLIP3-o trainer is required but not available\n",
+  "error": "DataLoader with IterableDataset: expected unspecified shuffle option, but got shuffle=True",
+  "traceback": "Traceback (most recent call last):\n  File \"/gpfs/home1/scur2711/eva-clip-flow-matching/eva-clip-v3/train_global_blip3o_multi_gpu.py\", line 465, in main\n    train_dataloader, eval_dataloader = create_dataloaders(\n                                        ~~~~~~~~~~~~~~~~~~^\n        chunked_embeddings_dir=args.chunked_embeddings_dir,\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n    ...<7 lines>...\n        drop_last=True,\n        ^^^^^^^^^^^^^^^\n    )\n    ^\n  File \"/gpfs/home1/scur2711/eva-clip-flow-matching/eva-clip-v3/src/modules/datasets/__init__.py\", line 127, in create_enhanced_ddp_dataloaders\n    train_dataloader = create_enhanced_ddp_dataloader(\n        train_dataset,\n    ...<5 lines>...\n        **kwargs\n    )\n  File \"/gpfs/home1/scur2711/eva-clip-flow-matching/eva-clip-v3/src/modules/datasets/__init__.py\", line 81, in create_enhanced_ddp_dataloader\n    dataloader = DataLoader(\n        dataset,\n    ...<8 lines>...\n        **kwargs\n    )\n  File \"/home/scur2711/.conda/envs/eva_clip_env/lib/python3.13/site-packages/torch/utils/data/dataloader.py\", line 339, in __init__\n    raise ValueError(\n        f\"DataLoader with IterableDataset: expected unspecified shuffle option, but got shuffle={shuffle}\"\n    )\nValueError: DataLoader with IterableDataset: expected unspecified shuffle option, but got shuffle=True\n",
   "gpu_info": {
     "cuda_available": true,
     "gpu_count": 3,
@@ -25,6 +25,6 @@
     "WORLD_SIZE": null,
     "LOCAL_RANK": null
   },
-  "timestamp": "2025-07-22T11:33:57.781773",
+  "timestamp": "2025-07-22T12:28:15.807720",
   "training_type": "global"
 }
