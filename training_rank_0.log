@@ -1,0 +1,18 @@
+[Rank 0] 2025-07-22 11:33:51,549 - INFO - BLIP3-o configurations loaded successfully
+[Rank 0] 2025-07-22 11:33:51,550 - INFO -   ✅ Memory optimization features available
+[Rank 0] 2025-07-22 11:33:57,139 - INFO - ✅ Global BLIP3-o model loaded successfully
+[Rank 0] 2025-07-22 11:33:57,139 - INFO - ✅ Using Global BLIP3-o model as primary model
+[Rank 0] 2025-07-22 11:33:57,139 - INFO - BLIP3-o global model loaded successfully
+[Rank 0] 2025-07-22 11:33:57,163 - INFO - ✅ Global flow matching loss loaded successfully
+[Rank 0] 2025-07-22 11:33:57,163 - INFO - ✅ Using Global flow matching loss as primary loss
+[Rank 0] 2025-07-22 11:33:57,163 - INFO - BLIP3-o global loss function loaded successfully
+[Rank 0] 2025-07-22 11:33:57,178 - ERROR - ❌ Failed to load core dataset components: cannot import name 'BLIP3oEmbeddingDataset' from partially initialized module 'src.modules.datasets.blip3o_dataset' (most likely due to a circular import) (/gpfs/home1/scur2711/eva-clip-flow-matching/eva-clip-v3/src/modules/datasets/blip3o_dataset.py)
+[Rank 0] 2025-07-22 11:33:57,178 - ERROR - ❌ No dataloader functions available!
+[Rank 0] 2025-07-22 11:33:57,178 - ERROR - BLIP3-o datasets failed to load!
+[Rank 0] 2025-07-22 11:33:57,178 - INFO - ✅ Using enhanced DDP dataloaders as default
+[Rank 0] 2025-07-22 11:33:57,178 - INFO - BLIP3-o datasets loaded successfully (default: enhanced_ddp)
+[Rank 0] 2025-07-22 11:33:57,311 - INFO - PyTorch version 2.7.1 available.
+[Rank 0] 2025-07-22 11:33:57,779 - ERROR - ❌ Failed to load global trainer: cannot import name 'GlobalBLIP3oTrainer' from 'src.modules.trainers.global_blip3o_trainer' (/gpfs/home1/scur2711/eva-clip-flow-matching/eva-clip-v3/src/modules/trainers/global_blip3o_trainer.py)
+[Rank 0] 2025-07-22 11:33:57,779 - WARNING - ⚠️ Enhanced trainer not available: No module named 'src.modules.trainers.blip3o_trainer_enhanced'
+[Rank 0] 2025-07-22 11:33:57,779 - ERROR - ❌ No BLIP3-o trainer available!
+[Rank 0] 2025-07-22 11:33:57,779 - ERROR - ❌ Failed to load global trainers module: Global BLIP3-o trainer is required but not available

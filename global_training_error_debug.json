@@ -1,0 +1,30 @@
+{
+  "error": "Global BLIP3-o trainer is required but not available",
+  "traceback": "Traceback (most recent call last):\n  File \"/gpfs/home1/scur2711/eva-clip-flow-matching/eva-clip-v3/train_global_blip3o_multi_gpu.py\", line 379, in main\n    from src.modules.config.blip3o_config import get_global_blip3o_config\n  File \"/gpfs/home1/scur2711/eva-clip-flow-matching/eva-clip-v3/src/modules/__init__.py\", line 48, in <module>\n    from .trainers import *\n  File \"/gpfs/home1/scur2711/eva-clip-flow-matching/eva-clip-v3/src/modules/trainers/__init__.py\", line 62, in <module>\n    raise ImportError(\"Global BLIP3-o trainer is required but not available\")\nImportError: Global BLIP3-o trainer is required but not available\n",
+  "gpu_info": {
+    "cuda_available": true,
+    "gpu_count": 3,
+    "gpu_names": [
+      "NVIDIA H100",
+      "NVIDIA H100",
+      "NVIDIA H100"
+    ],
+    "memory_total": [
+      93.1114501953125,
+      93.1114501953125,
+      93.1114501953125
+    ],
+    "slurm_allocation": "3",
+    "cuda_visible_devices": "0,1,2",
+    "issues": [],
+    "recommendations": []
+  },
+  "environment": {
+    "CUDA_VISIBLE_DEVICES": "0,1,2",
+    "SLURM_GPUS": "3",
+    "WORLD_SIZE": null,
+    "LOCAL_RANK": null
+  },
+  "timestamp": "2025-07-22T11:33:57.781773",
+  "training_type": "global"
+}
