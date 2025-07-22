@@ -45,7 +45,7 @@ def get_3d_rotary_pos_embed(embed_dim, grid_size, temporal_size=1, base=10000.0)
         dim_temporal -= 1
         dim_spatial = (embed_dim - dim_temporal) // 2
     
-    print(f"✅ 3D RoPE dimensions: spatial={dim_spatial}, temporal={dim_temporal}, total={2*dim_spatial + dim_temporal}")
+    # print(f"✅ 3D RoPE dimensions: spatial={dim_spatial}, temporal={dim_temporal}, total={2*dim_spatial + dim_temporal}")
     
     # Create inverse frequency vectors
     inv_freq_x = 1.0 / (base ** (torch.arange(0, dim_spatial, 2).float() / dim_spatial))

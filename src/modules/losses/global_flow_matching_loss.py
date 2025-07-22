@@ -438,6 +438,9 @@ class EnhancedGlobalFlowMatchingLoss(GlobalFlowMatchingLoss):
         print(f"   Gradient penalty: {self.gradient_penalty_weight}")
         print(f"   Feature matching: {self.feature_matching_weight}")
     
+    # In src/modules/losses/global_flow_matching_loss.py
+# Replace the compute_gradient_penalty method in EnhancedGlobalFlowMatchingLoss
+
     def compute_gradient_penalty(self, predicted_global, target_global):
         """FIXED: Compute gradient penalty for stability maintaining dimensions"""
         try:
@@ -446,12 +449,12 @@ class EnhancedGlobalFlowMatchingLoss(GlobalFlowMatchingLoss):
             interpolated = alpha * target_global.detach() + (1 - alpha) * predicted_global
             interpolated.requires_grad_(True)
             
-            # Compute gradients
-            grad_outputs = torch.ones_like(interpolated)
+            # FIXED: Compute gradients with proper scalar output
+            interpolated_sum = interpolated.sum()  # Create scalar output
+            
             gradients = torch.autograd.grad(
-                outputs=interpolated.sum(),
+                outputs=interpolated_sum,
                 inputs=interpolated,
-                grad_outputs=grad_outputs,
                 create_graph=True,
                 retain_graph=True,
                 only_inputs=True
@@ -465,7 +468,8 @@ class EnhancedGlobalFlowMatchingLoss(GlobalFlowMatchingLoss):
             
         except Exception as e:
             print(f"Gradient penalty error: {e}")
-            return torch.tensor(0.0, device=predicted_global.device)
+            # Return zero penalty instead of failing
+            return torch.tensor(0.0, device=predicted_global.device, requires_grad=True)
     
     def compute_feature_matching_loss(self, predicted_global, target_global):
         """FIXED: Compute feature matching loss for better distribution alignment"""

@@ -1,117 +1,148 @@
-[Rank 0] 2025-07-22 15:47:51,567 - INFO - BLIP3-o configurations loaded successfully
-[Rank 0] 2025-07-22 15:47:51,569 - INFO -   ✅ Memory optimization features available
-[Rank 0] 2025-07-22 15:47:56,937 - INFO - ✅ Global BLIP3-o model loaded successfully
-[Rank 0] 2025-07-22 15:47:56,939 - INFO - ✅ Using Global BLIP3-o model as primary model
-[Rank 0] 2025-07-22 15:47:56,940 - INFO - BLIP3-o global model loaded successfully
-[Rank 0] 2025-07-22 15:47:56,952 - INFO - ✅ Global flow matching loss loaded successfully
-[Rank 0] 2025-07-22 15:47:56,952 - INFO - ✅ Using Global flow matching loss as primary loss
-[Rank 0] 2025-07-22 15:47:56,952 - INFO - BLIP3-o global loss function loaded successfully
-[Rank 0] 2025-07-22 15:47:56,957 - INFO - ✅ Using enhanced DDP dataloaders as default
-[Rank 0] 2025-07-22 15:47:56,957 - INFO - BLIP3-o datasets loaded successfully (default: enhanced_ddp)
-[Rank 0] 2025-07-22 15:47:57,075 - INFO - PyTorch version 2.7.1 available.
-[Rank 0] 2025-07-22 15:47:57,514 - INFO - ✅ Using Enhanced BLIP3-o trainer as default
-[Rank 0] 2025-07-22 15:47:57,518 - INFO - ✅ Using dual supervision inference as default
-[Rank 0] 2025-07-22 15:47:57,518 - INFO - BLIP3-o inference loaded successfully (default: dual_supervision)
-[Rank 0] 2025-07-22 15:47:57,524 - INFO - BLIP3-o utils loaded successfully
-[Rank 0] 2025-07-22 15:47:57,524 - INFO -   ✅ Enhanced multi-GPU features available
-[Rank 0] 2025-07-22 15:47:57,524 - INFO -   ✅ Temp management features available
-[Rank 0] 2025-07-22 15:47:57,524 - INFO - Enhanced multi-GPU patches available for global training
-[Rank 0] 2025-07-22 15:47:57,524 - INFO - BLIP3-o Global Training modules loaded successfully (version 1.0.0-global)
-[Rank 0] 2025-07-22 15:47:57,524 - INFO - 🎯 Ready for high-performance global feature training!
-[Rank 0] 2025-07-22 15:48:01,303 - INFO - Loaded manifest: 30 shards, 78,475 samples
-[Rank 0] 2025-07-22 15:48:01,304 - INFO - Found 30 shard files:
-[Rank 0] 2025-07-22 15:48:01,321 - INFO -   embeddings_shard_00000.pkl (EXISTS)
-[Rank 0] 2025-07-22 15:48:01,322 - INFO -   embeddings_shard_00001.pkl (EXISTS)
-[Rank 0] 2025-07-22 15:48:01,389 - INFO -   embeddings_shard_00002.pkl (EXISTS)
-[Rank 0] 2025-07-22 15:48:01,390 - INFO -   embeddings_shard_00003.pkl (EXISTS)
-[Rank 0] 2025-07-22 15:48:01,390 - INFO -   embeddings_shard_00004.pkl (EXISTS)
-[Rank 0] 2025-07-22 15:48:01,403 - INFO -   embeddings_shard_00005.pkl (EXISTS)
-[Rank 0] 2025-07-22 15:48:01,403 - INFO -   embeddings_shard_00006.pkl (EXISTS)
-[Rank 0] 2025-07-22 15:48:01,403 - INFO -   embeddings_shard_00007.pkl (EXISTS)
-[Rank 0] 2025-07-22 15:48:01,404 - INFO -   embeddings_shard_00008.pkl (EXISTS)
-[Rank 0] 2025-07-22 15:48:01,404 - INFO -   embeddings_shard_00009.pkl (EXISTS)
-[Rank 0] 2025-07-22 15:48:01,404 - INFO -   embeddings_shard_00010.pkl (EXISTS)
-[Rank 0] 2025-07-22 15:48:01,405 - INFO -   embeddings_shard_00011.pkl (EXISTS)
-[Rank 0] 2025-07-22 15:48:01,405 - INFO -   embeddings_shard_00012.pkl (EXISTS)
-[Rank 0] 2025-07-22 15:48:01,405 - INFO -   embeddings_shard_00013.pkl (EXISTS)
-[Rank 0] 2025-07-22 15:48:01,405 - INFO -   embeddings_shard_00014.pkl (EXISTS)
-[Rank 0] 2025-07-22 15:48:01,425 - INFO -   embeddings_shard_00015.pkl (EXISTS)
-[Rank 0] 2025-07-22 15:48:01,425 - INFO -   embeddings_shard_00016.pkl (EXISTS)
-[Rank 0] 2025-07-22 15:48:01,426 - INFO -   embeddings_shard_00017.pkl (EXISTS)
-[Rank 0] 2025-07-22 15:48:01,426 - INFO -   embeddings_shard_00018.pkl (EXISTS)
-[Rank 0] 2025-07-22 15:48:01,426 - INFO -   embeddings_shard_00019.pkl (EXISTS)
-[Rank 0] 2025-07-22 15:48:01,426 - INFO -   embeddings_shard_00020.pkl (EXISTS)
-[Rank 0] 2025-07-22 15:48:01,427 - INFO -   embeddings_shard_00021.pkl (EXISTS)
-[Rank 0] 2025-07-22 15:48:01,427 - INFO -   embeddings_shard_00022.pkl (EXISTS)
-[Rank 0] 2025-07-22 15:48:01,427 - INFO -   embeddings_shard_00023.pkl (EXISTS)
-[Rank 0] 2025-07-22 15:48:01,428 - INFO -   embeddings_shard_00024.pkl (EXISTS)
-[Rank 0] 2025-07-22 15:48:01,428 - INFO -   embeddings_shard_00025.pkl (EXISTS)
-[Rank 0] 2025-07-22 15:48:01,428 - INFO -   embeddings_shard_00026.pkl (EXISTS)
-[Rank 0] 2025-07-22 15:48:01,429 - INFO -   embeddings_shard_00027.pkl (EXISTS)
-[Rank 0] 2025-07-22 15:48:01,443 - INFO -   embeddings_shard_00028.pkl (EXISTS)
-[Rank 0] 2025-07-22 15:48:01,443 - INFO -   embeddings_shard_00029.pkl (EXISTS)
-[Rank 0] 2025-07-22 15:48:01,443 - INFO - Prepared 27 shard files for train split
-[Rank 0] 2025-07-22 15:48:01,443 - INFO - Single-node mode:
-[Rank 0] 2025-07-22 15:48:01,443 - INFO -   Total samples: 78,475
-[Rank 0] 2025-07-22 15:48:01,443 - INFO -   Split samples (train): 70,627
-[Rank 0] 2025-07-22 15:48:01,444 - INFO - ChunkedDataset initialized:
-[Rank 0] 2025-07-22 15:48:01,444 - INFO -   Directory: /scratch-shared/scur2711/blip3o_workspace/embeddings/chunked_256_tokens
-[Rank 0] 2025-07-22 15:48:01,444 - INFO -   Split: train
-[Rank 0] 2025-07-22 15:48:01,444 - INFO -   Total shards: 27
-[Rank 0] 2025-07-22 15:48:01,444 - INFO -   Estimated samples: 70,627
-[Rank 0] 2025-07-22 15:48:01,444 - INFO -   Delete after use: False
-[Rank 0] 2025-07-22 15:48:01,444 - INFO - IterableDataset detected: Forcing shuffle=False for DataLoader
-[Rank 0] 2025-07-22 15:48:01,444 - INFO - Loaded manifest: 30 shards, 78,475 samples
-[Rank 0] 2025-07-22 15:48:01,445 - INFO - Found 30 shard files:
-[Rank 0] 2025-07-22 15:48:01,445 - INFO -   embeddings_shard_00000.pkl (EXISTS)
-[Rank 0] 2025-07-22 15:48:01,445 - INFO -   embeddings_shard_00001.pkl (EXISTS)
-[Rank 0] 2025-07-22 15:48:01,445 - INFO -   embeddings_shard_00002.pkl (EXISTS)
-[Rank 0] 2025-07-22 15:48:01,445 - INFO -   embeddings_shard_00003.pkl (EXISTS)
-[Rank 0] 2025-07-22 15:48:01,445 - INFO -   embeddings_shard_00004.pkl (EXISTS)
-[Rank 0] 2025-07-22 15:48:01,445 - INFO -   embeddings_shard_00005.pkl (EXISTS)
-[Rank 0] 2025-07-22 15:48:01,445 - INFO -   embeddings_shard_00006.pkl (EXISTS)
-[Rank 0] 2025-07-22 15:48:01,445 - INFO -   embeddings_shard_00007.pkl (EXISTS)
-[Rank 0] 2025-07-22 15:48:01,445 - INFO -   embeddings_shard_00008.pkl (EXISTS)
-[Rank 0] 2025-07-22 15:48:01,445 - INFO -   embeddings_shard_00009.pkl (EXISTS)
-[Rank 0] 2025-07-22 15:48:01,445 - INFO -   embeddings_shard_00010.pkl (EXISTS)
-[Rank 0] 2025-07-22 15:48:01,445 - INFO -   embeddings_shard_00011.pkl (EXISTS)
-[Rank 0] 2025-07-22 15:48:01,445 - INFO -   embeddings_shard_00012.pkl (EXISTS)
-[Rank 0] 2025-07-22 15:48:01,445 - INFO -   embeddings_shard_00013.pkl (EXISTS)
-[Rank 0] 2025-07-22 15:48:01,446 - INFO -   embeddings_shard_00014.pkl (EXISTS)
-[Rank 0] 2025-07-22 15:48:01,446 - INFO -   embeddings_shard_00015.pkl (EXISTS)
-[Rank 0] 2025-07-22 15:48:01,446 - INFO -   embeddings_shard_00016.pkl (EXISTS)
-[Rank 0] 2025-07-22 15:48:01,446 - INFO -   embeddings_shard_00017.pkl (EXISTS)
-[Rank 0] 2025-07-22 15:48:01,446 - INFO -   embeddings_shard_00018.pkl (EXISTS)
-[Rank 0] 2025-07-22 15:48:01,446 - INFO -   embeddings_shard_00019.pkl (EXISTS)
-[Rank 0] 2025-07-22 15:48:01,446 - INFO -   embeddings_shard_00020.pkl (EXISTS)
-[Rank 0] 2025-07-22 15:48:01,446 - INFO -   embeddings_shard_00021.pkl (EXISTS)
-[Rank 0] 2025-07-22 15:48:01,446 - INFO -   embeddings_shard_00022.pkl (EXISTS)
-[Rank 0] 2025-07-22 15:48:01,446 - INFO -   embeddings_shard_00023.pkl (EXISTS)
-[Rank 0] 2025-07-22 15:48:01,446 - INFO -   embeddings_shard_00024.pkl (EXISTS)
-[Rank 0] 2025-07-22 15:48:01,446 - INFO -   embeddings_shard_00025.pkl (EXISTS)
-[Rank 0] 2025-07-22 15:48:01,446 - INFO -   embeddings_shard_00026.pkl (EXISTS)
-[Rank 0] 2025-07-22 15:48:01,446 - INFO -   embeddings_shard_00027.pkl (EXISTS)
-[Rank 0] 2025-07-22 15:48:01,446 - INFO -   embeddings_shard_00028.pkl (EXISTS)
-[Rank 0] 2025-07-22 15:48:01,446 - INFO -   embeddings_shard_00029.pkl (EXISTS)
-[Rank 0] 2025-07-22 15:48:01,446 - INFO - Prepared 3 shard files for eval split
-[Rank 0] 2025-07-22 15:48:01,446 - INFO - Single-node mode:
-[Rank 0] 2025-07-22 15:48:01,446 - INFO -   Total samples: 78,475
-[Rank 0] 2025-07-22 15:48:01,446 - INFO -   Split samples (eval): 7,847
-[Rank 0] 2025-07-22 15:48:01,446 - INFO - ChunkedDataset initialized:
-[Rank 0] 2025-07-22 15:48:01,446 - INFO -   Directory: /scratch-shared/scur2711/blip3o_workspace/embeddings/chunked_256_tokens
-[Rank 0] 2025-07-22 15:48:01,446 - INFO -   Split: eval
-[Rank 0] 2025-07-22 15:48:01,446 - INFO -   Total shards: 3
-[Rank 0] 2025-07-22 15:48:01,446 - INFO -   Estimated samples: 7,847
-[Rank 0] 2025-07-22 15:48:01,446 - INFO -   Delete after use: False
-[Rank 0] 2025-07-22 15:48:01,446 - INFO - IterableDataset detected: Forcing shuffle=False for DataLoader
-[Rank 0] 2025-07-22 15:48:01,568 - INFO - ✅ COMPLETELY FIXED Enhanced BLIP3-o Global trainer initialized
-[Rank 0] 2025-07-22 15:48:01,568 - INFO - Debug mode: []
-[Rank 0] 2025-07-22 15:48:01,568 - INFO - 🎯 Training mode: GLOBAL (direct [B, 768] supervision) - GRADIENT ISSUES FIXED
-[Rank 0] 2025-07-22 15:48:18,624 - INFO - Loaded shard 1/27: 2630 samples
-[Rank 0] 2025-07-22 15:48:18,639 - INFO - Loaded shard 1/27: 2630 samples
-[Rank 0] 2025-07-22 15:48:18,650 - INFO - Loaded shard 1/27: 2630 samples
-[Rank 0] 2025-07-22 15:48:18,730 - INFO - Loaded shard 1/27: 2630 samples
-[Rank 0] 2025-07-22 15:48:20,510 - INFO - FIXED Global Step 0: Loss=2.2191, Global_Cosine=0.0206, Est_Recall=1.4%, High_Quality=0.000, Quality=needs_improvement, Mem=1.2GB, Grad=healthy
-[Rank 0] 2025-07-22 15:48:20,510 - INFO - ⚡ IMPROVING: Positive alignment detected
-[Rank 0] 2025-07-22 15:49:01,492 - INFO - FIXED Global Step 245: Loss=2.0731, Global_Cosine=0.0212, Est_Recall=1.5%, High_Quality=0.000, Quality=needs_improvement, Mem=1.9GB, Grad=healthy
-[Rank 0] 2025-07-22 15:49:01,494 - INFO - ⚡ IMPROVING: Positive alignment detected
+[Rank 0] 2025-07-22 15:58:25,168 - INFO - BLIP3-o configurations loaded successfully
+[Rank 0] 2025-07-22 15:58:25,170 - INFO -   ✅ Memory optimization features available
+[Rank 0] 2025-07-22 15:58:30,400 - INFO - ✅ Global BLIP3-o model loaded successfully
+[Rank 0] 2025-07-22 15:58:30,400 - INFO - ✅ Using Global BLIP3-o model as primary model
+[Rank 0] 2025-07-22 15:58:30,400 - INFO - BLIP3-o global model loaded successfully
+[Rank 0] 2025-07-22 15:58:30,415 - INFO - ✅ Global flow matching loss loaded successfully
+[Rank 0] 2025-07-22 15:58:30,415 - INFO - ✅ Using Global flow matching loss as primary loss
+[Rank 0] 2025-07-22 15:58:30,415 - INFO - BLIP3-o global loss function loaded successfully
+[Rank 0] 2025-07-22 15:58:30,419 - INFO - ✅ Using enhanced DDP dataloaders as default
+[Rank 0] 2025-07-22 15:58:30,419 - INFO - BLIP3-o datasets loaded successfully (default: enhanced_ddp)
+[Rank 0] 2025-07-22 15:58:30,532 - INFO - PyTorch version 2.7.1 available.
+[Rank 0] 2025-07-22 15:58:30,958 - INFO - ✅ Using Enhanced BLIP3-o trainer as default
+[Rank 0] 2025-07-22 15:58:30,963 - INFO - ✅ Using dual supervision inference as default
+[Rank 0] 2025-07-22 15:58:30,963 - INFO - BLIP3-o inference loaded successfully (default: dual_supervision)
+[Rank 0] 2025-07-22 15:58:30,969 - INFO - BLIP3-o utils loaded successfully
+[Rank 0] 2025-07-22 15:58:30,969 - INFO -   ✅ Enhanced multi-GPU features available
+[Rank 0] 2025-07-22 15:58:30,969 - INFO -   ✅ Temp management features available
+[Rank 0] 2025-07-22 15:58:30,970 - INFO - Enhanced multi-GPU patches available for global training
+[Rank 0] 2025-07-22 15:58:30,970 - INFO - BLIP3-o Global Training modules loaded successfully (version 1.0.0-global)
+[Rank 0] 2025-07-22 15:58:30,970 - INFO - 🎯 Ready for high-performance global feature training!
+[Rank 0] 2025-07-22 15:58:34,721 - INFO - Loaded manifest: 30 shards, 78,475 samples
+[Rank 0] 2025-07-22 15:58:34,722 - INFO - Found 30 shard files:
+[Rank 0] 2025-07-22 15:58:34,722 - INFO -   embeddings_shard_00000.pkl (EXISTS)
+[Rank 0] 2025-07-22 15:58:34,723 - INFO -   embeddings_shard_00001.pkl (EXISTS)
+[Rank 0] 2025-07-22 15:58:34,723 - INFO -   embeddings_shard_00002.pkl (EXISTS)
+[Rank 0] 2025-07-22 15:58:34,723 - INFO -   embeddings_shard_00003.pkl (EXISTS)
+[Rank 0] 2025-07-22 15:58:34,724 - INFO -   embeddings_shard_00004.pkl (EXISTS)
+[Rank 0] 2025-07-22 15:58:34,793 - INFO -   embeddings_shard_00005.pkl (EXISTS)
+[Rank 0] 2025-07-22 15:58:34,794 - INFO -   embeddings_shard_00006.pkl (EXISTS)
+[Rank 0] 2025-07-22 15:58:34,794 - INFO -   embeddings_shard_00007.pkl (EXISTS)
+[Rank 0] 2025-07-22 15:58:34,794 - INFO -   embeddings_shard_00008.pkl (EXISTS)
+[Rank 0] 2025-07-22 15:58:34,795 - INFO -   embeddings_shard_00009.pkl (EXISTS)
+[Rank 0] 2025-07-22 15:58:34,795 - INFO -   embeddings_shard_00010.pkl (EXISTS)
+[Rank 0] 2025-07-22 15:58:34,795 - INFO -   embeddings_shard_00011.pkl (EXISTS)
+[Rank 0] 2025-07-22 15:58:34,796 - INFO -   embeddings_shard_00012.pkl (EXISTS)
+[Rank 0] 2025-07-22 15:58:34,796 - INFO -   embeddings_shard_00013.pkl (EXISTS)
+[Rank 0] 2025-07-22 15:58:34,796 - INFO -   embeddings_shard_00014.pkl (EXISTS)
+[Rank 0] 2025-07-22 15:58:34,796 - INFO -   embeddings_shard_00015.pkl (EXISTS)
+[Rank 0] 2025-07-22 15:58:34,797 - INFO -   embeddings_shard_00016.pkl (EXISTS)
+[Rank 0] 2025-07-22 15:58:34,797 - INFO -   embeddings_shard_00017.pkl (EXISTS)
+[Rank 0] 2025-07-22 15:58:34,797 - INFO -   embeddings_shard_00018.pkl (EXISTS)
+[Rank 0] 2025-07-22 15:58:34,798 - INFO -   embeddings_shard_00019.pkl (EXISTS)
+[Rank 0] 2025-07-22 15:58:34,798 - INFO -   embeddings_shard_00020.pkl (EXISTS)
+[Rank 0] 2025-07-22 15:58:34,798 - INFO -   embeddings_shard_00021.pkl (EXISTS)
+[Rank 0] 2025-07-22 15:58:34,798 - INFO -   embeddings_shard_00022.pkl (EXISTS)
+[Rank 0] 2025-07-22 15:58:34,799 - INFO -   embeddings_shard_00023.pkl (EXISTS)
+[Rank 0] 2025-07-22 15:58:34,799 - INFO -   embeddings_shard_00024.pkl (EXISTS)
+[Rank 0] 2025-07-22 15:58:34,799 - INFO -   embeddings_shard_00025.pkl (EXISTS)
+[Rank 0] 2025-07-22 15:58:34,800 - INFO -   embeddings_shard_00026.pkl (EXISTS)
+[Rank 0] 2025-07-22 15:58:34,800 - INFO -   embeddings_shard_00027.pkl (EXISTS)
+[Rank 0] 2025-07-22 15:58:34,800 - INFO -   embeddings_shard_00028.pkl (EXISTS)
+[Rank 0] 2025-07-22 15:58:34,801 - INFO -   embeddings_shard_00029.pkl (EXISTS)
+[Rank 0] 2025-07-22 15:58:34,801 - INFO - Prepared 27 shard files for train split
+[Rank 0] 2025-07-22 15:58:34,801 - INFO - Single-node mode:
+[Rank 0] 2025-07-22 15:58:34,801 - INFO -   Total samples: 78,475
+[Rank 0] 2025-07-22 15:58:34,801 - INFO -   Split samples (train): 70,627
+[Rank 0] 2025-07-22 15:58:34,801 - INFO - ChunkedDataset initialized:
+[Rank 0] 2025-07-22 15:58:34,801 - INFO -   Directory: /scratch-shared/scur2711/blip3o_workspace/embeddings/chunked_256_tokens
+[Rank 0] 2025-07-22 15:58:34,801 - INFO -   Split: train
+[Rank 0] 2025-07-22 15:58:34,801 - INFO -   Total shards: 27
+[Rank 0] 2025-07-22 15:58:34,801 - INFO -   Estimated samples: 70,627
+[Rank 0] 2025-07-22 15:58:34,801 - INFO -   Delete after use: False
+[Rank 0] 2025-07-22 15:58:34,801 - INFO - IterableDataset detected: Forcing shuffle=False for DataLoader
+[Rank 0] 2025-07-22 15:58:34,802 - INFO - Loaded manifest: 30 shards, 78,475 samples
+[Rank 0] 2025-07-22 15:58:34,802 - INFO - Found 30 shard files:
+[Rank 0] 2025-07-22 15:58:34,802 - INFO -   embeddings_shard_00000.pkl (EXISTS)
+[Rank 0] 2025-07-22 15:58:34,802 - INFO -   embeddings_shard_00001.pkl (EXISTS)
+[Rank 0] 2025-07-22 15:58:34,802 - INFO -   embeddings_shard_00002.pkl (EXISTS)
+[Rank 0] 2025-07-22 15:58:34,802 - INFO -   embeddings_shard_00003.pkl (EXISTS)
+[Rank 0] 2025-07-22 15:58:34,802 - INFO -   embeddings_shard_00004.pkl (EXISTS)
+[Rank 0] 2025-07-22 15:58:34,802 - INFO -   embeddings_shard_00005.pkl (EXISTS)
+[Rank 0] 2025-07-22 15:58:34,802 - INFO -   embeddings_shard_00006.pkl (EXISTS)
+[Rank 0] 2025-07-22 15:58:34,802 - INFO -   embeddings_shard_00007.pkl (EXISTS)
+[Rank 0] 2025-07-22 15:58:34,802 - INFO -   embeddings_shard_00008.pkl (EXISTS)
+[Rank 0] 2025-07-22 15:58:34,802 - INFO -   embeddings_shard_00009.pkl (EXISTS)
+[Rank 0] 2025-07-22 15:58:34,802 - INFO -   embeddings_shard_00010.pkl (EXISTS)
+[Rank 0] 2025-07-22 15:58:34,802 - INFO -   embeddings_shard_00011.pkl (EXISTS)
+[Rank 0] 2025-07-22 15:58:34,802 - INFO -   embeddings_shard_00012.pkl (EXISTS)
+[Rank 0] 2025-07-22 15:58:34,802 - INFO -   embeddings_shard_00013.pkl (EXISTS)
+[Rank 0] 2025-07-22 15:58:34,803 - INFO -   embeddings_shard_00014.pkl (EXISTS)
+[Rank 0] 2025-07-22 15:58:34,803 - INFO -   embeddings_shard_00015.pkl (EXISTS)
+[Rank 0] 2025-07-22 15:58:34,803 - INFO -   embeddings_shard_00016.pkl (EXISTS)
+[Rank 0] 2025-07-22 15:58:34,803 - INFO -   embeddings_shard_00017.pkl (EXISTS)
+[Rank 0] 2025-07-22 15:58:34,803 - INFO -   embeddings_shard_00018.pkl (EXISTS)
+[Rank 0] 2025-07-22 15:58:34,803 - INFO -   embeddings_shard_00019.pkl (EXISTS)
+[Rank 0] 2025-07-22 15:58:34,803 - INFO -   embeddings_shard_00020.pkl (EXISTS)
+[Rank 0] 2025-07-22 15:58:34,803 - INFO -   embeddings_shard_00021.pkl (EXISTS)
+[Rank 0] 2025-07-22 15:58:34,803 - INFO -   embeddings_shard_00022.pkl (EXISTS)
+[Rank 0] 2025-07-22 15:58:34,803 - INFO -   embeddings_shard_00023.pkl (EXISTS)
+[Rank 0] 2025-07-22 15:58:34,803 - INFO -   embeddings_shard_00024.pkl (EXISTS)
+[Rank 0] 2025-07-22 15:58:34,803 - INFO -   embeddings_shard_00025.pkl (EXISTS)
+[Rank 0] 2025-07-22 15:58:34,803 - INFO -   embeddings_shard_00026.pkl (EXISTS)
+[Rank 0] 2025-07-22 15:58:34,803 - INFO -   embeddings_shard_00027.pkl (EXISTS)
+[Rank 0] 2025-07-22 15:58:34,803 - INFO -   embeddings_shard_00028.pkl (EXISTS)
+[Rank 0] 2025-07-22 15:58:34,803 - INFO -   embeddings_shard_00029.pkl (EXISTS)
+[Rank 0] 2025-07-22 15:58:34,803 - INFO - Prepared 3 shard files for eval split
+[Rank 0] 2025-07-22 15:58:34,803 - INFO - Single-node mode:
+[Rank 0] 2025-07-22 15:58:34,803 - INFO -   Total samples: 78,475
+[Rank 0] 2025-07-22 15:58:34,803 - INFO -   Split samples (eval): 7,847
+[Rank 0] 2025-07-22 15:58:34,804 - INFO - ChunkedDataset initialized:
+[Rank 0] 2025-07-22 15:58:34,804 - INFO -   Directory: /scratch-shared/scur2711/blip3o_workspace/embeddings/chunked_256_tokens
+[Rank 0] 2025-07-22 15:58:34,804 - INFO -   Split: eval
+[Rank 0] 2025-07-22 15:58:34,804 - INFO -   Total shards: 3
+[Rank 0] 2025-07-22 15:58:34,804 - INFO -   Estimated samples: 7,847
+[Rank 0] 2025-07-22 15:58:34,804 - INFO -   Delete after use: False
+[Rank 0] 2025-07-22 15:58:34,804 - INFO - IterableDataset detected: Forcing shuffle=False for DataLoader
+[Rank 0] 2025-07-22 15:58:34,914 - INFO - ✅ COMPLETELY FIXED Enhanced BLIP3-o Global trainer initialized
+[Rank 0] 2025-07-22 15:58:34,915 - INFO - Debug mode: []
+[Rank 0] 2025-07-22 15:58:34,915 - INFO - 🎯 Training mode: GLOBAL (direct [B, 768] supervision) - GRADIENT ISSUES FIXED
+[Rank 0] 2025-07-22 15:58:52,072 - INFO - Loaded shard 1/27: 2630 samples
+[Rank 0] 2025-07-22 15:58:52,076 - INFO - Loaded shard 1/27: 2630 samples
+[Rank 0] 2025-07-22 15:58:52,088 - INFO - Loaded shard 1/27: 2630 samples
+[Rank 0] 2025-07-22 15:58:52,092 - INFO - Loaded shard 1/27: 2630 samples
+[Rank 0] 2025-07-22 15:58:54,001 - INFO - FIXED Global Step 0: Loss=2.2219, Global_Cosine=-0.0171, Est_Recall=0.0%, High_Quality=0.000, Quality=needs_improvement, Mem=1.2GB, Grad=healthy
+[Rank 0] 2025-07-22 15:59:35,419 - INFO - FIXED Global Step 245: Loss=2.1404, Global_Cosine=0.0677, Est_Recall=4.7%, High_Quality=0.000, Quality=needs_improvement, Mem=1.9GB, Grad=healthy
+[Rank 0] 2025-07-22 15:59:35,420 - INFO - ⚡ IMPROVING: Positive alignment detected
+[Rank 0] 2025-07-22 16:00:16,758 - INFO - FIXED Global Step 490: Loss=2.0491, Global_Cosine=0.2103, Est_Recall=14.7%, High_Quality=0.000, Quality=needs_improvement, Mem=1.9GB, Grad=healthy
+[Rank 0] 2025-07-22 16:00:16,759 - INFO - ⚡ IMPROVING: Positive alignment detected
+[Rank 0] 2025-07-22 16:00:58,151 - INFO - FIXED Global Step 735: Loss=1.9780, Global_Cosine=0.1657, Est_Recall=11.6%, High_Quality=0.000, Quality=needs_improvement, Mem=1.9GB, Grad=healthy
+[Rank 0] 2025-07-22 16:00:58,151 - INFO - ⚡ IMPROVING: Positive alignment detected
+[Rank 0] 2025-07-22 16:01:39,122 - INFO - FIXED Global Step 980: Loss=1.9912, Global_Cosine=0.2115, Est_Recall=14.8%, High_Quality=0.000, Quality=needs_improvement, Mem=1.7GB, Grad=healthy
+[Rank 0] 2025-07-22 16:01:39,123 - INFO - ⚡ IMPROVING: Positive alignment detected
+[Rank 0] 2025-07-22 16:02:20,151 - INFO - FIXED Global Step 1225: Loss=2.0328, Global_Cosine=0.2002, Est_Recall=14.0%, High_Quality=0.000, Quality=needs_improvement, Mem=1.9GB, Grad=healthy
+[Rank 0] 2025-07-22 16:02:20,151 - INFO - ⚡ IMPROVING: Positive alignment detected
+[Rank 0] 2025-07-22 16:02:42,827 - INFO - Loaded shard 2/27: 2513 samples
+[Rank 0] 2025-07-22 16:02:42,848 - INFO - Loaded shard 2/27: 2513 samples
+[Rank 0] 2025-07-22 16:02:42,849 - INFO - Loaded shard 2/27: 2513 samples
+[Rank 0] 2025-07-22 16:02:42,854 - INFO - Loaded shard 2/27: 2513 samples
+[Rank 0] 2025-07-22 16:03:09,703 - INFO - FIXED Global Step 1470: Loss=2.0285, Global_Cosine=0.1534, Est_Recall=10.7%, High_Quality=0.000, Quality=needs_improvement, Mem=1.9GB, Grad=healthy
+[Rank 0] 2025-07-22 16:03:09,704 - INFO - ⚡ IMPROVING: Positive alignment detected
+[Rank 0] 2025-07-22 16:03:51,308 - INFO - FIXED Global Step 1715: Loss=1.9936, Global_Cosine=0.1685, Est_Recall=11.8%, High_Quality=0.000, Quality=needs_improvement, Mem=1.9GB, Grad=healthy
+[Rank 0] 2025-07-22 16:03:51,310 - INFO - ⚡ IMPROVING: Positive alignment detected
+[Rank 0] 2025-07-22 16:04:32,457 - INFO - FIXED Global Step 1960: Loss=2.0278, Global_Cosine=0.2427, Est_Recall=17.0%, High_Quality=0.000, Quality=needs_improvement, Mem=1.7GB, Grad=healthy
+[Rank 0] 2025-07-22 16:04:32,458 - INFO - ⚡ IMPROVING: Positive alignment detected
+[Rank 0] 2025-07-22 16:05:13,842 - INFO - FIXED Global Step 2205: Loss=2.0127, Global_Cosine=0.1849, Est_Recall=12.9%, High_Quality=0.000, Quality=needs_improvement, Mem=1.9GB, Grad=healthy
+[Rank 0] 2025-07-22 16:05:13,843 - INFO - ⚡ IMPROVING: Positive alignment detected
+[Rank 0] 2025-07-22 16:05:55,087 - INFO - FIXED Global Step 2450: Loss=1.9995, Global_Cosine=0.2424, Est_Recall=17.0%, High_Quality=0.000, Quality=needs_improvement, Mem=1.9GB, Grad=healthy
+[Rank 0] 2025-07-22 16:05:55,088 - INFO - ⚡ IMPROVING: Positive alignment detected
+[Rank 0] 2025-07-22 16:06:23,128 - INFO - Loaded shard 3/27: 2596 samples
+[Rank 0] 2025-07-22 16:06:23,128 - INFO - Loaded shard 3/27: 2596 samples
+[Rank 0] 2025-07-22 16:06:23,141 - INFO - Loaded shard 3/27: 2596 samples
+[Rank 0] 2025-07-22 16:06:23,174 - INFO - Loaded shard 3/27: 2596 samples
+[Rank 0] 2025-07-22 16:06:44,682 - INFO - FIXED Global Step 2695: Loss=1.9367, Global_Cosine=0.2336, Est_Recall=16.4%, High_Quality=0.000, Quality=needs_improvement, Mem=1.9GB, Grad=healthy
+[Rank 0] 2025-07-22 16:06:44,682 - INFO - ⚡ IMPROVING: Positive alignment detected
+[Rank 0] 2025-07-22 16:07:26,109 - INFO - FIXED Global Step 2940: Loss=2.0578, Global_Cosine=0.2447, Est_Recall=17.1%, High_Quality=0.000, Quality=needs_improvement, Mem=1.7GB, Grad=healthy
+[Rank 0] 2025-07-22 16:07:26,111 - INFO - ⚡ IMPROVING: Positive alignment detected
+[Rank 0] 2025-07-22 16:08:07,573 - INFO - FIXED Global Step 3185: Loss=2.0493, Global_Cosine=0.2334, Est_Recall=16.3%, High_Quality=0.000, Quality=needs_improvement, Mem=1.9GB, Grad=healthy
+[Rank 0] 2025-07-22 16:08:07,574 - INFO - ⚡ IMPROVING: Positive alignment detected
