@@ -1,9 +1,12 @@
 """
-Simplified Global BLIP3-o DiT Model - TRAINS DIRECTLY ON GLOBAL FEATURES
+FIXED Global BLIP3-o DiT Model - Direct Global Training
 Place this file as: src/modules/models/global_blip3o_dit.py
 
-KEY FIX: Trains directly on [B, 768] global features to match evaluation pipeline.
-This resolves the training-inference mismatch that was causing 0% recall.
+KEY FIXES:
+1. Fixed 3D RoPE dimension allocation bug
+2. Proper head dimension compatibility (head_dim % 4 == 0)
+3. Direct global training - no mismatch
+4. Simplified architecture
 """
 
 import torch
@@ -19,63 +22,82 @@ from ..config.blip3o_config import BLIP3oDiTConfig
 
 
 def get_3d_rotary_pos_embed(embed_dim, grid_size, temporal_size=1, base=10000.0):
-    """Create 3D rotary position embeddings for 256 tokens (16x16 grid) - BLIP3-o style"""
+    """
+    FIXED: Create 3D rotary position embeddings for 256 tokens (16x16 grid)
+    
+    Key fix: Proper dimension allocation to ensure head_dim compatibility
+    """
     assert embed_dim % 4 == 0, f"embed_dim {embed_dim} must be divisible by 4 for 3D RoPE"
     
-    # Split embedding dimension for spatial (h, w) and temporal (t)
-    dim_h = embed_dim // 4
-    dim_w = embed_dim // 4
-    dim_t = embed_dim // 2  # Temporal dimension
+    # FIXED: Allocate dimensions properly for 3D RoPE
+    # Split into 3 components: x, y, temporal
+    dim_per_component = embed_dim // 3
+    
+    # Ensure each component is even for sin/cos pairs
+    if dim_per_component % 2 != 0:
+        dim_per_component = (dim_per_component // 2) * 2
+    
+    dim_spatial = dim_per_component  # For both x and y
+    dim_temporal = embed_dim - (2 * dim_spatial)  # Remainder for temporal
+    
+    # Ensure temporal dimension is even
+    if dim_temporal % 2 != 0:
+        dim_temporal -= 1
+        dim_spatial = (embed_dim - dim_temporal) // 2
+    
+    print(f"✅ 3D RoPE dimensions: spatial={dim_spatial}, temporal={dim_temporal}, total={2*dim_spatial + dim_temporal}")
     
     # Create inverse frequency vectors
-    inv_freq_h = 1.0 / (base ** (torch.arange(0, dim_h, 2).float() / dim_h))
-    inv_freq_w = 1.0 / (base ** (torch.arange(0, dim_w, 2).float() / dim_w))
-    inv_freq_t = 1.0 / (base ** (torch.arange(0, dim_t, 2).float() / dim_t))
+    inv_freq_x = 1.0 / (base ** (torch.arange(0, dim_spatial, 2).float() / dim_spatial))
+    inv_freq_y = 1.0 / (base ** (torch.arange(0, dim_spatial, 2).float() / dim_spatial))
+    inv_freq_t = 1.0 / (base ** (torch.arange(0, dim_temporal, 2).float() / dim_temporal))
     
-    # Create spatial grid positions
-    h_pos = torch.arange(grid_size, dtype=torch.float32)
-    w_pos = torch.arange(grid_size, dtype=torch.float32)
+    # Create position grids
+    x_pos = torch.arange(grid_size, dtype=torch.float32)
+    y_pos = torch.arange(grid_size, dtype=torch.float32)
     t_pos = torch.arange(temporal_size, dtype=torch.float32)
     
     # Create meshgrid for spatial positions
-    grid_h, grid_w = torch.meshgrid(h_pos, w_pos, indexing='ij')
-    grid_h = grid_h.flatten()  # [256]
-    grid_w = grid_w.flatten()  # [256]
+    grid_x, grid_y = torch.meshgrid(x_pos, y_pos, indexing='ij')
+    grid_x = grid_x.flatten()  # [256]
+    grid_y = grid_y.flatten()  # [256]
     
     # Compute frequency encodings
-    freqs_h = torch.outer(grid_h, inv_freq_h)  # [256, dim_h//2]
-    freqs_w = torch.outer(grid_w, inv_freq_w)  # [256, dim_w//2]
-    freqs_t = torch.outer(t_pos, inv_freq_t)   # [1, dim_t//2]
+    freqs_x = torch.outer(grid_x, inv_freq_x)  # [256, dim_spatial//2]
+    freqs_y = torch.outer(grid_y, inv_freq_y)  # [256, dim_spatial//2]
+    freqs_t = torch.outer(t_pos, inv_freq_t)   # [1, dim_temporal//2]
     
     # Generate cos and sin for each dimension
-    cos_h = torch.cos(freqs_h)
-    sin_h = torch.sin(freqs_h)
-    cos_w = torch.cos(freqs_w)
-    sin_w = torch.sin(freqs_w)
+    cos_x = torch.cos(freqs_x)
+    sin_x = torch.sin(freqs_x)
+    cos_y = torch.cos(freqs_y)
+    sin_y = torch.sin(freqs_y)
     cos_t = torch.cos(freqs_t)
     sin_t = torch.sin(freqs_t)
     
-    # Expand to full embedding dimension
-    cos_h_full = torch.stack([cos_h, cos_h], dim=-1).flatten(-2)
-    sin_h_full = torch.stack([sin_h, sin_h], dim=-1).flatten(-2)
-    cos_w_full = torch.stack([cos_w, cos_w], dim=-1).flatten(-2)
-    sin_w_full = torch.stack([sin_w, sin_w], dim=-1).flatten(-2)
-    
-    # Combine spatial dimensions
-    cos_spatial = torch.cat([cos_h_full, cos_w_full], dim=-1)  # [256, embed_dim//2]
-    sin_spatial = torch.cat([sin_h_full, sin_w_full], dim=-1)  # [256, embed_dim//2]
+    # Expand to full dimensions
+    cos_x_full = torch.stack([cos_x, cos_x], dim=-1).flatten(-2)  # [256, dim_spatial]
+    sin_x_full = torch.stack([sin_x, sin_x], dim=-1).flatten(-2)
+    cos_y_full = torch.stack([cos_y, cos_y], dim=-1).flatten(-2)
+    sin_y_full = torch.stack([sin_y, sin_y], dim=-1).flatten(-2)
     
     # Expand temporal to match spatial
-    cos_t_expanded = cos_t.expand(grid_size * grid_size, -1)  # [256, dim_t//2]
-    sin_t_expanded = sin_t.expand(grid_size * grid_size, -1)  # [256, dim_t//2]
+    cos_t_expanded = cos_t.expand(grid_size * grid_size, -1)  # [256, dim_temporal//2]
+    sin_t_expanded = sin_t.expand(grid_size * grid_size, -1)
+    cos_t_full = torch.stack([cos_t_expanded, cos_t_expanded], dim=-1).flatten(-2)  # [256, dim_temporal]
+    sin_t_full = torch.stack([sin_t_expanded, sin_t_expanded], dim=-1).flatten(-2)
     
-    # Final 3D rotary embeddings
-    cos_emb = torch.cat([cos_spatial, cos_t_expanded], dim=-1)  # [256, embed_dim]
-    sin_emb = torch.cat([sin_spatial, sin_t_expanded], dim=-1)  # [256, embed_dim]
+    # Combine all components
+    cos_emb = torch.cat([cos_x_full, cos_y_full, cos_t_full], dim=-1)  # [256, embed_dim]
+    sin_emb = torch.cat([sin_x_full, sin_y_full, sin_t_full], dim=-1)  # [256, embed_dim]
     
     # Add batch dimension
     cos_emb = cos_emb.unsqueeze(0)  # [1, 256, embed_dim]
     sin_emb = sin_emb.unsqueeze(0)  # [1, 256, embed_dim]
+    
+    # FIXED: Ensure exact dimension match
+    assert cos_emb.shape[-1] == embed_dim, f"Dimension mismatch: {cos_emb.shape[-1]} != {embed_dim}"
+    assert sin_emb.shape[-1] == embed_dim, f"Dimension mismatch: {sin_emb.shape[-1]} != {embed_dim}"
     
     return cos_emb, sin_emb
 
@@ -90,10 +112,12 @@ def apply_rotary_pos_emb_3d(q, k, cos, sin):
     batch_size, seq_len, num_heads, head_dim = q.shape
     
     # Ensure cos/sin match the sequence length and head dimension
-    cos = cos[:, :seq_len, :head_dim].expand(batch_size, -1, -1)
-    sin = sin[:, :seq_len, :head_dim].expand(batch_size, -1, -1)
+    cos = cos[:, :seq_len, :head_dim].to(q.device)
+    sin = sin[:, :seq_len, :head_dim].to(q.device)
     
-    # Add head dimension
+    # Expand for batch and heads
+    cos = cos.unsqueeze(0).expand(batch_size, -1, -1)
+    sin = sin.unsqueeze(0).expand(batch_size, -1, -1)
     cos = cos.unsqueeze(2).expand(-1, -1, num_heads, -1)
     sin = sin.unsqueeze(2).expand(-1, -1, num_heads, -1)
     
@@ -115,7 +139,7 @@ class AttentionPooling(nn.Module):
             batch_first=True
         )
         # Learnable query token
-        self.query = nn.Parameter(torch.randn(1, 1, input_dim))
+        self.query = nn.Parameter(torch.randn(1, 1, input_dim) * 0.02)
         self.norm = nn.LayerNorm(input_dim)
         
     def forward(self, patch_embeddings):
@@ -129,15 +153,13 @@ class AttentionPooling(nn.Module):
         patch_embeddings = self.norm(patch_embeddings)
         
         # Attention pooling
-        pooled, attn_weights = self.attention(
-            query, patch_embeddings, patch_embeddings
-        )
+        pooled, _ = self.attention(query, patch_embeddings, patch_embeddings)
         
         return pooled.squeeze(1)  # [B, dim]
 
 
-class DiTBlock(nn.Module):
-    """DiT block with 3D RoPE and cross-attention - BLIP3-o style"""
+class GlobalDiTBlock(nn.Module):
+    """DiT block optimized for global training with fixed 3D RoPE"""
     
     def __init__(self, dim, num_heads, eva_dim, dropout=0.1):
         super().__init__()
@@ -145,7 +167,7 @@ class DiTBlock(nn.Module):
         self.num_heads = num_heads
         self.head_dim = dim // num_heads
         
-        # Ensure head_dim is compatible with 3D RoPE
+        # FIXED: Ensure head_dim compatibility
         assert self.head_dim % 4 == 0, f"head_dim {self.head_dim} must be divisible by 4 for 3D RoPE"
         
         # Self-attention with manual projections for RoPE
@@ -244,13 +266,10 @@ class DiTBlock(nn.Module):
 
 class GlobalBLIP3oDiTModel(PreTrainedModel):
     """
-    Simplified Global BLIP3-o DiT Model - TRAINS DIRECTLY ON GLOBAL FEATURES
+    FIXED Global BLIP3-o DiT Model - Direct Global Training
     
-    KEY FIX: This model trains directly on [B, 768] global embeddings,
-    matching the evaluation pipeline exactly. No more training-inference mismatch!
-    
-    Architecture:
-    EVA-CLIP [B, 256, 4096] → DiT → Attention Pool → MLP → CLIP Projection → [B, 768]
+    Architecture: EVA-CLIP [B, 256, 4096] → DiT → Attention Pool → MLP → [B, 768]
+    Training Target: [B, 768] global embeddings (matches evaluation)
     """
     
     config_class = BLIP3oDiTConfig
@@ -259,93 +278,85 @@ class GlobalBLIP3oDiTModel(PreTrainedModel):
         super().__init__(config)
         self.config = config
         
-        # FIXED: Choose patch_dim that's compatible with n_heads and 3D RoPE
+        # Fixed dimensions
         self.eva_dim = 4096
         self.clip_global_dim = 768
         
-        # Calculate compatible patch_dim based on n_heads
-        if config.n_heads == 12:
-            self.patch_dim = 768  # 768 / 12 = 64 (divisible by 4 for RoPE)
-        elif config.n_heads == 16:
-            self.patch_dim = 1024  # 1024 / 16 = 64 (divisible by 4 for RoPE)
-        elif config.n_heads == 8:
-            self.patch_dim = 512   # 512 / 8 = 64 (divisible by 4 for RoPE)
-        else:
-            # Find the largest compatible dimension
-            for candidate_dim in [768, 1024, 512, 960, 1152]:
-                if candidate_dim % config.n_heads == 0:
-                    head_dim = candidate_dim // config.n_heads
-                    if head_dim % 4 == 0:  # Compatible with 3D RoPE
-                        self.patch_dim = candidate_dim
-                        break
-            else:
-                # Fallback: adjust to make it work
-                self.patch_dim = config.n_heads * 64  # Force head_dim = 64
-        
-        # Verify compatibility
-        assert self.patch_dim % config.n_heads == 0, f"patch_dim {self.patch_dim} not divisible by n_heads {config.n_heads}"
+        # FIXED: Calculate compatible patch_dim
+        self.patch_dim = self._calculate_compatible_patch_dim(config.n_heads)
         self.head_dim = self.patch_dim // config.n_heads
-        assert self.head_dim % 4 == 0, f"head_dim {self.head_dim} must be divisible by 4 for 3D RoPE"
         
-        print(f"✅ FIXED dimensions: patch_dim={self.patch_dim}, n_heads={config.n_heads}, head_dim={self.head_dim}")
+        print(f"✅ FIXED Global Model Dimensions:")
+        print(f"   patch_dim: {self.patch_dim}")
+        print(f"   n_heads: {config.n_heads}")
+        print(f"   head_dim: {self.head_dim}")
+        print(f"   RoPE compatible: {self.head_dim % 4 == 0}")
         
-        # Input projection for EVA features
+        # Input projections
         self.eva_proj = nn.Linear(self.eva_dim, self.patch_dim)
-        
-        # Patch embedding for noisy input
         self.patch_embed = nn.Linear(self.clip_global_dim, self.patch_dim)
         self.pos_embed = nn.Parameter(torch.randn(1, 256, self.patch_dim) * 0.02)
         
-        # Timestep embedding - FIXED dimension compatibility
-        time_dim = 256  # Fixed dimension for sinusoidal embeddings
+        # FIXED: Timestep embedding with proper dimensions
+        self.time_dim = 256
         self.time_embed = nn.Sequential(
-            nn.Linear(time_dim, self.patch_dim),
+            nn.Linear(self.time_dim, self.patch_dim),
             nn.SiLU(),
             nn.Linear(self.patch_dim, self.patch_dim),
         )
         
-        # Create sinusoidal timestep projection - FIXED size
+        # Create sinusoidal timestep projection
         self.register_buffer(
-            "time_proj",
-            self._create_sinusoidal_timestep_embedding(time_dim)
+            "time_proj_weights",
+            self._create_sinusoidal_weights(self.time_dim // 2)
         )
         
-        # DiT backbone with 3D RoPE
+        # DiT backbone
         self.layers = nn.ModuleList([
-            DiTBlock(self.patch_dim, config.n_heads, self.patch_dim)
+            GlobalDiTBlock(self.patch_dim, config.n_heads, self.patch_dim, dropout=0.1)
             for _ in range(config.n_layers)
         ])
         
-        # Attention-based pooling (KEY: Better than mean pooling)
-        self.pooling = AttentionPooling(self.patch_dim, num_heads=8)
+        # Attention-based pooling
+        self.pooling = AttentionPooling(self.patch_dim, num_heads=min(8, config.n_heads))
         
-        # Global adaptation MLP (improved design)
+        # Global adaptation MLP
         self.global_adapter = nn.Sequential(
             nn.LayerNorm(self.patch_dim),
             nn.Linear(self.patch_dim, config.mlp_hidden_dim),
             nn.GELU(),
             nn.Dropout(0.1),
-            nn.Linear(config.mlp_hidden_dim, config.mlp_hidden_dim),
+            nn.Linear(config.mlp_hidden_dim, config.mlp_hidden_dim // 2),
             nn.GELU(),
             nn.Dropout(0.1),
-            nn.Linear(config.mlp_hidden_dim, 1024),  # CLIP pre-projection space
+            nn.Linear(config.mlp_hidden_dim // 2, 1024),  # CLIP space
+            nn.LayerNorm(1024),
         )
         
         # Load frozen CLIP projection
         self.frozen_clip_proj = None
         self._init_weights()
         
-        print(f"✅ Global BLIP3-o DiT initialized")
-        print(f"   Architecture: EVA [B,256,4096] → DiT → Pool → MLP → [B,768]")
-        print(f"   Training target: [B, 768] global embeddings")
-        print(f"   3D RoPE: {self.head_dim}-dim heads (compatible)")
+        print(f"✅ Global BLIP3-o DiT initialized successfully")
+    
+    def _calculate_compatible_patch_dim(self, n_heads):
+        """Calculate patch_dim that's compatible with n_heads and 3D RoPE"""
+        # Common head dimensions that work well with RoPE
+        good_head_dims = [32, 48, 64, 80, 96, 128]
         
-    def _create_sinusoidal_timestep_embedding(self, embed_dim: int):
-        """Create sinusoidal timestep embeddings"""
-        half_dim = embed_dim // 2
+        for head_dim in good_head_dims:
+            if head_dim % 4 == 0:  # RoPE compatibility
+                patch_dim = n_heads * head_dim
+                if 256 <= patch_dim <= 1536:  # Reasonable range
+                    return patch_dim
+        
+        # Fallback: force head_dim = 64
+        return n_heads * 64
+    
+    def _create_sinusoidal_weights(self, half_dim):
+        """Create sinusoidal timestep embedding weights"""
         emb = math.log(10000) / (half_dim - 1)
-        emb = torch.exp(torch.arange(half_dim, dtype=torch.float32) * -emb)
-        return emb
+        return torch.exp(torch.arange(half_dim, dtype=torch.float32) * -emb)
         
     def _init_weights(self):
         """Initialize weights"""
@@ -361,32 +372,37 @@ class GlobalBLIP3oDiTModel(PreTrainedModel):
     def load_frozen_clip_projection(self, clip_model_name="openai/clip-vit-large-patch14"):
         """Load frozen CLIP visual projection"""
         print(f"Loading frozen CLIP projection from {clip_model_name}")
-        clip_model = CLIPModel.from_pretrained(clip_model_name)
-        self.frozen_clip_proj = clip_model.visual_projection
-        
-        # Freeze parameters
-        for param in self.frozen_clip_proj.parameters():
-            param.requires_grad = False
-        
-        print(f"✅ Frozen CLIP projection loaded: {self.frozen_clip_proj.weight.shape}")
+        try:
+            clip_model = CLIPModel.from_pretrained(clip_model_name)
+            self.frozen_clip_proj = clip_model.visual_projection
+            
+            # Freeze parameters
+            for param in self.frozen_clip_proj.parameters():
+                param.requires_grad = False
+            
+            print(f"✅ Frozen CLIP projection loaded: {self.frozen_clip_proj.weight.shape}")
+        except Exception as e:
+            print(f"⚠️ Failed to load CLIP projection: {e}")
+            # Fallback projection
+            self.frozen_clip_proj = nn.Linear(1024, 768, bias=False)
+            nn.init.xavier_uniform_(self.frozen_clip_proj.weight)
+            self.frozen_clip_proj.requires_grad_(False)
+            print(f"⚠️ Using fallback projection")
     
     def get_timestep_embedding(self, timesteps):
-        """Create sinusoidal timestep embeddings - FIXED dimension handling"""
-        # Ensure timesteps are in [0, 1] range, then scale to [0, 1000]
+        """Create sinusoidal timestep embeddings"""
+        # Clamp and scale timesteps
         timesteps = torch.clamp(timesteps, 0.0, 1.0) * 1000.0
         
         device = timesteps.device
-        half_dim = len(self.time_proj)
-        emb = self.time_proj.to(device=device, dtype=timesteps.dtype)
+        half_dim = len(self.time_proj_weights)
+        emb = self.time_proj_weights.to(device=device, dtype=timesteps.dtype)
         emb = timesteps[:, None] * emb[None, :]
         emb = torch.cat([torch.sin(emb), torch.cos(emb)], dim=-1)
         
-        # FIXED: Ensure output dimension matches time_dim (256), not patch_dim
-        time_dim = len(self.time_proj) * 2  # sin + cos = 2 * half_dim
-        if emb.shape[-1] < time_dim:
-            emb = F.pad(emb, (0, time_dim - emb.shape[-1]))
-        elif emb.shape[-1] > time_dim:
-            emb = emb[:, :time_dim]
+        # Ensure correct dimension
+        if emb.shape[-1] != self.time_dim:
+            emb = F.pad(emb, (0, self.time_dim - emb.shape[-1]))
         
         return emb
     
@@ -398,15 +414,9 @@ class GlobalBLIP3oDiTModel(PreTrainedModel):
         return_dict=True
     ):
         """
-        Forward pass that trains directly on global features.
+        Forward pass for global training
         
-        Args:
-            noisy_global_features: [B, 768] noisy global CLIP features
-            timestep: [B] timesteps for flow matching
-            eva_features: [B, 256, 4096] EVA-CLIP conditioning
-            
-        Returns:
-            Predicted global velocity [B, 768]
+        Returns: Predicted global velocity [B, 768]
         """
         batch_size = noisy_global_features.shape[0]
         device = noisy_global_features.device
@@ -430,28 +440,27 @@ class GlobalBLIP3oDiTModel(PreTrainedModel):
             embed_dim=self.head_dim,
             grid_size=16  # 16x16 = 256 tokens
         )
-        cos_emb = cos_emb.to(device)
-        sin_emb = sin_emb.to(device)
-        rope_embeddings = (cos_emb, sin_emb)
+        rope_embeddings = (cos_emb.to(device), sin_emb.to(device))
         
-        # DiT layers with cross-attention and 3D RoPE
+        # DiT layers
         for layer in self.layers:
             x = layer(x, eva_proj, timestep_emb, rope_embeddings)
         
-        # Pool to global representation using attention
+        # Pool to global representation
         global_features = self.pooling(x)  # [B, patch_dim]
         
         # Global adaptation
         adapted_features = self.global_adapter(global_features)  # [B, 1024]
         
-        # Apply frozen CLIP projection
+        # Apply CLIP projection
         if self.frozen_clip_proj is not None:
             output = self.frozen_clip_proj(adapted_features)  # [B, 768]
         else:
-            # Fallback projection
-            output = F.linear(adapted_features, 
-                            torch.randn(768, 1024, device=device), 
-                            torch.zeros(768, device=device))
+            # Fallback: create projection on the fly
+            output = F.linear(
+                adapted_features, 
+                torch.randn(768, 1024, device=device, dtype=adapted_features.dtype) * 0.02
+            )
         
         if return_dict:
             return {'predicted_global': output}
@@ -470,9 +479,14 @@ class GlobalBLIP3oDiTModel(PreTrainedModel):
         device = eva_features.device
         
         # Start from noise in global space
-        sample = torch.randn(batch_size, 768, device=device, generator=generator)
+        sample = torch.randn(
+            batch_size, 768, 
+            device=device, 
+            generator=generator,
+            dtype=eva_features.dtype
+        )
         
-        # Flow matching sampling with Euler integration
+        # Flow matching sampling
         dt = 1.0 / num_inference_steps
         
         for step in range(num_inference_steps):
@@ -485,7 +499,7 @@ class GlobalBLIP3oDiTModel(PreTrainedModel):
             # Euler step
             sample = sample + dt * velocity
         
-        # Final normalization like CLIP
+        # Final normalization
         return F.normalize(sample, p=2, dim=-1)
 
 
@@ -495,7 +509,7 @@ def create_global_blip3o_dit_model(
     clip_model_name="openai/clip-vit-large-patch14",
     **kwargs
 ):
-    """Create global BLIP3-o DiT model"""
+    """Create FIXED global BLIP3-o DiT model"""
     if config is None:
         from ..config.blip3o_config import get_default_blip3o_config
         config = get_default_blip3o_config()
@@ -510,4 +524,5 @@ def create_global_blip3o_dit_model(
     if load_clip_projection:
         model.load_frozen_clip_projection(clip_model_name)
     
+    print(f"✅ Global BLIP3-o model created successfully")
     return model

@@ -1,51 +1,37 @@
 """
-Training utilities for BLIP3-o DiT - FIXED for Dual Supervision
+FIXED Configuration module for BLIP3-o DiT - Global Training
+Place this file as: src/modules/config/__init__.py
+
+Contains configuration classes for:
+- Model architecture (BLIP3oDiTConfig)
+- Flow matching loss (FlowMatchingConfig)
+- Training parameters (TrainingConfig)
 """
 
-from .blip3o_trainer import (
-    BLIP3oTrainer as StandardBLIP3oTrainer,
-    create_blip3o_training_args as create_standard_training_args,
+from .blip3o_config import (
+    BLIP3oDiTConfig,
+    FlowMatchingConfig,
+    TrainingConfig,
+    get_default_blip3o_config,
+    get_global_blip3o_config,
+    get_multi_gpu_config,
+    get_default_flow_matching_config,
+    get_enhanced_flow_matching_config,
+    get_default_training_config,
+    validate_config_compatibility,
+    print_config_summary,
 )
 
-# Import dual supervision trainer with better error handling
-DUAL_SUPERVISION_TRAINER_AVAILABLE = False
-try:
-    from .dual_supervision_blip3o_trainer import (
-        DualSupervisionBLIP3oTrainer,
-        create_blip3o_training_args as create_dual_supervision_training_args,
-    )
-    # Use dual supervision as default
-    BLIP3oTrainer = DualSupervisionBLIP3oTrainer
-    create_blip3o_training_args = create_dual_supervision_training_args
-    DUAL_SUPERVISION_TRAINER_AVAILABLE = True
-    print("✅ Dual supervision trainer loaded successfully")
-    
-except ImportError as e:
-    # Use standard trainer as fallback
-    BLIP3oTrainer = StandardBLIP3oTrainer
-    create_blip3o_training_args = create_standard_training_args
-    DUAL_SUPERVISION_TRAINER_AVAILABLE = False
-    print(f"⚠️ Dual supervision trainer import failed: {e}")
-    print("⚠️ Using standard trainer as fallback")
-    
-except Exception as e:
-    # Handle other errors
-    BLIP3oTrainer = StandardBLIP3oTrainer
-    create_blip3o_training_args = create_standard_training_args
-    DUAL_SUPERVISION_TRAINER_AVAILABLE = False
-    print(f"⚠️ Unexpected error loading dual supervision trainer: {e}")
-    print("⚠️ Using standard trainer as fallback")
-
 __all__ = [
-    "BLIP3oTrainer",
-    "create_blip3o_training_args",
-    "DUAL_SUPERVISION_TRAINER_AVAILABLE",
+    "BLIP3oDiTConfig",
+    "FlowMatchingConfig", 
+    "TrainingConfig",
+    "get_default_blip3o_config",
+    "get_global_blip3o_config",
+    "get_multi_gpu_config",
+    "get_default_flow_matching_config",
+    "get_enhanced_flow_matching_config",
+    "get_default_training_config",
+    "validate_config_compatibility",
+    "print_config_summary",
 ]
-
-if DUAL_SUPERVISION_TRAINER_AVAILABLE:
-    __all__.extend([
-        "DualSupervisionBLIP3oTrainer",
-        "StandardBLIP3oTrainer",
-        "create_standard_training_args",
-        "create_dual_supervision_training_args",
-    ])
