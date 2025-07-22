@@ -1,12 +1,12 @@
 """
-Flow Matching Loss - Aligned with BLIP3-o Paper
-src/modules/losses/flow_matching_loss.py
+BLIP3-o Flow Matching Loss for Patch-Level Training
+src/modules/losses/blip3o_flow_matching_loss.py
 
-This implementation follows the BLIP3-o paper's flow matching approach:
-1. Patch-level flow matching training
-2. Velocity prediction with proper targets
-3. Optional dual supervision (patch + global)
-4. Proper gradient flow and numerical stability
+This implementation follows the BLIP3-o approach:
+1. Flow matching loss for patch-level CLIP embeddings
+2. Direct supervision on 256 patch tokens
+3. Optimized for image-to-text recall performance
+4. Includes contrastive loss for better alignment
 """
 
 import torch
@@ -16,12 +16,15 @@ from typing import Optional, Dict, Any, Tuple
 import math
 
 
-class FlowMatchingLoss(nn.Module):
+class BLIP3oFlowMatchingLoss(nn.Module):
     """
-    Flow Matching Loss for BLIP3-o DiT - Aligned with Paper
+    Flow Matching Loss for BLIP3-o Patch-Level Training
     
-    Implements rectified flow training as described in the BLIP3-o paper.
-    Trains on patch-level features with optional global supervision.
+    This loss function implements:
+    1. Rectified flow training on CLIP patch embeddings
+    2. Velocity prediction objective
+    3. Optional contrastive loss for better alignment
+    4. Metrics tracking for training monitoring
     """
     
     def __init__(
@@ -29,82 +32,60 @@ class FlowMatchingLoss(nn.Module):
         sigma_min: float = 1e-4,
         sigma_max: float = 1.0,
         prediction_type: str = "velocity",
-        use_global_supervision: bool = True,
-        global_weight: float = 0.1,
-        contrastive_weight: float = 0.05,
+        use_contrastive_loss: bool = True,
+        contrastive_weight: float = 0.1,
         temperature: float = 0.07,
+        normalize_targets: bool = True,
     ):
         super().__init__()
         
         self.sigma_min = sigma_min
         self.sigma_max = sigma_max
         self.prediction_type = prediction_type
-        self.use_global_supervision = use_global_supervision
-        self.global_weight = global_weight
+        self.use_contrastive_loss = use_contrastive_loss
         self.contrastive_weight = contrastive_weight
         self.temperature = temperature
-        
-        # CLIP projection for global supervision
-        self.clip_projection = None
-        self._init_clip_projection()
+        self.normalize_targets = normalize_targets
         
         # EMA tracking for metrics
-        self.register_buffer('ema_patch_loss', torch.tensor(0.0))
-        self.register_buffer('ema_global_loss', torch.tensor(0.0))
+        self.register_buffer('ema_loss', torch.tensor(0.0))
         self.register_buffer('ema_cosine_sim', torch.tensor(0.0))
         self.ema_decay = 0.99
         
-        print(f"✅ Flow Matching Loss initialized")
+        print(f"✅ BLIP3-o Flow Matching Loss initialized")
         print(f"   Prediction type: {prediction_type}")
-        print(f"   Global supervision: {use_global_supervision}")
-        print(f"   Architecture: Patch-level training")
-
-    def _init_clip_projection(self):
-        """Initialize CLIP projection for global supervision."""
-        try:
-            from transformers import CLIPModel
-            clip_model = CLIPModel.from_pretrained("openai/clip-vit-large-patch14")
-            self.clip_projection = clip_model.visual_projection
-            # Freeze parameters
-            for param in self.clip_projection.parameters():
-                param.requires_grad = False
-            print("✅ CLIP projection loaded for global supervision")
-        except Exception as e:
-            print(f"⚠️ Failed to load CLIP projection: {e}")
-            # Create fallback
-            self.clip_projection = nn.Linear(1024, 768, bias=False)
-            nn.init.xavier_uniform_(self.clip_projection.weight)
-            self.clip_projection.requires_grad_(False)
+        print(f"   Contrastive loss: {use_contrastive_loss}")
+        print(f"   Training objective: Patch-level flow matching")
 
     def sample_timesteps(self, batch_size: int, device: torch.device) -> torch.Tensor:
-        """Sample random timesteps for flow matching."""
+        """Sample random timesteps for flow matching"""
         return torch.rand(batch_size, device=device, dtype=torch.float32)
 
     def get_noise_schedule(self, t: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Get noise schedule parameters for flow matching."""
-        # Linear schedule as in rectified flow
+        """Get noise schedule parameters for flow matching"""
+        # Linear schedule for rectified flow
         alpha_t = t
         sigma_t = self.sigma_min + (self.sigma_max - self.sigma_min) * (1 - t)
         return alpha_t, sigma_t
 
     def interpolate_data(
         self,
-        x_0: torch.Tensor,  # Source (noise)
-        x_1: torch.Tensor,  # Target (clean data)
-        t: torch.Tensor,    # Timesteps
+        x_0: torch.Tensor,  # Source (noise) [B, 256, 1024]
+        x_1: torch.Tensor,  # Target CLIP patches [B, 256, 1024]
+        t: torch.Tensor,    # Timesteps [B]
         noise: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
         """
-        Interpolate between source and target data for flow matching.
+        Interpolate between source and target for flow matching
         
         Args:
-            x_0: Source distribution samples [B, 256, 1024]
-            x_1: Target CLIP embeddings [B, 256, 1024]
+            x_0: Source distribution (noise) [B, 256, 1024]
+            x_1: Target CLIP patch embeddings [B, 256, 1024]
             t: Timesteps [B]
             noise: Additional noise [B, 256, 1024]
             
         Returns:
-            Interpolated samples [B, 256, 1024]
+            Interpolated noisy samples [B, 256, 1024]
         """
         if noise is None:
             noise = torch.zeros_like(x_1)
@@ -116,116 +97,89 @@ class FlowMatchingLoss(nn.Module):
         alpha_t = alpha_t.view(-1, 1, 1)
         sigma_t = sigma_t.view(-1, 1, 1)
         
-        # Linear interpolation with noise
+        # Linear interpolation with noise injection
         x_t = (1 - alpha_t) * x_0 + alpha_t * x_1 + sigma_t * noise
         
         return x_t
 
     def compute_velocity_target(
         self,
-        x_0: torch.Tensor,  # Source
-        x_1: torch.Tensor,  # Target
-        t: torch.Tensor,    # Timesteps
+        x_0: torch.Tensor,  # Source [B, 256, 1024]
+        x_1: torch.Tensor,  # Target [B, 256, 1024]
+        t: torch.Tensor,    # Timesteps [B]
         noise: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
         """
-        Compute velocity target for flow matching.
+        Compute velocity target for flow matching
         
-        For rectified flow, the velocity target is simply x_1 - x_0
+        For rectified flow, the velocity target is x_1 - x_0
         """
         if self.prediction_type == "velocity":
             # Rectified flow velocity
             velocity_target = x_1 - x_0
         elif self.prediction_type == "epsilon":
-            # Noise prediction
+            # Noise prediction target
             velocity_target = noise if noise is not None else torch.randn_like(x_1)
         else:
             raise ValueError(f"Unknown prediction type: {self.prediction_type}")
         
         return velocity_target
 
-    def compute_global_features(self, patch_features: torch.Tensor) -> torch.Tensor:
-        """
-        Compute global features from patch features.
-        
-        Args:
-            patch_features: Patch features [B, 256, 1024]
-            
-        Returns:
-            Global features [B, 768]
-        """
-        with torch.no_grad():
-            # Mean pooling
-            pooled = patch_features.mean(dim=1)  # [B, 1024]
-            
-            # Apply CLIP projection
-            if self.clip_projection is not None:
-                # Ensure same device
-                if self.clip_projection.weight.device != pooled.device:
-                    self.clip_projection = self.clip_projection.to(pooled.device)
-                global_features = self.clip_projection(pooled)  # [B, 768]
-            else:
-                # Fallback: simple projection
-                global_features = F.linear(
-                    pooled,
-                    torch.randn(768, 1024, device=pooled.device, dtype=pooled.dtype) * 0.02
-                )
-            
-            # Normalize like CLIP
-            global_features = F.normalize(global_features, p=2, dim=-1)
-            
-        return global_features
-
-    def compute_global_loss(
+    def compute_patch_level_contrastive_loss(
         self,
         predicted_patches: torch.Tensor,  # [B, 256, 1024]
         target_patches: torch.Tensor,    # [B, 256, 1024]
     ) -> torch.Tensor:
         """
-        Compute global supervision loss.
+        Compute patch-level contrastive loss for better alignment
         
-        Args:
-            predicted_patches: Predicted patch features [B, 256, 1024]
-            target_patches: Target patch features [B, 256, 1024]
-            
-        Returns:
-            Global supervision loss (scalar)
+        This encourages patches to be well-aligned for image-text recall
         """
-        # Compute global features
-        pred_global = self.compute_global_features(predicted_patches)
-        target_global = self.compute_global_features(target_patches)
+        batch_size, num_patches, patch_dim = predicted_patches.shape
         
-        # Cosine similarity loss
-        cosine_sim = F.cosine_similarity(pred_global, target_global, dim=-1)
-        global_loss = 1.0 - cosine_sim.mean()
+        # Normalize patches
+        pred_norm = F.normalize(predicted_patches, p=2, dim=-1)  # [B, 256, 1024]
+        target_norm = F.normalize(target_patches, p=2, dim=-1)   # [B, 256, 1024]
         
-        return global_loss
+        # Compute patch similarities within each sample
+        similarities = torch.einsum('bpd,bqd->bpq', pred_norm, target_norm)  # [B, 256, 256]
+        
+        # Create labels for diagonal (correct patch alignments)
+        labels = torch.arange(num_patches, device=predicted_patches.device)
+        labels = labels.unsqueeze(0).repeat(batch_size, 1)  # [B, 256]
+        
+        # Apply temperature scaling
+        similarities = similarities / self.temperature
+        
+        # Compute cross-entropy loss for each batch
+        contrastive_loss = F.cross_entropy(
+            similarities.view(-1, num_patches),  # [B*256, 256]
+            labels.view(-1),  # [B*256]
+            reduction='mean'
+        )
+        
+        return contrastive_loss
 
-    def compute_contrastive_loss(
+    def compute_global_alignment_loss(
         self,
         predicted_patches: torch.Tensor,  # [B, 256, 1024]
         target_patches: torch.Tensor,    # [B, 256, 1024]
     ) -> torch.Tensor:
         """
-        Compute contrastive loss for better alignment.
+        Compute global alignment loss using pooled features
         
-        Args:
-            predicted_patches: Predicted patch features [B, 256, 1024]
-            target_patches: Target patch features [B, 256, 1024]
-            
-        Returns:
-            Contrastive loss (scalar)
+        This helps with image-to-text recall by ensuring global coherence
         """
-        # Compute global features
-        pred_global = self.compute_global_features(predicted_patches)
-        target_global = self.compute_global_features(target_patches)
+        # Global pooling (mean pooling across patches)
+        pred_global = predicted_patches.mean(dim=1)    # [B, 1024]
+        target_global = target_patches.mean(dim=1)     # [B, 1024]
         
-        # Normalize features
-        pred_norm = F.normalize(pred_global, p=2, dim=-1)
-        target_norm = F.normalize(target_global, p=2, dim=-1)
+        # Normalize global features
+        pred_global_norm = F.normalize(pred_global, p=2, dim=-1)
+        target_global_norm = F.normalize(target_global, p=2, dim=-1)
         
-        # Compute similarity matrix
-        sim_matrix = torch.matmul(pred_norm, target_norm.t()) / self.temperature
+        # Compute similarity matrix for contrastive learning
+        sim_matrix = torch.mm(pred_global_norm, target_global_norm.t()) / self.temperature
         
         # Create labels (diagonal should be positive pairs)
         batch_size = predicted_patches.shape[0]
@@ -234,21 +188,21 @@ class FlowMatchingLoss(nn.Module):
         # Symmetric contrastive loss
         loss_i = F.cross_entropy(sim_matrix, labels, reduction='mean')
         loss_j = F.cross_entropy(sim_matrix.t(), labels, reduction='mean')
-        contrastive_loss = (loss_i + loss_j) / 2
+        global_alignment_loss = (loss_i + loss_j) / 2
         
-        return contrastive_loss
+        return global_alignment_loss
 
     def forward(
         self,
         model_output: torch.Tensor,       # [B, 256, 1024] - Predicted velocity
         target_samples: torch.Tensor,     # [B, 256, 1024] - Target CLIP patches
         timesteps: torch.Tensor,          # [B] - Timesteps
-        eva_conditioning: torch.Tensor,   # [B, 256, 4096] - EVA features
+        eva_conditioning: torch.Tensor,   # [B, 256, 4096] - EVA features (for metrics)
         noise: Optional[torch.Tensor] = None,
         return_metrics: bool = False,
     ) -> Tuple[torch.Tensor, Optional[Dict[str, float]]]:
         """
-        Compute flow matching loss.
+        Compute BLIP3-o flow matching loss
         
         Args:
             model_output: Predicted velocity [B, 256, 1024]
@@ -268,10 +222,16 @@ class FlowMatchingLoss(nn.Module):
         # Input validation
         assert model_output.shape == target_samples.shape, \
             f"Shape mismatch: {model_output.shape} vs {target_samples.shape}"
+        assert model_output.shape[1] == 256, f"Expected 256 patches, got {model_output.shape[1]}"
+        assert model_output.shape[2] == 1024, f"Expected 1024-dim patches, got {model_output.shape[2]}"
         assert timesteps.shape[0] == batch_size, \
             f"Timestep batch size mismatch: {timesteps.shape[0]} vs {batch_size}"
         
-        # Sample source distribution
+        # Normalize targets if requested
+        if self.normalize_targets:
+            target_samples = F.normalize(target_samples, p=2, dim=-1)
+        
+        # Sample source distribution (noise)
         x_0 = torch.randn_like(target_samples)
         
         # Sample noise if not provided
@@ -281,34 +241,38 @@ class FlowMatchingLoss(nn.Module):
         # Compute velocity target
         velocity_target = self.compute_velocity_target(x_0, target_samples, timesteps, noise)
         
-        # Primary patch-level flow matching loss
-        patch_loss = F.mse_loss(model_output, velocity_target, reduction='mean')
+        # Primary flow matching loss (MSE on velocity prediction)
+        flow_matching_loss = F.mse_loss(model_output, velocity_target, reduction='mean')
         
         # Initialize total loss
-        total_loss = patch_loss
+        total_loss = flow_matching_loss
         
-        # Global supervision loss
-        global_loss = torch.tensor(0.0, device=device)
-        if self.use_global_supervision and self.global_weight > 0:
-            try:
-                global_loss = self.compute_global_loss(model_output, target_samples)
-                total_loss = total_loss + self.global_weight * global_loss
-            except Exception as e:
-                print(f"Global loss computation failed: {e}")
-        
-        # Contrastive loss
+        # Contrastive losses for better alignment
         contrastive_loss = torch.tensor(0.0, device=device)
-        if self.contrastive_weight > 0:
+        global_alignment_loss = torch.tensor(0.0, device=device)
+        
+        if self.use_contrastive_loss and self.contrastive_weight > 0:
             try:
-                contrastive_loss = self.compute_contrastive_loss(model_output, target_samples)
-                total_loss = total_loss + self.contrastive_weight * contrastive_loss
+                # Patch-level contrastive loss
+                contrastive_loss = self.compute_patch_level_contrastive_loss(
+                    model_output, target_samples
+                )
+                
+                # Global alignment loss
+                global_alignment_loss = self.compute_global_alignment_loss(
+                    model_output, target_samples
+                )
+                
+                # Add to total loss
+                total_contrastive = (contrastive_loss + global_alignment_loss) / 2
+                total_loss = total_loss + self.contrastive_weight * total_contrastive
+                
             except Exception as e:
                 print(f"Contrastive loss computation failed: {e}")
         
         # Update EMA metrics
         with torch.no_grad():
-            self.ema_patch_loss = self.ema_decay * self.ema_patch_loss + (1 - self.ema_decay) * patch_loss.item()
-            self.ema_global_loss = self.ema_decay * self.ema_global_loss + (1 - self.ema_decay) * global_loss.item()
+            self.ema_loss = self.ema_decay * self.ema_loss + (1 - self.ema_decay) * total_loss.item()
             
             # Compute cosine similarity for monitoring
             pred_flat = model_output.view(batch_size, -1)
@@ -320,149 +284,100 @@ class FlowMatchingLoss(nn.Module):
         metrics = None
         if return_metrics:
             with torch.no_grad():
-                # Compute additional metrics
+                # Compute detailed metrics
                 pred_norm = torch.norm(model_output, dim=-1).mean()
                 target_norm = torch.norm(velocity_target, dim=-1).mean()
                 
-                # Global feature metrics
-                pred_global = self.compute_global_features(model_output)
-                target_global = self.compute_global_features(target_samples)
-                global_cosine = F.cosine_similarity(pred_global, target_global, dim=-1).mean()
+                # Patch-level quality metrics
+                patch_cosine_sim = F.cosine_similarity(
+                    model_output.view(-1, 1024), 
+                    velocity_target.view(-1, 1024), 
+                    dim=-1
+                ).mean()
                 
-                # Quality metrics
-                high_quality_ratio = (F.cosine_similarity(
-                    pred_global, target_global, dim=-1) > 0.8).float().mean()
+                # Global coherence metrics
+                pred_global = model_output.mean(dim=1)  # [B, 1024]
+                target_global = target_samples.mean(dim=1)  # [B, 1024]
+                global_cosine_sim = F.cosine_similarity(pred_global, target_global, dim=-1).mean()
+                
+                # Quality indicators for image-text recall
+                high_quality_patches = (F.cosine_similarity(
+                    model_output.view(-1, 1024), 
+                    target_samples.view(-1, 1024), 
+                    dim=-1
+                ) > 0.7).float().mean()
+                
+                # Estimate recall performance based on similarity
+                estimated_recall = torch.clamp(global_cosine_sim * 60, 0, 60)  # Conservative estimate
                 
                 metrics = {
                     # Loss components
-                    'patch_loss': patch_loss.item(),
-                    'global_loss': global_loss.item(),
+                    'flow_matching_loss': flow_matching_loss.item(),
                     'contrastive_loss': contrastive_loss.item(),
+                    'global_alignment_loss': global_alignment_loss.item(),
                     'total_loss': total_loss.item(),
                     
-                    # Flow matching metrics
+                    # Velocity prediction quality
                     'velocity_cosine_sim': cosine_sim.item(),
+                    'patch_cosine_sim': patch_cosine_sim.item(),
                     'prediction_norm': pred_norm.item(),
                     'target_norm': target_norm.item(),
                     
-                    # Global metrics
-                    'global_cosine_similarity': global_cosine.item(),
-                    'high_quality_ratio': high_quality_ratio.item(),
-                    
-                    # EMA metrics
-                    'ema_patch_loss': self.ema_patch_loss.item(),
-                    'ema_global_loss': self.ema_global_loss.item(),
-                    'ema_cosine_sim': self.ema_cosine_sim.item(),
+                    # Global coherence (important for recall)
+                    'global_cosine_sim': global_cosine_sim.item(),
+                    'high_quality_patches': high_quality_patches.item(),
                     
                     # Performance indicators
-                    'estimated_recall_percent': min(max(global_cosine.item() * 70, 0), 70),
+                    'estimated_recall_at_1': estimated_recall.item(),
                     'training_quality': (
-                        'excellent' if global_cosine > 0.85 else
-                        'good' if global_cosine > 0.7 else
-                        'fair' if global_cosine > 0.5 else
+                        'excellent' if global_cosine_sim > 0.8 else
+                        'good' if global_cosine_sim > 0.6 else
+                        'fair' if global_cosine_sim > 0.4 else
                         'needs_improvement'
                     ),
+                    
+                    # EMA metrics
+                    'ema_loss': self.ema_loss.item(),
+                    'ema_cosine_sim': self.ema_cosine_sim.item(),
                     
                     # Training diagnostics
                     'timestep_mean': timesteps.mean().item(),
                     'noise_level': torch.norm(noise, dim=-1).mean().item() if noise is not None else 0.0,
                     'batch_size': batch_size,
+                    'num_patches': model_output.shape[1],
                 }
         
         return total_loss, metrics
 
 
-class DualSupervisionFlowMatchingLoss(FlowMatchingLoss):
-    """
-    Enhanced Flow Matching Loss with explicit dual supervision.
-    
-    Supports both patch-level and global supervision simultaneously.
-    """
-    
-    def __init__(self, *args, **kwargs):
-        # Force global supervision
-        kwargs['use_global_supervision'] = True
-        kwargs['global_weight'] = kwargs.get('global_weight', 0.3)  # Higher weight for dual supervision
-        
-        super().__init__(*args, **kwargs)
-        
-        print("✅ Dual Supervision Flow Matching Loss initialized")
-        print(f"   Global supervision weight: {self.global_weight}")
-
-    def forward(
-        self,
-        model_output: torch.Tensor,
-        target_samples: torch.Tensor,
-        timesteps: torch.Tensor,
-        eva_conditioning: torch.Tensor,
-        noise: Optional[torch.Tensor] = None,
-        return_metrics: bool = False,
-    ):
-        """Enhanced forward pass with stronger global supervision."""
-        # Call parent forward
-        total_loss, metrics = super().forward(
-            model_output, target_samples, timesteps, eva_conditioning, noise, return_metrics
-        )
-        
-        # Additional global consistency loss for dual supervision
-        if self.use_global_supervision:
-            try:
-                # Compute global features
-                pred_global = self.compute_global_features(model_output)
-                target_global = self.compute_global_features(target_samples)
-                
-                # L2 loss in global space
-                global_l2_loss = F.mse_loss(pred_global, target_global, reduction='mean')
-                
-                # Add to total loss
-                total_loss = total_loss + 0.1 * global_l2_loss
-                
-                if metrics is not None:
-                    metrics['dual_global_l2_loss'] = global_l2_loss.item()
-                    metrics['dual_supervision'] = True
-                    
-            except Exception as e:
-                print(f"Dual supervision enhancement failed: {e}")
-        
-        return total_loss, metrics
-
-
 def create_blip3o_flow_matching_loss(
-    enhanced: bool = False,
-    use_global_supervision: bool = True,
-    global_weight: float = 0.1,
-    contrastive_weight: float = 0.05,
+    enhanced: bool = True,
+    use_contrastive_loss: bool = True,
+    contrastive_weight: float = 0.1,
+    temperature: float = 0.07,
     **kwargs
-):
+) -> BLIP3oFlowMatchingLoss:
     """
-    Factory function for creating BLIP3-o flow matching loss.
+    Factory function for creating BLIP3-o flow matching loss
     
     Args:
-        enhanced: Whether to use dual supervision version
-        use_global_supervision: Whether to use global supervision
-        global_weight: Weight for global supervision loss
+        enhanced: Whether to use enhanced features (contrastive loss)
+        use_contrastive_loss: Whether to use contrastive loss for alignment
         contrastive_weight: Weight for contrastive loss
+        temperature: Temperature for contrastive learning
         **kwargs: Additional arguments
         
     Returns:
-        Flow matching loss instance
+        BLIP3oFlowMatchingLoss instance
     """
-    if enhanced:
-        return DualSupervisionFlowMatchingLoss(
-            use_global_supervision=use_global_supervision,
-            global_weight=global_weight,
-            contrastive_weight=contrastive_weight,
-            **kwargs
-        )
-    else:
-        return FlowMatchingLoss(
-            use_global_supervision=use_global_supervision,
-            global_weight=global_weight,
-            contrastive_weight=contrastive_weight,
-            **kwargs
-        )
+    return BLIP3oFlowMatchingLoss(
+        use_contrastive_loss=use_contrastive_loss and enhanced,
+        contrastive_weight=contrastive_weight,
+        temperature=temperature,
+        **kwargs
+    )
 
 
 # Backward compatibility
-BLIP3oFlowMatchingLoss = FlowMatchingLoss
+BLIP3oFlowMatchingLoss = BLIP3oFlowMatchingLoss
 create_flow_matching_loss = create_blip3o_flow_matching_loss

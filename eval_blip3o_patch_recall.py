@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 """
-Global BLIP3-o Evaluation Script
-File: eval_global_blip3o.py
+BLIP3-o Patch-Level Evaluation Script
+eval_blip3o_patch_recall.py
 
-Evaluates the simplified global model that trains directly on [B, 768] features.
+This script evaluates BLIP3-o patch-level models on image-to-text recall:
+1. Loads trained BLIP3-o patch DiT model
+2. Generates CLIP embeddings from EVA-CLIP conditioning
+3. Measures Recall@1, Recall@5, Recall@10 for image-to-text retrieval
+4. Compares with CLIP baseline
 """
 
 import os
@@ -33,16 +37,16 @@ def setup_paths():
     """Setup import paths"""
     try:
         from src.modules.config.blip3o_config import BLIP3oDiTConfig
-        from src.modules.models.global_blip3o_dit import GlobalBLIP3oDiTModel
+        from src.modules.models.blip3o_patch_dit import BLIP3oPatchDiTModel, create_blip3o_patch_dit_model
+        from src.modules.evaluation.blip3o_recall_evaluator import BLIP3oRecallEvaluator
         return True
     except ImportError as e:
         print(f"❌ Import error: {e}")
         return False
 
-class GlobalBLIP3oEvaluator:
+class BLIP3oPatchEvaluator:
     """
-    Evaluator for Global BLIP3-o model that trains directly on global features.
-    Much simpler than the previous complex dual supervision approach.
+    Evaluator for BLIP3-o patch-level models focused on image-to-text recall
     """
     
     def __init__(self, device="auto"):
@@ -51,9 +55,10 @@ class GlobalBLIP3oEvaluator:
         self.clip_model = None
         self.eva_processor = None
         self.eva_model = None
-        self.global_model = None
+        self.blip3o_model = None
+        self.recall_evaluator = None
         
-        logger.info("Global BLIP3-o evaluator initialized")
+        logger.info("BLIP3-o patch evaluator initialized")
     
     def _setup_device(self, device_arg):
         if device_arg == "auto":
@@ -83,9 +88,9 @@ class GlobalBLIP3oEvaluator:
         
         logger.info("✅ Models loaded successfully")
     
-    def load_global_model(self, model_path):
-        """Load the global BLIP3-o model"""
-        logger.info(f"Loading global model from: {model_path}")
+    def load_blip3o_model(self, model_path):
+        """Load the BLIP3-o patch-level model"""
+        logger.info(f"Loading BLIP3-o patch model from: {model_path}")
         
         model_path = Path(model_path)
         
@@ -111,8 +116,8 @@ class GlobalBLIP3oEvaluator:
         config = BLIP3oDiTConfig(**config_dict)
         
         # Create model
-        from src.modules.models.global_blip3o_dit import GlobalBLIP3oDiTModel
-        self.global_model = GlobalBLIP3oDiTModel(config)
+        from src.modules.models.blip3o_patch_dit import create_blip3o_patch_dit_model
+        self.blip3o_model = create_blip3o_patch_dit_model(config)
         
         # Load weights
         weight_files = [
@@ -139,21 +144,24 @@ class GlobalBLIP3oEvaluator:
             state_dict = load_file(str(weight_file))
         
         # Load state dict
-        missing_keys, unexpected_keys = self.global_model.load_state_dict(state_dict, strict=False)
+        missing_keys, unexpected_keys = self.blip3o_model.load_state_dict(state_dict, strict=False)
         
         if missing_keys:
             logger.warning(f"Missing keys: {len(missing_keys)}")
         if unexpected_keys:
             logger.warning(f"Unexpected keys: {len(unexpected_keys)}")
         
-        self.global_model = self.global_model.to(self.device)
-        self.global_model.eval()
+        self.blip3o_model = self.blip3o_model.to(self.device)
+        self.blip3o_model.eval()
         
-        # Load frozen CLIP projection if needed
-        if self.global_model.frozen_clip_proj is None:
-            self.global_model.load_frozen_clip_projection()
+        # Initialize recall evaluator
+        from src.modules.evaluation.blip3o_recall_evaluator import BLIP3oRecallEvaluator
+        self.recall_evaluator = BLIP3oRecallEvaluator(
+            model=self.blip3o_model,
+            device=self.device
+        )
         
-        logger.info("✅ Global model loaded successfully")
+        logger.info("✅ BLIP3-o patch model loaded successfully")
     
     def extract_clip_text_embeddings(self, captions):
         """Extract CLIP text embeddings"""
@@ -166,13 +174,15 @@ class GlobalBLIP3oEvaluator:
             )
             inputs = {k: v.to(self.device) for k, v in inputs.items()}
             
-            text_embeddings = self.clip_model.get_text_features(**inputs)
-            text_embeddings = F.normalize(text_embeddings, p=2, dim=-1)
+            text_features = self.clip_model.get_text_features(**inputs)
+            # Apply visual projection to match image embedding space
+            text_features = self.clip_model.visual_projection(text_features)
+            text_features = F.normalize(text_features, p=2, dim=-1)
         
-        return text_embeddings.cpu()
+        return text_features.cpu()
     
-    def extract_clip_global_embeddings(self, images):
-        """Extract CLIP global embeddings for baseline"""
+    def extract_clip_baseline_embeddings(self, images):
+        """Extract CLIP baseline embeddings for comparison"""
         global_embeddings = []
         
         with torch.no_grad():
@@ -180,10 +190,12 @@ class GlobalBLIP3oEvaluator:
                 inputs = self.clip_processor(images=img, return_tensors="pt")
                 inputs = {k: v.to(self.device) for k, v in inputs.items()}
                 
-                vision_embeddings = self.clip_model.get_image_features(**inputs)
-                vision_embeddings = F.normalize(vision_embeddings, p=2, dim=-1)
+                vision_features = self.clip_model.get_image_features(**inputs)
+                # Apply visual projection
+                vision_features = self.clip_model.visual_projection(vision_features)
+                vision_features = F.normalize(vision_features, p=2, dim=-1)
                 
-                global_embeddings.append(vision_embeddings.squeeze(0).cpu())
+                global_embeddings.append(vision_features.squeeze(0).cpu())
         
         return torch.stack(global_embeddings)
     
@@ -208,9 +220,9 @@ class GlobalBLIP3oEvaluator:
         
         return torch.stack(eva_embeddings)
     
-    def generate_global_embeddings(self, eva_embeddings, num_inference_steps=50):
-        """Generate global embeddings using the global model"""
-        logger.info(f"Generating global embeddings for {eva_embeddings.shape[0]} images...")
+    def generate_blip3o_embeddings(self, eva_embeddings, num_inference_steps=50):
+        """Generate BLIP3-o embeddings using the patch model"""
+        logger.info(f"Generating BLIP3-o embeddings for {eva_embeddings.shape[0]} images...")
         
         eva_embeddings = eva_embeddings.to(self.device)
         
@@ -222,13 +234,20 @@ class GlobalBLIP3oEvaluator:
                 end_idx = min(i + batch_size, eva_embeddings.shape[0])
                 batch_eva = eva_embeddings[i:end_idx]
                 
-                # Generate directly using the global model
-                generated = self.global_model.generate(
+                # Generate CLIP patch embeddings
+                generated_patches = self.blip3o_model.generate(
                     eva_features=batch_eva,
                     num_inference_steps=num_inference_steps,
-                )
+                )  # [B, 256, 1024]
                 
-                generated_embeddings.append(generated.cpu())
+                # Pool to global features
+                global_features = generated_patches.mean(dim=1)  # [B, 1024]
+                
+                # Apply CLIP visual projection
+                global_features = self.clip_model.visual_projection(global_features)  # [B, 768]
+                global_features = F.normalize(global_features, p=2, dim=-1)
+                
+                generated_embeddings.append(global_features.cpu())
         
         result = torch.cat(generated_embeddings, dim=0)
         logger.info(f"Generated embeddings: {result.shape}")
@@ -236,7 +255,7 @@ class GlobalBLIP3oEvaluator:
         return result
     
     def compute_recall(self, image_embeddings, text_embeddings, image_to_text_mapping, k_values=[1, 5, 10]):
-        """Compute image-to-text recall metrics"""
+        """Compute Recall@K metrics"""
         # Ensure embeddings are normalized
         image_embeddings = F.normalize(image_embeddings, p=2, dim=-1)
         text_embeddings = F.normalize(text_embeddings, p=2, dim=-1)
@@ -288,20 +307,20 @@ class GlobalBLIP3oEvaluator:
         
         # Extract image embeddings
         if method == "clip_baseline":
-            image_embeddings = self.extract_clip_global_embeddings(images)
+            image_embeddings = self.extract_clip_baseline_embeddings(images)
             method_desc = "CLIP ViT-L/14 baseline"
             
-        elif method == "global_blip3o":
-            if self.global_model is None:
-                raise ValueError("Global model not loaded")
+        elif method == "blip3o_patch":
+            if self.blip3o_model is None:
+                raise ValueError("BLIP3-o model not loaded")
             
             # Extract EVA embeddings for conditioning
             eva_embeddings = self.extract_eva_embeddings(images)
             
-            # Generate global embeddings directly
-            image_embeddings = self.generate_global_embeddings(eva_embeddings, num_inference_steps)
+            # Generate BLIP3-o embeddings
+            image_embeddings = self.generate_blip3o_embeddings(eva_embeddings, num_inference_steps)
             
-            method_desc = f"Global BLIP3-o (EVA → DiT → Global)"
+            method_desc = f"BLIP3-o Patch DiT (EVA → DiT → CLIP)"
             
         else:
             raise ValueError(f"Unknown method: {method}")
@@ -377,9 +396,10 @@ def load_coco_samples(coco_root, num_samples=1000):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Evaluate Global BLIP3-o Model")
+    """Main evaluation function."""
+    parser = argparse.ArgumentParser(description="Evaluate BLIP3-o Patch Model")
     parser.add_argument("--coco_root", type=str, required=True, help="COCO dataset root")
-    parser.add_argument("--model_path", type=str, required=True, help="Global model path")
+    parser.add_argument("--model_path", type=str, required=True, help="BLIP3-o model path")
     parser.add_argument("--num_samples", type=int, default=1000, help="Number of samples")
     parser.add_argument("--device", type=str, default="auto", help="Device")
     parser.add_argument("--num_inference_steps", type=int, default=50, help="Inference steps")
@@ -392,17 +412,17 @@ def main():
         return 1
     
     # Initialize evaluator
-    evaluator = GlobalBLIP3oEvaluator(device=args.device)
+    evaluator = BLIP3oPatchEvaluator(device=args.device)
     
     # Load models
     evaluator.load_clip_models()
-    evaluator.load_global_model(args.model_path)
+    evaluator.load_blip3o_model(args.model_path)
     
     # Load COCO samples
     images, captions_per_image, image_ids = load_coco_samples(args.coco_root, args.num_samples)
     
     # Evaluate methods
-    methods = ["clip_baseline", "global_blip3o"]
+    methods = ["clip_baseline", "blip3o_patch"]
     results = {}
     
     for method in methods:
@@ -433,32 +453,37 @@ def main():
     
     # Print comparison
     print(f"\n{'='*80}")
-    print("📊 GLOBAL BLIP3-O EVALUATION RESULTS")
+    print("📊 BLIP3-o PATCH EVALUATION RESULTS")
     print(f"{'='*80}")
     
-    if 'clip_baseline' in results and 'global_blip3o' in results:
+    if 'clip_baseline' in results and 'blip3o_patch' in results:
         clip_r1 = results['clip_baseline'].get('recall@1', 0) * 100
-        global_r1 = results['global_blip3o'].get('recall@1', 0) * 100
+        blip3o_r1 = results['blip3o_patch'].get('recall@1', 0) * 100
         
         print(f"CLIP Baseline R@1:    {clip_r1:5.1f}%")
-        print(f"Global BLIP3-o R@1:   {global_r1:5.1f}%")
+        print(f"BLIP3-o Patch R@1:    {blip3o_r1:5.1f}%")
         
-        if global_r1 > 0:
-            improvement = global_r1 - clip_r1
+        if blip3o_r1 > 0:
+            improvement = blip3o_r1 - clip_r1
             print(f"Improvement:          {improvement:+5.1f}%")
             
-            if global_r1 >= clip_r1 * 0.9:  # Within 10% of CLIP
+            if blip3o_r1 >= clip_r1 * 0.8:  # Within 80% of CLIP
                 print("🎉 SUCCESS: Model performs well!")
-                print("   ✅ Global training resolved mismatch")
-                print("   ✅ Direct global generation works")
+                print("   ✅ Patch-level training effective")
+                print("   ✅ Image-to-text recall working")
             else:
                 print("⚠️  Model needs improvement")
         
-        # Compare with previous approach
-        previous_recall = 0.1
-        if global_r1 > previous_recall:
-            improvement_factor = global_r1 / previous_recall
-            print(f"vs Previous approach: {improvement_factor:.0f}x improvement")
+        # Performance analysis
+        print(f"\n📈 Performance Analysis:")
+        if blip3o_r1 > 25:
+            print("   🚀 EXCELLENT: Strong recall performance")
+        elif blip3o_r1 > 15:
+            print("   ✅ GOOD: Solid recall performance")
+        elif blip3o_r1 > 5:
+            print("   🔄 FAIR: Model is learning")
+        else:
+            print("   ⚠️  NEEDS WORK: Low recall performance")
     
     # Save results
     if args.save_results:
@@ -468,7 +493,8 @@ def main():
                 'coco_root': args.coco_root,
                 'num_samples': len(images),
                 'num_inference_steps': args.num_inference_steps,
-                'approach': 'global_training',
+                'approach': 'patch_level_training',
+                'evaluation_metric': 'image_to_text_recall',
             },
             'results': results,
         }

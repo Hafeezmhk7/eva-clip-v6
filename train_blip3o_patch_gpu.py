@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-BLIP3-o Training Script - Aligned with Paper
-train_blip3o_dit_multi_gpu.py
+BLIP3-o Patch-Level Training Script - Aligned with BLIP3-o Paper
+train_blip3o_patch_dit.py
 
-This script implements proper BLIP3-o training following the paper:
-1. Patch-level flow matching training
-2. EVA-CLIP conditioning
-3. Proper DiT architecture
-4. Fixed gradient flow issues
-5. Memory optimization
+This script implements BLIP3-o patch-level training following the paper:
+1. 256-token patch-level flow matching training
+2. EVA-CLIP conditioning (4096-dim)
+3. CLIP output supervision (1024-dim)
+4. Image-to-text recall evaluation
+5. Memory optimization and multi-GPU support
 """
 
 import os
@@ -35,7 +35,7 @@ def setup_logging(local_rank=0):
         format=f'[Rank {local_rank}] %(asctime)s - %(levelname)s - %(message)s',
         handlers=[
             logging.StreamHandler(sys.stdout),
-            logging.FileHandler(f'blip3o_training_rank_{local_rank}.log', mode='w')
+            logging.FileHandler(f'blip3o_patch_training_rank_{local_rank}.log', mode='w')
         ]
     )
     
@@ -149,7 +149,7 @@ def initialize_distributed_training(timeout=1800):
 def parse_arguments():
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
-        description="BLIP3-o DiT Training - Aligned with Paper",
+        description="BLIP3-o Patch-Level DiT Training - Aligned with Paper",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
     
@@ -171,7 +171,7 @@ def parse_arguments():
                        help="Number of attention heads")
     
     # Training configuration
-    parser.add_argument("--num_epochs", type=int, default=5,
+    parser.add_argument("--num_epochs", type=int, default=6,
                        help="Number of training epochs")
     parser.add_argument("--batch_size", type=int, default=8,
                        help="Training batch size per GPU")
@@ -186,16 +186,24 @@ def parse_arguments():
     parser.add_argument("--gradient_accumulation_steps", type=int, default=4,
                        help="Gradient accumulation steps")
     
+    # Evaluation configuration
+    parser.add_argument("--enable_recall_eval", action="store_true", default=True,
+                       help="Enable image-to-text recall evaluation")
+    parser.add_argument("--recall_eval_steps", type=int, default=250,
+                       help="Steps between recall evaluations")
+    parser.add_argument("--recall_eval_samples", type=int, default=50,
+                       help="Number of samples for recall evaluation")
+    
     # Flow matching configuration
-    parser.add_argument("--use_global_supervision", action="store_true", default=True,
-                       help="Use global supervision")
-    parser.add_argument("--global_weight", type=float, default=0.2,
-                       help="Weight for global supervision")
-    parser.add_argument("--enhanced_loss", action="store_true",
+    parser.add_argument("--use_contrastive_loss", action="store_true", default=True,
+                       help="Use contrastive loss for better alignment")
+    parser.add_argument("--contrastive_weight", type=float, default=0.1,
+                       help="Weight for contrastive loss")
+    parser.add_argument("--enhanced_loss", action="store_true", default=True,
                        help="Use enhanced flow matching loss")
     
     # Hardware configuration
-    parser.add_argument("--fp16", action="store_true",
+    parser.add_argument("--fp16", action="store_true", default=True,
                        help="Use mixed precision training")
     parser.add_argument("--dataloader_num_workers", type=int, default=4,
                        help="Number of dataloader workers")
@@ -219,6 +227,9 @@ def validate_model_configuration(args):
     print(f"   Size: {args.model_size}")
     print(f"   Dimensions: {args.hidden_size}D, {args.num_layers}L, {args.num_heads}H")
     print(f"   Head dimension: {head_dim}")
+    print(f"   Patch tokens: 256 (16x16)")
+    print(f"   EVA conditioning: 4096-dim")
+    print(f"   CLIP output: 1024-dim")
     
     return head_dim
 
@@ -233,15 +244,16 @@ def main():
     is_main_process = (global_rank == 0)
     
     if is_main_process:
-        print("🚀 BLIP3-o DiT Training - Aligned with Paper")
-        print("=" * 60)
+        print("🚀 BLIP3-o Patch-Level DiT Training - Aligned with Paper")
+        print("=" * 65)
         print("🎯 TRAINING FEATURES:")
-        print("  ✅ Patch-level flow matching (aligned with paper)")
-        print("  ✅ Proper DiT architecture")
-        print("  ✅ EVA-CLIP conditioning")
-        print("  ✅ Fixed gradient flow issues")
+        print("  ✅ 256-token patch-level flow matching")
+        print("  ✅ EVA-CLIP conditioning (4096-dim)")
+        print("  ✅ CLIP output supervision (1024-dim)")
+        print("  ✅ Image-to-text recall evaluation")
+        print("  ✅ 3D Rotary Position Embedding")
         print("  ✅ Memory optimization")
-        print("=" * 60)
+        print("=" * 65)
         print(f"Environment: LOCAL_RANK={local_rank}, RANK={global_rank}, WORLD_SIZE={world_size}")
     
     try:
@@ -294,18 +306,18 @@ def main():
         
         # 4. Load BLIP3-o Modules
         if is_main_process:
-            print("\n📦 Step 4: Loading BLIP3-o Modules")
+            print("\n📦 Step 4: Loading BLIP3-o Patch Modules")
             print("-" * 40)
         
         try:
-            from src.modules.config.blip3o_config import get_blip3o_config
-            from src.modules.models.blip3o_dit import create_blip3o_dit_model
-            from src.modules.losses.flow_matching_loss import create_blip3o_flow_matching_loss
-            from src.modules.trainers.blip3o_trainer import BLIP3oTrainer, create_blip3o_training_args
+            from src.modules.config.blip3o_config import get_blip3o_patch_config
+            from src.modules.models.blip3o_patch_dit import create_blip3o_patch_dit_model
+            from src.modules.losses.blip3o_flow_matching_loss import create_blip3o_flow_matching_loss
+            from src.modules.trainers.blip3o_patch_trainer import BLIP3oPatchTrainer, create_blip3o_patch_training_args
             from src.modules.datasets import create_dataloaders
             
             if is_main_process:
-                print("✅ All BLIP3-o modules loaded successfully")
+                print("✅ All BLIP3-o patch modules loaded successfully")
                 
         except ImportError as e:
             if is_main_process:
@@ -326,6 +338,7 @@ def main():
         
         if is_main_process:
             print(f"Dataset: {manifest['total_shards']} shards, {manifest['total_samples']:,} samples")
+            print(f"Expected tokens per image: 256 (16x16 patches)")
         
         # 6. Create Model
         if is_main_process:
@@ -333,19 +346,15 @@ def main():
             print("-" * 40)
         
         # Get model configuration
-        config = get_blip3o_config(
+        config = get_blip3o_patch_config(
             model_size=args.model_size,
             hidden_size=args.hidden_size,
             num_hidden_layers=args.num_layers,
             num_attention_heads=args.num_heads,
-            use_global_supervision=args.use_global_supervision,
         )
         
-        # Create model
-        model = create_blip3o_dit_model(
-            config=config,
-            load_clip_projection=True
-        )
+        # Create patch-level model
+        model = create_blip3o_patch_dit_model(config=config)
         model = model.to(device)
         
         # Enable gradient checkpointing for memory efficiency
@@ -356,6 +365,7 @@ def main():
             param_count = model.get_num_parameters()
             print(f"Model parameters: {param_count:,}")
             print(f"Memory estimate: ~{param_count * 4 / (1024**3):.1f} GB")
+            print(f"Architecture: Patch-level DiT with 3D RoPE")
         
         # 7. DDP Wrapping
         if is_distributed and use_cuda:
@@ -376,12 +386,14 @@ def main():
         # 8. Create Loss Function
         flow_matching_loss = create_blip3o_flow_matching_loss(
             enhanced=args.enhanced_loss,
-            use_global_supervision=args.use_global_supervision,
-            global_weight=args.global_weight,
+            use_contrastive_loss=args.use_contrastive_loss,
+            contrastive_weight=args.contrastive_weight,
         )
         
         if is_main_process:
             print("✅ Flow matching loss created")
+            print(f"   Enhanced features: {args.enhanced_loss}")
+            print(f"   Contrastive loss: {args.use_contrastive_loss}")
         
         # 9. Create Dataloaders
         if is_main_process:
@@ -411,7 +423,7 @@ def main():
         steps_per_epoch = max(1, samples_per_gpu // (args.batch_size * args.gradient_accumulation_steps))
         max_steps = steps_per_epoch * args.num_epochs
         
-        training_args = create_blip3o_training_args(
+        training_args = create_blip3o_patch_training_args(
             output_dir=args.output_dir,
             num_train_epochs=args.num_epochs,
             per_device_train_batch_size=args.batch_size,
@@ -425,19 +437,25 @@ def main():
             logging_steps=max(10, max_steps // 50),
             save_steps=max(100, max_steps // 10),
             eval_steps=max(50, max_steps // 20) if eval_dataloader else 0,
+            metric_for_best_model="eval_recall@1",  # Use recall as primary metric
+            greater_is_better=True,
         )
         
         if is_main_process:
             print(f"Training steps: {max_steps}")
             print(f"Effective batch size: {args.batch_size * world_size * args.gradient_accumulation_steps}")
+            print(f"Primary metric: Image-to-text Recall@1")
         
         # 11. Create Trainer
-        trainer = BLIP3oTrainer(
+        trainer = BLIP3oPatchTrainer(
             model=model,
             args=training_args,
             flow_matching_loss=flow_matching_loss,
             train_dataset=None,  # We override the dataloader
             eval_dataset=eval_dataloader.dataset if eval_dataloader else None,
+            enable_recall_evaluation=args.enable_recall_eval,
+            recall_eval_samples=args.recall_eval_samples,
+            recall_eval_steps=args.recall_eval_steps,
         )
         
         # Override dataloader methods
@@ -447,10 +465,11 @@ def main():
         
         # 12. Start Training
         if is_main_process:
-            print("\n🚀 Step 10: Starting BLIP3-o Training")
+            print("\n🚀 Step 10: Starting BLIP3-o Patch Training")
             print("-" * 40)
             print("✅ All systems ready - starting patch-level flow matching training!")
-            print("🎯 Expected: Proper gradient flow and stable training")
+            print("🎯 Expected: High image-to-text recall performance")
+            print("📊 Evaluation: Recall@1, Recall@5, Recall@10")
         
         train_result = trainer.train()
         
@@ -465,21 +484,23 @@ def main():
                 'training_args': training_args.to_dict(),
                 'flow_matching_config': {
                     'enhanced': args.enhanced_loss,
-                    'use_global_supervision': args.use_global_supervision,
-                    'global_weight': args.global_weight,
+                    'use_contrastive_loss': args.use_contrastive_loss,
+                    'contrastive_weight': args.contrastive_weight,
                 },
                 'training_completed': True,
                 'paper_alignment': 'BLIP3-o DiT with patch-level flow matching',
-                'architecture': 'Proper DiT architecture with EVA-CLIP conditioning',
+                'architecture': '256-token patch-level DiT with EVA-CLIP conditioning',
+                'evaluation_metrics': 'Image-to-text recall (R@1, R@5, R@10)',
                 'timestamp': datetime.now().isoformat(),
             }
             
             with open(Path(args.output_dir) / 'training_config.json', 'w') as f:
                 json.dump(config_info, f, indent=2)
             
-            print("✅ BLIP3-o training completed successfully!")
+            print("✅ BLIP3-o patch training completed successfully!")
             print("📋 Training follows BLIP3-o paper architecture")
-            print("🎯 Patch-level flow matching with proper gradient flow")
+            print("🎯 256-token patch-level flow matching")
+            print("📊 Optimized for image-to-text recall")
         
         # Cleanup
         if is_distributed:
@@ -504,10 +525,10 @@ def main():
                 'training_type': 'blip3o_patch_level'
             }
             
-            with open('blip3o_training_error.json', 'w') as f:
+            with open('blip3o_patch_training_error.json', 'w') as f:
                 json.dump(error_info, f, indent=2)
             
-            print("💾 Error info saved to blip3o_training_error.json")
+            print("💾 Error info saved to blip3o_patch_training_error.json")
         
         if is_distributed and dist.is_initialized():
             dist.destroy_process_group()

@@ -1,13 +1,13 @@
 """
-BLIP3-o DiT Model - Properly Aligned with Paper
-src/modules/models/blip3o_dit.py
+BLIP3-o Patch-Level DiT Model - Aligned with BLIP3-o Paper
+src/modules/models/blip3o_patch_dit.py
 
-This implementation follows the BLIP3-o paper architecture:
-1. Patch-level training with [B, 256, 1024] CLIP targets
-2. Proper DiT architecture with timestep conditioning
-3. EVA-CLIP conditioning via cross-attention
-4. Attention pooling for global representation during inference
-5. Flow matching for training
+This implementation follows the BLIP3-o approach:
+1. DiT takes noisy CLIP patch embeddings (256 tokens, 1024-dim) as input
+2. Conditioned on EVA-CLIP patch embeddings (256 tokens, 4096-dim)  
+3. Outputs denoised CLIP patch embeddings
+4. Uses flow matching training objective
+5. Evaluation via image-to-text recall metrics
 """
 
 import torch
@@ -16,15 +16,94 @@ import torch.nn.functional as F
 from typing import Optional, Dict, Any, Tuple, Union
 import math
 import numpy as np
-from transformers import PreTrainedModel, CLIPModel
+from transformers import PreTrainedModel
 
-from ..config.blip3o_config import BLIP3oDiTConfig
+try:
+    from ..config.blip3o_config import BLIP3oDiTConfig
+except ImportError:
+    # Fallback for direct usage
+    from dataclasses import dataclass
+
+    @dataclass
+    class BLIP3oDiTConfig:
+        # Model dimensions
+        hidden_size: int = 768
+        num_hidden_layers: int = 12
+        num_attention_heads: int = 12
+        intermediate_size: int = 3072
+        
+        # Input/output dimensions
+        eva_embedding_size: int = 4096  # EVA-CLIP dimension
+        clip_embedding_size: int = 1024  # CLIP patch dimension
+        input_size: int = 16  # 16x16 = 256 patches
+        
+        # Training configuration
+        max_position_embeddings: int = 256
+        dropout_prob: float = 0.1
+        
+        # Flow matching parameters
+        prediction_type: str = "velocity"
+        sigma_min: float = 1e-4
+        sigma_max: float = 1.0
+
+
+class RotaryPositionalEmbedding3D(nn.Module):
+    """3D Rotary Position Embedding for spatial-temporal structure (BLIP3-o style)"""
+    
+    def __init__(self, dim: int, max_position_embeddings: int = 256):
+        super().__init__()
+        self.dim = dim
+        self.max_position_embeddings = max_position_embeddings
+        
+        # Create frequency for 3D RoPE (spatial + temporal)
+        inv_freq = 1.0 / (10000 ** (torch.arange(0, dim, 2).float() / dim))
+        self.register_buffer('inv_freq', inv_freq)
+        
+    def forward(self, x: torch.Tensor, position_ids: Optional[torch.Tensor] = None) -> torch.Tensor:
+        """Apply 3D rotary position embedding"""
+        batch_size, seq_len, hidden_size = x.shape
+        
+        if position_ids is None:
+            # Create 2D position ids for 16x16 grid
+            grid_size = int(math.sqrt(seq_len))
+            pos_y, pos_x = torch.meshgrid(
+                torch.arange(grid_size, device=x.device),
+                torch.arange(grid_size, device=x.device),
+                indexing='ij'
+            )
+            position_ids = torch.stack([pos_x.flatten(), pos_y.flatten()], dim=1)  # [256, 2]
+            position_ids = position_ids.unsqueeze(0).repeat(batch_size, 1, 1)  # [B, 256, 2]
+        
+        # Apply rotary embedding
+        freqs = torch.einsum('bij,k->bijk', position_ids.float(), self.inv_freq)
+        emb = torch.cat([freqs, freqs], dim=-1)
+        cos_emb = emb.cos()
+        sin_emb = emb.sin()
+        
+        # Apply to hidden states
+        x_rot = self._apply_rotary_pos_emb(x, cos_emb, sin_emb)
+        return x_rot
+    
+    def _apply_rotary_pos_emb(self, x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.Tensor:
+        """Apply rotary position embedding to input tensor"""
+        # Split x into pairs
+        x1, x2 = x[..., 0::2], x[..., 1::2]
+        cos_expanded = cos[..., :x1.shape[-1]]
+        sin_expanded = sin[..., :x1.shape[-1]]
+        
+        # Apply rotation
+        x_rotated = torch.stack([
+            x1 * cos_expanded - x2 * sin_expanded,
+            x1 * sin_expanded + x2 * cos_expanded
+        ], dim=-1).flatten(-2)
+        
+        return x_rotated
 
 
 class TimestepEmbedder(nn.Module):
-    """Embeds scalar timesteps into vector representations."""
+    """Timestep embedding for flow matching"""
     
-    def __init__(self, hidden_size, frequency_embedding_size=256):
+    def __init__(self, hidden_size: int, frequency_embedding_size: int = 256):
         super().__init__()
         self.mlp = nn.Sequential(
             nn.Linear(frequency_embedding_size, hidden_size),
@@ -34,8 +113,8 @@ class TimestepEmbedder(nn.Module):
         self.frequency_embedding_size = frequency_embedding_size
 
     @staticmethod
-    def timestep_embedding(t, dim, max_period=10000):
-        """Create sinusoidal timestep embeddings."""
+    def timestep_embedding(t: torch.Tensor, dim: int, max_period: int = 10000) -> torch.Tensor:
+        """Create sinusoidal timestep embeddings"""
         half = dim // 2
         freqs = torch.exp(
             -math.log(max_period) * torch.arange(start=0, end=half, dtype=torch.float32) / half
@@ -46,170 +125,159 @@ class TimestepEmbedder(nn.Module):
             embedding = torch.cat([embedding, torch.zeros_like(embedding[:, :1])], dim=-1)
         return embedding
 
-    def forward(self, t):
+    def forward(self, t: torch.Tensor) -> torch.Tensor:
         t_freq = self.timestep_embedding(t, self.frequency_embedding_size)
         t_emb = self.mlp(t_freq)
         return t_emb
 
 
-class LabelEmbedder(nn.Module):
-    """Embeds class labels into vector representations."""
+class MultiHeadAttention(nn.Module):
+    """Multi-head attention with grouped query attention (BLIP3-o style)"""
     
-    def __init__(self, num_classes, hidden_size, dropout_prob):
+    def __init__(self, hidden_size: int, num_heads: int, dropout: float = 0.0):
         super().__init__()
-        use_cfg_embedding = dropout_prob > 0
-        self.embedding_table = nn.Embedding(num_classes + use_cfg_embedding, hidden_size)
-        self.num_classes = num_classes
-        self.dropout_prob = dropout_prob
-
-    def token_drop(self, labels, force_drop_ids=None):
-        """Drop labels to enable classifier-free guidance."""
-        if force_drop_ids is None:
-            drop_ids = torch.rand(labels.shape[0], device=labels.device) < self.dropout_prob
-        else:
-            drop_ids = force_drop_ids == 1
-        labels = torch.where(drop_ids, self.num_classes, labels)
-        return labels
-
-    def forward(self, labels, train, force_drop_ids=None):
-        use_dropout = self.dropout_prob > 0
-        if (train and use_dropout) or (force_drop_ids is not None):
-            labels = self.token_drop(labels, force_drop_ids)
-        embeddings = self.embedding_table(labels)
-        return embeddings
-
-
-class DiTBlock(nn.Module):
-    """A DiT block with adaptive layer norm zero (adaLN-Zero) conditioning."""
-    
-    def __init__(self, hidden_size, num_heads, eva_dim=4096, mlp_ratio=4.0, **block_kwargs):
-        super().__init__()
-        self.norm1 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
-        self.attn = nn.MultiheadAttention(
-            hidden_size, num_heads, dropout=0.0, batch_first=True, **block_kwargs
+        self.hidden_size = hidden_size
+        self.num_heads = num_heads
+        self.head_dim = hidden_size // num_heads
+        
+        assert self.head_dim * num_heads == hidden_size, "hidden_size must be divisible by num_heads"
+        
+        self.q_proj = nn.Linear(hidden_size, hidden_size, bias=False)
+        self.k_proj = nn.Linear(hidden_size, hidden_size, bias=False)
+        self.v_proj = nn.Linear(hidden_size, hidden_size, bias=False)
+        self.o_proj = nn.Linear(hidden_size, hidden_size, bias=False)
+        
+        self.dropout = nn.Dropout(dropout)
+        self.scale = self.head_dim ** -0.5
+        
+    def forward(self, query: torch.Tensor, key: torch.Tensor, value: torch.Tensor,
+                attention_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
+        batch_size, seq_len, _ = query.shape
+        
+        # Project to q, k, v
+        q = self.q_proj(query).view(batch_size, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
+        k = self.k_proj(key).view(batch_size, -1, self.num_heads, self.head_dim).transpose(1, 2)
+        v = self.v_proj(value).view(batch_size, -1, self.num_heads, self.head_dim).transpose(1, 2)
+        
+        # Scaled dot-product attention
+        scores = torch.matmul(q, k.transpose(-2, -1)) * self.scale
+        
+        if attention_mask is not None:
+            scores = scores.masked_fill(attention_mask == 0, -1e9)
+        
+        attn_weights = F.softmax(scores, dim=-1)
+        attn_weights = self.dropout(attn_weights)
+        
+        # Apply attention to values
+        attn_output = torch.matmul(attn_weights, v)
+        attn_output = attn_output.transpose(1, 2).contiguous().view(
+            batch_size, seq_len, self.hidden_size
         )
-        self.norm2 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
+        
+        return self.o_proj(attn_output)
+
+
+class BLIP3oDiTBlock(nn.Module):
+    """DiT block with adaptive layer norm and cross-attention conditioning"""
+    
+    def __init__(self, config: BLIP3oDiTConfig):
+        super().__init__()
+        self.hidden_size = config.hidden_size
+        
+        # Layer normalization (sandwich normalization for stability)
+        self.norm1 = nn.LayerNorm(config.hidden_size, eps=1e-6)
+        self.norm2 = nn.LayerNorm(config.hidden_size, eps=1e-6)
+        self.norm3 = nn.LayerNorm(config.hidden_size, eps=1e-6)
+        
+        # Self-attention
+        self.self_attn = MultiHeadAttention(
+            config.hidden_size, 
+            config.num_attention_heads, 
+            config.dropout_prob
+        )
         
         # Cross-attention with EVA features
-        self.cross_attn = nn.MultiheadAttention(
-            hidden_size, num_heads, kdim=eva_dim, vdim=eva_dim,
-            dropout=0.0, batch_first=True
+        self.cross_attn = MultiHeadAttention(
+            config.hidden_size, 
+            config.num_attention_heads, 
+            config.dropout_prob
         )
-        self.norm_cross = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
         
-        mlp_hidden_dim = int(hidden_size * mlp_ratio)
-        approx_gelu = lambda: nn.GELU(approximate="tanh")
+        # EVA feature projection
+        self.eva_proj = nn.Linear(config.eva_embedding_size, config.hidden_size)
+        
+        # Feed-forward network
         self.mlp = nn.Sequential(
-            nn.Linear(hidden_size, mlp_hidden_dim),
-            approx_gelu(),
-            nn.Linear(mlp_hidden_dim, hidden_size),
+            nn.Linear(config.hidden_size, config.intermediate_size),
+            nn.GELU(approximate="tanh"),
+            nn.Linear(config.intermediate_size, config.hidden_size),
+            nn.Dropout(config.dropout_prob)
         )
         
-        # AdaLN-Zero modulation
+        # Adaptive Layer Norm modulation (AdaLN-Zero)
         self.adaLN_modulation = nn.Sequential(
             nn.SiLU(),
-            nn.Linear(hidden_size, 8 * hidden_size)
+            nn.Linear(config.hidden_size, 6 * config.hidden_size)
         )
+        
+        # 3D Rotary Position Embedding
+        self.rope = RotaryPositionalEmbedding3D(config.hidden_size)
 
-    def forward(self, x, c, eva_features=None):
-        # c: timestep + label conditioning
-        # eva_features: EVA-CLIP conditioning [B, 256, 4096]
+    def forward(self, 
+                hidden_states: torch.Tensor,
+                eva_features: torch.Tensor,
+                timestep_emb: torch.Tensor,
+                attention_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
+        """
+        Args:
+            hidden_states: [B, 256, hidden_size] - Noisy CLIP patch embeddings
+            eva_features: [B, 256, eva_size] - EVA-CLIP conditioning
+            timestep_emb: [B, hidden_size] - Timestep embeddings
+            attention_mask: Optional attention mask
+        """
         
-        # Get modulation parameters
-        shift_msa, scale_msa, gate_msa, shift_cross, scale_cross, gate_cross, shift_mlp, scale_mlp, gate_mlp = \
-            self.adaLN_modulation(c).chunk(9, dim=1)
+        # Project EVA features to hidden size
+        eva_projected = self.eva_proj(eva_features)  # [B, 256, hidden_size]
         
-        # Self-attention with adaLN-Zero
-        x_norm = self.norm1(x)
-        x_norm = x_norm * (1 + scale_msa.unsqueeze(1)) + shift_msa.unsqueeze(1)
+        # AdaLN modulation parameters
+        shift_msa, scale_msa, gate_msa, shift_cross, scale_cross, gate_cross = \
+            self.adaLN_modulation(timestep_emb).chunk(6, dim=1)
         
-        attn_out, _ = self.attn(x_norm, x_norm, x_norm)
-        x = x + gate_msa.unsqueeze(1) * attn_out
+        # Self-attention with AdaLN
+        norm_hidden = self.norm1(hidden_states)
+        norm_hidden = norm_hidden * (1 + scale_msa.unsqueeze(1)) + shift_msa.unsqueeze(1)
         
-        # Cross-attention with EVA features (if provided)
-        if eva_features is not None:
-            x_norm_cross = self.norm_cross(x)
-            x_norm_cross = x_norm_cross * (1 + scale_cross.unsqueeze(1)) + shift_cross.unsqueeze(1)
-            
-            cross_attn_out, _ = self.cross_attn(x_norm_cross, eva_features, eva_features)
-            x = x + gate_cross.unsqueeze(1) * cross_attn_out
+        # Apply 3D RoPE
+        norm_hidden = self.rope(norm_hidden)
         
-        # Feed-forward with adaLN-Zero
-        x_norm = self.norm2(x)
-        x_norm = x_norm * (1 + scale_mlp.unsqueeze(1)) + shift_mlp.unsqueeze(1)
+        # Self-attention
+        attn_output = self.self_attn(norm_hidden, norm_hidden, norm_hidden, attention_mask)
+        hidden_states = hidden_states + gate_msa.unsqueeze(1) * attn_output
         
-        mlp_out = self.mlp(x_norm)
-        x = x + gate_mlp.unsqueeze(1) * mlp_out
+        # Cross-attention with EVA features
+        norm_hidden = self.norm2(hidden_states)
+        norm_hidden = norm_hidden * (1 + scale_cross.unsqueeze(1)) + shift_cross.unsqueeze(1)
         
-        return x
-
-
-class FinalLayer(nn.Module):
-    """The final layer of DiT."""
-    
-    def __init__(self, hidden_size, patch_size, out_channels):
-        super().__init__()
-        self.norm_final = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
-        self.linear = nn.Linear(hidden_size, patch_size * patch_size * out_channels)
-        self.adaLN_modulation = nn.Sequential(
-            nn.SiLU(),
-            nn.Linear(hidden_size, 2 * hidden_size)
-        )
-
-    def forward(self, x, c):
-        shift, scale = self.adaLN_modulation(c).chunk(2, dim=1)
-        x = self.norm_final(x) * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1)
-        x = self.linear(x)
-        return x
+        cross_attn_output = self.cross_attn(norm_hidden, eva_projected, eva_projected, attention_mask)
+        hidden_states = hidden_states + gate_cross.unsqueeze(1) * cross_attn_output
+        
+        # Feed-forward network
+        norm_hidden = self.norm3(hidden_states)
+        mlp_output = self.mlp(norm_hidden)
+        hidden_states = hidden_states + mlp_output
+        
+        return hidden_states
 
 
-class AttentionPooling(nn.Module):
-    """Attention pooling for global representation."""
-    
-    def __init__(self, embed_dim, num_heads=8):
-        super().__init__()
-        self.positional_embedding = nn.Parameter(torch.randn(1, 1, embed_dim))
-        self.k_proj = nn.Linear(embed_dim, embed_dim)
-        self.q_proj = nn.Linear(embed_dim, embed_dim)
-        self.v_proj = nn.Linear(embed_dim, embed_dim)
-        self.c_proj = nn.Linear(embed_dim, embed_dim)
-        self.num_heads = num_heads
-        
-    def forward(self, x):
-        # x: [B, N, D]
-        x = torch.cat([x.mean(dim=1, keepdim=True), x], dim=1)  # [B, N+1, D]
-        x = x + self.positional_embedding
-        x, _ = F.multi_head_attention_forward(
-            query=x[:, :1], key=x, value=x,
-            embed_dim_to_check=x.shape[-1],
-            num_heads=self.num_heads,
-            q_proj_weight=self.q_proj.weight,
-            k_proj_weight=self.k_proj.weight,
-            v_proj_weight=self.v_proj.weight,
-            in_proj_weight=None,
-            in_proj_bias=torch.cat([self.q_proj.bias, self.k_proj.bias, self.v_proj.bias]),
-            bias_k=None,
-            bias_v=None,
-            add_zero_attn=False,
-            dropout_p=0.0,
-            out_proj_weight=self.c_proj.weight,
-            out_proj_bias=self.c_proj.bias,
-            use_separate_proj_weight=True,
-            training=self.training,
-            need_weights=False,
-        )
-        return x.squeeze(1)
-
-
-class BLIP3oDiTModel(PreTrainedModel):
+class BLIP3oPatchDiTModel(PreTrainedModel):
     """
-    BLIP3-o Diffusion Transformer - Aligned with Paper
+    BLIP3-o Patch-Level DiT Model for Image-to-Text Recall
     
-    Architecture follows the BLIP3-o paper:
-    1. Takes patch-level noisy CLIP embeddings [B, 256, 1024] as input
-    2. Uses EVA-CLIP features [B, 256, 4096] as conditioning
-    3. Outputs patch-level velocity predictions [B, 256, 1024]
-    4. Can pool to global representation during inference
+    This model follows the BLIP3-o architecture:
+    - Takes noisy CLIP patch embeddings (256 tokens, 1024-dim) as input
+    - Conditioned on EVA-CLIP patch embeddings (256 tokens, 4096-dim)
+    - Outputs denoised CLIP patch embeddings for flow matching training
+    - Designed for image-to-text recall evaluation
     """
     
     config_class = BLIP3oDiTConfig
@@ -218,232 +286,181 @@ class BLIP3oDiTModel(PreTrainedModel):
         super().__init__(config)
         self.config = config
         
-        # Model dimensions
-        self.hidden_size = config.hidden_size
-        self.num_heads = config.num_attention_heads
-        self.depth = config.num_hidden_layers
-        self.eva_dim = 4096  # EVA-CLIP dimension
-        self.clip_dim = 1024  # CLIP patch dimension
-        
         # Input projection from CLIP patches to hidden size
-        self.x_embedder = nn.Linear(self.clip_dim, self.hidden_size)
+        self.input_proj = nn.Linear(config.clip_embedding_size, config.hidden_size)
         
         # Timestep embedding
-        self.t_embedder = TimestepEmbedder(self.hidden_size)
+        self.timestep_embedder = TimestepEmbedder(config.hidden_size)
         
-        # Label embedding (for class conditioning if needed)
-        self.y_embedder = LabelEmbedder(
-            num_classes=1000,  # Can be adjusted
-            hidden_size=self.hidden_size,
-            dropout_prob=0.1
-        )
-        
-        # Position embedding for 256 patches (16x16)
-        self.pos_embed = nn.Parameter(torch.zeros(1, 256, self.hidden_size))
+        # Position embedding for 256 patches (16x16 grid)
+        self.pos_embed = nn.Parameter(torch.zeros(1, config.max_position_embeddings, config.hidden_size))
         
         # DiT blocks
         self.blocks = nn.ModuleList([
-            DiTBlock(self.hidden_size, self.num_heads, self.eva_dim)
-            for _ in range(self.depth)
+            BLIP3oDiTBlock(config) for _ in range(config.num_hidden_layers)
         ])
         
-        # Final layer
-        self.final_layer = FinalLayer(self.hidden_size, 1, self.clip_dim)
+        # Output projection back to CLIP dimension
+        self.output_proj = nn.Sequential(
+            nn.LayerNorm(config.hidden_size, eps=1e-6),
+            nn.Linear(config.hidden_size, config.clip_embedding_size)
+        )
         
-        # Attention pooling for global representation
-        self.global_pool = AttentionPooling(self.clip_dim, num_heads=8)
+        # Initialize weights
+        self.apply(self._init_weights)
         
-        # CLIP visual projection for global features
-        self.clip_projection = None
+        # Zero-out output layer for better initial training
+        nn.init.zeros_(self.output_proj[-1].weight)
+        nn.init.zeros_(self.output_proj[-1].bias)
         
-        self.initialize_weights()
-
-    def initialize_weights(self):
-        """Initialize model weights."""
-        # Initialize position embedding
-        nn.init.trunc_normal_(self.pos_embed, std=0.02)
-        
-        # Initialize layers
-        def _basic_init(module):
-            if isinstance(module, nn.Linear):
-                nn.init.xavier_uniform_(module.weight)
-                if module.bias is not None:
-                    nn.init.constant_(module.bias, 0)
-        self.apply(_basic_init)
-        
-        # Zero-out adaLN modulation layers
-        for block in self.blocks:
-            nn.init.constant_(block.adaLN_modulation[-1].weight, 0)
-            nn.init.constant_(block.adaLN_modulation[-1].bias, 0)
-        
-        # Zero-out final layer
-        nn.init.constant_(self.final_layer.adaLN_modulation[-1].weight, 0)
-        nn.init.constant_(self.final_layer.adaLN_modulation[-1].bias, 0)
-        nn.init.constant_(self.final_layer.linear.weight, 0)
-        nn.init.constant_(self.final_layer.linear.bias, 0)
-
-    def load_clip_projection(self, clip_model_name="openai/clip-vit-large-patch14"):
-        """Load CLIP visual projection for global features."""
-        try:
-            clip_model = CLIPModel.from_pretrained(clip_model_name)
-            self.clip_projection = clip_model.visual_projection
-            # Freeze the projection
-            for param in self.clip_projection.parameters():
-                param.requires_grad = False
-            print(f"✅ Loaded CLIP projection: {self.clip_projection.weight.shape}")
-        except Exception as e:
-            print(f"⚠️ Failed to load CLIP projection: {e}")
-            # Create fallback
-            self.clip_projection = nn.Linear(1024, 768, bias=False)
-            nn.init.xavier_uniform_(self.clip_projection.weight)
-            self.clip_projection.requires_grad_(False)
-
-    def forward(
-        self,
-        hidden_states,  # [B, 256, 1024] - Noisy CLIP patches
-        timestep,       # [B] - Timesteps
-        encoder_hidden_states,  # [B, 256, 4096] - EVA conditioning
-        class_labels=None,  # [B] - Class labels (optional)
-        return_dict=True,
-        **kwargs
-    ):
+    def _init_weights(self, module):
+        """Initialize weights"""
+        if isinstance(module, nn.Linear):
+            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+            if module.bias is not None:
+                torch.nn.init.zeros_(module.bias)
+        elif isinstance(module, nn.LayerNorm):
+            torch.nn.init.zeros_(module.bias)
+            torch.nn.init.ones_(module.weight)
+        elif isinstance(module, nn.Parameter):
+            torch.nn.init.normal_(module, mean=0.0, std=0.02)
+    
+    def forward(self,
+                hidden_states: torch.Tensor,  # [B, 256, 1024] - Noisy CLIP patches
+                timestep: torch.Tensor,       # [B] - Timesteps
+                encoder_hidden_states: torch.Tensor,  # [B, 256, 4096] - EVA conditioning
+                attention_mask: Optional[torch.Tensor] = None,
+                return_dict: bool = True) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
         """
-        Forward pass following BLIP3-o architecture.
+        Forward pass for BLIP3-o patch-level DiT
         
         Args:
             hidden_states: Noisy CLIP patch embeddings [B, 256, 1024]
-            timestep: Timesteps [B]
+            timestep: Flow matching timesteps [B]
             encoder_hidden_states: EVA-CLIP conditioning [B, 256, 4096]
-            class_labels: Class labels [B] (optional)
+            attention_mask: Optional attention mask
+            return_dict: Whether to return a dict
             
         Returns:
-            Velocity predictions [B, 256, 1024]
+            Predicted velocity for flow matching [B, 256, 1024]
         """
-        # Input validation
         batch_size, seq_len, _ = hidden_states.shape
-        assert seq_len == 256, f"Expected 256 patches, got {seq_len}"
-        assert hidden_states.shape[2] == self.clip_dim, f"Expected CLIP dim {self.clip_dim}, got {hidden_states.shape[2]}"
+        
+        # Validate inputs
+        assert seq_len == self.config.max_position_embeddings, \
+            f"Expected {self.config.max_position_embeddings} tokens, got {seq_len}"
+        assert hidden_states.shape[2] == self.config.clip_embedding_size, \
+            f"Expected CLIP dim {self.config.clip_embedding_size}, got {hidden_states.shape[2]}"
+        assert encoder_hidden_states.shape[2] == self.config.eva_embedding_size, \
+            f"Expected EVA dim {self.config.eva_embedding_size}, got {encoder_hidden_states.shape[2]}"
         
         # Project inputs to hidden size
-        x = self.x_embedder(hidden_states)  # [B, 256, hidden_size]
-        x = x + self.pos_embed  # Add positional embedding
+        x = self.input_proj(hidden_states)  # [B, 256, hidden_size]
+        
+        # Add positional embeddings
+        x = x + self.pos_embed  # [B, 256, hidden_size]
         
         # Timestep embedding
-        t = self.t_embedder(timestep)  # [B, hidden_size]
-        
-        # Class embedding (use dummy if not provided)
-        if class_labels is None:
-            class_labels = torch.zeros(batch_size, dtype=torch.long, device=hidden_states.device)
-        y = self.y_embedder(class_labels, self.training)  # [B, hidden_size]
-        
-        # Conditioning vector
-        c = t + y  # [B, hidden_size]
+        timestep_emb = self.timestep_embedder(timestep)  # [B, hidden_size]
         
         # Pass through DiT blocks
         for block in self.blocks:
-            x = block(x, c, encoder_hidden_states)
+            x = block(x, encoder_hidden_states, timestep_emb, attention_mask)
         
-        # Final layer
-        x = self.final_layer(x, c)  # [B, 256, 1024]
+        # Project back to CLIP dimension
+        velocity_pred = self.output_proj(x)  # [B, 256, 1024]
         
         if return_dict:
-            return {"velocity_prediction": x}
-        return x
-
-    def generate_global_features(self, patch_features):
-        """
-        Generate global features from patch features using attention pooling.
+            return {
+                "velocity_prediction": velocity_pred,
+                "hidden_states": x,
+                "timestep_embeddings": timestep_emb
+            }
         
-        Args:
-            patch_features: Patch features [B, 256, 1024]
-            
-        Returns:
-            Global features [B, 768] or [B, 1024]
-        """
-        # Attention pooling
-        global_features = self.global_pool(patch_features)  # [B, 1024]
-        
-        # Apply CLIP projection if available
-        if self.clip_projection is not None:
-            global_features = self.clip_projection(global_features)  # [B, 768]
-        
-        return global_features
-
+        return velocity_pred
+    
     @torch.no_grad()
-    def generate(
-        self,
-        eva_features,  # [B, 256, 4096]
-        num_inference_steps=50,
-        class_labels=None,
-        generator=None,
-        return_global=False,
-    ):
+    def generate(self,
+                 eva_features: torch.Tensor,  # [B, 256, 4096]
+                 num_inference_steps: int = 50,
+                 generator: Optional[torch.Generator] = None,
+                 return_intermediate: bool = False) -> torch.Tensor:
         """
-        Generate CLIP embeddings using flow matching sampling.
+        Generate CLIP patch embeddings using flow matching sampling
         
         Args:
             eva_features: EVA-CLIP conditioning [B, 256, 4096]
             num_inference_steps: Number of sampling steps
-            class_labels: Class labels [B]
             generator: Random number generator
-            return_global: Whether to return global features
+            return_intermediate: Whether to return intermediate states
             
         Returns:
-            Generated CLIP embeddings [B, 256, 1024] or [B, 768] if return_global
+            Generated CLIP patch embeddings [B, 256, 1024]
         """
         device = eva_features.device
         batch_size = eva_features.shape[0]
         
         # Start from noise
         x = torch.randn(
-            batch_size, 256, self.clip_dim,
+            batch_size, 256, self.config.clip_embedding_size,
             device=device,
             generator=generator,
             dtype=eva_features.dtype
         )
         
-        # Flow matching sampling
+        # Flow matching sampling (Euler method)
         dt = 1.0 / num_inference_steps
+        intermediate_states = [x.clone()] if return_intermediate else None
         
         for step in range(num_inference_steps):
             t = step * dt
-            timestep = torch.full((batch_size,), t, device=device)
+            timestep = torch.full((batch_size,), t, device=device, dtype=eva_features.dtype)
             
             # Predict velocity
             velocity = self.forward(
                 hidden_states=x,
                 timestep=timestep,
                 encoder_hidden_states=eva_features,
-                class_labels=class_labels,
                 return_dict=False
             )
             
             # Euler step
             x = x + dt * velocity
+            
+            if return_intermediate:
+                intermediate_states.append(x.clone())
         
-        # Return global features if requested
-        if return_global:
-            return self.generate_global_features(x)
+        if return_intermediate:
+            return x, intermediate_states
         
         return x
-
-    def get_num_parameters(self):
-        """Get number of trainable parameters."""
+    
+    def get_num_parameters(self) -> int:
+        """Get number of trainable parameters"""
         return sum(p.numel() for p in self.parameters() if p.requires_grad)
 
 
-def create_blip3o_dit_model(
-    config=None,
-    hidden_size=768,
-    num_layers=12,
-    num_heads=12,
-    load_clip_projection=True,
+def create_blip3o_patch_dit_model(
+    config: Optional[BLIP3oDiTConfig] = None,
+    hidden_size: int = 768,
+    num_layers: int = 12,
+    num_heads: int = 12,
     **kwargs
-):
-    """Create BLIP3-o DiT model aligned with the paper."""
+) -> BLIP3oPatchDiTModel:
+    """
+    Create BLIP3-o patch-level DiT model
+    
+    Args:
+        config: Model configuration
+        hidden_size: Hidden dimension
+        num_layers: Number of layers
+        num_heads: Number of attention heads
+        **kwargs: Additional config parameters
+        
+    Returns:
+        BLIP3oPatchDiTModel instance
+    """
     if config is None:
-        # Create default config
-        from ..config.blip3o_config import BLIP3oDiTConfig
         config = BLIP3oDiTConfig(
             hidden_size=hidden_size,
             num_hidden_layers=num_layers,
@@ -451,13 +468,13 @@ def create_blip3o_dit_model(
             **kwargs
         )
     
-    model = BLIP3oDiTModel(config)
+    model = BLIP3oPatchDiTModel(config)
     
-    if load_clip_projection:
-        model.load_clip_projection()
-    
-    print(f"✅ BLIP3-o DiT model created successfully")
+    print(f"✅ BLIP3-o Patch DiT model created")
     print(f"   Parameters: {model.get_num_parameters():,}")
-    print(f"   Architecture: Patch-level training with global pooling")
+    print(f"   Architecture: Patch-level DiT for image-to-text recall")
+    print(f"   Input: 256 CLIP patches (1024-dim)")
+    print(f"   Conditioning: 256 EVA-CLIP patches (4096-dim)")
+    print(f"   Output: 256 denoised CLIP patches (1024-dim)")
     
     return model

@@ -1,13 +1,12 @@
 """
-BLIP3-o Trainer - Aligned with Paper
-src/modules/trainers/blip3o_trainer.py
+BLIP3-o Patch-Level Trainer - Aligned with BLIP3-o Paper
+src/modules/trainers/blip3o_patch_trainer.py
 
-This trainer properly implements the BLIP3-o training approach:
-1. Patch-level flow matching training
-2. Proper gradient flow and loss computation
-3. EVA-CLIP conditioning
-4. Optional global supervision
-5. Memory optimization and error handling
+This trainer implements the BLIP3-o training approach:
+1. Flow matching training on patch-level CLIP embeddings
+2. EVA-CLIP conditioning
+3. Image-to-text recall evaluation
+4. Proper gradient flow and memory optimization
 """
 
 import torch
@@ -27,17 +26,23 @@ import os
 
 logger = logging.getLogger(__name__)
 
+try:
+    from ..evaluation.blip3o_recall_evaluator import BLIP3oRecallEvaluator, create_recall_evaluator
+    RECALL_EVALUATOR_AVAILABLE = True
+except ImportError:
+    RECALL_EVALUATOR_AVAILABLE = False
+    logger.warning("Recall evaluator not available - evaluation will be limited")
 
-class BLIP3oTrainer(Trainer):
+
+class BLIP3oPatchTrainer(Trainer):
     """
-    BLIP3-o Trainer aligned with the paper approach.
+    BLIP3-o Patch-Level Trainer aligned with the paper approach
     
     Key features:
-    - Patch-level flow matching training
-    - Proper gradient flow management
-    - EVA-CLIP conditioning support
-    - Memory optimization
-    - Comprehensive error handling
+    - Flow matching training on 256 CLIP patch embeddings
+    - EVA-CLIP conditioning (256 tokens, 4096-dim)
+    - Image-to-text recall evaluation
+    - Memory optimization and stability improvements
     """
     
     def __init__(
@@ -54,6 +59,9 @@ class BLIP3oTrainer(Trainer):
         callbacks=None,
         optimizers=(None, None),
         preprocess_logits_for_metrics=None,
+        enable_recall_evaluation: bool = True,
+        recall_eval_samples: int = 100,
+        recall_eval_steps: int = 250,
         **kwargs
     ):
         super().__init__(
@@ -72,30 +80,44 @@ class BLIP3oTrainer(Trainer):
         )
         
         self.flow_matching_loss = flow_matching_loss
-        self.training_step_count = 0
+        self.enable_recall_evaluation = enable_recall_evaluation and RECALL_EVALUATOR_AVAILABLE
+        self.recall_eval_samples = recall_eval_samples
+        self.recall_eval_steps = recall_eval_steps
         
         # Training metrics tracking
+        self.training_step_count = 0
         self.loss_history = []
         self.metric_history = []
+        self.recall_history = []
         self.memory_usage = []
-        self.error_log = []
         
         # Distributed training setup
         self.is_distributed = dist.is_initialized()
         self.is_main_process = not self.is_distributed or dist.get_rank() == 0
         self.local_rank = int(os.environ.get('LOCAL_RANK', 0))
         
-        # Training configuration
-        self.debug_mode = getattr(args, 'debug', False)
+        # Initialize recall evaluator
+        self.recall_evaluator = None
+        if self.enable_recall_evaluation and self.is_main_process:
+            try:
+                self.recall_evaluator = create_recall_evaluator(
+                    model=model,
+                    device=args.device if hasattr(args, 'device') else 'auto'
+                )
+                logger.info("✅ Recall evaluator initialized")
+            except Exception as e:
+                logger.warning(f"Failed to initialize recall evaluator: {e}")
+                self.enable_recall_evaluation = False
         
         if self.is_main_process:
-            logger.info("✅ BLIP3-o Trainer initialized (Paper Aligned)")
+            logger.info("✅ BLIP3-o Patch Trainer initialized")
             logger.info("🎯 Training mode: Patch-level flow matching")
+            logger.info(f"📊 Recall evaluation: {'enabled' if self.enable_recall_evaluation else 'disabled'}")
             if self.is_distributed:
-                logger.info(f"Distributed training: rank {dist.get_rank()}/{dist.get_world_size()}")
+                logger.info(f"🔄 Distributed training: rank {dist.get_rank()}/{dist.get_world_size()}")
 
     def _log_memory_usage(self, stage: str):
-        """Log GPU memory usage."""
+        """Log GPU memory usage"""
         if torch.cuda.is_available():
             memory_allocated = torch.cuda.memory_allocated() / 1024**3
             memory_cached = torch.cuda.memory_reserved() / 1024**3
@@ -107,35 +129,6 @@ class BLIP3oTrainer(Trainer):
                 'cached_gb': memory_cached,
                 'timestamp': time.time()
             })
-            
-            if self.debug_mode and self.is_main_process:
-                logger.debug(f"{stage}: {memory_allocated:.2f}GB allocated, {memory_cached:.2f}GB cached")
-
-    def _handle_training_error(self, error: Exception, inputs: Dict[str, Any], stage: str):
-        """Handle training errors with detailed logging."""
-        error_info = {
-            'step': self.training_step_count,
-            'stage': stage,
-            'error_type': type(error).__name__,
-            'error_message': str(error),
-            'input_shapes': {k: v.shape if isinstance(v, torch.Tensor) else type(v) 
-                           for k, v in inputs.items()},
-            'memory_usage': self.memory_usage[-1] if self.memory_usage else None,
-            'timestamp': time.time()
-        }
-        
-        self.error_log.append(error_info)
-        
-        if self.is_main_process:
-            logger.error(f"Training error at step {self.training_step_count} in {stage}: {error}")
-            if self.debug_mode:
-                logger.error(traceback.format_exc())
-        
-        # Memory cleanup on OOM
-        if "out of memory" in str(error).lower():
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-            gc.collect()
 
     def compute_loss(
         self,
@@ -145,14 +138,13 @@ class BLIP3oTrainer(Trainer):
         num_items_in_batch: Optional[int] = None,
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, Any]]:
         """
-        Compute flow matching loss for BLIP3-o training.
+        Compute BLIP3-o flow matching loss for patch-level training
         
-        This implements the proper BLIP3-o training pipeline:
+        This implements the core BLIP3-o training pipeline:
         1. Sample timesteps for flow matching
         2. Create noisy CLIP patches via interpolation
-        3. Forward pass through DiT model
+        3. Forward pass through DiT model with EVA conditioning
         4. Compute velocity prediction loss
-        5. Optional global supervision
         """
         self._log_memory_usage("compute_loss_start")
         
@@ -163,14 +155,14 @@ class BLIP3oTrainer(Trainer):
                 if key not in inputs:
                     raise ValueError(f"Missing required input: {key}")
             
-            eva_embeddings = inputs['eva_embeddings']  # [B, 256, 4096]
-            clip_embeddings = inputs['clip_embeddings']  # [B, 256, 1024]
+            eva_embeddings = inputs['eva_embeddings']    # [B, 256, 4096] - EVA conditioning
+            clip_embeddings = inputs['clip_embeddings']  # [B, 256, 1024] - Target CLIP patches
             
             # Input validation
             batch_size = eva_embeddings.shape[0]
             device = eva_embeddings.device
-            dtype = eva_embeddings.dtype
             
+            # Validate shapes
             if eva_embeddings.shape != (batch_size, 256, 4096):
                 raise ValueError(f"Invalid EVA shape: {eva_embeddings.shape}, expected [B, 256, 4096]")
             
@@ -186,7 +178,7 @@ class BLIP3oTrainer(Trainer):
             x_0 = torch.randn_like(clip_embeddings)
             noise = torch.randn_like(clip_embeddings) * 0.1
             
-            # Interpolate to create noisy input
+            # Interpolate to create noisy input for flow matching
             noisy_clip = self.flow_matching_loss.interpolate_data(
                 x_0=x_0,
                 x_1=clip_embeddings,
@@ -196,19 +188,19 @@ class BLIP3oTrainer(Trainer):
             
             self._log_memory_usage("interpolation_done")
             
-            # Forward pass through DiT model
-            outputs = model(
-                hidden_states=noisy_clip,          # [B, 256, 1024] - Noisy CLIP patches
-                timestep=timesteps,               # [B] - Timesteps
+            # Forward pass through BLIP3-o DiT model
+            model_outputs = model(
+                hidden_states=noisy_clip,              # [B, 256, 1024] - Noisy CLIP patches
+                timestep=timesteps,                    # [B] - Timesteps
                 encoder_hidden_states=eva_embeddings,  # [B, 256, 4096] - EVA conditioning
                 return_dict=True
             )
             
             # Extract velocity prediction
-            if isinstance(outputs, dict):
-                velocity_pred = outputs.get('velocity_prediction', outputs.get('last_hidden_state'))
+            if isinstance(model_outputs, dict):
+                velocity_pred = model_outputs.get('velocity_prediction', model_outputs.get('last_hidden_state'))
             else:
-                velocity_pred = outputs
+                velocity_pred = model_outputs
             
             if velocity_pred is None:
                 raise ValueError("Model output is None")
@@ -224,11 +216,11 @@ class BLIP3oTrainer(Trainer):
             
             # Compute flow matching loss
             loss, metrics = self.flow_matching_loss(
-                model_output=velocity_pred,        # [B, 256, 1024] - Predicted velocity
-                target_samples=clip_embeddings,    # [B, 256, 1024] - Target CLIP patches
-                timesteps=timesteps,              # [B] - Timesteps
-                eva_conditioning=eva_embeddings,  # [B, 256, 4096] - EVA conditioning
-                noise=noise,                     # [B, 256, 1024] - Noise for flow matching
+                model_output=velocity_pred,           # [B, 256, 1024] - Predicted velocity
+                target_samples=clip_embeddings,       # [B, 256, 1024] - Target CLIP patches
+                timesteps=timesteps,                  # [B] - Timesteps
+                eva_conditioning=eva_embeddings,      # [B, 256, 4096] - EVA conditioning
+                noise=noise,                         # [B, 256, 1024] - Noise for flow matching
                 return_metrics=True
             )
             
@@ -258,6 +250,14 @@ class BLIP3oTrainer(Trainer):
             if self.is_main_process and self.training_step_count % self.args.logging_steps == 0:
                 self._log_training_progress(loss, metrics, velocity_pred, clip_embeddings)
             
+            # Periodic recall evaluation
+            if (self.enable_recall_evaluation and 
+                self.is_main_process and 
+                self.training_step_count % self.recall_eval_steps == 0 and
+                self.training_step_count > 0):
+                
+                self._evaluate_recall_on_batch(eva_embeddings, clip_embeddings, inputs.get('captions', []))
+            
             self.training_step_count += 1
             
             # Memory cleanup
@@ -275,15 +275,16 @@ class BLIP3oTrainer(Trainer):
                 'training_step': self.training_step_count,
                 'loss_components': {
                     'total_loss': loss.item(),
-                    'patch_loss': metrics.get('patch_loss', 0) if metrics else 0,
-                    'global_loss': metrics.get('global_loss', 0) if metrics else 0,
+                    'flow_matching_loss': metrics.get('flow_matching_loss', 0) if metrics else 0,
+                    'contrastive_loss': metrics.get('contrastive_loss', 0) if metrics else 0,
                 }
             } if return_outputs else None
             
             return (loss, outputs) if return_outputs else loss
             
         except Exception as e:
-            self._handle_training_error(e, inputs, "compute_loss")
+            logger.error(f"Training step {self.training_step_count} failed: {e}")
+            logger.error(traceback.format_exc())
             
             # Emergency fallback
             try:
@@ -295,7 +296,7 @@ class BLIP3oTrainer(Trainer):
                     requires_grad=True
                 )
                 
-                # Simple MSE loss
+                # Simple MSE loss as fallback
                 target = clip_embeddings.detach()
                 fallback_loss = F.mse_loss(dummy_output, target, reduction='mean')
                 
@@ -321,7 +322,7 @@ class BLIP3oTrainer(Trainer):
         velocity_pred: torch.Tensor,
         target_samples: torch.Tensor
     ):
-        """Log detailed training progress."""
+        """Log detailed training progress"""
         if not self.is_main_process:
             return
         
@@ -331,21 +332,25 @@ class BLIP3oTrainer(Trainer):
         
         # Add key metrics
         if metrics:
-            # Velocity prediction quality
+            # Flow matching quality
             if 'velocity_cosine_sim' in metrics:
                 progress_msg += f", VelCos={metrics['velocity_cosine_sim']:.3f}"
             
-            # Global supervision metrics
-            if 'global_cosine_similarity' in metrics:
-                progress_msg += f", GlobalCos={metrics['global_cosine_similarity']:.3f}"
+            # Patch-level quality
+            if 'patch_cosine_sim' in metrics:
+                progress_msg += f", PatchCos={metrics['patch_cosine_sim']:.3f}"
+            
+            # Global coherence (important for recall)
+            if 'global_cosine_sim' in metrics:
+                progress_msg += f", GlobalCos={metrics['global_cosine_sim']:.3f}"
             
             # Quality indicators
-            if 'high_quality_ratio' in metrics:
-                progress_msg += f", HighQ={metrics['high_quality_ratio']:.3f}"
+            if 'high_quality_patches' in metrics:
+                progress_msg += f", HighQ={metrics['high_quality_patches']:.3f}"
             
-            # Performance estimate
-            if 'estimated_recall_percent' in metrics:
-                progress_msg += f", EstRecall={metrics['estimated_recall_percent']:.1f}%"
+            # Recall estimate
+            if 'estimated_recall_at_1' in metrics:
+                progress_msg += f", EstR@1={metrics['estimated_recall_at_1']:.1f}%"
             
             # Training quality
             if 'training_quality' in metrics:
@@ -358,39 +363,71 @@ class BLIP3oTrainer(Trainer):
         
         logger.info(progress_msg)
         
-        # Success indicators based on metrics
-        if metrics and 'global_cosine_similarity' in metrics:
-            global_cos = metrics['global_cosine_similarity']
-            if global_cos > 0.85:
-                logger.info("🎉 EXCELLENT: Strong convergence detected!")
-            elif global_cos > 0.7:
+        # Success indicators
+        if metrics and 'global_cosine_sim' in metrics:
+            global_cos = metrics['global_cosine_sim']
+            if global_cos > 0.8:
+                logger.info("🎉 EXCELLENT: Strong patch alignment detected!")
+            elif global_cos > 0.6:
                 logger.info("✅ GOOD: Training progressing well")
-            elif global_cos > 0.5:
+            elif global_cos > 0.4:
                 logger.info("🔄 FAIR: Making progress")
-            elif global_cos > 0.2:
-                logger.info("⚡ IMPROVING: Positive trend")
+
+    def _evaluate_recall_on_batch(
+        self,
+        eva_embeddings: torch.Tensor,
+        clip_embeddings: torch.Tensor,
+        captions: List[str]
+    ):
+        """Evaluate recall on a small batch during training"""
+        if not self.recall_evaluator or not captions:
+            return
         
-        # Debug info
-        if self.debug_mode and metrics:
-            debug_info = {
-                'model_output_stats': {
-                    'mean': velocity_pred.mean().item(),
-                    'std': velocity_pred.std().item(),
-                    'norm': torch.norm(velocity_pred).item(),
-                    'requires_grad': velocity_pred.requires_grad,
-                },
-                'target_stats': {
-                    'mean': target_samples.mean().item(),
-                    'std': target_samples.std().item(),
-                    'norm': torch.norm(target_samples).item(),
-                },
-                'training_health': {
-                    'loss_finite': torch.isfinite(loss).item(),
-                    'gradient_flow': velocity_pred.requires_grad,
-                    'step': self.training_step_count,
-                }
-            }
-            logger.debug(f"Training debug: {debug_info}")
+        try:
+            # Sample a subset for evaluation
+            batch_size = min(self.recall_eval_samples, eva_embeddings.shape[0])
+            indices = torch.randperm(eva_embeddings.shape[0])[:batch_size]
+            
+            eval_eva = eva_embeddings[indices]
+            eval_captions = [captions[i] if i < len(captions) else f"Caption {i}" for i in indices]
+            
+            # Format captions per image (assuming 1 caption per image for simplicity)
+            captions_per_image = [[caption] for caption in eval_captions]
+            
+            # Run recall evaluation
+            recall_results = self.recall_evaluator.evaluate_on_dataset(
+                eva_embeddings=eval_eva.cpu(),
+                captions_per_image=captions_per_image,
+                num_inference_steps=20,  # Faster evaluation
+                batch_size=4,
+                k_values=[1, 5],  # Only top metrics
+            )
+            
+            # Log recall results
+            recall_at_1 = recall_results.get('recall@1', 0) * 100
+            recall_at_5 = recall_results.get('recall@5', 0) * 100
+            
+            logger.info(f"🎯 Recall evaluation (step {self.training_step_count}):")
+            logger.info(f"   R@1: {recall_at_1:.1f}%, R@5: {recall_at_5:.1f}%")
+            
+            # Store recall history
+            self.recall_history.append({
+                'step': self.training_step_count,
+                'recall@1': recall_at_1,
+                'recall@5': recall_at_5,
+                'timestamp': time.time(),
+            })
+            
+            # Success indicators
+            if recall_at_1 > 30:
+                logger.info("🚀 EXCELLENT recall performance!")
+            elif recall_at_1 > 15:
+                logger.info("✅ GOOD recall performance")
+            elif recall_at_1 > 5:
+                logger.info("🔄 Improving recall performance")
+            
+        except Exception as e:
+            logger.warning(f"Recall evaluation failed: {e}")
 
     def evaluate(
         self,
@@ -398,7 +435,7 @@ class BLIP3oTrainer(Trainer):
         ignore_keys=None,
         metric_key_prefix: str = "eval",
     ) -> Dict[str, float]:
-        """Enhanced evaluation for BLIP3-o training."""
+        """Enhanced evaluation including recall metrics"""
         eval_dataset = eval_dataset or self.eval_dataset
         if eval_dataset is None:
             if self.is_main_process:
@@ -406,7 +443,7 @@ class BLIP3oTrainer(Trainer):
             return {}
         
         if self.is_main_process:
-            logger.info("Starting BLIP3-o evaluation...")
+            logger.info("Starting BLIP3-o patch-level evaluation...")
         
         # Memory cleanup before evaluation
         if torch.cuda.is_available():
@@ -421,10 +458,14 @@ class BLIP3oTrainer(Trainer):
         eval_dataloader = self.get_eval_dataloader(eval_dataset)
         
         # Evaluation settings
-        max_eval_batches = 15 if not self.is_distributed else 10
+        max_eval_batches = 20 if not self.is_distributed else 15
         eval_losses = []
         all_metrics = defaultdict(list)
         eval_errors = []
+        
+        # For recall evaluation
+        eval_eva_embeddings = []
+        eval_captions = []
         
         batch_count = 0
         successful_batches = 0
@@ -438,7 +479,7 @@ class BLIP3oTrainer(Trainer):
                     # Memory check
                     if torch.cuda.is_available():
                         memory_used = torch.cuda.memory_allocated() / 1024**3
-                        if memory_used > 20:  # Conservative limit
+                        if memory_used > 25:  # Conservative limit
                             if self.is_main_process:
                                 logger.warning(f"Stopping eval due to memory: {memory_used:.1f}GB")
                             break
@@ -447,10 +488,11 @@ class BLIP3oTrainer(Trainer):
                     inputs = self._prepare_inputs(inputs)
                     
                     # Limit batch size for evaluation stability
+                    max_eval_batch_size = 4
                     if isinstance(inputs, dict):
                         for key in inputs:
-                            if isinstance(inputs[key], torch.Tensor) and len(inputs[key]) > 4:
-                                inputs[key] = inputs[key][:4]  # Max 4 samples for eval
+                            if isinstance(inputs[key], torch.Tensor) and len(inputs[key]) > max_eval_batch_size:
+                                inputs[key] = inputs[key][:max_eval_batch_size]
                     
                     # Compute loss
                     loss, outputs = self.compute_loss(model, inputs, return_outputs=True)
@@ -463,6 +505,18 @@ class BLIP3oTrainer(Trainer):
                         for key, value in outputs['metrics'].items():
                             if isinstance(value, (int, float)) and not np.isnan(value):
                                 all_metrics[key].append(value)
+                    
+                    # Collect data for recall evaluation
+                    if (self.enable_recall_evaluation and 
+                        self.is_main_process and 
+                        len(eval_eva_embeddings) < 50):  # Limit for efficiency
+                        
+                        eva_emb = inputs.get('eva_embeddings')
+                        captions = inputs.get('captions', [])
+                        
+                        if eva_emb is not None:
+                            eval_eva_embeddings.append(eva_emb.cpu())
+                            eval_captions.extend(captions if captions else [f"eval_caption_{len(eval_captions)}"])
                     
                     # Cleanup
                     del inputs, loss, outputs
@@ -507,22 +561,50 @@ class BLIP3oTrainer(Trainer):
                     if values:
                         eval_results[f'{metric_key_prefix}_{key}'] = np.mean(values)
                 
+                # Run recall evaluation if we have enough data
+                if (self.enable_recall_evaluation and 
+                    eval_eva_embeddings and 
+                    len(eval_eva_embeddings) >= 5):
+                    
+                    try:
+                        logger.info("Running recall evaluation on eval set...")
+                        
+                        # Combine collected embeddings
+                        combined_eva = torch.cat(eval_eva_embeddings, dim=0)
+                        captions_per_image = [[caption] for caption in eval_captions[:len(combined_eva)]]
+                        
+                        recall_results = self.recall_evaluator.evaluate_on_dataset(
+                            eva_embeddings=combined_eva,
+                            captions_per_image=captions_per_image,
+                            num_inference_steps=30,
+                            batch_size=4,
+                            k_values=[1, 5, 10],
+                        )
+                        
+                        # Add recall metrics to eval results
+                        for k, v in recall_results.items():
+                            if k.startswith('recall@'):
+                                eval_results[f'{metric_key_prefix}_{k}'] = v
+                        
+                        logger.info(f"Eval Recall@1: {recall_results.get('recall@1', 0)*100:.1f}%")
+                        logger.info(f"Eval Recall@5: {recall_results.get('recall@5', 0)*100:.1f}%")
+                        
+                    except Exception as e:
+                        logger.warning(f"Recall evaluation failed: {e}")
+                
                 # Key metrics for model selection
-                if 'global_cosine_similarity' in all_metrics and all_metrics['global_cosine_similarity']:
-                    global_cosine_mean = np.mean(all_metrics['global_cosine_similarity'])
+                if 'global_cosine_sim' in all_metrics and all_metrics['global_cosine_sim']:
+                    global_cosine_mean = np.mean(all_metrics['global_cosine_sim'])
                     eval_results[f'{metric_key_prefix}_global_cosine_mean'] = global_cosine_mean
                     
                     # Performance indicators
-                    estimated_recall = min(max(global_cosine_mean * 70, 0), 70)
-                    eval_results[f'{metric_key_prefix}_estimated_recall'] = estimated_recall
-                    eval_results[f'{metric_key_prefix}_training_success'] = global_cosine_mean > 0.7
+                    eval_results[f'{metric_key_prefix}_training_success'] = global_cosine_mean > 0.6
                 
                 logger.info(f"Evaluation completed: {successful_batches}/{batch_count} successful batches")
                 logger.info(f"Average eval loss: {eval_results[f'{metric_key_prefix}_loss']:.4f}")
                 
                 if f'{metric_key_prefix}_global_cosine_mean' in eval_results:
                     logger.info(f"Global cosine similarity: {eval_results[f'{metric_key_prefix}_global_cosine_mean']:.4f}")
-                    logger.info(f"Estimated recall: {eval_results[f'{metric_key_prefix}_estimated_recall']:.1f}%")
                 
             else:
                 eval_results = {f'{metric_key_prefix}_loss': float('inf')}
@@ -535,7 +617,7 @@ class BLIP3oTrainer(Trainer):
         return eval_results
 
     def save_model(self, output_dir: Optional[str] = None, _internal_call: bool = False):
-        """Save model with additional training information."""
+        """Save model with additional training information"""
         if not self.is_main_process:
             return
         
@@ -565,18 +647,18 @@ class BLIP3oTrainer(Trainer):
                 raise e
 
     def _save_training_info(self, output_path: Path):
-        """Save comprehensive training information."""
+        """Save comprehensive training information"""
         # Training summary
         summary = {
             'training_completed': True,
             'training_mode': 'blip3o_patch_level',
             'total_steps': self.training_step_count,
-            'total_errors': len(self.error_log),
             'distributed_training': self.is_distributed,
             'world_size': dist.get_world_size() if self.is_distributed else 1,
             'timestamp': time.time(),
             'architecture': 'BLIP3-o DiT with patch-level flow matching',
-            'paper_alignment': 'Aligned with BLIP3-o paper architecture'
+            'paper_alignment': 'Aligned with BLIP3-o paper architecture',
+            'evaluation_metrics': 'Image-to-text recall (R@1, R@5, R@10)',
         }
         
         # Add final metrics
@@ -585,9 +667,18 @@ class BLIP3oTrainer(Trainer):
             summary.update({
                 'final_loss': self.loss_history[-1] if self.loss_history else None,
                 'final_metrics': latest_metrics,
-                'final_global_cosine': latest_metrics.get('global_cosine_similarity'),
-                'final_estimated_recall': latest_metrics.get('estimated_recall_percent'),
+                'final_global_cosine': latest_metrics.get('global_cosine_sim'),
+                'final_estimated_recall': latest_metrics.get('estimated_recall_at_1'),
                 'final_training_quality': latest_metrics.get('training_quality'),
+            })
+        
+        # Add recall performance
+        if self.recall_history:
+            latest_recall = self.recall_history[-1]
+            summary.update({
+                'final_recall_at_1': latest_recall.get('recall@1'),
+                'final_recall_at_5': latest_recall.get('recall@5'),
+                'recall_evaluation_enabled': True,
             })
         
         # Save summary
@@ -597,29 +688,29 @@ class BLIP3oTrainer(Trainer):
         # Save recent metrics
         if self.metric_history:
             with open(output_path / 'training_metrics.json', 'w') as f:
-                json.dump(self.metric_history[-100:], f, indent=2)  # Last 100 steps
+                json.dump(self.metric_history[-100:], f, indent=2)
+        
+        # Save recall history
+        if self.recall_history:
+            with open(output_path / 'recall_history.json', 'w') as f:
+                json.dump(self.recall_history, f, indent=2)
         
         # Save loss history
         if self.loss_history:
             with open(output_path / 'loss_history.json', 'w') as f:
-                json.dump(self.loss_history[-500:], f, indent=2)  # Last 500 steps
+                json.dump(self.loss_history[-500:], f, indent=2)
         
         # Save memory usage
         if self.memory_usage:
             with open(output_path / 'memory_usage.json', 'w') as f:
-                json.dump(self.memory_usage[-200:], f, indent=2)  # Last 200 records
-        
-        # Save error log
-        if self.error_log:
-            with open(output_path / 'error_log.json', 'w') as f:
-                json.dump(self.error_log, f, indent=2)
+                json.dump(self.memory_usage[-200:], f, indent=2)
         
         logger.info("Training information saved successfully")
 
 
-def create_blip3o_training_args(
+def create_blip3o_patch_training_args(
     output_dir: str,
-    num_train_epochs: int = 5,
+    num_train_epochs: int = 6,
     per_device_train_batch_size: int = 8,
     per_device_eval_batch_size: int = 4,
     learning_rate: float = 1e-4,
@@ -634,14 +725,11 @@ def create_blip3o_training_args(
     fp16: bool = True,
     dataloader_num_workers: int = 4,
     load_best_model_at_end: bool = True,
-    metric_for_best_model: str = "eval_global_cosine_mean",
+    metric_for_best_model: str = "eval_recall@1",
     greater_is_better: bool = True,
     **kwargs
 ) -> TrainingArguments:
-    """Create training arguments optimized for BLIP3-o training."""
-    
-    # Remove problematic parameters
-    kwargs.pop('ddp_find_unused_parameters', None)
+    """Create training arguments optimized for BLIP3-o patch-level training"""
     
     return TrainingArguments(
         output_dir=output_dir,
@@ -682,5 +770,5 @@ def create_blip3o_training_args(
 
 
 # Backward compatibility
-EnhancedBLIP3oTrainer = BLIP3oTrainer
-create_enhanced_training_args = create_blip3o_training_args
+BLIP3oPatchTrainer = BLIP3oPatchTrainer
+create_training_args = create_blip3o_patch_training_args

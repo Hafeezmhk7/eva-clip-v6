@@ -1,39 +1,43 @@
 """
-Model modules for BLIP3-o DiT - Global Training Only
+Model modules for BLIP3-o DiT - Patch-Level Training
 
 Contains:
-- GlobalBLIP3oDiTModel: Global training model (primary)
-- Model creation and loading utilities for global training
+- BLIP3oPatchDiTModel: Patch-level training model (primary)
+- Model creation and loading utilities for patch-level training
 """
 
 import logging
 
 logger = logging.getLogger(__name__)
 
-# Import global model (your main model)
-GLOBAL_MODEL_AVAILABLE = False
-GlobalBLIP3oDiTModel = None
-create_global_blip3o_dit_model = None
+# Import patch-level model (primary model)
+PATCH_MODEL_AVAILABLE = False
+BLIP3oPatchDiTModel = None
+create_blip3o_patch_dit_model = None
 
 try:
-    from .global_blip3o_dit import (
-        GlobalBLIP3oDiTModel,
-        create_global_blip3o_dit_model,
+    from .blip3o_patch_dit import (
+        BLIP3oPatchDiTModel,
+        create_blip3o_patch_dit_model,
+        RotaryPositionalEmbedding3D,
+        TimestepEmbedder,
+        MultiHeadAttention,
+        BLIP3oDiTBlock,
     )
-    GLOBAL_MODEL_AVAILABLE = True
-    logger.info("✅ Global BLIP3-o model loaded successfully")
+    PATCH_MODEL_AVAILABLE = True
+    logger.info("✅ BLIP3-o patch-level model loaded successfully")
     
 except ImportError as e:
-    GLOBAL_MODEL_AVAILABLE = False
-    logger.error(f"❌ Failed to load global model: {e}")
-    raise ImportError(f"Global BLIP3-o model is required but failed to load: {e}")
+    PATCH_MODEL_AVAILABLE = False
+    logger.error(f"❌ Failed to load patch-level model: {e}")
+    raise ImportError(f"BLIP3-o patch-level model is required but failed to load: {e}")
 
-# Use global model as the main model (no fallbacks)
-BLIP3oDiTModel = GlobalBLIP3oDiTModel
-create_blip3o_dit_model = create_global_blip3o_dit_model
-DEFAULT_MODEL_TYPE = "global"
+# Use patch-level model as the main model
+BLIP3oDiTModel = BLIP3oPatchDiTModel
+create_blip3o_dit_model = create_blip3o_patch_dit_model
+DEFAULT_MODEL_TYPE = "patch_level"
 
-logger.info("✅ Using Global BLIP3-o model as primary model")
+logger.info("✅ Using BLIP3-o patch-level model as primary model")
 
 # Build exports list
 __all__ = [
@@ -42,58 +46,136 @@ __all__ = [
     "create_blip3o_dit_model", 
     "DEFAULT_MODEL_TYPE",
     
-    # Global model specific
-    "GlobalBLIP3oDiTModel",
-    "create_global_blip3o_dit_model",
-    "GLOBAL_MODEL_AVAILABLE",
+    # Patch-level model specific
+    "BLIP3oPatchDiTModel",
+    "create_blip3o_patch_dit_model",
+    "PATCH_MODEL_AVAILABLE",
+    
+    # Model components
+    "RotaryPositionalEmbedding3D",
+    "TimestepEmbedder", 
+    "MultiHeadAttention",
+    "BLIP3oDiTBlock",
 ]
 
 def get_model_class(model_type: str = "auto"):
     """
-    Get the model class (always returns GlobalBLIP3oDiTModel)
+    Get the model class (always returns BLIP3oPatchDiTModel)
     
     Args:
-        model_type: Ignored, always returns global model
+        model_type: Ignored, always returns patch-level model
         
     Returns:
-        GlobalBLIP3oDiTModel class
+        BLIP3oPatchDiTModel class
     """
-    if not GLOBAL_MODEL_AVAILABLE:
-        raise RuntimeError("Global BLIP3-o model not available")
-    return GlobalBLIP3oDiTModel
+    if not PATCH_MODEL_AVAILABLE:
+        raise RuntimeError("BLIP3-o patch-level model not available")
+    return BLIP3oPatchDiTModel
 
 def get_model_factory(model_type: str = "auto"):
     """
-    Get the model factory function (always returns global factory)
+    Get the model factory function (always returns patch-level factory)
     
     Args:
-        model_type: Ignored, always returns global factory
+        model_type: Ignored, always returns patch-level factory
         
     Returns:
-        create_global_blip3o_dit_model function
+        create_blip3o_patch_dit_model function
     """
-    if not GLOBAL_MODEL_AVAILABLE:
-        raise RuntimeError("Global BLIP3-o model not available")
-    return create_global_blip3o_dit_model
+    if not PATCH_MODEL_AVAILABLE:
+        raise RuntimeError("BLIP3-o patch-level model not available")
+    return create_blip3o_patch_dit_model
 
 def create_model(config=None, **kwargs):
     """
-    Create a BLIP3-o model instance (always global model)
+    Create a BLIP3-o model instance (always patch-level model)
     
     Args:
         config: Model configuration
         **kwargs: Additional arguments
         
     Returns:
-        GlobalBLIP3oDiTModel instance
+        BLIP3oPatchDiTModel instance
     """
-    if not GLOBAL_MODEL_AVAILABLE:
-        raise RuntimeError("Global BLIP3-o model not available")
+    if not PATCH_MODEL_AVAILABLE:
+        raise RuntimeError("BLIP3-o patch-level model not available")
         
     if config is not None:
-        return create_global_blip3o_dit_model(config=config, **kwargs)
+        return create_blip3o_patch_dit_model(config=config, **kwargs)
     else:
-        return create_global_blip3o_dit_model(**kwargs)
+        return create_blip3o_patch_dit_model(**kwargs)
+
+def load_pretrained_model(model_path: str, **kwargs):
+    """
+    Load a pretrained BLIP3-o patch-level model
+    
+    Args:
+        model_path: Path to pretrained model
+        **kwargs: Additional arguments
+        
+    Returns:
+        Loaded BLIP3oPatchDiTModel instance
+    """
+    from pathlib import Path
+    import torch
+    import json
+    
+    model_path = Path(model_path)
+    
+    # Load config
+    config_file = model_path / "config.json"
+    if config_file.exists():
+        with open(config_file, 'r') as f:
+            config_dict = json.load(f)
+        
+        from ..config.blip3o_config import BLIP3oDiTConfig
+        config = BLIP3oDiTConfig(**config_dict)
+    else:
+        # Use default config
+        from ..config.blip3o_config import get_default_blip3o_config
+        config = get_default_blip3o_config()
+        logger.warning(f"No config found at {config_file}, using default")
+    
+    # Create model
+    model = create_blip3o_patch_dit_model(config=config, **kwargs)
+    
+    # Load weights
+    weight_files = [
+        model_path / "pytorch_model.bin",
+        model_path / "model.safetensors",
+        model_path / "pytorch_model.safetensors"
+    ]
+    
+    weight_file = None
+    for wf in weight_files:
+        if wf.exists():
+            weight_file = wf
+            break
+    
+    if weight_file is None:
+        logger.warning(f"No weight file found in {model_path}, returning untrained model")
+        return model
+    
+    logger.info(f"Loading weights from: {weight_file}")
+    
+    # Load weights
+    if weight_file.suffix == ".bin":
+        state_dict = torch.load(weight_file, map_location='cpu')
+    else:
+        from safetensors.torch import load_file
+        state_dict = load_file(str(weight_file))
+    
+    # Load state dict
+    missing_keys, unexpected_keys = model.load_state_dict(state_dict, strict=False)
+    
+    if missing_keys:
+        logger.warning(f"Missing keys when loading model: {len(missing_keys)} keys")
+    if unexpected_keys:
+        logger.warning(f"Unexpected keys when loading model: {len(unexpected_keys)} keys")
+    
+    logger.info(f"✅ Model loaded successfully from {model_path}")
+    
+    return model
 
 def print_model_status():
     """Print status of available models"""
@@ -103,27 +185,122 @@ def print_model_status():
     print()
     print("Available model:")
     
-    if GLOBAL_MODEL_AVAILABLE:
-        print("  ✅ Global BLIP3-o DiT (Primary Model)")
-        print("    - Direct global feature training")
-        print("    - Optimized for recall performance")
+    if PATCH_MODEL_AVAILABLE:
+        print("  ✅ BLIP3-o Patch DiT (Primary Model)")
+        print("    - 256-token patch-level training")
+        print("    - EVA-CLIP conditioning (4096-dim)")
+        print("    - CLIP output (1024-dim)")
+        print("    - Flow matching training")
+        print("    - Image-to-text recall optimization")
+        print("    - 3D Rotary Position Embedding")
+        print("    - Multi-head attention with grouping")
         print("    - Multi-GPU compatible")
     else:
-        print("  ❌ Global BLIP3-o DiT (REQUIRED)")
+        print("  ❌ BLIP3-o Patch DiT (REQUIRED)")
+    
+    print()
+    print("Model components:")
+    print("  ✅ RotaryPositionalEmbedding3D")
+    print("  ✅ TimestepEmbedder")
+    print("  ✅ MultiHeadAttention")
+    print("  ✅ BLIP3oDiTBlock")
     
     print("=" * 30)
+
+def estimate_model_memory(
+    config=None,
+    batch_size: int = 8,
+    sequence_length: int = 256,
+) -> dict:
+    """
+    Estimate memory usage for BLIP3-o patch-level model
+    
+    Args:
+        config: Model configuration
+        batch_size: Batch size
+        sequence_length: Sequence length (should be 256 for patches)
+        
+    Returns:
+        Memory usage estimates
+    """
+    if config is None:
+        from ..config.blip3o_config import get_default_blip3o_config
+        config = get_default_blip3o_config()
+    
+    # Parameter estimation
+    hidden_size = config.hidden_size
+    num_layers = config.num_hidden_layers
+    intermediate_size = config.intermediate_size
+    
+    # Model parameters
+    embedding_params = (
+        config.clip_embedding_size * hidden_size +  # Input projection
+        config.eva_embedding_size * hidden_size +   # EVA projection per layer
+        hidden_size * sequence_length                # Position embeddings
+    )
+    
+    layer_params = num_layers * (
+        # Self-attention
+        3 * hidden_size * hidden_size +             # Q, K, V projections
+        hidden_size * hidden_size +                 # Output projection
+        # Cross-attention  
+        3 * hidden_size * hidden_size +             # Q, K, V projections
+        hidden_size * hidden_size +                 # Output projection
+        # FFN
+        hidden_size * intermediate_size +           # Up projection
+        intermediate_size * hidden_size +           # Down projection
+        # LayerNorms and modulation
+        hidden_size * 8                             # Various norms and modulations
+    )
+    
+    output_params = hidden_size * config.clip_embedding_size  # Output projection
+    
+    total_params = embedding_params + layer_params + output_params
+    
+    # Memory estimates (in GB)
+    model_memory = total_params * 4 / (1024**3)  # FP32 parameters
+    
+    # Activation memory estimation
+    activation_memory = (
+        batch_size * sequence_length * hidden_size * num_layers * 4  # Activations
+    ) / (1024**3)
+    
+    # Training memory (gradients + optimizer)
+    gradient_memory = model_memory  # Same as parameters
+    optimizer_memory = model_memory * 2  # AdamW states
+    
+    total_training_memory = model_memory + activation_memory + gradient_memory + optimizer_memory
+    
+    return {
+        'model_memory_gb': model_memory,
+        'activation_memory_gb': activation_memory,
+        'gradient_memory_gb': gradient_memory,
+        'optimizer_memory_gb': optimizer_memory,
+        'total_training_memory_gb': total_training_memory,
+        'inference_memory_gb': model_memory + activation_memory * 0.5,
+        'parameters_millions': total_params / 1e6,
+        'config_summary': {
+            'hidden_size': hidden_size,
+            'num_layers': num_layers,
+            'intermediate_size': intermediate_size,
+            'sequence_length': sequence_length,
+            'batch_size': batch_size,
+        }
+    }
 
 # Add utility functions to exports
 __all__.extend([
     "get_model_class",
     "get_model_factory",
     "create_model",
+    "load_pretrained_model",
     "print_model_status",
+    "estimate_model_memory",
 ])
 
 # Ensure the model is available
-if not GLOBAL_MODEL_AVAILABLE:
-    logger.error("❌ Global BLIP3-o model is required but not available!")
-    raise ImportError("Global BLIP3-o model is required for this project")
+if not PATCH_MODEL_AVAILABLE:
+    logger.error("❌ BLIP3-o patch-level model is required but not available!")
+    raise ImportError("BLIP3-o patch-level model is required for this project")
 
-logger.info("BLIP3-o global model loaded successfully")
+logger.info("BLIP3-o patch-level model loaded successfully")
