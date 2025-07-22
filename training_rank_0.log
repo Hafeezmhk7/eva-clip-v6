@@ -146,3 +146,72 @@
 [Rank 0] 2025-07-22 16:07:26,111 - INFO - ⚡ IMPROVING: Positive alignment detected
 [Rank 0] 2025-07-22 16:08:07,573 - INFO - FIXED Global Step 3185: Loss=2.0493, Global_Cosine=0.2334, Est_Recall=16.3%, High_Quality=0.000, Quality=needs_improvement, Mem=1.9GB, Grad=healthy
 [Rank 0] 2025-07-22 16:08:07,574 - INFO - ⚡ IMPROVING: Positive alignment detected
+[Rank 0] 2025-07-22 16:08:49,043 - INFO - FIXED Global Step 3430: Loss=2.0109, Global_Cosine=0.2422, Est_Recall=17.0%, High_Quality=0.000, Quality=needs_improvement, Mem=1.9GB, Grad=healthy
+[Rank 0] 2025-07-22 16:08:49,045 - INFO - ⚡ IMPROVING: Positive alignment detected
+[Rank 0] 2025-07-22 16:09:30,340 - INFO - FIXED Global Step 3675: Loss=2.0026, Global_Cosine=0.2621, Est_Recall=18.3%, High_Quality=0.000, Quality=needs_improvement, Mem=1.9GB, Grad=healthy
+[Rank 0] 2025-07-22 16:09:30,340 - INFO - ⚡ IMPROVING: Positive alignment detected
+[Rank 0] 2025-07-22 16:10:10,443 - INFO - Loaded shard 4/27: 2636 samples
+[Rank 0] 2025-07-22 16:10:10,450 - INFO - Loaded shard 4/27: 2636 samples
+[Rank 0] 2025-07-22 16:10:10,457 - INFO - Loaded shard 4/27: 2636 samples
+[Rank 0] 2025-07-22 16:10:10,465 - INFO - Loaded shard 4/27: 2636 samples
+[Rank 0] 2025-07-22 16:10:19,385 - INFO - FIXED Global Step 3920: Loss=2.0078, Global_Cosine=0.2539, Est_Recall=17.8%, High_Quality=0.000, Quality=needs_improvement, Mem=1.7GB, Grad=healthy
+[Rank 0] 2025-07-22 16:10:19,385 - INFO - ⚡ IMPROVING: Positive alignment detected
+[Rank 0] 2025-07-22 16:11:00,971 - INFO - FIXED Global Step 4165: Loss=2.0398, Global_Cosine=0.2372, Est_Recall=16.6%, High_Quality=0.000, Quality=needs_improvement, Mem=1.9GB, Grad=healthy
+[Rank 0] 2025-07-22 16:11:00,971 - INFO - ⚡ IMPROVING: Positive alignment detected
+[Rank 0] 2025-07-22 16:11:42,366 - INFO - FIXED Global Step 4410: Loss=1.9818, Global_Cosine=0.2657, Est_Recall=18.6%, High_Quality=0.000, Quality=needs_improvement, Mem=1.9GB, Grad=healthy
+[Rank 0] 2025-07-22 16:11:42,366 - INFO - ⚡ IMPROVING: Positive alignment detected
+[Rank 0] 2025-07-22 16:12:23,414 - INFO - FIXED Global Step 4655: Loss=2.0231, Global_Cosine=0.2747, Est_Recall=19.2%, High_Quality=0.000, Quality=needs_improvement, Mem=1.9GB, Grad=healthy
+[Rank 0] 2025-07-22 16:12:23,414 - INFO - ⚡ IMPROVING: Positive alignment detected
+[Rank 0] 2025-07-22 16:13:04,709 - INFO - FIXED Global Step 4900: Loss=1.9903, Global_Cosine=0.2779, Est_Recall=19.5%, High_Quality=0.000, Quality=needs_improvement, Mem=1.7GB, Grad=healthy
+[Rank 0] 2025-07-22 16:13:04,709 - INFO - ⚡ IMPROVING: Positive alignment detected
+[Rank 0] 2025-07-22 16:13:05,289 - INFO - Starting FIXED global training evaluation...
+[Rank 0] 2025-07-22 16:13:20,269 - INFO - Loaded shard 1/3: 2646 samples
+[Rank 0] 2025-07-22 16:13:20,298 - INFO - Loaded shard 1/3: 2646 samples
+[Rank 0] 2025-07-22 16:13:20,450 - WARNING - Model output doesn't require gradients - this may indicate a problem
+[Rank 0] 2025-07-22 16:13:20,456 - WARNING - Loss doesn't require gradients - this may indicate a gradient flow problem
+[Rank 0] 2025-07-22 16:13:20,516 - WARNING - Model output doesn't require gradients - this may indicate a problem
+[Rank 0] 2025-07-22 16:13:20,519 - WARNING - Loss doesn't require gradients - this may indicate a gradient flow problem
+[Rank 0] 2025-07-22 16:13:20,579 - WARNING - Model output doesn't require gradients - this may indicate a problem
+[Rank 0] 2025-07-22 16:13:20,582 - WARNING - Loss doesn't require gradients - this may indicate a gradient flow problem
+[Rank 0] 2025-07-22 16:13:20,643 - WARNING - Model output doesn't require gradients - this may indicate a problem
+[Rank 0] 2025-07-22 16:13:20,646 - WARNING - Loss doesn't require gradients - this may indicate a gradient flow problem
+[Rank 0] 2025-07-22 16:13:20,706 - WARNING - Model output doesn't require gradients - this may indicate a problem
+[Rank 0] 2025-07-22 16:13:20,709 - WARNING - Loss doesn't require gradients - this may indicate a gradient flow problem
+[Rank 0] 2025-07-22 16:13:20,769 - WARNING - Model output doesn't require gradients - this may indicate a problem
+[Rank 0] 2025-07-22 16:13:20,773 - WARNING - Loss doesn't require gradients - this may indicate a gradient flow problem
+[Rank 0] 2025-07-22 16:13:20,832 - WARNING - Model output doesn't require gradients - this may indicate a problem
+[Rank 0] 2025-07-22 16:13:20,836 - WARNING - Loss doesn't require gradients - this may indicate a gradient flow problem
+[Rank 0] 2025-07-22 16:13:20,896 - WARNING - Model output doesn't require gradients - this may indicate a problem
+[Rank 0] 2025-07-22 16:13:20,899 - WARNING - Loss doesn't require gradients - this may indicate a gradient flow problem
+[Rank 0] 2025-07-22 16:13:20,959 - WARNING - Model output doesn't require gradients - this may indicate a problem
+[Rank 0] 2025-07-22 16:13:20,962 - WARNING - Loss doesn't require gradients - this may indicate a gradient flow problem
+[Rank 0] 2025-07-22 16:13:21,022 - WARNING - Model output doesn't require gradients - this may indicate a problem
+[Rank 0] 2025-07-22 16:13:21,025 - WARNING - Loss doesn't require gradients - this may indicate a gradient flow problem
+[Rank 0] 2025-07-22 16:13:21,030 - INFO - FIXED Global evaluation completed: 10/10 successful batches
+[Rank 0] 2025-07-22 16:13:21,030 - INFO - Average eval loss: 2.0851
+[Rank 0] 2025-07-22 16:13:21,030 - INFO - Global cosine similarity: 0.3251
+[Rank 0] 2025-07-22 16:13:21,030 - INFO - Estimated recall: 22.8%
+[Rank 0] 2025-07-22 16:14:00,648 - INFO - FIXED Global Step 5145: Loss=1.9538, Global_Cosine=0.3126, Est_Recall=21.9%, High_Quality=0.000, Quality=needs_improvement, Mem=1.9GB, Grad=healthy
+[Rank 0] 2025-07-22 16:14:00,648 - INFO - 🔄 FAIR: Training making progress
+[Rank 0] 2025-07-22 16:14:16,781 - INFO - Loaded shard 5/27: 2585 samples
+[Rank 0] 2025-07-22 16:14:16,797 - INFO - Loaded shard 5/27: 2585 samples
+[Rank 0] 2025-07-22 16:14:16,814 - INFO - Loaded shard 5/27: 2585 samples
+[Rank 0] 2025-07-22 16:14:16,822 - INFO - Loaded shard 5/27: 2585 samples
+[Rank 0] 2025-07-22 16:14:50,545 - INFO - FIXED Global Step 5390: Loss=2.1149, Global_Cosine=0.3074, Est_Recall=21.5%, High_Quality=0.000, Quality=needs_improvement, Mem=1.7GB, Grad=healthy
+[Rank 0] 2025-07-22 16:14:50,545 - INFO - 🔄 FAIR: Training making progress
+[Rank 0] 2025-07-22 16:15:32,586 - INFO - FIXED Global Step 5635: Loss=2.0061, Global_Cosine=0.2944, Est_Recall=20.6%, High_Quality=0.000, Quality=needs_improvement, Mem=1.9GB, Grad=healthy
+[Rank 0] 2025-07-22 16:15:32,586 - INFO - ⚡ IMPROVING: Positive alignment detected
+[Rank 0] 2025-07-22 16:16:14,469 - INFO - FIXED Global Step 5880: Loss=2.0359, Global_Cosine=0.3089, Est_Recall=21.6%, High_Quality=0.000, Quality=needs_improvement, Mem=1.9GB, Grad=healthy
+[Rank 0] 2025-07-22 16:16:14,469 - INFO - 🔄 FAIR: Training making progress
+[Rank 0] 2025-07-22 16:16:55,907 - INFO - FIXED Global Step 6125: Loss=2.0154, Global_Cosine=0.2932, Est_Recall=20.5%, High_Quality=0.000, Quality=needs_improvement, Mem=1.9GB, Grad=healthy
+[Rank 0] 2025-07-22 16:16:55,908 - INFO - ⚡ IMPROVING: Positive alignment detected
+[Rank 0] 2025-07-22 16:17:37,239 - INFO - FIXED Global Step 6370: Loss=1.9790, Global_Cosine=0.3010, Est_Recall=21.1%, High_Quality=0.000, Quality=needs_improvement, Mem=1.7GB, Grad=healthy
+[Rank 0] 2025-07-22 16:17:37,240 - INFO - 🔄 FAIR: Training making progress
+[Rank 0] 2025-07-22 16:18:06,422 - INFO - Loaded shard 6/27: 2588 samples
+[Rank 0] 2025-07-22 16:18:06,532 - INFO - Loaded shard 6/27: 2588 samples
+[Rank 0] 2025-07-22 16:18:06,563 - INFO - Loaded shard 6/27: 2588 samples
+[Rank 0] 2025-07-22 16:18:06,569 - INFO - Loaded shard 6/27: 2588 samples
+[Rank 0] 2025-07-22 16:18:29,359 - INFO - FIXED Global Step 6615: Loss=2.0115, Global_Cosine=0.3411, Est_Recall=23.9%, High_Quality=0.000, Quality=needs_improvement, Mem=1.9GB, Grad=healthy
+[Rank 0] 2025-07-22 16:18:29,362 - INFO - 🔄 FAIR: Training making progress
+[Rank 0] 2025-07-22 16:19:11,303 - INFO - FIXED Global Step 6860: Loss=2.0360, Global_Cosine=0.2975, Est_Recall=20.8%, High_Quality=0.000, Quality=needs_improvement, Mem=1.9GB, Grad=healthy
+[Rank 0] 2025-07-22 16:19:11,303 - INFO - ⚡ IMPROVING: Positive alignment detected
