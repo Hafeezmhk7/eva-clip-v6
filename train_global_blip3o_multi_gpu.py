@@ -21,6 +21,7 @@ from pathlib import Path
 import json
 from datetime import datetime
 import traceback
+import os
 import time
 
 # Add src to path
@@ -521,7 +522,7 @@ def main():
             args=training_args,
             flow_matching_loss=flow_matching_loss,
             train_dataset=None,  # We'll override the dataloader
-            eval_dataset=None,
+            eval_dataset=eval_dataloader.dataset,
         )
         
         # Override dataloader methods

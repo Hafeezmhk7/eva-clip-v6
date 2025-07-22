@@ -1,0 +1,30 @@
+{
+  "error": "argument of type 'bool' is not iterable",
+  "traceback": "Traceback (most recent call last):\n  File \"/gpfs/home1/scur2711/eva-clip-flow-matching/eva-clip-v3/train_global_blip3o_multi_gpu.py\", line 539, in main\n    train_result = trainer.train()\n  File \"/home/scur2711/.conda/envs/eva_clip_env/lib/python3.13/site-packages/transformers/trainer.py\", line 2206, in train\n    return inner_training_loop(\n        args=args,\n    ...<2 lines>...\n        ignore_keys_for_eval=ignore_keys_for_eval,\n    )\n  File \"/home/scur2711/.conda/envs/eva_clip_env/lib/python3.13/site-packages/transformers/trainer.py\", line 2286, in _inner_training_loop\n    if DebugOption.UNDERFLOW_OVERFLOW in self.args.debug:\n       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nTypeError: argument of type 'bool' is not iterable\n",
+  "gpu_info": {
+    "cuda_available": true,
+    "gpu_count": 3,
+    "gpu_names": [
+      "NVIDIA H100",
+      "NVIDIA H100",
+      "NVIDIA H100"
+    ],
+    "memory_total": [
+      93.1114501953125,
+      93.1114501953125,
+      93.1114501953125
+    ],
+    "slurm_allocation": "3",
+    "cuda_visible_devices": "0,1,2",
+    "issues": [],
+    "recommendations": []
+  },
+  "environment": {
+    "CUDA_VISIBLE_DEVICES": "0,1,2",
+    "SLURM_GPUS": "3",
+    "WORLD_SIZE": null,
+    "LOCAL_RANK": null
+  },
+  "timestamp": "2025-07-22T13:14:33.110054",
+  "training_type": "global"
+}
