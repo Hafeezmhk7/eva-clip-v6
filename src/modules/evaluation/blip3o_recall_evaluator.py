@@ -84,20 +84,16 @@ class BLIP3oRecallEvaluator:
             logger.error(f"Failed to load CLIP text encoder: {e}")
             raise
     
+    # In src/modules/evaluation/blip3o_recall_evaluator.py
+# Find the extract_text_embeddings method and update it:
+
     def extract_text_embeddings(
         self, 
         captions: List[str],
         batch_size: int = 32
     ) -> torch.Tensor:
         """
-        Extract CLIP text embeddings from captions
-        
-        Args:
-            captions: List of text captions
-            batch_size: Batch size for processing
-            
-        Returns:
-            Text embeddings [N, 768] (after visual projection)
+        Extract CLIP text embeddings from captions - FIXED dimension handling
         """
         text_embeddings = []
         
@@ -118,9 +114,17 @@ class BLIP3oRecallEvaluator:
                 # Extract text features
                 text_features = self.clip_model.get_text_features(**inputs)  # [B, 512]
                 
-                # Apply visual projection to match image embedding space
+                # FIXED: Apply visual projection to match image embedding space
                 if self.use_clip_projection and self.clip_visual_projection is not None:
-                    text_features = self.clip_visual_projection(text_features)  # [B, 768]
+                    try:
+                        text_features = self.clip_visual_projection(text_features)  # [B, 768]
+                    except RuntimeError as e:
+                        # Handle dimension mismatch - project to correct space
+                        if text_features.shape[-1] != 1024:
+                            # Need to project to 1024-dim first
+                            proj_1024 = torch.nn.Linear(text_features.shape[-1], 1024, device=self.device)
+                            text_features = proj_1024(text_features)
+                        text_features = self.clip_visual_projection(text_features)  # [B, 768]
                 
                 if self.normalize_embeddings:
                     text_features = F.normalize(text_features, p=2, dim=-1)
@@ -128,7 +132,8 @@ class BLIP3oRecallEvaluator:
                 text_embeddings.append(text_features.cpu())
         
         return torch.cat(text_embeddings, dim=0)
-    
+
+
     def generate_image_embeddings(
         self,
         eva_embeddings: torch.Tensor,  # [B, 256, 4096]

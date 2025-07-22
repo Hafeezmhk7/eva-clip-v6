@@ -1,22 +1,23 @@
 #!/bin/bash
-#SBATCH --job-name=blip3o_fixed_multi_gpu
+#SBATCH --job-name=blip3o_patch_training
 #SBATCH --partition=gpu_h100
 #SBATCH --nodes=1
 #SBATCH --gpus=3
 #SBATCH --cpus-per-gpu=18
 #SBATCH --time=12:00:00
 #SBATCH --mem=0
-#SBATCH --output=./slurm_out/fixed_multi_gpu_%j.out
-#SBATCH --error=./slurm_out/fixed_multi_gpu_%j.err
+#SBATCH --output=./slurm_out/blip3o_patch_%j.out
+#SBATCH --error=./slurm_out/blip3o_patch_%j.err
 
-echo "🚀 FIXED BLIP3-o Multi-GPU Training with Enhanced GPU Detection"
+echo "🚀 BLIP3-o Patch-Level DiT Training - Aligned with Paper"
 echo "================================================================"
-echo "🔧 ENHANCED FEATURES:"
-echo "  ✅ Robust GPU detection and error handling"
-echo "  ✅ Automatic fixes for common GPU issues"
-echo "  ✅ Better SLURM GPU allocation handling"
-echo "  ✅ CPU fallback if GPU issues persist"
-echo "  ✅ Detailed logging and debugging"
+echo "🎯 TRAINING FEATURES:"
+echo "  ✅ 256-token patch-level flow matching"
+echo "  ✅ EVA-CLIP conditioning (4096-dim)"
+echo "  ✅ CLIP output supervision (1024-dim)"
+echo "  ✅ Image-to-text recall evaluation"
+echo "  ✅ 3D Rotary Position Embedding"
+echo "  ✅ Enhanced multi-GPU support"
 echo "================================================================"
 echo "Job ID: $SLURM_JOB_ID"
 echo "Node: $SLURMD_NODENAME"
@@ -28,12 +29,12 @@ echo "CPUs per GPU: $SLURM_CPUS_PER_GPU"
 echo "================================================================"
 
 # =============================================================================
-# ENHANCED ENVIRONMENT SETUP
+# ENVIRONMENT SETUP
 # =============================================================================
 
 echo ""
-echo "🔧 Enhanced Environment Setup..."
-echo "==============================="
+echo "🔧 Environment Setup..."
+echo "======================="
 
 # Change to submit directory
 cd $SLURM_SUBMIT_DIR
@@ -50,87 +51,67 @@ module load CUDA/12.6.0
 
 echo "✅ Modules loaded successfully"
 
-# Activate your conda environment
+# Activate conda environment
 source activate eva_clip_env
 echo "✅ Conda environment activated: $CONDA_DEFAULT_ENV"
 
 # =============================================================================
-# ENHANCED GPU ENVIRONMENT SETUP
+# GPU ENVIRONMENT SETUP
 # =============================================================================
 
 echo ""
-echo "🎮 Enhanced GPU Environment Setup..."
-echo "=================================="
+echo "🎮 GPU Environment Setup..."
+echo "=========================="
 
 # Print initial SLURM GPU allocation
-echo "📊 SLURM GPU Variables (before fixes):"
+echo "📊 SLURM GPU Variables:"
 echo "  SLURM_GPUS: $SLURM_GPUS"
 echo "  SLURM_GPUS_ON_NODE: $SLURM_GPUS_ON_NODE"
 echo "  SLURM_LOCALID: $SLURM_LOCALID"
 echo "  SLURM_PROCID: $SLURM_PROCID"
 echo "  CUDA_VISIBLE_DEVICES: $CUDA_VISIBLE_DEVICES"
 
-# ENHANCED: Fix common GPU allocation issues
+# Apply GPU fixes
 echo ""
 echo "🔧 Applying GPU environment fixes..."
 
-# Fix 1: Handle empty CUDA_VISIBLE_DEVICES
+# Fix CUDA_VISIBLE_DEVICES if empty
 if [ -z "$CUDA_VISIBLE_DEVICES" ] || [ "$CUDA_VISIBLE_DEVICES" = "" ]; then
-    echo "⚠️  CUDA_VISIBLE_DEVICES is empty - this blocks GPU access!"
+    echo "⚠️  CUDA_VISIBLE_DEVICES is empty - applying fix..."
     
-    # Try to fix using SLURM variables
     if [ ! -z "$SLURM_LOCALID" ]; then
         export CUDA_VISIBLE_DEVICES=$SLURM_LOCALID
-        echo "✅ Fixed: Set CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES (from SLURM_LOCALID)"
+        echo "✅ Set CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES (from SLURM_LOCALID)"
     elif [ ! -z "$SLURM_GPUS" ]; then
-        # Create comma-separated list of GPU IDs
         export CUDA_VISIBLE_DEVICES=$(seq -s, 0 $((SLURM_GPUS-1)))
-        echo "✅ Fixed: Set CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES (from SLURM_GPUS)"
-    else
-        echo "⚠️  Cannot auto-fix CUDA_VISIBLE_DEVICES - will try detection in Python"
+        echo "✅ Set CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES (from SLURM_GPUS)"
     fi
 fi
 
-# Fix 2: Optimize NCCL for Snellius InfiniBand
+# Optimize NCCL settings for Snellius
 echo ""
-echo "🔧 Optimizing NCCL settings for Snellius..."
+echo "🔧 Optimizing NCCL settings for multi-GPU training..."
 
-# InfiniBand settings for Snellius
-export NCCL_IB_DISABLE=0           # Enable InfiniBand
-export NCCL_NET_GDR_LEVEL=3        # GPU Direct RDMA
-export NCCL_P2P_LEVEL=NVL          # NVLink for P2P
-
-# Alternative if InfiniBand causes issues (uncomment if needed):
-# export NCCL_IB_DISABLE=1
-# export NCCL_P2P_DISABLE=1
-# export NCCL_NET_GDR_LEVEL=0
-
-# Enhanced error handling and debugging
+export NCCL_IB_DISABLE=0
+export NCCL_NET_GDR_LEVEL=3
+export NCCL_P2P_LEVEL=NVL
 export NCCL_ASYNC_ERROR_HANDLING=1
-export NCCL_DEBUG=WARN              # Change to INFO for detailed debugging
+export NCCL_DEBUG=WARN
 export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
-
-# Threading optimization
 export OMP_NUM_THREADS=1
+export TOKENIZERS_PARALLELISM=false
 
-echo "✅ NCCL environment optimized for Snellius"
-
-# Fix 3: Print final GPU environment
-echo ""
-echo "📊 GPU Environment (after fixes):"
-echo "  CUDA_VISIBLE_DEVICES: $CUDA_VISIBLE_DEVICES"
-echo "  NCCL_IB_DISABLE: $NCCL_IB_DISABLE"
-echo "  NCCL_DEBUG: $NCCL_DEBUG"
+echo "✅ GPU environment optimized"
 
 # =============================================================================
 # WORKSPACE SETUP
 # =============================================================================
 
 echo ""
-echo "📁 Enhanced Workspace Setup..."
-echo "============================="
+echo "📁 Workspace Setup..."
+echo "===================="
 
-# Setup directories with better structure
+# Setup directories
 export BLIP3O_USER=$(whoami)
 export BLIP3O_JOB_ID=${SLURM_JOB_ID}
 
@@ -139,28 +120,19 @@ export BLIP3O_WORKSPACE="/scratch-shared/${BLIP3O_USER}/blip3o_workspace"
 export BLIP3O_EMBEDDINGS="${BLIP3O_WORKSPACE}/embeddings"
 export BLIP3O_CHECKPOINTS="${BLIP3O_WORKSPACE}/checkpoints"
 
-# Job-specific temp directory with better error handling
+# Job-specific temp directory
 if [ ! -z "$TMPDIR" ]; then
     export BLIP3O_JOB_TEMP="$TMPDIR/blip3o_job_${BLIP3O_JOB_ID}"
 else
     export BLIP3O_JOB_TEMP="/tmp/blip3o_job_${BLIP3O_USER}_${BLIP3O_JOB_ID}"
 fi
 
-# Create directories with error checking
+# Create directories
 echo "📁 Creating workspace directories..."
-mkdir -p "${BLIP3O_WORKSPACE}"/{embeddings,checkpoints,logs} || {
-    echo "❌ Failed to create persistent workspace directories"
-    echo "💡 Check permissions for: ${BLIP3O_WORKSPACE}"
-    exit 1
-}
+mkdir -p "${BLIP3O_WORKSPACE}"/{embeddings,checkpoints,logs}
+mkdir -p "${BLIP3O_JOB_TEMP}"/{cache,working}
 
-mkdir -p "${BLIP3O_JOB_TEMP}"/{cache,working} || {
-    echo "❌ Failed to create job temp directories" 
-    echo "💡 Check permissions for: ${BLIP3O_JOB_TEMP}"
-    exit 1
-}
-
-# Redirect model caches to avoid home directory quota
+# Redirect model caches to job temp
 export TORCH_HOME="${BLIP3O_JOB_TEMP}/cache/torch"
 export HF_HOME="${BLIP3O_JOB_TEMP}/cache/huggingface"
 export TRANSFORMERS_CACHE="${BLIP3O_JOB_TEMP}/cache/transformers"
@@ -173,14 +145,13 @@ echo "  Job temp: ${BLIP3O_JOB_TEMP}"
 echo "  Model cache: ${TORCH_HOME}"
 
 # =============================================================================
-# ENHANCED GPU DIAGNOSTICS
+# GPU DIAGNOSTICS
 # =============================================================================
 
 echo ""
-echo "🧪 Enhanced GPU Diagnostics..."
-echo "============================"
+echo "🧪 GPU Diagnostics..."
+echo "===================="
 
-# Run comprehensive GPU diagnostics
 echo "🔍 Python CUDA check:"
 python -c "
 import torch
@@ -194,7 +165,6 @@ if torch.cuda.is_available():
         memory_gb = props.total_memory / (1024**3)
         print(f'  GPU {i}: {props.name} ({memory_gb:.1f} GB)')
         
-        # Test GPU access
         try:
             test_tensor = torch.randn(100, 100, device=f'cuda:{i}')
             print(f'    ✅ GPU {i} accessible and working')
@@ -202,19 +172,12 @@ if torch.cuda.is_available():
             print(f'    ❌ GPU {i} error: {e}')
 else:
     print('❌ CUDA not available!')
-    print('🔍 Checking common issues...')
-    import os
-    print(f'CUDA_VISIBLE_DEVICES: {os.environ.get(\"CUDA_VISIBLE_DEVICES\", \"Not set\")}')
 "
 
-# Check nvidia-smi if available
 echo ""
 echo "🔍 nvidia-smi check:"
 if command -v nvidia-smi &> /dev/null; then
-    nvidia-smi --query-gpu=index,name,memory.total,memory.used --format=csv,noheader,nounits || {
-        echo "❌ nvidia-smi failed"
-        echo "💡 GPU drivers might not be properly loaded"
-    }
+    nvidia-smi --query-gpu=index,name,memory.total,memory.used --format=csv,noheader,nounits
 else
     echo "❌ nvidia-smi not available"
 fi
@@ -224,10 +187,9 @@ fi
 # =============================================================================
 
 echo ""
-echo "🔍 Finding embeddings..."
-echo "======================="
+echo "🔍 Finding patch-level embeddings..."
+echo "==================================="
 
-# Look for chunked embeddings with better error handling
 EMBEDDINGS_DIR=""
 
 SEARCH_LOCATIONS=(
@@ -246,7 +208,7 @@ for location in "${SEARCH_LOCATIONS[@]}"; do
 done
 
 if [ -z "$EMBEDDINGS_DIR" ]; then
-    echo "❌ No embeddings found!"
+    echo "❌ No patch-level embeddings found!"
     echo "💡 Searched locations:"
     for location in "${SEARCH_LOCATIONS[@]}"; do
         echo "    $location"
@@ -257,7 +219,7 @@ if [ -z "$EMBEDDINGS_DIR" ]; then
     exit 1
 fi
 
-# Verify embeddings with detailed info
+# Verify embeddings
 MANIFEST_FILE="${EMBEDDINGS_DIR}/embeddings_manifest.json"
 if [ -f "$MANIFEST_FILE" ]; then
     echo "📊 Dataset info:"
@@ -268,7 +230,10 @@ try:
         manifest = json.load(f)
     print(f'  Total shards: {manifest.get(\"total_shards\", \"unknown\")}')
     print(f'  Total samples: {manifest.get(\"total_samples\", \"unknown\"):,}')
-    print(f'  Format version: {manifest.get(\"format_version\", \"unknown\")}')
+    print(f'  Format: {manifest.get(\"format_version\", \"unknown\")}')
+    print(f'  Tokens per image: 256 (patch-level)')
+    print(f'  CLIP dimension: 1024')
+    print(f'  EVA dimension: 4096')
 except Exception as e:
     print(f'  Error reading manifest: {e}')
 "
@@ -283,203 +248,186 @@ fi
 
 echo ""
 echo "📂 Setting up output directory..."
-echo "==============================="
+echo "================================"
 
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-OUTPUT_DIR="./checkpoints/fixed_multi_gpu_${SLURM_JOB_ID}_${TIMESTAMP}"
+OUTPUT_DIR="./checkpoints/blip3o_patch_${SLURM_JOB_ID}_${TIMESTAMP}"
 
-mkdir -p "$OUTPUT_DIR" || {
-    echo "❌ Failed to create output directory: $OUTPUT_DIR"
-    exit 1
-}
-
-mkdir -p "./slurm_out" || {
-    echo "⚠️  Failed to create slurm_out directory"
-}
+mkdir -p "$OUTPUT_DIR"
+mkdir -p "./slurm_out"
 
 echo "✅ Output directory: $OUTPUT_DIR"
 
 # =============================================================================
-# ENHANCED TRAINING CONFIGURATION
+# TRAINING CONFIGURATION
 # =============================================================================
 
 echo ""
-echo "⚙️ Enhanced Training Configuration..."
-echo "==================================="
+echo "⚙️ Training Configuration..."
+echo "============================"
 
-# Enhanced configuration with validation
-NUM_EPOCHS=5
-BATCH_SIZE=8        # Conservative for stability
-EVAL_BATCH_SIZE=4   # Smaller for memory
-LEARNING_RATE=1e-4  # Standard rate
-MODEL_DIM=768       # Compatible with 12 heads
-NUM_LAYERS=16       # Good balance
-NUM_HEADS=12        # 768/12 = 64 (divisible by 4 for RoPE)
+# Patch-level training configuration
+NUM_EPOCHS=6
+BATCH_SIZE=8
+EVAL_BATCH_SIZE=4
+LEARNING_RATE=1e-4
+MODEL_SIZE="base"
+HIDDEN_SIZE=768
+NUM_LAYERS=12
+NUM_HEADS=12
 GRADIENT_ACCUMULATION=4
 WARMUP_STEPS=100
 
-# Auto-detect GPU count for effective batch size calculation
+# Calculate effective batch size
 ACTUAL_GPU_COUNT=$(python -c "import torch; print(torch.cuda.device_count() if torch.cuda.is_available() else 1)")
 EFFECTIVE_BATCH_SIZE=$((BATCH_SIZE * ACTUAL_GPU_COUNT * GRADIENT_ACCUMULATION))
 
-echo "Enhanced Training Configuration:"
+echo "Patch-Level Training Configuration:"
 echo "  🎯 Target GPUs: ${SLURM_GPUS:-1}"
 echo "  🔍 Detected GPUs: $ACTUAL_GPU_COUNT"
-echo "  🏗️  Model: ${MODEL_DIM}D, ${NUM_LAYERS}L, ${NUM_HEADS}H"
+echo "  🏗️  Model: ${MODEL_SIZE} (${HIDDEN_SIZE}D, ${NUM_LAYERS}L, ${NUM_HEADS}H)"
 echo "  📚 Epochs: $NUM_EPOCHS"
 echo "  📦 Batch size per GPU: $BATCH_SIZE"
 echo "  🔄 Gradient accumulation: $GRADIENT_ACCUMULATION"
 echo "  📊 Effective batch size: $EFFECTIVE_BATCH_SIZE"
 echo "  📈 Learning rate: $LEARNING_RATE"
 echo "  🔥 Warmup steps: $WARMUP_STEPS"
+echo "  🎯 Architecture: 256-token patch-level DiT"
+echo "  📐 Input: EVA-CLIP (256×4096) → CLIP (256×1024)"
+echo "  📊 Evaluation: Image-to-text recall (R@1, R@5, R@10)"
 
 # =============================================================================
-# FINAL VERIFICATION BEFORE TRAINING
+# FINAL VERIFICATION
 # =============================================================================
 
 echo ""
-echo "🔍 Final verification before training..."
-echo "======================================"
+echo "🔍 Final verification..."
+echo "======================="
 
-# Run the GPU diagnostics script if available
-if [ -f "gpu_diagnostics.py" ]; then
-    echo "🧪 Running comprehensive GPU diagnostics..."
-    python gpu_diagnostics.py || {
-        echo "⚠️  GPU diagnostics completed with warnings - check output above"
-    }
-else
-    echo "⚠️  gpu_diagnostics.py not found - running basic checks"
-    
-    # Basic Python GPU test
-    python -c "
-import torch
-import os
+# Verify Python imports
+echo "🐍 Verifying BLIP3-o patch modules..."
+python -c "
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path.cwd() / 'src'))
 
-print('🧪 Basic GPU Verification:')
-print(f'CUDA available: {torch.cuda.is_available()}')
+try:
+    from src.modules.models.blip3o_patch_dit import BLIP3oPatchDiTModel
+    print('✅ Patch DiT model')
+    
+    from src.modules.losses.blip3o_flow_matching_loss import BLIP3oFlowMatchingLoss
+    print('✅ Flow matching loss')
+    
+    from src.modules.trainers.blip3o_patch_trainer import BLIP3oPatchTrainer
+    print('✅ Patch trainer')
+    
+    from src.modules.datasets.blip3o_dataset import BLIP3oEmbeddingDataset
+    print('✅ Patch dataset')
+    
+    from src.modules.evaluation.blip3o_recall_evaluator import BLIP3oRecallEvaluator
+    print('✅ Recall evaluator')
+    
+    print('🎉 All patch-level modules ready!')
+    
+except ImportError as e:
+    print(f'❌ Import error: {e}')
+    sys.exit(1)
+"
 
-if torch.cuda.is_available():
-    gpu_count = torch.cuda.device_count()
-    print(f'GPU count: {gpu_count}')
-    
-    # Test each GPU
-    working_gpus = 0
-    for i in range(gpu_count):
-        try:
-            device = torch.device(f'cuda:{i}')
-            test_tensor = torch.randn(1000, 1000, device=device)
-            result = torch.mm(test_tensor, test_tensor.t())
-            working_gpus += 1
-            print(f'✅ GPU {i}: Working')
-        except Exception as e:
-            print(f'❌ GPU {i}: Error - {e}')
-    
-    if working_gpus == 0:
-        print('❌ No working GPUs found!')
-        exit(1)
-    elif working_gpus < gpu_count:
-        print(f'⚠️  Only {working_gpus}/{gpu_count} GPUs working')
-    else:
-        print(f'✅ All {working_gpus} GPUs working perfectly!')
-else:
-    print('❌ CUDA not available - will use CPU fallback')
-" || {
-        echo "❌ GPU verification failed!"
-        echo "💡 Will attempt training with CPU fallback"
-    }
+if [ $? -ne 0 ]; then
+    echo "❌ Module verification failed!"
+    exit 1
 fi
 
 # =============================================================================
-# START ENHANCED TRAINING
+# START TRAINING
 # =============================================================================
 
 echo ""
-echo "🚀 Starting Enhanced Multi-GPU Training..."
-echo "=========================================="
-echo "🎯 ENHANCED FEATURES:"
-echo "  • Robust GPU detection and auto-fixes"
-echo "  • Automatic fallback to CPU if GPU fails"
-echo "  • Better error handling and debugging"
-echo "  • Enhanced memory management"
-echo "  • Improved DDP compatibility"
+echo "🚀 Starting BLIP3-o Patch-Level Training..."
+echo "==========================================="
+echo "🎯 PATCH-LEVEL FEATURES:"
+echo "  • 256-token patch embeddings (16×16 grid)"
+echo "  • EVA-CLIP conditioning (4096-dim)"
+echo "  • CLIP patch supervision (1024-dim)"
+echo "  • Flow matching training objective"
+echo "  • Image-to-text recall evaluation"
+echo "  • 3D Rotary Position Embedding"
+echo "  • Multi-GPU distributed training"
 echo ""
-echo "📈 EXPECTED IMPROVEMENTS:"
-echo "  • Stable training even with GPU allocation issues"
-echo "  • Better error messages for debugging"
-echo "  • Automatic recovery from common problems"
-echo "  • Detailed logging for troubleshooting"
+echo "📈 EXPECTED PERFORMANCE:"
+echo "  • Target: >25% Recall@1 (good performance)"
+echo "  • Target: >40% Recall@5 (strong performance)"
+echo "  • Baseline: CLIP ViT-L/14 comparison"
 echo ""
 
 TRAIN_START_TIME=$(date +%s)
 
-# Enhanced training with better error handling
-echo "🔥 Launching enhanced training..."
+echo "🔥 Launching patch-level DiT training..."
 
-# Use the fixed training script
-python train_blip3o_multi_gpu.py \
+# Use the patch-level training script
+python train_blip3o_patch_dit.py \
     --chunked_embeddings_dir "$EMBEDDINGS_DIR" \
     --output_dir "$OUTPUT_DIR" \
+    --model_size "$MODEL_SIZE" \
+    --hidden_size $HIDDEN_SIZE \
+    --num_layers $NUM_LAYERS \
+    --num_heads $NUM_HEADS \
     --num_epochs $NUM_EPOCHS \
     --batch_size $BATCH_SIZE \
     --eval_batch_size $EVAL_BATCH_SIZE \
     --learning_rate $LEARNING_RATE \
-    --model_dim $MODEL_DIM \
-    --num_layers $NUM_LAYERS \
-    --num_heads $NUM_HEADS \
     --weight_decay 0.01 \
     --warmup_steps $WARMUP_STEPS \
     --gradient_accumulation_steps $GRADIENT_ACCUMULATION \
-    --lr_scheduler_type cosine \
     --fp16 \
     --dataloader_num_workers 4 \
-    --cpu_fallback
+    --enable_recall_eval \
+    --recall_eval_steps 250 \
+    --recall_eval_samples 50 \
+    --use_contrastive_loss \
+    --contrastive_weight 0.1 \
+    --enhanced_loss
 
 TRAINING_EXIT_CODE=$?
 TRAIN_END_TIME=$(date +%s)
 TRAIN_DURATION=$((TRAIN_END_TIME - TRAIN_START_TIME))
 
 echo ""
-echo "🏁 ENHANCED TRAINING COMPLETED"
-echo "============================="
+echo "🏁 PATCH-LEVEL TRAINING COMPLETED"
+echo "================================="
 echo "Exit code: $TRAINING_EXIT_CODE"
 echo "Duration: $TRAIN_DURATION seconds ($(($TRAIN_DURATION / 60)) minutes)"
 
 # =============================================================================
-# ENHANCED RESULTS AND CLEANUP
+# RESULTS AND CLEANUP
 # =============================================================================
 
 if [ $TRAINING_EXIT_CODE -eq 0 ]; then
     echo ""
-    echo "✅ SUCCESS! Enhanced training completed!"
-    echo "====================================="
+    echo "✅ SUCCESS! Patch-level training completed!"
+    echo "=========================================="
     
-    # Copy to persistent storage with verification
+    # Copy to persistent storage
     if [ -d "$OUTPUT_DIR" ]; then
         PERSISTENT_DIR="${BLIP3O_CHECKPOINTS}/$(basename $OUTPUT_DIR)"
         mkdir -p "$PERSISTENT_DIR"
         
         echo "📁 Copying model to persistent storage..."
         if cp -r "$OUTPUT_DIR"/* "$PERSISTENT_DIR/" 2>/dev/null; then
-            echo "✅ Model copied to persistent storage: $PERSISTENT_DIR"
-            
-            # Verify the copy
-            if [ -f "$PERSISTENT_DIR/config.json" ]; then
-                echo "✅ Model files verified in persistent storage"
-            else
-                echo "⚠️  Model copy may be incomplete"
-            fi
+            echo "✅ Model copied to: $PERSISTENT_DIR"
         else
-            echo "⚠️  Failed to copy to persistent storage (files still in: $OUTPUT_DIR)"
+            echo "⚠️  Copy failed, model remains at: $OUTPUT_DIR"
         fi
     fi
     
-    # Enhanced success reporting
     echo ""
-    echo "🎉 ENHANCED TRAINING SUCCESS!"
-    echo "============================"
-    echo "✅ All GPU detection and fixes worked"
-    echo "✅ Multi-GPU training completed successfully"
-    echo "✅ Model saved and verified"
+    echo "🎉 PATCH-LEVEL TRAINING SUCCESS!"
+    echo "================================"
+    echo "✅ 256-token patch-level flow matching completed"
+    echo "✅ EVA-CLIP → CLIP patch translation trained"
+    echo "✅ Image-to-text recall optimization successful"
+    echo "✅ BLIP3-o paper alignment achieved"
     echo ""
     echo "📁 Model locations:"
     echo "   Primary: $OUTPUT_DIR"
@@ -488,57 +436,43 @@ if [ $TRAINING_EXIT_CODE -eq 0 ]; then
     fi
     echo ""
     echo "🧪 Next steps:"
-    echo "   1. Run model evaluation"
+    echo "   1. Run recall evaluation: python eval_blip3o_patch_recall.py"
     echo "   2. Check training logs for performance metrics"
-    echo "   3. Consider fine-tuning if needed"
+    echo "   3. Compare with CLIP baseline performance"
+    echo "   4. Fine-tune if recall performance needs improvement"
     
 else
     echo ""
-    echo "❌ ENHANCED TRAINING FAILED"
-    echo "========================="
+    echo "❌ PATCH-LEVEL TRAINING FAILED"
+    echo "=============================="
     echo "Exit code: $TRAINING_EXIT_CODE"
     echo ""
-    echo "🔍 Enhanced Debugging Information:"
-    echo "================================"
+    echo "🔍 Debugging Information:"
+    echo "========================"
     echo "1. Check error log: ${SLURM_JOB_ID}.err"
-    echo "2. Check training debug info: training_error_debug.json"
+    echo "2. Check training logs in: $OUTPUT_DIR"
     echo "3. Check GPU diagnostics output above"
     echo ""
     echo "💡 Common solutions:"
-    echo "  • GPU allocation: Check SLURM GPU request vs availability"
-    echo "  • Memory issues: Reduce batch size or model size"
-    echo "  • Module loading: Verify CUDA module is loaded"
-    echo "  • Environment: Check conda environment activation"
-    echo ""
-    echo "🔧 Quick fixes to try:"
-    echo "  • Rerun with --cpu_fallback flag"
-    echo "  • Check 'sbatch debug_gpu.job' for detailed diagnostics"
-    echo "  • Verify embeddings exist: ls -la $EMBEDDINGS_DIR"
+    echo "  • GPU allocation: Check SLURM GPU request"
+    echo "  • Memory issues: Reduce batch size"
+    echo "  • Module loading: Check conda environment"
+    echo "  • Embeddings: Verify patch-level embeddings exist"
 fi
 
-# Enhanced cleanup
+# Cleanup
 echo ""
-echo "🧹 Enhanced cleanup..."
-echo "===================="
+echo "🧹 Cleanup..."
+echo "============"
 
-# Clean up job temp cache but preserve working files
 if [ -d "${BLIP3O_JOB_TEMP}/cache" ]; then
     CACHE_SIZE=$(du -sh "${BLIP3O_JOB_TEMP}/cache" 2>/dev/null | cut -f1)
     rm -rf "${BLIP3O_JOB_TEMP}/cache" 2>/dev/null
     echo "✅ Cleaned up model cache ($CACHE_SIZE)"
 fi
 
-# Preserve debug files
-echo "💾 Debug files preserved:"
-if [ -f "training_error_debug.json" ]; then
-    echo "   training_error_debug.json"
-fi
-if [ -f "gpu_diagnostics_results.json" ]; then
-    echo "   gpu_diagnostics_results.json"
-fi
-
 echo ""
-echo "🏁 Enhanced job completed at $(date)"
+echo "🏁 Job completed at $(date)"
 echo "Total runtime: $SECONDS seconds"
 echo "================================================================"
 

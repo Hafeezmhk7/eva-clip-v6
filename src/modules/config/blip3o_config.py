@@ -7,6 +7,9 @@ Configuration classes for BLIP3-o patch-level DiT model following the paper arch
 
 from transformers import PretrainedConfig
 from typing import Dict, Any, Optional
+from transformers import PretrainedConfig
+from typing import Dict, Any, Optional
+from dataclasses import dataclass
 
 
 class BLIP3oDiTConfig(PretrainedConfig):
@@ -336,3 +339,83 @@ LARGE_CONFIG = get_blip3o_patch_config("large")
 # Specialized configurations
 RECALL_OPTIMIZED_CONFIG = get_recall_optimized_config("base")
 MEMORY_OPTIMIZED_CONFIG = get_memory_optimized_config()
+
+# Add these classes to the END of your src/modules/config/blip3o_config.py file:
+
+from dataclasses import dataclass
+
+@dataclass
+class FlowMatchingConfig:
+    """Configuration for flow matching training"""
+    sigma_min: float = 1e-4
+    sigma_max: float = 1.0
+    prediction_type: str = "velocity"
+    use_contrastive_loss: bool = True
+    contrastive_weight: float = 0.1
+    temperature: float = 0.07
+    normalize_targets: bool = True
+
+
+@dataclass  
+class TrainingConfig:
+    """Configuration for training parameters"""
+    num_epochs: int = 6
+    batch_size: int = 8
+    eval_batch_size: int = 4
+    learning_rate: float = 1e-4
+    weight_decay: float = 0.01
+    warmup_steps: int = 100
+    gradient_accumulation_steps: int = 4
+    fp16: bool = True
+    dataloader_num_workers: int = 4
+
+
+def get_default_flow_matching_config(**kwargs) -> FlowMatchingConfig:
+    """Get default flow matching configuration"""
+    return FlowMatchingConfig(**kwargs)
+
+
+def get_enhanced_flow_matching_config(**kwargs) -> FlowMatchingConfig:
+    """Get enhanced flow matching configuration with contrastive loss"""
+    defaults = {
+        'use_contrastive_loss': True,
+        'contrastive_weight': 0.1,
+        'temperature': 0.07,
+    }
+    defaults.update(kwargs)
+    return FlowMatchingConfig(**defaults)
+
+
+def get_default_training_config(**kwargs) -> TrainingConfig:
+    """Get default training configuration"""
+    return TrainingConfig(**kwargs)
+
+
+def validate_config_compatibility(model_config: BLIP3oDiTConfig, flow_config: FlowMatchingConfig) -> bool:
+    """Validate that model and flow configs are compatible"""
+    if flow_config.prediction_type not in ["velocity", "epsilon"]:
+        raise ValueError(f"Unsupported prediction type: {flow_config.prediction_type}")
+    return True
+
+
+def print_config_summary(model_config: BLIP3oDiTConfig, flow_config: FlowMatchingConfig = None):
+    """Print configuration summary"""
+    print("📋 BLIP3-o Configuration Summary")
+    print("=" * 40)
+    print(f"Model: {model_config.hidden_size}D, {model_config.num_hidden_layers}L, {model_config.num_attention_heads}H")
+    print(f"Patches: {model_config.num_patches} (16×16)")
+    print(f"EVA input: {model_config.eva_embedding_size}D")
+    print(f"CLIP output: {model_config.clip_embedding_size}D")
+    
+    if flow_config:
+        print(f"\nFlow Matching:")
+        print(f"  Prediction: {flow_config.prediction_type}")
+        print(f"  Contrastive: {flow_config.use_contrastive_loss}")
+        if flow_config.use_contrastive_loss:
+            print(f"  Weight: {flow_config.contrastive_weight}")
+    print("=" * 40)
+
+
+# Add these to the end after the existing predefined configs
+DEFAULT_FLOW_MATCHING_CONFIG = get_default_flow_matching_config()
+DEFAULT_TRAINING_CONFIG = get_default_training_config()

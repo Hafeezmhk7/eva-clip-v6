@@ -1,0 +1,400 @@
+[Rank 0] 2025-07-22 21:49:43,026 - INFO - ✅ Using BLIP3-o recall evaluator as default
+[Rank 0] 2025-07-22 21:49:43,027 - INFO - BLIP3-o evaluation utilities loaded successfully
+[Rank 0] 2025-07-22 21:49:43,712 - INFO - BLIP3-o configurations loaded successfully
+[Rank 0] 2025-07-22 21:49:43,712 - INFO -   ✅ Memory optimization features available
+[Rank 0] 2025-07-22 21:49:45,446 - INFO - ✅ BLIP3-o patch-level DiT model loaded successfully
+[Rank 0] 2025-07-22 21:49:45,446 - INFO - ✅ Using BLIP3-o patch-level DiT model as primary model
+[Rank 0] 2025-07-22 21:49:45,446 - INFO - BLIP3-o patch-level DiT model loaded successfully - Paper-aligned architecture
+[Rank 0] 2025-07-22 21:49:45,446 - INFO - ✅ BLIP3-o patch-level flow matching loss loaded successfully
+[Rank 0] 2025-07-22 21:49:45,446 - INFO - ✅ Using BLIP3-o patch-level flow matching loss as primary loss
+[Rank 0] 2025-07-22 21:49:45,446 - INFO - BLIP3-o patch-level flow matching loss loaded successfully - Paper-aligned training
+[Rank 0] 2025-07-22 21:49:46,019 - INFO - PyTorch version 2.7.1 available.
+[Rank 0] 2025-07-22 21:49:46,211 - INFO - ✅ Using BLIP3-o patch-level trainer as default
+[Rank 0] 2025-07-22 21:49:46,211 - INFO - BLIP3-o patch-level trainer loaded successfully - Paper-aligned training
+[Rank 0] 2025-07-22 21:49:46,212 - INFO - ✅ Using enhanced DDP dataloaders as default
+[Rank 0] 2025-07-22 21:49:46,212 - INFO - BLIP3-o datasets loaded successfully (default: enhanced_ddp)
+[Rank 0] 2025-07-22 21:49:48,278 - INFO - Loaded manifest: 30 shards, 78,475 samples
+[Rank 0] 2025-07-22 21:49:48,279 - INFO - Found 30 shard files:
+[Rank 0] 2025-07-22 21:49:48,279 - INFO -   embeddings_shard_00000.pkl (EXISTS)
+[Rank 0] 2025-07-22 21:49:48,279 - INFO -   embeddings_shard_00001.pkl (EXISTS)
+[Rank 0] 2025-07-22 21:49:48,279 - INFO -   embeddings_shard_00002.pkl (EXISTS)
+[Rank 0] 2025-07-22 21:49:48,279 - INFO -   embeddings_shard_00003.pkl (EXISTS)
+[Rank 0] 2025-07-22 21:49:48,280 - INFO -   embeddings_shard_00004.pkl (EXISTS)
+[Rank 0] 2025-07-22 21:49:48,280 - INFO -   embeddings_shard_00005.pkl (EXISTS)
+[Rank 0] 2025-07-22 21:49:48,280 - INFO -   embeddings_shard_00006.pkl (EXISTS)
+[Rank 0] 2025-07-22 21:49:48,280 - INFO -   embeddings_shard_00007.pkl (EXISTS)
+[Rank 0] 2025-07-22 21:49:48,280 - INFO -   embeddings_shard_00008.pkl (EXISTS)
+[Rank 0] 2025-07-22 21:49:48,280 - INFO -   embeddings_shard_00009.pkl (EXISTS)
+[Rank 0] 2025-07-22 21:49:48,280 - INFO -   embeddings_shard_00010.pkl (EXISTS)
+[Rank 0] 2025-07-22 21:49:48,280 - INFO -   embeddings_shard_00011.pkl (EXISTS)
+[Rank 0] 2025-07-22 21:49:48,280 - INFO -   embeddings_shard_00012.pkl (EXISTS)
+[Rank 0] 2025-07-22 21:49:48,280 - INFO -   embeddings_shard_00013.pkl (EXISTS)
+[Rank 0] 2025-07-22 21:49:48,280 - INFO -   embeddings_shard_00014.pkl (EXISTS)
+[Rank 0] 2025-07-22 21:49:48,280 - INFO -   embeddings_shard_00015.pkl (EXISTS)
+[Rank 0] 2025-07-22 21:49:48,280 - INFO -   embeddings_shard_00016.pkl (EXISTS)
+[Rank 0] 2025-07-22 21:49:48,280 - INFO -   embeddings_shard_00017.pkl (EXISTS)
+[Rank 0] 2025-07-22 21:49:48,280 - INFO -   embeddings_shard_00018.pkl (EXISTS)
+[Rank 0] 2025-07-22 21:49:48,280 - INFO -   embeddings_shard_00019.pkl (EXISTS)
+[Rank 0] 2025-07-22 21:49:48,280 - INFO -   embeddings_shard_00020.pkl (EXISTS)
+[Rank 0] 2025-07-22 21:49:48,281 - INFO -   embeddings_shard_00021.pkl (EXISTS)
+[Rank 0] 2025-07-22 21:49:48,281 - INFO -   embeddings_shard_00022.pkl (EXISTS)
+[Rank 0] 2025-07-22 21:49:48,281 - INFO -   embeddings_shard_00023.pkl (EXISTS)
+[Rank 0] 2025-07-22 21:49:48,281 - INFO -   embeddings_shard_00024.pkl (EXISTS)
+[Rank 0] 2025-07-22 21:49:48,281 - INFO -   embeddings_shard_00025.pkl (EXISTS)
+[Rank 0] 2025-07-22 21:49:48,281 - INFO -   embeddings_shard_00026.pkl (EXISTS)
+[Rank 0] 2025-07-22 21:49:48,281 - INFO -   embeddings_shard_00027.pkl (EXISTS)
+[Rank 0] 2025-07-22 21:49:48,281 - INFO -   embeddings_shard_00028.pkl (EXISTS)
+[Rank 0] 2025-07-22 21:49:48,281 - INFO -   embeddings_shard_00029.pkl (EXISTS)
+[Rank 0] 2025-07-22 21:49:48,282 - INFO - Prepared 27 shard files for train split
+[Rank 0] 2025-07-22 21:49:48,282 - INFO - Single-node mode:
+[Rank 0] 2025-07-22 21:49:48,282 - INFO -   Total samples: 78,475
+[Rank 0] 2025-07-22 21:49:48,282 - INFO -   Split samples (train): 70,627
+[Rank 0] 2025-07-22 21:49:48,282 - INFO - ChunkedDataset initialized:
+[Rank 0] 2025-07-22 21:49:48,282 - INFO -   Directory: /scratch-shared/scur2711/blip3o_workspace/embeddings/chunked_256_tokens
+[Rank 0] 2025-07-22 21:49:48,282 - INFO -   Split: train
+[Rank 0] 2025-07-22 21:49:48,282 - INFO -   Total shards: 27
+[Rank 0] 2025-07-22 21:49:48,282 - INFO -   Estimated samples: 70,627
+[Rank 0] 2025-07-22 21:49:48,282 - INFO -   Delete after use: False
+[Rank 0] 2025-07-22 21:49:48,282 - INFO - IterableDataset detected: Forcing shuffle=False for DataLoader
+[Rank 0] 2025-07-22 21:49:48,282 - INFO - Loaded manifest: 30 shards, 78,475 samples
+[Rank 0] 2025-07-22 21:49:48,283 - INFO - Found 30 shard files:
+[Rank 0] 2025-07-22 21:49:48,283 - INFO -   embeddings_shard_00000.pkl (EXISTS)
+[Rank 0] 2025-07-22 21:49:48,283 - INFO -   embeddings_shard_00001.pkl (EXISTS)
+[Rank 0] 2025-07-22 21:49:48,283 - INFO -   embeddings_shard_00002.pkl (EXISTS)
+[Rank 0] 2025-07-22 21:49:48,283 - INFO -   embeddings_shard_00003.pkl (EXISTS)
+[Rank 0] 2025-07-22 21:49:48,283 - INFO -   embeddings_shard_00004.pkl (EXISTS)
+[Rank 0] 2025-07-22 21:49:48,283 - INFO -   embeddings_shard_00005.pkl (EXISTS)
+[Rank 0] 2025-07-22 21:49:48,283 - INFO -   embeddings_shard_00006.pkl (EXISTS)
+[Rank 0] 2025-07-22 21:49:48,283 - INFO -   embeddings_shard_00007.pkl (EXISTS)
+[Rank 0] 2025-07-22 21:49:48,283 - INFO -   embeddings_shard_00008.pkl (EXISTS)
+[Rank 0] 2025-07-22 21:49:48,283 - INFO -   embeddings_shard_00009.pkl (EXISTS)
+[Rank 0] 2025-07-22 21:49:48,283 - INFO -   embeddings_shard_00010.pkl (EXISTS)
+[Rank 0] 2025-07-22 21:49:48,283 - INFO -   embeddings_shard_00011.pkl (EXISTS)
+[Rank 0] 2025-07-22 21:49:48,283 - INFO -   embeddings_shard_00012.pkl (EXISTS)
+[Rank 0] 2025-07-22 21:49:48,283 - INFO -   embeddings_shard_00013.pkl (EXISTS)
+[Rank 0] 2025-07-22 21:49:48,283 - INFO -   embeddings_shard_00014.pkl (EXISTS)
+[Rank 0] 2025-07-22 21:49:48,283 - INFO -   embeddings_shard_00015.pkl (EXISTS)
+[Rank 0] 2025-07-22 21:49:48,283 - INFO -   embeddings_shard_00016.pkl (EXISTS)
+[Rank 0] 2025-07-22 21:49:48,283 - INFO -   embeddings_shard_00017.pkl (EXISTS)
+[Rank 0] 2025-07-22 21:49:48,283 - INFO -   embeddings_shard_00018.pkl (EXISTS)
+[Rank 0] 2025-07-22 21:49:48,283 - INFO -   embeddings_shard_00019.pkl (EXISTS)
+[Rank 0] 2025-07-22 21:49:48,283 - INFO -   embeddings_shard_00020.pkl (EXISTS)
+[Rank 0] 2025-07-22 21:49:48,283 - INFO -   embeddings_shard_00021.pkl (EXISTS)
+[Rank 0] 2025-07-22 21:49:48,283 - INFO -   embeddings_shard_00022.pkl (EXISTS)
+[Rank 0] 2025-07-22 21:49:48,283 - INFO -   embeddings_shard_00023.pkl (EXISTS)
+[Rank 0] 2025-07-22 21:49:48,283 - INFO -   embeddings_shard_00024.pkl (EXISTS)
+[Rank 0] 2025-07-22 21:49:48,283 - INFO -   embeddings_shard_00025.pkl (EXISTS)
+[Rank 0] 2025-07-22 21:49:48,283 - INFO -   embeddings_shard_00026.pkl (EXISTS)
+[Rank 0] 2025-07-22 21:49:48,284 - INFO -   embeddings_shard_00027.pkl (EXISTS)
+[Rank 0] 2025-07-22 21:49:48,284 - INFO -   embeddings_shard_00028.pkl (EXISTS)
+[Rank 0] 2025-07-22 21:49:48,284 - INFO -   embeddings_shard_00029.pkl (EXISTS)
+[Rank 0] 2025-07-22 21:49:48,284 - INFO - Prepared 3 shard files for eval split
+[Rank 0] 2025-07-22 21:49:48,284 - INFO - Single-node mode:
+[Rank 0] 2025-07-22 21:49:48,284 - INFO -   Total samples: 78,475
+[Rank 0] 2025-07-22 21:49:48,284 - INFO -   Split samples (eval): 7,847
+[Rank 0] 2025-07-22 21:49:48,284 - INFO - ChunkedDataset initialized:
+[Rank 0] 2025-07-22 21:49:48,284 - INFO -   Directory: /scratch-shared/scur2711/blip3o_workspace/embeddings/chunked_256_tokens
+[Rank 0] 2025-07-22 21:49:48,284 - INFO -   Split: eval
+[Rank 0] 2025-07-22 21:49:48,284 - INFO -   Total shards: 3
+[Rank 0] 2025-07-22 21:49:48,284 - INFO -   Estimated samples: 7,847
+[Rank 0] 2025-07-22 21:49:48,284 - INFO -   Delete after use: False
+[Rank 0] 2025-07-22 21:49:48,284 - INFO - IterableDataset detected: Forcing shuffle=False for DataLoader
+[Rank 0] 2025-07-22 21:49:54,576 - INFO - CLIP text encoder loaded successfully
+[Rank 0] 2025-07-22 21:49:54,579 - INFO - BLIP3-o Recall Evaluator initialized
+[Rank 0] 2025-07-22 21:49:54,579 - INFO - Device: cuda:0
+[Rank 0] 2025-07-22 21:49:54,579 - INFO - Normalize embeddings: True
+[Rank 0] 2025-07-22 21:49:54,579 - INFO - ✅ Recall evaluator initialized
+[Rank 0] 2025-07-22 21:49:54,579 - INFO - ✅ BLIP3-o Patch Trainer initialized
+[Rank 0] 2025-07-22 21:49:54,579 - INFO - 🎯 Training mode: Patch-level flow matching
+[Rank 0] 2025-07-22 21:49:54,579 - INFO - 📊 Recall evaluation: enabled
+[Rank 0] 2025-07-22 21:50:09,246 - INFO - Loaded shard 1/27: 2630 samples
+[Rank 0] 2025-07-22 21:50:09,248 - INFO - Loaded shard 1/27: 2630 samples
+[Rank 0] 2025-07-22 21:50:09,252 - INFO - Loaded shard 1/27: 2630 samples
+[Rank 0] 2025-07-22 21:50:09,292 - INFO - Loaded shard 1/27: 2630 samples
+[Rank 0] 2025-07-22 21:50:10,849 - INFO - Step 0: Loss=1.3816, VelCos=0.000, PatchCos=0.000, GlobalCos=0.000, HighQ=0.000, EstR@1=0.0%, Quality=needs_improvement, Mem=3.7GB
+[Rank 0] 2025-07-22 21:50:45,738 - INFO - Starting evaluation on 8 images
+[Rank 0] 2025-07-22 21:50:45,738 - INFO - Extracted 8 text captions
+[Rank 0] 2025-07-22 21:50:45,738 - INFO - Extracting text embeddings...
+[Rank 0] 2025-07-22 21:50:45,771 - INFO - Generating image embeddings...
+[Rank 0] 2025-07-22 21:50:46,370 - INFO - Computing similarity matrix...
+[Rank 0] 2025-07-22 21:50:46,393 - INFO - Computing recall metrics...
+[Rank 0] 2025-07-22 21:50:46,393 - INFO - Computing recall metrics for 8 images
+[Rank 0] 2025-07-22 21:50:46,393 - INFO - Similarity matrix shape: torch.Size([8, 8])
+[Rank 0] 2025-07-22 21:50:46,412 - INFO - Similarity range: [-0.1005, 0.1085]
+[Rank 0] 2025-07-22 21:50:46,413 - INFO - Recall@1: 2/8 = 0.2500 (25.00%)
+[Rank 0] 2025-07-22 21:50:46,413 - INFO - Recall@5: 7/8 = 0.8750 (87.50%)
+[Rank 0] 2025-07-22 21:50:46,414 - INFO - 🎯 Recall evaluation (step 250):
+[Rank 0] 2025-07-22 21:50:46,414 - INFO -    R@1: 25.0%, R@5: 87.5%
+[Rank 0] 2025-07-22 21:50:46,415 - INFO - ✅ GOOD recall performance
+[Rank 0] 2025-07-22 21:50:48,325 - INFO - Step 264: Loss=1.3639, VelCos=-0.001, PatchCos=-0.001, GlobalCos=-0.001, HighQ=0.000, EstR@1=0.0%, Quality=needs_improvement, Mem=5.3GB
+[Rank 0] 2025-07-22 21:51:21,106 - INFO - Starting evaluation on 8 images
+[Rank 0] 2025-07-22 21:51:21,106 - INFO - Extracted 8 text captions
+[Rank 0] 2025-07-22 21:51:21,106 - INFO - Extracting text embeddings...
+[Rank 0] 2025-07-22 21:51:21,120 - INFO - Generating image embeddings...
+[Rank 0] 2025-07-22 21:51:21,711 - INFO - Computing similarity matrix...
+[Rank 0] 2025-07-22 21:51:21,711 - INFO - Computing recall metrics...
+[Rank 0] 2025-07-22 21:51:21,711 - INFO - Computing recall metrics for 8 images
+[Rank 0] 2025-07-22 21:51:21,711 - INFO - Similarity matrix shape: torch.Size([8, 8])
+[Rank 0] 2025-07-22 21:51:21,711 - INFO - Similarity range: [-0.1111, 0.1141]
+[Rank 0] 2025-07-22 21:51:21,711 - INFO - Recall@1: 2/8 = 0.2500 (25.00%)
+[Rank 0] 2025-07-22 21:51:21,711 - INFO - Recall@5: 6/8 = 0.7500 (75.00%)
+[Rank 0] 2025-07-22 21:51:21,712 - INFO - 🎯 Recall evaluation (step 500):
+[Rank 0] 2025-07-22 21:51:21,712 - INFO -    R@1: 25.0%, R@5: 75.0%
+[Rank 0] 2025-07-22 21:51:21,712 - INFO - ✅ GOOD recall performance
+[Rank 0] 2025-07-22 21:51:25,550 - INFO - Step 528: Loss=1.3313, VelCos=0.003, PatchCos=0.003, GlobalCos=0.102, HighQ=0.000, EstR@1=6.1%, Quality=needs_improvement, Mem=5.3GB
+[Rank 0] 2025-07-22 21:51:56,464 - INFO - Starting evaluation on 8 images
+[Rank 0] 2025-07-22 21:51:56,464 - INFO - Extracted 8 text captions
+[Rank 0] 2025-07-22 21:51:56,464 - INFO - Extracting text embeddings...
+[Rank 0] 2025-07-22 21:51:56,479 - INFO - Generating image embeddings...
+[Rank 0] 2025-07-22 21:51:57,070 - INFO - Computing similarity matrix...
+[Rank 0] 2025-07-22 21:51:57,070 - INFO - Computing recall metrics...
+[Rank 0] 2025-07-22 21:51:57,070 - INFO - Computing recall metrics for 8 images
+[Rank 0] 2025-07-22 21:51:57,070 - INFO - Similarity matrix shape: torch.Size([8, 8])
+[Rank 0] 2025-07-22 21:51:57,071 - INFO - Similarity range: [-0.0766, 0.0669]
+[Rank 0] 2025-07-22 21:51:57,071 - INFO - Recall@1: 2/8 = 0.2500 (25.00%)
+[Rank 0] 2025-07-22 21:51:57,071 - INFO - Recall@5: 6/8 = 0.7500 (75.00%)
+[Rank 0] 2025-07-22 21:51:57,072 - INFO - 🎯 Recall evaluation (step 750):
+[Rank 0] 2025-07-22 21:51:57,072 - INFO -    R@1: 25.0%, R@5: 75.0%
+[Rank 0] 2025-07-22 21:51:57,072 - INFO - ✅ GOOD recall performance
+[Rank 0] 2025-07-22 21:52:02,897 - INFO - Step 792: Loss=1.3392, VelCos=0.003, PatchCos=0.003, GlobalCos=0.103, HighQ=0.000, EstR@1=6.2%, Quality=needs_improvement, Mem=5.3GB
+[Rank 0] 2025-07-22 21:52:32,049 - INFO - Starting evaluation on 8 images
+[Rank 0] 2025-07-22 21:52:32,050 - INFO - Extracted 8 text captions
+[Rank 0] 2025-07-22 21:52:32,050 - INFO - Extracting text embeddings...
+[Rank 0] 2025-07-22 21:52:32,063 - INFO - Generating image embeddings...
+[Rank 0] 2025-07-22 21:52:32,654 - INFO - Computing similarity matrix...
+[Rank 0] 2025-07-22 21:52:32,654 - INFO - Computing recall metrics...
+[Rank 0] 2025-07-22 21:52:32,655 - INFO - Computing recall metrics for 8 images
+[Rank 0] 2025-07-22 21:52:32,655 - INFO - Similarity matrix shape: torch.Size([8, 8])
+[Rank 0] 2025-07-22 21:52:32,655 - INFO - Similarity range: [-0.1468, 0.1016]
+[Rank 0] 2025-07-22 21:52:32,655 - INFO - Recall@1: 0/8 = 0.0000 (0.00%)
+[Rank 0] 2025-07-22 21:52:32,655 - INFO - Recall@5: 6/8 = 0.7500 (75.00%)
+[Rank 0] 2025-07-22 21:52:32,656 - INFO - 🎯 Recall evaluation (step 1000):
+[Rank 0] 2025-07-22 21:52:32,656 - INFO -    R@1: 0.0%, R@5: 75.0%
+[Rank 0] 2025-07-22 21:52:40,579 - INFO - Step 1056: Loss=1.3103, VelCos=0.003, PatchCos=0.002, GlobalCos=0.188, HighQ=0.000, EstR@1=11.3%, Quality=needs_improvement, Mem=5.3GB
+[Rank 0] 2025-07-22 21:53:07,613 - INFO - Starting evaluation on 8 images
+[Rank 0] 2025-07-22 21:53:07,614 - INFO - Extracted 8 text captions
+[Rank 0] 2025-07-22 21:53:07,614 - INFO - Extracting text embeddings...
+[Rank 0] 2025-07-22 21:53:07,628 - INFO - Generating image embeddings...
+[Rank 0] 2025-07-22 21:53:08,220 - INFO - Computing similarity matrix...
+[Rank 0] 2025-07-22 21:53:08,220 - INFO - Computing recall metrics...
+[Rank 0] 2025-07-22 21:53:08,220 - INFO - Computing recall metrics for 8 images
+[Rank 0] 2025-07-22 21:53:08,220 - INFO - Similarity matrix shape: torch.Size([8, 8])
+[Rank 0] 2025-07-22 21:53:08,220 - INFO - Similarity range: [-0.0952, 0.0943]
+[Rank 0] 2025-07-22 21:53:08,220 - INFO - Recall@1: 0/8 = 0.0000 (0.00%)
+[Rank 0] 2025-07-22 21:53:08,220 - INFO - Recall@5: 5/8 = 0.6250 (62.50%)
+[Rank 0] 2025-07-22 21:53:08,221 - INFO - 🎯 Recall evaluation (step 1250):
+[Rank 0] 2025-07-22 21:53:08,221 - INFO -    R@1: 0.0%, R@5: 62.5%
+[Rank 0] 2025-07-22 21:53:25,093 - INFO - Loaded shard 2/27: 2513 samples
+[Rank 0] 2025-07-22 21:53:25,200 - INFO - Loaded shard 2/27: 2513 samples
+[Rank 0] 2025-07-22 21:53:25,229 - INFO - Loaded shard 2/27: 2513 samples
+[Rank 0] 2025-07-22 21:53:25,435 - INFO - Loaded shard 2/27: 2513 samples
+[Rank 0] 2025-07-22 21:53:26,651 - INFO - Step 1320: Loss=1.2762, VelCos=0.004, PatchCos=0.004, GlobalCos=0.189, HighQ=0.000, EstR@1=11.3%, Quality=needs_improvement, Mem=5.3GB
+[Rank 0] 2025-07-22 21:53:51,872 - INFO - Starting evaluation on 8 images
+[Rank 0] 2025-07-22 21:53:51,873 - INFO - Extracted 8 text captions
+[Rank 0] 2025-07-22 21:53:51,873 - INFO - Extracting text embeddings...
+[Rank 0] 2025-07-22 21:53:51,887 - INFO - Generating image embeddings...
+[Rank 0] 2025-07-22 21:53:52,478 - INFO - Computing similarity matrix...
+[Rank 0] 2025-07-22 21:53:52,478 - INFO - Computing recall metrics...
+[Rank 0] 2025-07-22 21:53:52,478 - INFO - Computing recall metrics for 8 images
+[Rank 0] 2025-07-22 21:53:52,478 - INFO - Similarity matrix shape: torch.Size([8, 8])
+[Rank 0] 2025-07-22 21:53:52,478 - INFO - Similarity range: [-0.0965, 0.0980]
+[Rank 0] 2025-07-22 21:53:52,478 - INFO - Recall@1: 1/8 = 0.1250 (12.50%)
+[Rank 0] 2025-07-22 21:53:52,478 - INFO - Recall@5: 5/8 = 0.6250 (62.50%)
+[Rank 0] 2025-07-22 21:53:52,479 - INFO - 🎯 Recall evaluation (step 1500):
+[Rank 0] 2025-07-22 21:53:52,480 - INFO -    R@1: 12.5%, R@5: 62.5%
+[Rank 0] 2025-07-22 21:53:52,480 - INFO - 🔄 Improving recall performance
+[Rank 0] 2025-07-22 21:54:04,300 - INFO - Step 1584: Loss=1.2828, VelCos=0.004, PatchCos=0.004, GlobalCos=0.193, HighQ=0.000, EstR@1=11.6%, Quality=needs_improvement, Mem=5.3GB
+[Rank 0] 2025-07-22 21:54:27,636 - INFO - Starting evaluation on 8 images
+[Rank 0] 2025-07-22 21:54:27,641 - INFO - Extracted 8 text captions
+[Rank 0] 2025-07-22 21:54:27,641 - INFO - Extracting text embeddings...
+[Rank 0] 2025-07-22 21:54:27,655 - INFO - Generating image embeddings...
+[Rank 0] 2025-07-22 21:54:28,246 - INFO - Computing similarity matrix...
+[Rank 0] 2025-07-22 21:54:28,246 - INFO - Computing recall metrics...
+[Rank 0] 2025-07-22 21:54:28,246 - INFO - Computing recall metrics for 8 images
+[Rank 0] 2025-07-22 21:54:28,247 - INFO - Similarity matrix shape: torch.Size([8, 8])
+[Rank 0] 2025-07-22 21:54:28,247 - INFO - Similarity range: [-0.0972, 0.0670]
+[Rank 0] 2025-07-22 21:54:28,247 - INFO - Recall@1: 1/8 = 0.1250 (12.50%)
+[Rank 0] 2025-07-22 21:54:28,247 - INFO - Recall@5: 6/8 = 0.7500 (75.00%)
+[Rank 0] 2025-07-22 21:54:28,248 - INFO - 🎯 Recall evaluation (step 1750):
+[Rank 0] 2025-07-22 21:54:28,248 - INFO -    R@1: 12.5%, R@5: 75.0%
+[Rank 0] 2025-07-22 21:54:28,248 - INFO - 🔄 Improving recall performance
+[Rank 0] 2025-07-22 21:54:41,866 - INFO - Step 1848: Loss=1.2869, VelCos=0.002, PatchCos=0.002, GlobalCos=0.207, HighQ=0.000, EstR@1=12.4%, Quality=needs_improvement, Mem=5.3GB
+[Rank 0] 2025-07-22 21:55:03,396 - INFO - Starting evaluation on 8 images
+[Rank 0] 2025-07-22 21:55:03,397 - INFO - Extracted 8 text captions
+[Rank 0] 2025-07-22 21:55:03,397 - INFO - Extracting text embeddings...
+[Rank 0] 2025-07-22 21:55:03,410 - INFO - Generating image embeddings...
+[Rank 0] 2025-07-22 21:55:04,001 - INFO - Computing similarity matrix...
+[Rank 0] 2025-07-22 21:55:04,002 - INFO - Computing recall metrics...
+[Rank 0] 2025-07-22 21:55:04,002 - INFO - Computing recall metrics for 8 images
+[Rank 0] 2025-07-22 21:55:04,002 - INFO - Similarity matrix shape: torch.Size([8, 8])
+[Rank 0] 2025-07-22 21:55:04,002 - INFO - Similarity range: [-0.0806, 0.1210]
+[Rank 0] 2025-07-22 21:55:04,002 - INFO - Recall@1: 1/8 = 0.1250 (12.50%)
+[Rank 0] 2025-07-22 21:55:04,002 - INFO - Recall@5: 4/8 = 0.5000 (50.00%)
+[Rank 0] 2025-07-22 21:55:04,003 - INFO - 🎯 Recall evaluation (step 2000):
+[Rank 0] 2025-07-22 21:55:04,003 - INFO -    R@1: 12.5%, R@5: 50.0%
+[Rank 0] 2025-07-22 21:55:04,003 - INFO - 🔄 Improving recall performance
+[Rank 0] 2025-07-22 21:55:19,716 - INFO - Step 2112: Loss=1.2972, VelCos=0.002, PatchCos=0.002, GlobalCos=0.188, HighQ=0.000, EstR@1=11.3%, Quality=needs_improvement, Mem=5.3GB
+[Rank 0] 2025-07-22 21:55:39,058 - INFO - Starting evaluation on 8 images
+[Rank 0] 2025-07-22 21:55:39,059 - INFO - Extracted 8 text captions
+[Rank 0] 2025-07-22 21:55:39,059 - INFO - Extracting text embeddings...
+[Rank 0] 2025-07-22 21:55:39,073 - INFO - Generating image embeddings...
+[Rank 0] 2025-07-22 21:55:39,664 - INFO - Computing similarity matrix...
+[Rank 0] 2025-07-22 21:55:39,664 - INFO - Computing recall metrics...
+[Rank 0] 2025-07-22 21:55:39,664 - INFO - Computing recall metrics for 8 images
+[Rank 0] 2025-07-22 21:55:39,664 - INFO - Similarity matrix shape: torch.Size([8, 8])
+[Rank 0] 2025-07-22 21:55:39,664 - INFO - Similarity range: [-0.1037, 0.0935]
+[Rank 0] 2025-07-22 21:55:39,664 - INFO - Recall@1: 0/8 = 0.0000 (0.00%)
+[Rank 0] 2025-07-22 21:55:39,665 - INFO - Recall@5: 5/8 = 0.6250 (62.50%)
+[Rank 0] 2025-07-22 21:55:39,665 - INFO - 🎯 Recall evaluation (step 2250):
+[Rank 0] 2025-07-22 21:55:39,666 - INFO -    R@1: 0.0%, R@5: 62.5%
+[Rank 0] 2025-07-22 21:55:57,387 - INFO - Step 2376: Loss=1.2806, VelCos=0.004, PatchCos=0.004, GlobalCos=0.207, HighQ=0.000, EstR@1=12.4%, Quality=needs_improvement, Mem=5.3GB
+[Rank 0] 2025-07-22 21:56:14,813 - INFO - Starting evaluation on 8 images
+[Rank 0] 2025-07-22 21:56:14,813 - INFO - Extracted 8 text captions
+[Rank 0] 2025-07-22 21:56:14,814 - INFO - Extracting text embeddings...
+[Rank 0] 2025-07-22 21:56:14,828 - INFO - Generating image embeddings...
+[Rank 0] 2025-07-22 21:56:15,419 - INFO - Computing similarity matrix...
+[Rank 0] 2025-07-22 21:56:15,419 - INFO - Computing recall metrics...
+[Rank 0] 2025-07-22 21:56:15,419 - INFO - Computing recall metrics for 8 images
+[Rank 0] 2025-07-22 21:56:15,419 - INFO - Similarity matrix shape: torch.Size([8, 8])
+[Rank 0] 2025-07-22 21:56:15,419 - INFO - Similarity range: [-0.1156, 0.0949]
+[Rank 0] 2025-07-22 21:56:15,419 - INFO - Recall@1: 0/8 = 0.0000 (0.00%)
+[Rank 0] 2025-07-22 21:56:15,419 - INFO - Recall@5: 6/8 = 0.7500 (75.00%)
+[Rank 0] 2025-07-22 21:56:15,420 - INFO - 🎯 Recall evaluation (step 2500):
+[Rank 0] 2025-07-22 21:56:15,420 - INFO -    R@1: 0.0%, R@5: 75.0%
+[Rank 0] 2025-07-22 21:56:31,810 - INFO - Loaded shard 3/27: 2596 samples
+[Rank 0] 2025-07-22 21:56:31,949 - INFO - Loaded shard 3/27: 2596 samples
+[Rank 0] 2025-07-22 21:56:31,961 - INFO - Loaded shard 3/27: 2596 samples
+[Rank 0] 2025-07-22 21:56:31,962 - INFO - Loaded shard 3/27: 2596 samples
+[Rank 0] 2025-07-22 21:56:43,183 - INFO - Step 2640: Loss=1.2509, VelCos=0.004, PatchCos=0.004, GlobalCos=0.238, HighQ=0.000, EstR@1=14.3%, Quality=needs_improvement, Mem=5.3GB
+[Rank 0] 2025-07-22 21:56:44,201 - INFO - Starting BLIP3-o patch-level evaluation...
+[Rank 0] 2025-07-22 21:56:59,137 - INFO - Loaded shard 1/3: 2646 samples
+[Rank 0] 2025-07-22 21:56:59,231 - INFO - Loaded shard 1/3: 2646 samples
+[Rank 0] 2025-07-22 21:56:59,300 - WARNING - Model output doesn't require gradients - check model training mode
+[Rank 0] 2025-07-22 21:56:59,303 - WARNING - Loss doesn't require gradients - check gradient flow
+[Rank 0] 2025-07-22 21:56:59,372 - WARNING - Model output doesn't require gradients - check model training mode
+[Rank 0] 2025-07-22 21:56:59,375 - WARNING - Loss doesn't require gradients - check gradient flow
+[Rank 0] 2025-07-22 21:56:59,444 - WARNING - Model output doesn't require gradients - check model training mode
+[Rank 0] 2025-07-22 21:56:59,447 - WARNING - Loss doesn't require gradients - check gradient flow
+[Rank 0] 2025-07-22 21:56:59,516 - WARNING - Model output doesn't require gradients - check model training mode
+[Rank 0] 2025-07-22 21:56:59,519 - WARNING - Loss doesn't require gradients - check gradient flow
+[Rank 0] 2025-07-22 21:56:59,587 - WARNING - Model output doesn't require gradients - check model training mode
+[Rank 0] 2025-07-22 21:56:59,590 - WARNING - Loss doesn't require gradients - check gradient flow
+[Rank 0] 2025-07-22 21:56:59,659 - WARNING - Model output doesn't require gradients - check model training mode
+[Rank 0] 2025-07-22 21:56:59,661 - WARNING - Loss doesn't require gradients - check gradient flow
+[Rank 0] 2025-07-22 21:56:59,730 - WARNING - Model output doesn't require gradients - check model training mode
+[Rank 0] 2025-07-22 21:56:59,733 - WARNING - Loss doesn't require gradients - check gradient flow
+[Rank 0] 2025-07-22 21:56:59,801 - WARNING - Model output doesn't require gradients - check model training mode
+[Rank 0] 2025-07-22 21:56:59,804 - WARNING - Loss doesn't require gradients - check gradient flow
+[Rank 0] 2025-07-22 21:56:59,872 - WARNING - Model output doesn't require gradients - check model training mode
+[Rank 0] 2025-07-22 21:56:59,875 - WARNING - Loss doesn't require gradients - check gradient flow
+[Rank 0] 2025-07-22 21:56:59,944 - WARNING - Model output doesn't require gradients - check model training mode
+[Rank 0] 2025-07-22 21:56:59,947 - WARNING - Loss doesn't require gradients - check gradient flow
+[Rank 0] 2025-07-22 21:57:00,015 - WARNING - Model output doesn't require gradients - check model training mode
+[Rank 0] 2025-07-22 21:57:00,018 - WARNING - Loss doesn't require gradients - check gradient flow
+[Rank 0] 2025-07-22 21:57:00,087 - WARNING - Model output doesn't require gradients - check model training mode
+[Rank 0] 2025-07-22 21:57:00,089 - WARNING - Loss doesn't require gradients - check gradient flow
+[Rank 0] 2025-07-22 21:57:00,159 - WARNING - Model output doesn't require gradients - check model training mode
+[Rank 0] 2025-07-22 21:57:00,162 - WARNING - Loss doesn't require gradients - check gradient flow
+[Rank 0] 2025-07-22 21:57:00,231 - WARNING - Model output doesn't require gradients - check model training mode
+[Rank 0] 2025-07-22 21:57:00,234 - WARNING - Loss doesn't require gradients - check gradient flow
+[Rank 0] 2025-07-22 21:57:00,303 - WARNING - Model output doesn't require gradients - check model training mode
+[Rank 0] 2025-07-22 21:57:00,305 - WARNING - Loss doesn't require gradients - check gradient flow
+[Rank 0] 2025-07-22 21:57:00,375 - WARNING - Model output doesn't require gradients - check model training mode
+[Rank 0] 2025-07-22 21:57:00,378 - WARNING - Loss doesn't require gradients - check gradient flow
+[Rank 0] 2025-07-22 21:57:00,446 - WARNING - Model output doesn't require gradients - check model training mode
+[Rank 0] 2025-07-22 21:57:00,449 - WARNING - Loss doesn't require gradients - check gradient flow
+[Rank 0] 2025-07-22 21:57:00,517 - WARNING - Model output doesn't require gradients - check model training mode
+[Rank 0] 2025-07-22 21:57:00,520 - WARNING - Loss doesn't require gradients - check gradient flow
+[Rank 0] 2025-07-22 21:57:00,589 - WARNING - Model output doesn't require gradients - check model training mode
+[Rank 0] 2025-07-22 21:57:00,591 - WARNING - Loss doesn't require gradients - check gradient flow
+[Rank 0] 2025-07-22 21:57:00,660 - WARNING - Model output doesn't require gradients - check model training mode
+[Rank 0] 2025-07-22 21:57:00,663 - WARNING - Loss doesn't require gradients - check gradient flow
+[Rank 0] 2025-07-22 21:57:00,675 - INFO - Running recall evaluation on eval set...
+[Rank 0] 2025-07-22 21:57:00,712 - INFO - Starting evaluation on 80 images
+[Rank 0] 2025-07-22 21:57:00,713 - INFO - Extracted 80 text captions
+[Rank 0] 2025-07-22 21:57:00,713 - INFO - Extracting text embeddings...
+[Rank 0] 2025-07-22 21:57:00,844 - INFO - Generating image embeddings...
+[Rank 0] 2025-07-22 21:57:09,469 - INFO - Computing similarity matrix...
+[Rank 0] 2025-07-22 21:57:09,474 - INFO - Computing recall metrics...
+[Rank 0] 2025-07-22 21:57:09,474 - INFO - Computing recall metrics for 80 images
+[Rank 0] 2025-07-22 21:57:09,474 - INFO - Similarity matrix shape: torch.Size([80, 80])
+[Rank 0] 2025-07-22 21:57:09,474 - INFO - Similarity range: [-0.1381, 0.1466]
+[Rank 0] 2025-07-22 21:57:09,475 - INFO - Recall@1: 0/80 = 0.0000 (0.00%)
+[Rank 0] 2025-07-22 21:57:09,475 - INFO - Recall@5: 5/80 = 0.0625 (6.25%)
+[Rank 0] 2025-07-22 21:57:09,476 - INFO - Recall@10: 7/80 = 0.0875 (8.75%)
+[Rank 0] 2025-07-22 21:57:09,476 - INFO - Eval Recall@1: 0.0%
+[Rank 0] 2025-07-22 21:57:09,477 - INFO - Eval Recall@5: 6.2%
+[Rank 0] 2025-07-22 21:57:09,477 - INFO - Evaluation completed: 20/20 successful batches
+[Rank 0] 2025-07-22 21:57:09,477 - INFO - Average eval loss: 1.2537
+[Rank 0] 2025-07-22 21:57:09,477 - INFO - Global cosine similarity: 0.2249
+[Rank 0] 2025-07-22 21:57:21,080 - INFO - Starting evaluation on 8 images
+[Rank 0] 2025-07-22 21:57:21,080 - INFO - Extracted 8 text captions
+[Rank 0] 2025-07-22 21:57:21,080 - INFO - Extracting text embeddings...
+[Rank 0] 2025-07-22 21:57:21,094 - INFO - Generating image embeddings...
+[Rank 0] 2025-07-22 21:57:21,685 - INFO - Computing similarity matrix...
+[Rank 0] 2025-07-22 21:57:21,685 - INFO - Computing recall metrics...
+[Rank 0] 2025-07-22 21:57:21,685 - INFO - Computing recall metrics for 8 images
+[Rank 0] 2025-07-22 21:57:21,685 - INFO - Similarity matrix shape: torch.Size([8, 8])
+[Rank 0] 2025-07-22 21:57:21,685 - INFO - Similarity range: [-0.0958, 0.0703]
+[Rank 0] 2025-07-22 21:57:21,685 - INFO - Recall@1: 0/8 = 0.0000 (0.00%)
+[Rank 0] 2025-07-22 21:57:21,685 - INFO - Recall@5: 5/8 = 0.6250 (62.50%)
+[Rank 0] 2025-07-22 21:57:21,686 - INFO - 🎯 Recall evaluation (step 2750):
+[Rank 0] 2025-07-22 21:57:21,686 - INFO -    R@1: 0.0%, R@5: 62.5%
+[Rank 0] 2025-07-22 21:57:42,976 - INFO - Step 2904: Loss=1.2750, VelCos=0.003, PatchCos=0.003, GlobalCos=0.205, HighQ=0.000, EstR@1=12.3%, Quality=needs_improvement, Mem=5.3GB
+[Rank 0] 2025-07-22 21:57:56,182 - INFO - Starting evaluation on 8 images
+[Rank 0] 2025-07-22 21:57:56,182 - INFO - Extracted 8 text captions
+[Rank 0] 2025-07-22 21:57:56,182 - INFO - Extracting text embeddings...
+[Rank 0] 2025-07-22 21:57:56,196 - INFO - Generating image embeddings...
+[Rank 0] 2025-07-22 21:57:56,787 - INFO - Computing similarity matrix...
+[Rank 0] 2025-07-22 21:57:56,788 - INFO - Computing recall metrics...
+[Rank 0] 2025-07-22 21:57:56,788 - INFO - Computing recall metrics for 8 images
+[Rank 0] 2025-07-22 21:57:56,788 - INFO - Similarity matrix shape: torch.Size([8, 8])
+[Rank 0] 2025-07-22 21:57:56,788 - INFO - Similarity range: [-0.0804, 0.0844]
+[Rank 0] 2025-07-22 21:57:56,788 - INFO - Recall@1: 2/8 = 0.2500 (25.00%)
+[Rank 0] 2025-07-22 21:57:56,788 - INFO - Recall@5: 4/8 = 0.5000 (50.00%)
+[Rank 0] 2025-07-22 21:57:56,789 - INFO - 🎯 Recall evaluation (step 3000):
+[Rank 0] 2025-07-22 21:57:56,789 - INFO -    R@1: 25.0%, R@5: 50.0%
+[Rank 0] 2025-07-22 21:57:56,789 - INFO - ✅ GOOD recall performance
+[Rank 0] 2025-07-22 21:58:19,966 - INFO - Step 3168: Loss=1.2589, VelCos=0.005, PatchCos=0.005, GlobalCos=0.226, HighQ=0.000, EstR@1=13.6%, Quality=needs_improvement, Mem=5.3GB
+[Rank 0] 2025-07-22 21:58:31,346 - INFO - Starting evaluation on 8 images
+[Rank 0] 2025-07-22 21:58:31,347 - INFO - Extracted 8 text captions
+[Rank 0] 2025-07-22 21:58:31,347 - INFO - Extracting text embeddings...
+[Rank 0] 2025-07-22 21:58:31,369 - INFO - Generating image embeddings...
+[Rank 0] 2025-07-22 21:58:31,959 - INFO - Computing similarity matrix...
+[Rank 0] 2025-07-22 21:58:31,959 - INFO - Computing recall metrics...
+[Rank 0] 2025-07-22 21:58:31,960 - INFO - Computing recall metrics for 8 images
+[Rank 0] 2025-07-22 21:58:31,960 - INFO - Similarity matrix shape: torch.Size([8, 8])
+[Rank 0] 2025-07-22 21:58:31,960 - INFO - Similarity range: [-0.1007, 0.0913]
+[Rank 0] 2025-07-22 21:58:31,960 - INFO - Recall@1: 0/8 = 0.0000 (0.00%)
+[Rank 0] 2025-07-22 21:58:31,960 - INFO - Recall@5: 5/8 = 0.6250 (62.50%)
+[Rank 0] 2025-07-22 21:58:31,961 - INFO - 🎯 Recall evaluation (step 3250):
+[Rank 0] 2025-07-22 21:58:31,961 - INFO -    R@1: 0.0%, R@5: 62.5%
+[Rank 0] 2025-07-22 21:58:57,066 - INFO - Step 3432: Loss=1.2822, VelCos=0.002, PatchCos=0.002, GlobalCos=0.219, HighQ=0.000, EstR@1=13.1%, Quality=needs_improvement, Mem=5.3GB
+[Rank 0] 2025-07-22 21:59:06,421 - INFO - Starting evaluation on 8 images
+[Rank 0] 2025-07-22 21:59:06,421 - INFO - Extracted 8 text captions
+[Rank 0] 2025-07-22 21:59:06,421 - INFO - Extracting text embeddings...
+[Rank 0] 2025-07-22 21:59:06,435 - INFO - Generating image embeddings...
+[Rank 0] 2025-07-22 21:59:07,026 - INFO - Computing similarity matrix...
+[Rank 0] 2025-07-22 21:59:07,026 - INFO - Computing recall metrics...
+[Rank 0] 2025-07-22 21:59:07,026 - INFO - Computing recall metrics for 8 images
+[Rank 0] 2025-07-22 21:59:07,026 - INFO - Similarity matrix shape: torch.Size([8, 8])
+[Rank 0] 2025-07-22 21:59:07,026 - INFO - Similarity range: [-0.0753, 0.0947]
+[Rank 0] 2025-07-22 21:59:07,026 - INFO - Recall@1: 1/8 = 0.1250 (12.50%)
+[Rank 0] 2025-07-22 21:59:07,027 - INFO - Recall@5: 7/8 = 0.8750 (87.50%)
+[Rank 0] 2025-07-22 21:59:07,027 - INFO - 🎯 Recall evaluation (step 3500):
+[Rank 0] 2025-07-22 21:59:07,027 - INFO -    R@1: 12.5%, R@5: 87.5%
+[Rank 0] 2025-07-22 21:59:07,027 - INFO - 🔄 Improving recall performance
+[Rank 0] 2025-07-22 21:59:34,313 - INFO - Step 3696: Loss=1.2431, VelCos=0.005, PatchCos=0.005, GlobalCos=0.215, HighQ=0.000, EstR@1=12.9%, Quality=needs_improvement, Mem=5.3GB
+[Rank 0] 2025-07-22 21:59:41,757 - INFO - Starting evaluation on 8 images
+[Rank 0] 2025-07-22 21:59:41,757 - INFO - Extracted 8 text captions
+[Rank 0] 2025-07-22 21:59:41,757 - INFO - Extracting text embeddings...
+[Rank 0] 2025-07-22 21:59:41,771 - INFO - Generating image embeddings...
+[Rank 0] 2025-07-22 21:59:42,363 - INFO - Computing similarity matrix...
+[Rank 0] 2025-07-22 21:59:42,363 - INFO - Computing recall metrics...
+[Rank 0] 2025-07-22 21:59:42,363 - INFO - Computing recall metrics for 8 images
+[Rank 0] 2025-07-22 21:59:42,364 - INFO - Similarity matrix shape: torch.Size([8, 8])
+[Rank 0] 2025-07-22 21:59:42,364 - INFO - Similarity range: [-0.0906, 0.1084]
+[Rank 0] 2025-07-22 21:59:42,364 - INFO - Recall@1: 0/8 = 0.0000 (0.00%)
+[Rank 0] 2025-07-22 21:59:42,364 - INFO - Recall@5: 5/8 = 0.6250 (62.50%)
+[Rank 0] 2025-07-22 21:59:42,365 - INFO - 🎯 Recall evaluation (step 3750):
+[Rank 0] 2025-07-22 21:59:42,365 - INFO -    R@1: 0.0%, R@5: 62.5%

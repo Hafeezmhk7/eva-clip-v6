@@ -1,12 +1,11 @@
 """
-Configuration module for BLIP3-o DiT - Enhanced with Multi-GPU Support
+Configuration module for BLIP3-o DiT - Patch-Level Training (Paper-Aligned)
 
 Contains configuration classes for:
 - Model architecture (BLIP3oDiTConfig)
 - Flow matching loss (FlowMatchingConfig)  
 - Training parameters (TrainingConfig)
 - Memory-optimized configurations
-- Multi-GPU specific configurations
 """
 
 import logging
@@ -19,14 +18,22 @@ try:
         BLIP3oDiTConfig,
         FlowMatchingConfig,
         TrainingConfig,
+        get_blip3o_patch_config,
         get_default_blip3o_config,
-        get_global_blip3o_config,
-        get_multi_gpu_config,
         get_default_flow_matching_config,
         get_enhanced_flow_matching_config,
         get_default_training_config,
         validate_config_compatibility,
         print_config_summary,
+        # Predefined configs
+        TINY_CONFIG,
+        SMALL_CONFIG,
+        BASE_CONFIG,
+        LARGE_CONFIG,
+        RECALL_OPTIMIZED_CONFIG,
+        MEMORY_OPTIMIZED_CONFIG,
+        DEFAULT_FLOW_MATCHING_CONFIG,
+        DEFAULT_TRAINING_CONFIG,
     )
     logger.debug("✅ Core configuration classes loaded")
     CORE_CONFIG_AVAILABLE = True
@@ -37,9 +44,8 @@ except ImportError as e:
     BLIP3oDiTConfig = None
     FlowMatchingConfig = None
     TrainingConfig = None
+    get_blip3o_patch_config = None
     get_default_blip3o_config = None
-    get_global_blip3o_config = None
-    get_multi_gpu_config = None
     get_default_flow_matching_config = None
     get_enhanced_flow_matching_config = None
     get_default_training_config = None
@@ -79,14 +85,22 @@ if CORE_CONFIG_AVAILABLE:
         "BLIP3oDiTConfig",
         "FlowMatchingConfig", 
         "TrainingConfig",
+        "get_blip3o_patch_config",
         "get_default_blip3o_config",
-        "get_global_blip3o_config",
-        "get_multi_gpu_config",
         "get_default_flow_matching_config",
         "get_enhanced_flow_matching_config",
         "get_default_training_config",
         "validate_config_compatibility",
         "print_config_summary",
+        # Predefined configs
+        "TINY_CONFIG",
+        "SMALL_CONFIG", 
+        "BASE_CONFIG",
+        "LARGE_CONFIG",
+        "RECALL_OPTIMIZED_CONFIG",
+        "MEMORY_OPTIMIZED_CONFIG",
+        "DEFAULT_FLOW_MATCHING_CONFIG",
+        "DEFAULT_TRAINING_CONFIG",
     ])
 
 # Export memory-optimized configuration if available
@@ -101,19 +115,15 @@ if MEMORY_OPTIMIZED_CONFIG_AVAILABLE:
 
 def get_recommended_config(
     model_type: str = "auto",
-    num_gpus: int = 1,
-    gpu_memory_gb: float = 40.0,
-    training_mode: str = "standard",
+    model_size: str = "base", 
     **kwargs
 ):
     """
-    Get recommended configuration based on hardware and requirements
+    Get recommended configuration based on requirements
     
     Args:
-        model_type: "auto", "dual_supervision", "global", or "standard"
-        num_gpus: Number of available GPUs
-        gpu_memory_gb: Memory per GPU in GB
-        training_mode: "standard", "memory_optimized", "fast"
+        model_type: Ignored for patch-level (always patch)
+        model_size: "tiny", "small", "base", "large"
         **kwargs: Additional config parameters
         
     Returns:
@@ -122,53 +132,17 @@ def get_recommended_config(
     if not CORE_CONFIG_AVAILABLE:
         raise RuntimeError("Core configuration not available")
     
-    # Use memory-optimized recommendations if available
-    if MEMORY_OPTIMIZED_CONFIG_AVAILABLE and training_mode == "memory_optimized":
-        try:
-            size_name, config, memory_info = recommend_configuration(
-                available_gpu_memory_gb=gpu_memory_gb,
-                num_gpus=num_gpus,
-            )
-            logger.info(f"Memory-optimized recommendation: {size_name}")
-            return config
-        except Exception as e:
-            logger.warning(f"Memory optimization failed: {e}, falling back to standard")
-    
-    # Standard configuration selection
-    if model_type == "auto":
-        if num_gpus >= 4 and gpu_memory_gb >= 40:
-            return get_global_blip3o_config("large", **kwargs)
-        elif num_gpus >= 2 and gpu_memory_gb >= 24:
-            return get_global_blip3o_config("medium", **kwargs)
-        else:
-            return get_global_blip3o_config("small", **kwargs)
-    
-    elif model_type == "global":
-        if num_gpus >= 4:
-            model_size = "large"
-        elif num_gpus >= 2:
-            model_size = "medium"
-        else:
-            model_size = "small"
-        return get_global_blip3o_config(model_size, **kwargs)
-    
-    elif model_type == "multi_gpu":
-        return get_multi_gpu_config(num_gpus, gpu_memory_gb, **kwargs)
-    
-    else:
-        return get_default_blip3o_config(**kwargs)
+    return get_blip3o_patch_config(model_size, **kwargs)
 
 def create_training_config(
     training_type: str = "standard",
-    num_gpus: int = 1,
     **kwargs
 ):
     """
     Create training configuration
     
     Args:
-        training_type: "standard", "enhanced", "memory_optimized"  
-        num_gpus: Number of GPUs
+        training_type: "standard" or "enhanced"
         **kwargs: Additional training parameters
         
     Returns:
@@ -179,31 +153,21 @@ def create_training_config(
     
     if training_type == "enhanced":
         return get_enhanced_flow_matching_config(**kwargs)
-    elif training_type == "memory_optimized" and MEMORY_OPTIMIZED_CONFIG_AVAILABLE:
-        # Use memory-optimized training args
-        output_dir = kwargs.get('output_dir', './output')
-        return get_memory_optimized_training_args(
-            output_dir=output_dir,
-            num_gpus=num_gpus,
-            **kwargs
-        )
     else:
         return get_default_training_config(**kwargs)
 
-def validate_multi_gpu_config(
+def validate_patch_config(
     model_config, 
     flow_config=None,
     training_config=None,
-    num_gpus: int = 1
 ):
     """
-    Validate configuration for multi-GPU training
+    Validate configuration for patch-level training
     
     Args:
         model_config: Model configuration
         flow_config: Flow matching configuration (optional)
         training_config: Training configuration (optional) 
-        num_gpus: Number of GPUs
         
     Returns:
         bool: True if configuration is valid
@@ -216,11 +180,9 @@ def validate_multi_gpu_config(
         if hasattr(model_config, '_validate_config'):
             model_config._validate_config()
         
-        # Multi-GPU specific checks
-        head_dim = model_config.dim // model_config.n_heads
-        if head_dim % 4 != 0:
-            logger.error(f"Head dimension {head_dim} not compatible with 3D RoPE")
-            return False
+        # Patch-level specific checks
+        if model_config.num_patches != 256:
+            logger.warning(f"Non-standard patch count: {model_config.num_patches} (expected 256)")
         
         # Flow matching compatibility
         if flow_config is not None:
@@ -238,7 +200,7 @@ def validate_multi_gpu_config(
             except Exception as e:
                 logger.warning(f"Memory estimation failed: {e}")
         
-        logger.info("✅ Multi-GPU configuration validated successfully")
+        logger.info("✅ Patch-level configuration validated successfully")
         return True
         
     except Exception as e:
@@ -252,7 +214,7 @@ def print_config_status():
     
     if CORE_CONFIG_AVAILABLE:
         print("  ✅ Core Configuration Classes")
-        print("    - BLIP3oDiTConfig")
+        print("    - BLIP3oDiTConfig (patch-level)")
         print("    - FlowMatchingConfig") 
         print("    - TrainingConfig")
     else:
@@ -270,7 +232,7 @@ def print_config_status():
     if CORE_CONFIG_AVAILABLE:
         print("  ✅ get_recommended_config()")
         print("  ✅ create_training_config()")
-        print("  ✅ validate_multi_gpu_config()")
+        print("  ✅ validate_patch_config()")
     
     print("=" * 35)
 
@@ -278,7 +240,7 @@ def print_config_status():
 __all__.extend([
     "get_recommended_config",
     "create_training_config", 
-    "validate_multi_gpu_config",
+    "validate_patch_config",
     "print_config_status",
 ])
 

@@ -175,7 +175,7 @@ class DualSupervisionBLIP3oInference:
             flow_matching_loss = create_dual_supervision_loss(**fm_config_dict)
             logger.info("✅ Using dual supervision flow matching loss")
         except ImportError:
-            from ..losses.flow_matching_loss import create_blip3o_flow_matching_loss
+            from ..losses.blip3o_flow_matching_loss import create_blip3o_flow_matching_loss
             flow_matching_loss = create_blip3o_flow_matching_loss(**fm_config_dict)
             logger.warning("⚠️ Using standard flow matching loss (fallback)")
         

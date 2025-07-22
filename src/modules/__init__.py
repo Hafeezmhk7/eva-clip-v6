@@ -11,10 +11,10 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Import recall evaluator
+# Import recall evaluator from correct path
 RECALL_EVALUATOR_AVAILABLE = False
 try:
-    from .blip3o_recall_evaluator import (
+    from .evaluation.blip3o_recall_evaluator import (
         BLIP3oRecallEvaluator,
         create_recall_evaluator,
     )
@@ -83,76 +83,6 @@ def get_evaluator_factory(evaluator_type: str = "auto"):
     else:
         raise ValueError(f"Unknown evaluator type: {evaluator_type}")
 
-def create_evaluation_pipeline(
-    model,
-    device: str = "auto",
-    evaluator_type: str = "auto",
-    **kwargs
-):
-    """
-    Create a complete evaluation pipeline
-    
-    Args:
-        model: BLIP3-o model
-        device: Device to use
-        evaluator_type: Type of evaluator
-        **kwargs: Additional arguments
-        
-    Returns:
-        Evaluator instance
-    """
-    factory = get_evaluator_factory(evaluator_type)
-    return factory(model=model, device=device, **kwargs)
-
-def run_comprehensive_evaluation(
-    model,
-    eva_embeddings,
-    captions_per_image,
-    baseline_embeddings=None,
-    device: str = "auto",
-    save_results: str = None,
-    **kwargs
-):
-    """
-    Run comprehensive evaluation including baseline comparison
-    
-    Args:
-        model: BLIP3-o model
-        eva_embeddings: EVA-CLIP embeddings [N, 256, 4096]
-        captions_per_image: List of caption lists for each image
-        baseline_embeddings: Optional baseline CLIP embeddings [N, 768]
-        device: Device to use
-        save_results: Optional path to save results
-        **kwargs: Additional evaluation arguments
-        
-    Returns:
-        Comprehensive evaluation results
-    """
-    if not RECALL_EVALUATOR_AVAILABLE:
-        raise RuntimeError("Recall evaluator not available for comprehensive evaluation")
-    
-    # Create evaluator
-    evaluator = create_recall_evaluator(model=model, device=device)
-    
-    # Run evaluation with baseline comparison
-    if baseline_embeddings is not None:
-        results = evaluator.compare_with_baseline(
-            eva_embeddings=eva_embeddings,
-            captions_per_image=captions_per_image,
-            baseline_clip_embeddings=baseline_embeddings,
-            save_results=save_results,
-            **kwargs
-        )
-    else:
-        results = evaluator.evaluate_on_dataset(
-            eva_embeddings=eva_embeddings,
-            captions_per_image=captions_per_image,
-            save_results=save_results,
-            **kwargs
-        )
-    
-    return results
-
 def print_evaluation_status():
     """Print status of available evaluation utilities"""
     print("📊 BLIP3-o Evaluation Status")
@@ -182,8 +112,6 @@ def print_evaluation_status():
 __all__.extend([
     "get_evaluator_class",
     "get_evaluator_factory",
-    "create_evaluation_pipeline",
-    "run_comprehensive_evaluation",
     "print_evaluation_status",
 ])
 

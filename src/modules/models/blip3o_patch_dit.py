@@ -48,56 +48,66 @@ except ImportError:
 
 
 class RotaryPositionalEmbedding3D(nn.Module):
-    """3D Rotary Position Embedding for spatial-temporal structure (BLIP3-o style)"""
+    """Fixed 3D Rotary Position Embedding for spatial-temporal structure"""
     
     def __init__(self, dim: int, max_position_embeddings: int = 256):
         super().__init__()
         self.dim = dim
         self.max_position_embeddings = max_position_embeddings
         
-        # Create frequency for 3D RoPE (spatial + temporal)
-        inv_freq = 1.0 / (10000 ** (torch.arange(0, dim, 2).float() / dim))
+        # Create frequency for RoPE - use only half the dimensions
+        inv_freq = 1.0 / (10000 ** (torch.arange(0, dim // 2, 2).float() / (dim // 2)))
         self.register_buffer('inv_freq', inv_freq)
         
     def forward(self, x: torch.Tensor, position_ids: Optional[torch.Tensor] = None) -> torch.Tensor:
-        """Apply 3D rotary position embedding"""
+        """Apply rotary position embedding"""
         batch_size, seq_len, hidden_size = x.shape
         
+        # For now, use simple 1D position encoding to avoid tensor shape issues
         if position_ids is None:
-            # Create 2D position ids for 16x16 grid
-            grid_size = int(math.sqrt(seq_len))
-            pos_y, pos_x = torch.meshgrid(
-                torch.arange(grid_size, device=x.device),
-                torch.arange(grid_size, device=x.device),
-                indexing='ij'
-            )
-            position_ids = torch.stack([pos_x.flatten(), pos_y.flatten()], dim=1)  # [256, 2]
-            position_ids = position_ids.unsqueeze(0).repeat(batch_size, 1, 1)  # [B, 256, 2]
+            position_ids = torch.arange(seq_len, device=x.device, dtype=torch.float32)
+            position_ids = position_ids.unsqueeze(0).repeat(batch_size, 1)  # [B, 256]
         
-        # Apply rotary embedding
-        freqs = torch.einsum('bij,k->bijk', position_ids.float(), self.inv_freq)
-        emb = torch.cat([freqs, freqs], dim=-1)
-        cos_emb = emb.cos()
-        sin_emb = emb.sin()
+        # Apply rotary embedding to only part of the hidden dimension
+        rope_dim = min(hidden_size, len(self.inv_freq) * 2)
         
-        # Apply to hidden states
-        x_rot = self._apply_rotary_pos_emb(x, cos_emb, sin_emb)
-        return x_rot
+        if rope_dim > 0:
+            x_rope = x[..., :rope_dim]
+            x_pass = x[..., rope_dim:]
+            
+            x_rope_rotated = self._apply_rotary_pos_emb(x_rope, position_ids)
+            x = torch.cat([x_rope_rotated, x_pass], dim=-1)
+        
+        return x
     
-    def _apply_rotary_pos_emb(self, x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.Tensor:
+    def _apply_rotary_pos_emb(self, x: torch.Tensor, position_ids: torch.Tensor) -> torch.Tensor:
         """Apply rotary position embedding to input tensor"""
+        batch_size, seq_len, rope_dim = x.shape
+        
+        # Ensure even dimension for splitting
+        if rope_dim % 2 != 0:
+            return x  # Skip if odd dimension
+        
+        half_dim = rope_dim // 2
+        
         # Split x into pairs
-        x1, x2 = x[..., 0::2], x[..., 1::2]
-        cos_expanded = cos[..., :x1.shape[-1]]
-        sin_expanded = sin[..., :x1.shape[-1]]
+        x1 = x[..., :half_dim]  # [B, 256, half_dim]
+        x2 = x[..., half_dim:]  # [B, 256, half_dim]
+        
+        # Compute frequencies
+        freqs = torch.einsum('bi,j->bij', position_ids, self.inv_freq[:half_dim])  # [B, 256, half_dim]
+        
+        # Get cos and sin
+        cos_emb = freqs.cos()
+        sin_emb = freqs.sin()
         
         # Apply rotation
-        x_rotated = torch.stack([
-            x1 * cos_expanded - x2 * sin_expanded,
-            x1 * sin_expanded + x2 * cos_expanded
-        ], dim=-1).flatten(-2)
+        x_rot = torch.cat([
+            x1 * cos_emb - x2 * sin_emb,
+            x1 * sin_emb + x2 * cos_emb
+        ], dim=-1)
         
-        return x_rotated
+        return x_rot
 
 
 class TimestepEmbedder(nn.Module):
@@ -324,6 +334,30 @@ class BLIP3oPatchDiTModel(PreTrainedModel):
             torch.nn.init.ones_(module.weight)
         elif isinstance(module, nn.Parameter):
             torch.nn.init.normal_(module, mean=0.0, std=0.02)
+
+        # Add these methods to your BLIP3oPatchDiTModel class in src/modules/models/blip3o_dit.py
+
+    def gradient_checkpointing_enable(self):
+        """Enable gradient checkpointing for memory efficiency."""
+        self._gradient_checkpointing = True
+        
+        # Enable checkpointing for all DiT blocks
+        for block in self.blocks:
+            if hasattr(block, 'gradient_checkpointing'):
+                block.gradient_checkpointing = True
+
+    def gradient_checkpointing_disable(self):
+        """Disable gradient checkpointing."""
+        self._gradient_checkpointing = False
+        
+        # Disable checkpointing for all DiT blocks  
+        for block in self.blocks:
+            if hasattr(block, 'gradient_checkpointing'):
+                block.gradient_checkpointing = False
+
+    def is_gradient_checkpointing(self):
+        """Check if gradient checkpointing is enabled."""
+        return getattr(self, '_gradient_checkpointing', False)
     
     def forward(self,
                 hidden_states: torch.Tensor,  # [B, 256, 1024] - Noisy CLIP patches

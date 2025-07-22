@@ -1,0 +1,29 @@
+{
+  "error": "BLIP3oPatchDiTModel does not support gradient checkpointing.",
+  "traceback": "Traceback (most recent call last):\n  File \"/gpfs/home1/scur2711/eva-clip-flow-matching/eva-clip-v3/train_blip3o_patch_dit.py\", line 362, in main\n    model.gradient_checkpointing_enable()\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^\n  File \"/home/scur2711/.conda/envs/eva_clip_env/lib/python3.13/site-packages/transformers/modeling_utils.py\", line 3460, in gradient_checkpointing_enable\n    raise ValueError(f\"{self.__class__.__name__} does not support gradient checkpointing.\")\nValueError: BLIP3oPatchDiTModel does not support gradient checkpointing.\n",
+  "gpu_info": {
+    "cuda_available": true,
+    "gpu_count": 3,
+    "gpu_names": [
+      "NVIDIA H100",
+      "NVIDIA H100",
+      "NVIDIA H100"
+    ],
+    "memory_total": [
+      93.1114501953125,
+      93.1114501953125,
+      93.1114501953125
+    ],
+    "issues": [],
+    "slurm_gpus": "3",
+    "cuda_visible_devices": "0,1,2"
+  },
+  "environment": {
+    "CUDA_VISIBLE_DEVICES": "0,1,2",
+    "SLURM_GPUS": "3",
+    "WORLD_SIZE": null,
+    "LOCAL_RANK": null
+  },
+  "timestamp": "2025-07-22T21:36:41.613629",
+  "training_type": "blip3o_patch_level"
+}

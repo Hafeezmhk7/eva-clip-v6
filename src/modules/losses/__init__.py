@@ -1,108 +1,122 @@
 """
-Loss functions module for BLIP3-o DiT - Global Training Only
+Loss functions module for BLIP3-o DiT - Patch-Level Training (Paper-Aligned)
 
 Contains:
-- GlobalFlowMatchingLoss: Global training loss (primary)
-- EnhancedGlobalFlowMatchingLoss: Enhanced version with regularization
+- BLIP3oFlowMatchingLoss: Patch-level flow matching loss (primary)
+- Enhanced contrastive loss for better image-text alignment
 - Factory functions for creating loss instances
+- Paper-aligned training objectives
 """
 
 import logging
 
 logger = logging.getLogger(__name__)
 
-# Import global flow matching loss (your main loss function)
-GLOBAL_FLOW_MATCHING_AVAILABLE = False
-GlobalFlowMatchingLoss = None
-EnhancedGlobalFlowMatchingLoss = None
-create_global_flow_matching_loss = None
+# Import patch-level flow matching loss (main loss function following BLIP3-o paper)
+PATCH_FLOW_MATCHING_AVAILABLE = False
+BLIP3oFlowMatchingLoss = None
+create_blip3o_flow_matching_loss = None
 
 try:
-    from .global_flow_matching_loss import (
-        GlobalFlowMatchingLoss,
-        EnhancedGlobalFlowMatchingLoss,
-        create_global_flow_matching_loss,
+    from .blip3o_flow_matching_loss import (
+        BLIP3oFlowMatchingLoss,
+        create_blip3o_flow_matching_loss,
     )
-    GLOBAL_FLOW_MATCHING_AVAILABLE = True
-    logger.info("✅ Global flow matching loss loaded successfully")
+    PATCH_FLOW_MATCHING_AVAILABLE = True
+    logger.info("✅ BLIP3-o patch-level flow matching loss loaded successfully")
     
 except ImportError as e:
-    GLOBAL_FLOW_MATCHING_AVAILABLE = False
-    logger.error(f"❌ Failed to load global flow matching loss: {e}")
-    raise ImportError(f"Global flow matching loss is required but failed to load: {e}")
+    PATCH_FLOW_MATCHING_AVAILABLE = False
+    logger.error(f"❌ Failed to load patch-level flow matching loss: {e}")
+    raise ImportError(f"BLIP3-o patch-level flow matching loss is required but failed to load: {e}")
 
-# Use global flow matching as the main loss (no fallbacks)
-BLIP3oFlowMatchingLoss = GlobalFlowMatchingLoss
-create_blip3o_flow_matching_loss = create_global_flow_matching_loss
-DEFAULT_LOSS_TYPE = "global"
+# Use patch-level flow matching as the main loss (paper-aligned)
+create_blip3o_loss = create_blip3o_flow_matching_loss
+DEFAULT_LOSS_TYPE = "patch_level"
 
-logger.info("✅ Using Global flow matching loss as primary loss")
+logger.info("✅ Using BLIP3-o patch-level flow matching loss as primary loss")
 
 # Build exports list
 __all__ = [
-    # Primary loss interface
+    # Primary loss interface (paper-aligned)
     "BLIP3oFlowMatchingLoss",
     "create_blip3o_flow_matching_loss",
+    "create_blip3o_loss",
     "DEFAULT_LOSS_TYPE",
     
-    # Global loss specific
-    "GlobalFlowMatchingLoss",
-    "EnhancedGlobalFlowMatchingLoss", 
-    "create_global_flow_matching_loss",
-    "GLOBAL_FLOW_MATCHING_AVAILABLE",
+    # Availability flag
+    "PATCH_FLOW_MATCHING_AVAILABLE",
 ]
 
-def get_loss_function(loss_type: str = "auto", enhanced: bool = False, **kwargs):
+def get_loss_function(loss_type: str = "auto", enhanced: bool = True, **kwargs):
     """
-    Get the appropriate loss function (always global)
+    Get the appropriate loss function (always patch-level for paper alignment)
     
     Args:
-        loss_type: Ignored, always returns global loss
-        enhanced: Whether to use enhanced version with regularization
+        loss_type: Ignored, always returns patch-level flow matching loss
+        enhanced: Whether to use enhanced version with contrastive loss
         **kwargs: Arguments to pass to loss function factory
         
     Returns:
-        Global flow matching loss instance
+        BLIP3oFlowMatchingLoss instance
     """
-    if not GLOBAL_FLOW_MATCHING_AVAILABLE:
-        raise RuntimeError("Global flow matching loss not available")
+    if not PATCH_FLOW_MATCHING_AVAILABLE:
+        raise RuntimeError("BLIP3-o patch-level flow matching loss not available")
     
-    return create_global_flow_matching_loss(enhanced=enhanced, **kwargs)
+    return create_blip3o_flow_matching_loss(enhanced=enhanced, **kwargs)
 
-def create_loss(enhanced: bool = False, **kwargs):
+def create_loss(enhanced: bool = True, **kwargs):
     """
-    Create a BLIP3-o loss function (always global)
+    Create a BLIP3-o loss function (always patch-level for paper alignment)
     
     Args:
-        enhanced: Whether to use enhanced version
+        enhanced: Whether to use enhanced version with contrastive loss
         **kwargs: Loss configuration arguments
         
     Returns:
-        Global flow matching loss instance
+        BLIP3oFlowMatchingLoss instance
     """
-    if not GLOBAL_FLOW_MATCHING_AVAILABLE:
-        raise RuntimeError("Global flow matching loss not available")
+    if not PATCH_FLOW_MATCHING_AVAILABLE:
+        raise RuntimeError("BLIP3-o patch-level flow matching loss not available")
     
-    return create_global_flow_matching_loss(enhanced=enhanced, **kwargs)
+    return create_blip3o_flow_matching_loss(enhanced=enhanced, **kwargs)
 
 def print_loss_status():
     """Print status of available loss functions"""
     print("📉 BLIP3-o Loss Functions Status")
-    print("=" * 35)
+    print("=" * 40)
     print(f"Loss type: {DEFAULT_LOSS_TYPE}")
     print()
-    print("Available loss function:")
+    print("Available loss function (Paper-Aligned):")
     
-    if GLOBAL_FLOW_MATCHING_AVAILABLE:
-        print("  ✅ Global Flow Matching (Primary Loss)")
-        print("    - Direct global feature supervision")
-        print("    - Contrastive loss option")
-        print("    - Enhanced version with regularization")
-        print("    - Optimized for recall performance")
+    if PATCH_FLOW_MATCHING_AVAILABLE:
+        print("  ✅ Patch-Level Flow Matching (Primary Loss)")
+        print("    - Direct patch-level supervision")
+        print("    - 256-token flow matching training")
+        print("    - Rectified flow velocity prediction")
+        print("    - Enhanced contrastive loss option")
+        print("    - Patch-level alignment optimization")
+        print("    - Global coherence loss")
+        print("    - Optimized for image-text recall")
+        print("    - Paper-aligned training objective")
     else:
-        print("  ❌ Global Flow Matching (REQUIRED)")
+        print("  ❌ Patch-Level Flow Matching (REQUIRED)")
     
-    print("=" * 35)
+    print()
+    print("Loss components:")
+    print("  🎯 Flow Matching: Velocity prediction on CLIP patches")
+    print("  🔗 Contrastive: Patch-level alignment")
+    print("  🌐 Global: Overall coherence")
+    print("  📊 Metrics: Recall optimization")
+    
+    print()
+    print("Training objective:")
+    print("  📐 Input: Noisy CLIP patches [B, 256, 1024]")
+    print("  🎯 Target: Clean CLIP patches [B, 256, 1024]")
+    print("  🔄 Conditioning: EVA-CLIP patches [B, 256, 4096]")
+    print("  📊 Goal: Maximize image-to-text recall")
+    
+    print("=" * 40)
 
 # Add utility functions to exports
 __all__.extend([
@@ -112,11 +126,11 @@ __all__.extend([
 ])
 
 # Backward compatibility aliases
-create_blip3o_loss = get_loss_function  # Legacy alias
+create_blip3o_flow_matching = create_blip3o_flow_matching_loss  # Legacy alias
 
 # Ensure the loss is available
-if not GLOBAL_FLOW_MATCHING_AVAILABLE:
-    logger.error("❌ Global flow matching loss is required but not available!")
-    raise ImportError("Global flow matching loss is required for this project")
+if not PATCH_FLOW_MATCHING_AVAILABLE:
+    logger.error("❌ BLIP3-o patch-level flow matching loss is required but not available!")
+    raise ImportError("BLIP3-o patch-level flow matching loss is required for this project")
 
-logger.info("BLIP3-o global loss function loaded successfully")
+logger.info("BLIP3-o patch-level flow matching loss loaded successfully - Paper-aligned training")

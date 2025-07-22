@@ -1,16 +1,17 @@
 """
-Model modules for BLIP3-o DiT - Patch-Level Training
+Model modules for BLIP3-o DiT - Patch-Level Training (Paper-Aligned)
 
 Contains:
-- BLIP3oPatchDiTModel: Patch-level training model (primary)
-- Model creation and loading utilities for patch-level training
+- BLIP3oPatchDiTModel: Patch-level DiT model (primary)
+- Model creation and loading utilities for 256-token patch training
+- Paper-aligned architecture with EVA-CLIP conditioning
 """
 
 import logging
 
 logger = logging.getLogger(__name__)
 
-# Import patch-level model (primary model)
+# Import patch-level model (primary model following BLIP3-o paper)
 PATCH_MODEL_AVAILABLE = False
 BLIP3oPatchDiTModel = None
 create_blip3o_patch_dit_model = None
@@ -25,23 +26,23 @@ try:
         BLIP3oDiTBlock,
     )
     PATCH_MODEL_AVAILABLE = True
-    logger.info("✅ BLIP3-o patch-level model loaded successfully")
+    logger.info("✅ BLIP3-o patch-level DiT model loaded successfully")
     
 except ImportError as e:
     PATCH_MODEL_AVAILABLE = False
-    logger.error(f"❌ Failed to load patch-level model: {e}")
-    raise ImportError(f"BLIP3-o patch-level model is required but failed to load: {e}")
+    logger.error(f"❌ Failed to load patch-level DiT model: {e}")
+    raise ImportError(f"BLIP3-o patch-level DiT model is required but failed to load: {e}")
 
-# Use patch-level model as the main model
+# Use patch-level model as the main model (paper-aligned)
 BLIP3oDiTModel = BLIP3oPatchDiTModel
 create_blip3o_dit_model = create_blip3o_patch_dit_model
 DEFAULT_MODEL_TYPE = "patch_level"
 
-logger.info("✅ Using BLIP3-o patch-level model as primary model")
+logger.info("✅ Using BLIP3-o patch-level DiT model as primary model")
 
 # Build exports list
 __all__ = [
-    # Primary model interface
+    # Primary model interface (paper-aligned)
     "BLIP3oDiTModel",
     "create_blip3o_dit_model", 
     "DEFAULT_MODEL_TYPE",
@@ -60,7 +61,7 @@ __all__ = [
 
 def get_model_class(model_type: str = "auto"):
     """
-    Get the model class (always returns BLIP3oPatchDiTModel)
+    Get the model class (always returns BLIP3oPatchDiTModel for paper alignment)
     
     Args:
         model_type: Ignored, always returns patch-level model
@@ -69,7 +70,7 @@ def get_model_class(model_type: str = "auto"):
         BLIP3oPatchDiTModel class
     """
     if not PATCH_MODEL_AVAILABLE:
-        raise RuntimeError("BLIP3-o patch-level model not available")
+        raise RuntimeError("BLIP3-o patch-level DiT model not available")
     return BLIP3oPatchDiTModel
 
 def get_model_factory(model_type: str = "auto"):
@@ -83,12 +84,12 @@ def get_model_factory(model_type: str = "auto"):
         create_blip3o_patch_dit_model function
     """
     if not PATCH_MODEL_AVAILABLE:
-        raise RuntimeError("BLIP3-o patch-level model not available")
+        raise RuntimeError("BLIP3-o patch-level DiT model not available")
     return create_blip3o_patch_dit_model
 
 def create_model(config=None, **kwargs):
     """
-    Create a BLIP3-o model instance (always patch-level model)
+    Create a BLIP3-o model instance (always patch-level DiT for paper alignment)
     
     Args:
         config: Model configuration
@@ -98,7 +99,7 @@ def create_model(config=None, **kwargs):
         BLIP3oPatchDiTModel instance
     """
     if not PATCH_MODEL_AVAILABLE:
-        raise RuntimeError("BLIP3-o patch-level model not available")
+        raise RuntimeError("BLIP3-o patch-level DiT model not available")
         
     if config is not None:
         return create_blip3o_patch_dit_model(config=config, **kwargs)
@@ -107,7 +108,7 @@ def create_model(config=None, **kwargs):
 
 def load_pretrained_model(model_path: str, **kwargs):
     """
-    Load a pretrained BLIP3-o patch-level model
+    Load a pretrained BLIP3-o patch-level DiT model
     
     Args:
         model_path: Path to pretrained model
@@ -179,33 +180,41 @@ def load_pretrained_model(model_path: str, **kwargs):
 
 def print_model_status():
     """Print status of available models"""
-    print("🏗️ BLIP3-o Models Status")
-    print("=" * 30)
+    print("🏗️ BLIP3-o DiT Models Status")
+    print("=" * 35)
     print(f"Model type: {DEFAULT_MODEL_TYPE}")
     print()
-    print("Available model:")
+    print("Available model (Paper-Aligned):")
     
     if PATCH_MODEL_AVAILABLE:
         print("  ✅ BLIP3-o Patch DiT (Primary Model)")
         print("    - 256-token patch-level training")
         print("    - EVA-CLIP conditioning (4096-dim)")
         print("    - CLIP output (1024-dim)")
-        print("    - Flow matching training")
+        print("    - Flow matching training objective")
         print("    - Image-to-text recall optimization")
         print("    - 3D Rotary Position Embedding")
-        print("    - Multi-head attention with grouping")
+        print("    - Multi-head attention with spatial encoding")
         print("    - Multi-GPU compatible")
+        print("    - Paper-aligned architecture")
     else:
         print("  ❌ BLIP3-o Patch DiT (REQUIRED)")
     
     print()
     print("Model components:")
-    print("  ✅ RotaryPositionalEmbedding3D")
-    print("  ✅ TimestepEmbedder")
-    print("  ✅ MultiHeadAttention")
-    print("  ✅ BLIP3oDiTBlock")
+    print("  ✅ RotaryPositionalEmbedding3D (spatial-temporal)")
+    print("  ✅ TimestepEmbedder (flow matching)")
+    print("  ✅ MultiHeadAttention (with 3D RoPE)")
+    print("  ✅ BLIP3oDiTBlock (patch-conditioned)")
     
-    print("=" * 30)
+    print()
+    print("Architecture details:")
+    print("  📐 Input: EVA-CLIP patches [B, 256, 4096]")
+    print("  🎯 Output: CLIP patches [B, 256, 1024]")
+    print("  🔄 Conditioning: Cross-attention with EVA features")
+    print("  📊 Evaluation: Image-to-text recall metrics")
+    
+    print("=" * 35)
 
 def estimate_model_memory(
     config=None,
@@ -213,7 +222,7 @@ def estimate_model_memory(
     sequence_length: int = 256,
 ) -> dict:
     """
-    Estimate memory usage for BLIP3-o patch-level model
+    Estimate memory usage for BLIP3-o patch-level DiT model
     
     Args:
         config: Model configuration
@@ -243,7 +252,7 @@ def estimate_model_memory(
         # Self-attention
         3 * hidden_size * hidden_size +             # Q, K, V projections
         hidden_size * hidden_size +                 # Output projection
-        # Cross-attention  
+        # Cross-attention with EVA features
         3 * hidden_size * hidden_size +             # Q, K, V projections
         hidden_size * hidden_size +                 # Output projection
         # FFN
@@ -260,7 +269,7 @@ def estimate_model_memory(
     # Memory estimates (in GB)
     model_memory = total_params * 4 / (1024**3)  # FP32 parameters
     
-    # Activation memory estimation
+    # Activation memory estimation (patch-level specific)
     activation_memory = (
         batch_size * sequence_length * hidden_size * num_layers * 4  # Activations
     ) / (1024**3)
@@ -285,6 +294,8 @@ def estimate_model_memory(
             'intermediate_size': intermediate_size,
             'sequence_length': sequence_length,
             'batch_size': batch_size,
+            'architecture': 'patch_level_dit',
+            'paper_alignment': 'BLIP3-o',
         }
     }
 
@@ -298,9 +309,9 @@ __all__.extend([
     "estimate_model_memory",
 ])
 
-# Ensure the model is available
+# Ensure the patch-level model is available
 if not PATCH_MODEL_AVAILABLE:
-    logger.error("❌ BLIP3-o patch-level model is required but not available!")
-    raise ImportError("BLIP3-o patch-level model is required for this project")
+    logger.error("❌ BLIP3-o patch-level DiT model is required but not available!")
+    raise ImportError("BLIP3-o patch-level DiT model is required for this project")
 
-logger.info("BLIP3-o patch-level model loaded successfully")
+logger.info("BLIP3-o patch-level DiT model loaded successfully - Paper-aligned architecture")
