@@ -233,50 +233,86 @@ class BLIP3oDiTBlock(nn.Module):
         # 3D Rotary Position Embedding
         self.rope = RotaryPositionalEmbedding3D(config.hidden_size)
 
-    def forward(self, 
-                hidden_states: torch.Tensor,
-                eva_features: torch.Tensor,
-                timestep_emb: torch.Tensor,
-                attention_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
+    # Add this to your src/modules/models/blip3o_patch_dit.py
+    # Update the forward method in BLIP3oPatchDiTModel:
+
+    def forward(self,
+                hidden_states: torch.Tensor,  # [B, 256, 1024] - Noisy CLIP patches
+                timestep: torch.Tensor,       # [B] - Timesteps
+                encoder_hidden_states: torch.Tensor,  # [B, 256, 4096] - EVA conditioning
+                attention_mask: Optional[torch.Tensor] = None,
+                return_dict: bool = True) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
         """
-        Args:
-            hidden_states: [B, 256, hidden_size] - Noisy CLIP patch embeddings
-            eva_features: [B, 256, eva_size] - EVA-CLIP conditioning
-            timestep_emb: [B, hidden_size] - Timestep embeddings
-            attention_mask: Optional attention mask
+        Forward pass for BLIP3-o patch-level DiT with gradient flow verification
         """
+        batch_size, seq_len, _ = hidden_states.shape
         
-        # Project EVA features to hidden size
-        eva_projected = self.eva_proj(eva_features)  # [B, 256, hidden_size]
+        # Validate inputs
+        assert seq_len == self.config.max_position_embeddings, \
+            f"Expected {self.config.max_position_embeddings} tokens, got {seq_len}"
+        assert hidden_states.shape[2] == self.config.clip_embedding_size, \
+            f"Expected CLIP dim {self.config.clip_embedding_size}, got {hidden_states.shape[2]}"
+        assert encoder_hidden_states.shape[2] == self.config.eva_embedding_size, \
+            f"Expected EVA dim {self.config.eva_embedding_size}, got {encoder_hidden_states.shape[2]}"
         
-        # AdaLN modulation parameters
-        shift_msa, scale_msa, gate_msa, shift_cross, scale_cross, gate_cross = \
-            self.adaLN_modulation(timestep_emb).chunk(6, dim=1)
+        # CRITICAL FIX: Ensure model is in training mode during training
+        if self.training:
+            # Verify all non-frozen parameters require gradients
+            frozen_params = [name for name, p in self.named_parameters() if not p.requires_grad]
+            if frozen_params and len(frozen_params) == len(list(self.named_parameters())):
+                logger.error("ALL model parameters are frozen!")
+                raise RuntimeError("No trainable parameters in model")
         
-        # Self-attention with AdaLN
-        norm_hidden = self.norm1(hidden_states)
-        norm_hidden = norm_hidden * (1 + scale_msa.unsqueeze(1)) + shift_msa.unsqueeze(1)
+        # Project inputs to hidden size
+        x = self.input_proj(hidden_states)  # [B, 256, hidden_size]
         
-        # Apply 3D RoPE
-        norm_hidden = self.rope(norm_hidden)
+        # CRITICAL FIX: Verify intermediate gradients after input projection
+        if self.training and not x.requires_grad:
+            logger.error("Intermediate activations don't require gradients after input_proj")
+            logger.error(f"Input requires_grad: {hidden_states.requires_grad}")
+            logger.error(f"input_proj weight requires_grad: {self.input_proj.weight.requires_grad}")
+            raise RuntimeError("Gradient flow broken at input projection")
         
-        # Self-attention
-        attn_output = self.self_attn(norm_hidden, norm_hidden, norm_hidden, attention_mask)
-        hidden_states = hidden_states + gate_msa.unsqueeze(1) * attn_output
+        # Add positional embeddings
+        x = x + self.pos_embed  # [B, 256, hidden_size]
         
-        # Cross-attention with EVA features
-        norm_hidden = self.norm2(hidden_states)
-        norm_hidden = norm_hidden * (1 + scale_cross.unsqueeze(1)) + shift_cross.unsqueeze(1)
+        # Timestep embedding
+        timestep_emb = self.timestep_embedder(timestep)  # [B, hidden_size]
         
-        cross_attn_output = self.cross_attn(norm_hidden, eva_projected, eva_projected, attention_mask)
-        hidden_states = hidden_states + gate_cross.unsqueeze(1) * cross_attn_output
+        # Pass through DiT blocks with gradient checking
+        for i, block in enumerate(self.blocks):
+            x_before = x
+            x = block(x, encoder_hidden_states, timestep_emb, attention_mask)
+            
+            # CRITICAL FIX: Check gradient flow periodically
+            if self.training and i % 4 == 0:  # Check every 4 blocks
+                if not x.requires_grad:
+                    logger.error(f"Gradient flow broken at block {i}")
+                    logger.error(f"Input to block requires_grad: {x_before.requires_grad}")
+                    logger.error(f"Output from block requires_grad: {x.requires_grad}")
+                    raise RuntimeError(f"Gradient flow broken at DiT block {i}")
         
-        # Feed-forward network
-        norm_hidden = self.norm3(hidden_states)
-        mlp_output = self.mlp(norm_hidden)
-        hidden_states = hidden_states + mlp_output
+        # Project back to CLIP dimension
+        velocity_pred = self.output_proj(x)  # [B, 256, 1024]
         
-        return hidden_states
+        # CRITICAL FIX: Final gradient verification
+        if self.training and not velocity_pred.requires_grad:
+            logger.error("Final output doesn't require gradients")
+            logger.error(f"Input hidden_states requires_grad: {hidden_states.requires_grad}")
+            logger.error(f"Timestep requires_grad: {timestep.requires_grad}")
+            logger.error(f"Encoder hidden_states requires_grad: {encoder_hidden_states.requires_grad}")
+            logger.error(f"Final layer input requires_grad: {x.requires_grad}")
+            logger.error(f"output_proj weight requires_grad: {self.output_proj[-1].weight.requires_grad}")
+            raise RuntimeError("Final output doesn't require gradients - model is not trainable!")
+        
+        if return_dict:
+            return {
+                "velocity_prediction": velocity_pred,
+                "hidden_states": x,
+                "timestep_embeddings": timestep_emb
+            }
+        
+        return velocity_pred
 
 
 class BLIP3oPatchDiTModel(PreTrainedModel):

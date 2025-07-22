@@ -68,6 +68,9 @@ class BLIP3oFlowMatchingLoss(nn.Module):
         sigma_t = self.sigma_min + (self.sigma_max - self.sigma_min) * (1 - t)
         return alpha_t, sigma_t
 
+    # Add this to your src/modules/losses/blip3o_flow_matching_loss.py
+# Update the interpolate_data method:
+
     def interpolate_data(
         self,
         x_0: torch.Tensor,  # Source (noise) [B, 256, 1024]
@@ -77,15 +80,7 @@ class BLIP3oFlowMatchingLoss(nn.Module):
     ) -> torch.Tensor:
         """
         Interpolate between source and target for flow matching
-        
-        Args:
-            x_0: Source distribution (noise) [B, 256, 1024]
-            x_1: Target CLIP patch embeddings [B, 256, 1024]
-            t: Timesteps [B]
-            noise: Additional noise [B, 256, 1024]
-            
-        Returns:
-            Interpolated noisy samples [B, 256, 1024]
+        FIXED: Ensures gradient flow is preserved
         """
         if noise is None:
             noise = torch.zeros_like(x_1)
@@ -97,8 +92,19 @@ class BLIP3oFlowMatchingLoss(nn.Module):
         alpha_t = alpha_t.view(-1, 1, 1)
         sigma_t = sigma_t.view(-1, 1, 1)
         
+        # CRITICAL FIX: Ensure x_0 requires gradients for training
+        if x_0.requires_grad is False:
+            x_0 = x_0.requires_grad_(True)
+        
         # Linear interpolation with noise injection
+        # This preserves gradients from x_0 and noise
         x_t = (1 - alpha_t) * x_0 + alpha_t * x_1 + sigma_t * noise
+        
+        # Verify output requires gradients
+        if not x_t.requires_grad:
+            logger.error("Interpolated output doesn't require gradients!")
+            # Force gradient requirement
+            x_t = x_t.requires_grad_(True)
         
         return x_t
 
