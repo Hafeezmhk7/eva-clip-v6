@@ -1,12 +1,13 @@
 """
-BLIP3-o Flow Matching Loss for Patch-Level Training
+FIXED BLIP3-o Flow Matching Loss for Patch-Level Training
 src/modules/losses/blip3o_flow_matching_loss.py
 
-This implementation follows the BLIP3-o approach:
-1. Flow matching loss for patch-level CLIP embeddings
-2. Direct supervision on 256 patch tokens
-3. Optimized for image-to-text recall performance
-4. Includes contrastive loss for better alignment
+CRITICAL FIXES APPLIED:
+1. Added proper logger import
+2. Fixed gradient flow in interpolate_data
+3. Ensured all operations preserve gradients
+4. Added comprehensive gradient checking
+5. Proper error handling without breaking gradients
 """
 
 import torch
@@ -14,17 +15,21 @@ import torch.nn as nn
 import torch.nn.functional as F
 from typing import Optional, Dict, Any, Tuple
 import math
+import logging
+
+# CRITICAL FIX: Add proper logger
+logger = logging.getLogger(__name__)
 
 
 class BLIP3oFlowMatchingLoss(nn.Module):
     """
-    Flow Matching Loss for BLIP3-o Patch-Level Training
+    FIXED Flow Matching Loss for BLIP3-o Patch-Level Training
     
-    This loss function implements:
-    1. Rectified flow training on CLIP patch embeddings
-    2. Velocity prediction objective
-    3. Optional contrastive loss for better alignment
-    4. Metrics tracking for training monitoring
+    CRITICAL FIXES:
+    1. Proper gradient preservation
+    2. Robust interpolation with gradient flow
+    3. Enhanced error handling
+    4. Comprehensive gradient checking
     """
     
     def __init__(
@@ -52,10 +57,10 @@ class BLIP3oFlowMatchingLoss(nn.Module):
         self.register_buffer('ema_cosine_sim', torch.tensor(0.0))
         self.ema_decay = 0.99
         
-        print(f"✅ BLIP3-o Flow Matching Loss initialized")
-        print(f"   Prediction type: {prediction_type}")
-        print(f"   Contrastive loss: {use_contrastive_loss}")
-        print(f"   Training objective: Patch-level flow matching")
+        logger.info(f"✅ BLIP3-o Flow Matching Loss initialized")
+        logger.info(f"   Prediction type: {prediction_type}")
+        logger.info(f"   Contrastive loss: {use_contrastive_loss}")
+        logger.info(f"   Training objective: Patch-level flow matching")
 
     def sample_timesteps(self, batch_size: int, device: torch.device) -> torch.Tensor:
         """Sample random timesteps for flow matching"""
@@ -68,9 +73,6 @@ class BLIP3oFlowMatchingLoss(nn.Module):
         sigma_t = self.sigma_min + (self.sigma_max - self.sigma_min) * (1 - t)
         return alpha_t, sigma_t
 
-    # Add this to your src/modules/losses/blip3o_flow_matching_loss.py
-# Update the interpolate_data method:
-
     def interpolate_data(
         self,
         x_0: torch.Tensor,  # Source (noise) [B, 256, 1024]
@@ -79,32 +81,49 @@ class BLIP3oFlowMatchingLoss(nn.Module):
         noise: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
         """
-        Interpolate between source and target for flow matching
-        FIXED: Ensures gradient flow is preserved
+        FIXED: Interpolate between source and target with proper gradient preservation
+        
+        CRITICAL FIXES:
+        1. Ensures x_0 requires gradients
+        2. Preserves gradient flow through interpolation
+        3. Comprehensive gradient checking
+        4. Robust error handling
         """
         if noise is None:
             noise = torch.zeros_like(x_1)
         
-        # Ensure proper shapes for broadcasting
+        # CRITICAL FIX 1: Ensure proper shapes for broadcasting
         t = t.view(-1, 1, 1)  # [B, 1, 1]
         
         alpha_t, sigma_t = self.get_noise_schedule(t.squeeze(-1))
         alpha_t = alpha_t.view(-1, 1, 1)
         sigma_t = sigma_t.view(-1, 1, 1)
         
-        # CRITICAL FIX: Ensure x_0 requires gradients for training
-        if x_0.requires_grad is False:
-            x_0 = x_0.requires_grad_(True)
+        # CRITICAL FIX 2: Ensure x_0 requires gradients and is connected to computation graph
+        if not x_0.requires_grad:
+            logger.debug("x_0 doesn't require gradients, creating new tensor with gradients")
+            x_0 = x_0.detach().requires_grad_(True)
         
-        # Linear interpolation with noise injection
-        # This preserves gradients from x_0 and noise
-        x_t = (1 - alpha_t) * x_0 + alpha_t * x_1 + sigma_t * noise
+        # CRITICAL FIX 3: Ensure noise has proper gradient properties
+        if not noise.requires_grad:
+            # Create noise with gradients if needed (though usually noise doesn't need gradients)
+            noise = noise.detach()
         
-        # Verify output requires gradients
+        # CRITICAL FIX 4: Linear interpolation preserving gradients
+        # This is the critical operation that must preserve gradients from x_0
+        x_t = (1 - alpha_t) * x_0 + alpha_t * x_1.detach() + sigma_t * noise
+        
+        # CRITICAL FIX 5: Verify output requires gradients
         if not x_t.requires_grad:
-            logger.error("Interpolated output doesn't require gradients!")
-            # Force gradient requirement
+            logger.error("CRITICAL: Interpolated output doesn't require gradients!")
+            logger.error(f"x_0 requires_grad: {x_0.requires_grad}")
+            logger.error(f"x_1 requires_grad: {x_1.requires_grad}")
+            logger.error(f"alpha_t requires_grad: {alpha_t.requires_grad}")
+            logger.error(f"noise requires_grad: {noise.requires_grad}")
+            
+            # EMERGENCY FIX: Force gradient requirement
             x_t = x_t.requires_grad_(True)
+            logger.warning("Emergency fix: Forced gradient requirement on interpolated output")
         
         return x_t
 
@@ -122,10 +141,10 @@ class BLIP3oFlowMatchingLoss(nn.Module):
         """
         if self.prediction_type == "velocity":
             # Rectified flow velocity
-            velocity_target = x_1 - x_0
+            velocity_target = x_1.detach() - x_0.detach()  # Detach targets
         elif self.prediction_type == "epsilon":
             # Noise prediction target
-            velocity_target = noise if noise is not None else torch.randn_like(x_1)
+            velocity_target = noise.detach() if noise is not None else torch.randn_like(x_1)
         else:
             raise ValueError(f"Unknown prediction type: {self.prediction_type}")
         
@@ -145,7 +164,7 @@ class BLIP3oFlowMatchingLoss(nn.Module):
         
         # Normalize patches
         pred_norm = F.normalize(predicted_patches, p=2, dim=-1)  # [B, 256, 1024]
-        target_norm = F.normalize(target_patches, p=2, dim=-1)   # [B, 256, 1024]
+        target_norm = F.normalize(target_patches.detach(), p=2, dim=-1)   # [B, 256, 1024]
         
         # Compute patch similarities within each sample
         similarities = torch.einsum('bpd,bqd->bpq', pred_norm, target_norm)  # [B, 256, 256]
@@ -178,7 +197,7 @@ class BLIP3oFlowMatchingLoss(nn.Module):
         """
         # Global pooling (mean pooling across patches)
         pred_global = predicted_patches.mean(dim=1)    # [B, 1024]
-        target_global = target_patches.mean(dim=1)     # [B, 1024]
+        target_global = target_patches.detach().mean(dim=1)     # [B, 1024]
         
         # Normalize global features
         pred_global_norm = F.normalize(pred_global, p=2, dim=-1)
@@ -208,22 +227,23 @@ class BLIP3oFlowMatchingLoss(nn.Module):
         return_metrics: bool = False,
     ) -> Tuple[torch.Tensor, Optional[Dict[str, float]]]:
         """
-        Compute BLIP3-o flow matching loss
+        FIXED: Compute BLIP3-o flow matching loss with proper gradient handling
         
-        Args:
-            model_output: Predicted velocity [B, 256, 1024]
-            target_samples: Target CLIP patch embeddings [B, 256, 1024]
-            timesteps: Timesteps [B]
-            eva_conditioning: EVA conditioning [B, 256, 4096]
-            noise: Noise used in interpolation [B, 256, 1024]
-            return_metrics: Whether to return detailed metrics
-            
-        Returns:
-            loss: Total loss (scalar)
-            metrics: Optional metrics dictionary
+        CRITICAL FIXES:
+        1. Comprehensive gradient verification
+        2. Proper loss computation with gradient preservation
+        3. Enhanced error handling
+        4. Robust fallback mechanisms
         """
         batch_size = model_output.shape[0]
         device = model_output.device
+        
+        # CRITICAL FIX 1: Verify model output has gradients
+        if not model_output.requires_grad:
+            logger.error("CRITICAL: Model output doesn't require gradients in loss computation!")
+            logger.error(f"Model output shape: {model_output.shape}")
+            logger.error(f"Model output grad_fn: {model_output.grad_fn}")
+            raise RuntimeError("Model output doesn't require gradients - training is broken!")
         
         # Input validation
         assert model_output.shape == target_samples.shape, \
@@ -235,20 +255,29 @@ class BLIP3oFlowMatchingLoss(nn.Module):
         
         # Normalize targets if requested
         if self.normalize_targets:
-            target_samples = F.normalize(target_samples, p=2, dim=-1)
+            target_samples = F.normalize(target_samples.detach(), p=2, dim=-1)
+        else:
+            target_samples = target_samples.detach()  # Always detach targets
         
-        # Sample source distribution (noise)
-        x_0 = torch.randn_like(target_samples)
+        # CRITICAL FIX 2: Create source distribution with gradients
+        x_0 = torch.randn_like(target_samples, requires_grad=True)
         
         # Sample noise if not provided
         if noise is None:
             noise = torch.randn_like(target_samples) * 0.1
         
-        # Compute velocity target
+        # CRITICAL FIX 3: Compute velocity target (detached from gradients)
         velocity_target = self.compute_velocity_target(x_0, target_samples, timesteps, noise)
         
-        # Primary flow matching loss (MSE on velocity prediction)
+        # CRITICAL FIX 4: Primary flow matching loss (MSE on velocity prediction)
         flow_matching_loss = F.mse_loss(model_output, velocity_target, reduction='mean')
+        
+        # CRITICAL FIX 5: Verify loss has gradients
+        if not flow_matching_loss.requires_grad:
+            logger.error("CRITICAL: Flow matching loss doesn't require gradients!")
+            logger.error(f"Model output grad_fn: {model_output.grad_fn}")
+            logger.error(f"Velocity target requires_grad: {velocity_target.requires_grad}")
+            raise RuntimeError("Flow matching loss doesn't require gradients - computation graph broken!")
         
         # Initialize total loss
         total_loss = flow_matching_loss
@@ -274,7 +303,14 @@ class BLIP3oFlowMatchingLoss(nn.Module):
                 total_loss = total_loss + self.contrastive_weight * total_contrastive
                 
             except Exception as e:
-                print(f"Contrastive loss computation failed: {e}")
+                logger.warning(f"Contrastive loss computation failed: {e}")
+        
+        # CRITICAL FIX 6: Final verification that total loss has gradients
+        if not total_loss.requires_grad:
+            logger.error("CRITICAL: Total loss doesn't require gradients!")
+            logger.error(f"Flow matching loss grad_fn: {flow_matching_loss.grad_fn}")
+            logger.error(f"Contrastive loss grad_fn: {contrastive_loss.grad_fn}")
+            raise RuntimeError("Total loss doesn't require gradients - computation broken!")
         
         # Update EMA metrics
         with torch.no_grad():
@@ -351,6 +387,11 @@ class BLIP3oFlowMatchingLoss(nn.Module):
                     'noise_level': torch.norm(noise, dim=-1).mean().item() if noise is not None else 0.0,
                     'batch_size': batch_size,
                     'num_patches': model_output.shape[1],
+                    
+                    # CRITICAL: Gradient flow status
+                    'gradient_flow_ok': True,
+                    'model_output_has_grad': model_output.requires_grad,
+                    'loss_has_grad': total_loss.requires_grad,
                 }
         
         return total_loss, metrics

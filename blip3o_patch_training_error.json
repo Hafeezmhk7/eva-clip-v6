@@ -1,6 +1,6 @@
 {
-  "error": "BLIP3oPatchDiTModel does not support gradient checkpointing.",
-  "traceback": "Traceback (most recent call last):\n  File \"/gpfs/home1/scur2711/eva-clip-flow-matching/eva-clip-v3/train_blip3o_patch_dit.py\", line 362, in main\n    model.gradient_checkpointing_enable()\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^\n  File \"/home/scur2711/.conda/envs/eva_clip_env/lib/python3.13/site-packages/transformers/modeling_utils.py\", line 3460, in gradient_checkpointing_enable\n    raise ValueError(f\"{self.__class__.__name__} does not support gradient checkpointing.\")\nValueError: BLIP3oPatchDiTModel does not support gradient checkpointing.\n",
+  "error": "\"The `metric_for_best_model` training argument is set to 'eval_recall@1', which is not found in the evaluation metrics. The available evaluation metrics are: ['eval_loss', 'eval_successful_batches', 'eval_total_batches', 'eval_error_rate']. Consider changing the `metric_for_best_model` via the TrainingArguments.\"",
+  "traceback": "Traceback (most recent call last):\n  File \"/home/scur2711/.conda/envs/eva_clip_env/lib/python3.13/site-packages/transformers/trainer.py\", line 3165, in _determine_best_metric\n    metric_value = metrics[metric_to_check]\n                   ~~~~~~~^^^^^^^^^^^^^^^^^\nKeyError: 'eval_recall@1'\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"/gpfs/home1/scur2711/eva-clip-flow-matching/eva-clip-v3/train_blip3o_patch_dit.py\", line 474, in main\n    train_result = trainer.train()\n  File \"/home/scur2711/.conda/envs/eva_clip_env/lib/python3.13/site-packages/transformers/trainer.py\", line 2206, in train\n    return inner_training_loop(\n        args=args,\n    ...<2 lines>...\n        ignore_keys_for_eval=ignore_keys_for_eval,\n    )\n  File \"/home/scur2711/.conda/envs/eva_clip_env/lib/python3.13/site-packages/transformers/trainer.py\", line 2623, in _inner_training_loop\n    self._maybe_log_save_evaluate(\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^\n        tr_loss,\n        ^^^^^^^^\n    ...<6 lines>...\n        learning_rate=learning_rate,\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n    )\n    ^\n  File \"/home/scur2711/.conda/envs/eva_clip_env/lib/python3.13/site-packages/transformers/trainer.py\", line 3097, in _maybe_log_save_evaluate\n    is_new_best_metric = self._determine_best_metric(metrics=metrics, trial=trial)\n  File \"/home/scur2711/.conda/envs/eva_clip_env/lib/python3.13/site-packages/transformers/trainer.py\", line 3167, in _determine_best_metric\n    raise KeyError(\n    ...<2 lines>...\n    ) from exc\nKeyError: \"The `metric_for_best_model` training argument is set to 'eval_recall@1', which is not found in the evaluation metrics. The available evaluation metrics are: ['eval_loss', 'eval_successful_batches', 'eval_total_batches', 'eval_error_rate']. Consider changing the `metric_for_best_model` via the TrainingArguments.\"\n",
   "gpu_info": {
     "cuda_available": true,
     "gpu_count": 3,
@@ -24,6 +24,6 @@
     "WORLD_SIZE": null,
     "LOCAL_RANK": null
   },
-  "timestamp": "2025-07-22T21:36:41.613629",
+  "timestamp": "2025-07-22T22:31:36.533569",
   "training_type": "blip3o_patch_level"
 }
