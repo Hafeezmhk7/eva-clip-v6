@@ -692,7 +692,7 @@ def create_enhanced_training_args(
         ignore_data_skip=True,
         
         # Debug mode
-        debug=debug,
+        debug=["underflow_overflow"] if debug else [],
         
         **kwargs
     )
