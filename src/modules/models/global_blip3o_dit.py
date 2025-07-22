@@ -1,12 +1,12 @@
 """
-FIXED Global BLIP3-o DiT Model - Direct Global Training
+FIXED Global BLIP3-o DiT Model - Compatible Parameter Names
 Place this file as: src/modules/models/global_blip3o_dit.py
 
 KEY FIXES:
-1. Fixed 3D RoPE dimension allocation bug
-2. Proper head dimension compatibility (head_dim % 4 == 0)
-3. Direct global training - no mismatch
-4. Simplified architecture
+1. Updated forward() method to use standard transformer parameter names
+2. Added parameter compatibility layer
+3. Proper handling of both patch and global input formats
+4. Enhanced error handling and input validation
 """
 
 import torch
@@ -103,7 +103,15 @@ def get_3d_rotary_pos_embed(embed_dim, grid_size, temporal_size=1, base=10000.0)
 
 
 def apply_rotary_pos_emb_3d(q, k, cos, sin):
-    """Apply 3D rotary position embedding to query and key tensors"""
+    """
+    FIXED: Apply 3D rotary position embedding to query and key tensors
+    
+    Args:
+        q: query tensor [batch_size, seq_len, num_heads, head_dim]
+        k: key tensor [batch_size, seq_len, num_heads, head_dim]  
+        cos: cosine embeddings [1, seq_len, head_dim]
+        sin: sine embeddings [1, seq_len, head_dim]
+    """
     def rotate_half(x):
         x1 = x[..., : x.shape[-1] // 2]
         x2 = x[..., x.shape[-1] // 2 :]
@@ -111,13 +119,28 @@ def apply_rotary_pos_emb_3d(q, k, cos, sin):
     
     batch_size, seq_len, num_heads, head_dim = q.shape
     
-    # Ensure cos/sin match the sequence length and head dimension
-    cos = cos[:, :seq_len, :head_dim].to(q.device)
-    sin = sin[:, :seq_len, :head_dim].to(q.device)
+    # FIXED: Handle cos/sin tensor dimensions properly
+    # cos and sin should be [1, seq_len, embed_dim] from get_3d_rotary_pos_embed
     
-    # Expand for batch and heads
-    cos = cos.unsqueeze(0).expand(batch_size, -1, -1)
-    sin = sin.unsqueeze(0).expand(batch_size, -1, -1)
+    # Ensure cos/sin match the sequence length and head dimension
+    if cos.dim() == 3:  # [1, seq_len, embed_dim]
+        cos = cos[:, :seq_len, :head_dim].to(q.device)  # [1, seq_len, head_dim]
+        sin = sin[:, :seq_len, :head_dim].to(q.device)  # [1, seq_len, head_dim]
+    else:
+        # Handle other dimension cases
+        cos = cos[:seq_len, :head_dim].to(q.device)
+        sin = sin[:seq_len, :head_dim].to(q.device)
+        cos = cos.unsqueeze(0)  # Add batch dim: [1, seq_len, head_dim]
+        sin = sin.unsqueeze(0)  # Add batch dim: [1, seq_len, head_dim]
+    
+    # FIXED: Proper expansion to match q and k dimensions
+    # We need: [batch_size, seq_len, num_heads, head_dim]
+    
+    # Expand batch dimension: [1, seq_len, head_dim] -> [batch_size, seq_len, head_dim]
+    cos = cos.expand(batch_size, -1, -1)
+    sin = sin.expand(batch_size, -1, -1)
+    
+    # Add head dimension: [batch_size, seq_len, head_dim] -> [batch_size, seq_len, num_heads, head_dim]
     cos = cos.unsqueeze(2).expand(-1, -1, num_heads, -1)
     sin = sin.unsqueeze(2).expand(-1, -1, num_heads, -1)
     
@@ -266,10 +289,12 @@ class GlobalDiTBlock(nn.Module):
 
 class GlobalBLIP3oDiTModel(PreTrainedModel):
     """
-    FIXED Global BLIP3-o DiT Model - Direct Global Training
+    FIXED Global BLIP3-o DiT Model - Compatible Parameter Names
     
     Architecture: EVA-CLIP [B, 256, 4096] → DiT → Attention Pool → MLP → [B, 768]
     Training Target: [B, 768] global embeddings (matches evaluation)
+    
+    FIXED: Uses standard transformer parameter names for compatibility
     """
     
     config_class = BLIP3oDiTConfig
@@ -406,26 +431,98 @@ class GlobalBLIP3oDiTModel(PreTrainedModel):
         
         return emb
     
+    def _convert_patch_to_global(self, patch_features):
+        """
+        Convert patch features to global features for input processing
+        
+        Args:
+            patch_features: [B, 256, 1024] CLIP patch features
+            
+        Returns:
+            global_features: [B, 768] global features
+        """
+        # Pool patches to global representation
+        pooled = patch_features.mean(dim=1)  # [B, 1024]
+        
+        # Apply CLIP projection to get [B, 768]
+        if self.frozen_clip_proj is not None:
+            # Move to correct device if needed
+            if self.frozen_clip_proj.weight.device != pooled.device:
+                self.frozen_clip_proj = self.frozen_clip_proj.to(pooled.device)
+            global_features = self.frozen_clip_proj(pooled)  # [B, 768]
+        else:
+            # Fallback: create projection on the fly
+            global_features = F.linear(
+                pooled, 
+                torch.randn(768, 1024, device=pooled.device, dtype=pooled.dtype) * 0.02
+            )
+        
+        return global_features
+    
     def forward(
         self,
-        noisy_global_features,  # [B, 768] - Noisy global CLIP features
-        timestep,               # [B] - Timesteps
-        eva_features,          # [B, 256, 4096] - EVA conditioning
-        return_dict=True
+        hidden_states=None,        # [B, 768] - Noisy global features OR [B, 256, 1024] patches
+        timestep=None,             # [B] - Timesteps  
+        encoder_hidden_states=None, # [B, 256, 4096] - EVA conditioning
+        return_dict=True,
+        
+        # Legacy parameter names for backward compatibility
+        noisy_global_features=None,
+        eva_features=None,
+        **kwargs
     ):
         """
-        Forward pass for global training
+        FIXED Forward pass with compatible parameter names
         
-        Returns: Predicted global velocity [B, 768]
+        Args:
+            hidden_states: Input features (can be global [B, 768] or patches [B, 256, 1024])
+            timestep: Timesteps [B]
+            encoder_hidden_states: EVA conditioning [B, 256, 4096]
+            return_dict: Whether to return dict
+            
+        Returns:
+            Predicted global velocity [B, 768]
         """
-        batch_size = noisy_global_features.shape[0]
-        device = noisy_global_features.device
+        
+        # FIXED: Parameter compatibility layer
+        if hidden_states is None and noisy_global_features is not None:
+            hidden_states = noisy_global_features
+        
+        if encoder_hidden_states is None and eva_features is not None:
+            encoder_hidden_states = eva_features
+        
+        # Validate inputs
+        if hidden_states is None:
+            raise ValueError("hidden_states (or noisy_global_features) is required")
+        if timestep is None:
+            raise ValueError("timestep is required")
+        if encoder_hidden_states is None:
+            raise ValueError("encoder_hidden_states (or eva_features) is required")
+        
+        batch_size = hidden_states.shape[0]
+        device = hidden_states.device
+        
+        # FIXED: Handle both global and patch inputs
+        if hidden_states.dim() == 3 and hidden_states.shape[1] == 256:
+            # Input is patch features [B, 256, 1024] - convert to global
+            print(f"🔄 Converting patch features to global: {hidden_states.shape}")
+            global_features = self._convert_patch_to_global(hidden_states)
+        elif hidden_states.dim() == 2 and hidden_states.shape[1] == 768:
+            # Input is already global features [B, 768]
+            global_features = hidden_states
+        else:
+            raise ValueError(f"Unsupported hidden_states shape: {hidden_states.shape}. "
+                           f"Expected [B, 768] or [B, 256, 1024]")
+        
+        # Validate EVA features
+        if encoder_hidden_states.shape != (batch_size, 256, 4096):
+            raise ValueError(f"encoder_hidden_states must be [B, 256, 4096], got {encoder_hidden_states.shape}")
         
         # Project EVA features
-        eva_proj = self.eva_proj(eva_features)  # [B, 256, patch_dim]
+        eva_proj = self.eva_proj(encoder_hidden_states)  # [B, 256, patch_dim]
         
         # Expand global features to patch format for DiT processing
-        expanded_features = self.patch_embed(noisy_global_features).unsqueeze(1)  # [B, 1, patch_dim]
+        expanded_features = self.patch_embed(global_features).unsqueeze(1)  # [B, 1, patch_dim]
         expanded_features = expanded_features.expand(-1, 256, -1)  # [B, 256, patch_dim]
         
         # Add position embeddings
@@ -447,10 +544,10 @@ class GlobalBLIP3oDiTModel(PreTrainedModel):
             x = layer(x, eva_proj, timestep_emb, rope_embeddings)
         
         # Pool to global representation
-        global_features = self.pooling(x)  # [B, patch_dim]
+        global_features_processed = self.pooling(x)  # [B, patch_dim]
         
         # Global adaptation
-        adapted_features = self.global_adapter(global_features)  # [B, 1024]
+        adapted_features = self.global_adapter(global_features_processed)  # [B, 1024]
         
         # Apply CLIP projection
         if self.frozen_clip_proj is not None:
@@ -493,8 +590,13 @@ class GlobalBLIP3oDiTModel(PreTrainedModel):
             t = step * dt
             t_tensor = torch.full((batch_size,), t, device=device)
             
-            # Predict velocity
-            velocity = self.forward(sample, t_tensor, eva_features, return_dict=False)
+            # Predict velocity using standard parameter names
+            velocity = self.forward(
+                hidden_states=sample, 
+                timestep=t_tensor, 
+                encoder_hidden_states=eva_features, 
+                return_dict=False
+            )
             
             # Euler step
             sample = sample + dt * velocity
