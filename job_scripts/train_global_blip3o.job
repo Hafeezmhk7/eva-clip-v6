@@ -416,7 +416,7 @@ TRAIN_START_TIME=$(date +%s)
 echo "🔥 Launching enhanced training..."
 
 # Use the fixed training script
-python train_global_blip3o_multi_gpu.py \
+python train_blip3o_multi_gpu.py \
     --chunked_embeddings_dir "$EMBEDDINGS_DIR" \
     --output_dir "$OUTPUT_DIR" \
     --num_epochs $NUM_EPOCHS \
