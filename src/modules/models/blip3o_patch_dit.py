@@ -383,6 +383,9 @@ class BLIP3oPatchDiTModel(PreTrainedModel):
         """Check if gradient checkpointing is enabled."""
         return getattr(self, '_gradient_checkpointing', False)
     
+    # URGENT FIX: Replace the forward method in src/modules/models/blip3o_patch_dit.py
+    # Find the forward method in BLIP3oPatchDiTModel class and replace it with this:
+
     def forward(self,
                 hidden_states: torch.Tensor,  # [B, 256, 1024] - Noisy CLIP patches
                 timestep: torch.Tensor,       # [B] - Timesteps
@@ -390,14 +393,9 @@ class BLIP3oPatchDiTModel(PreTrainedModel):
                 attention_mask: Optional[torch.Tensor] = None,
                 return_dict: bool = True) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
         """
-        FIXED forward pass with comprehensive gradient flow verification
+        FIXED forward pass with DataParallel compatibility
         
-        CRITICAL FIXES:
-        1. Comprehensive input validation
-        2. Gradient flow verification at each stage
-        3. Enhanced error handling with fallbacks
-        4. Detailed logging for debugging
-        5. Emergency gradient preservation mechanisms
+        CRITICAL FIX: Only return tensors when using DataParallel
         """
         try:
             batch_size, seq_len, _ = hidden_states.shape
@@ -486,13 +484,15 @@ class BLIP3oPatchDiTModel(PreTrainedModel):
                 else:
                     raise RuntimeError("Final output doesn't require gradients - model is not trainable!")
             
+            # CRITICAL FIX 7: DataParallel compatibility - only return tensors
             if return_dict:
                 return {
                     "velocity_prediction": velocity_pred,
                     "hidden_states": x,
                     "timestep_embeddings": timestep_emb,
-                    "gradient_flow_status": "ok" if velocity_pred.requires_grad else "broken",
-                    "forward_call_count": getattr(self, '_forward_call_count', 0),
+                    # REMOVED non-tensor values that break DataParallel:
+                    # "gradient_flow_status": "ok" if velocity_pred.requires_grad else "broken",
+                    # "forward_call_count": getattr(self, '_forward_call_count', 0),
                 }
             
             return velocity_pred
@@ -502,7 +502,7 @@ class BLIP3oPatchDiTModel(PreTrainedModel):
             logger.error(f"Input shapes: hidden_states={hidden_states.shape}, timestep={timestep.shape}, encoder={encoder_hidden_states.shape}")
             logger.error(f"Model training mode: {self.training}")
             
-            # EMERGENCY FALLBACK with gradient preservation
+            # EMERGENCY FALLBACK with gradient preservation - DataParallel compatible
             if self.training:
                 try:
                     logger.warning("Attempting emergency model fallback...")
@@ -523,12 +523,11 @@ class BLIP3oPatchDiTModel(PreTrainedModel):
                         
                         logger.warning("Emergency model fallback successful")
                         
+                        # CRITICAL: DataParallel compatible return
                         if return_dict:
                             return {
                                 "velocity_prediction": emergency_output,
-                                "emergency_fallback": True,
-                                "original_error": str(e),
-                                "gradient_flow_status": "emergency_mode"
+                                # Only return tensors for DataParallel compatibility
                             }
                         return emergency_output
                     
