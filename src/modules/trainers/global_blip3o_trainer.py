@@ -652,14 +652,8 @@ def create_enhanced_training_args(
     debug: bool = False,
     **kwargs
 ) -> TrainingArguments:
-    """Create enhanced training arguments with better defaults"""
-    
-    # Ensure evaluation compatibility
-    if load_best_model_at_end and eval_steps > 0:
-        if save_steps % eval_steps != 0:
-            adjusted_save_steps = ((save_steps // eval_steps) + 1) * eval_steps
-            logger.warning(f"Adjusting save_steps from {save_steps} to {adjusted_save_steps}")
-            save_steps = adjusted_save_steps
+    # Remove ddp_find_unused_parameters from kwargs if present
+    ddp_find_unused_parameters = kwargs.pop('ddp_find_unused_parameters', False)
     
     return TrainingArguments(
         output_dir=output_dir,
@@ -689,8 +683,8 @@ def create_enhanced_training_args(
         dataloader_pin_memory=torch.cuda.is_available(),
         
         # Enhanced multi-GPU settings
-        ddp_find_unused_parameters=False,
-        save_on_each_node=False,
+        ddp_find_unused_parameters=ddp_find_unused_parameters,  # Use the extracted value
+        # save_on_each_node=False,
         dataloader_persistent_workers=True,
         
         # Enhanced error handling

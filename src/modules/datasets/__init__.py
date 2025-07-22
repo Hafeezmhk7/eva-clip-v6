@@ -53,14 +53,19 @@ try:
         **kwargs
     ):
         """Create DataLoader with enhanced DDP support"""
-        from torch.utils.data import DataLoader
+        from torch.utils.data import DataLoader, IterableDataset
         
         # Auto-detect pin_memory
         if pin_memory is None:
             pin_memory = torch.cuda.is_available()
         
         sampler = None
-        shuffle_for_dataloader = shuffle
+        shuffle_for_dataloader = False
+        
+        # Handle IterableDataset: cannot use shuffle in DataLoader
+        if isinstance(dataset, IterableDataset):
+            shuffle_for_dataloader = False
+            logger.info("IterableDataset detected: Forcing shuffle=False for DataLoader")
         
         # Use DistributedSampler if in distributed mode
         if dist.is_available() and dist.is_initialized():
