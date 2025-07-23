@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
-Modified BLIP3-o Embedding Extraction with CLS + Patches Support
+Updated BLIP3-o Embedding Extraction with CLS + Patches Support
 src/modules/extract_embeddings_g.py
 
 CHANGES:
-1. Extract CLS token + patches: [B, 257, dim] instead of [B, 256, dim]
+1. Extract CLS token + patches: [B, 257, dim] (CLS first, then 256 patches)
 2. Support both 256 (patch only) and 257 (CLS + patch) modes
 3. Flexible shard selection for training
+4. Better mode detection and validation
 """
 
 import sys
@@ -125,6 +126,7 @@ def extract_clip_features_with_cls(images, processor, model, device, include_cls
             )
             
             # Get all hidden states (CLS + patches)
+            # ViT-L/14 outputs: [1, 257, 1024] where [0] is CLS, [1:257] are patches
             if include_cls:
                 # Keep CLS token + patches: [1, 257, 1024]
                 all_embeddings = vision_outputs.last_hidden_state  # [1, 257, 1024]
@@ -176,6 +178,7 @@ def extract_eva_features_with_cls(images, processor, model, device, include_cls=
             )
             
             # Get all hidden states (CLS + patches)
+            # EVA-CLIP outputs: [1, 257, hidden_dim] where [0] is CLS, [1:257] are patches
             if include_cls:
                 # Keep CLS token + patches: [1, 257, hidden_dim]
                 all_embeddings = vision_outputs.last_hidden_state  # [1, 257, hidden_dim]
@@ -197,33 +200,6 @@ def extract_eva_features_with_cls(images, processor, model, device, include_cls=
             del vision_outputs, all_embeddings, pixel_values
     
     return torch.stack(features)
-
-def format_to_blip3o_tokens(embeddings, target_tokens=257):
-    """
-    Format embeddings to target number of tokens
-    
-    Args:
-        embeddings: Input embeddings [batch_size, current_tokens, hidden_dim]
-        target_tokens: Target number of tokens (257 for CLS+patch, 256 for patch only)
-        
-    Returns:
-        Formatted embeddings [batch_size, target_tokens, hidden_dim]
-    """
-    batch_size, current_tokens, hidden_dim = embeddings.shape
-    
-    if current_tokens == target_tokens:
-        # Already correct size
-        return embeddings
-    elif current_tokens == 257 and target_tokens == 256:
-        # Remove CLS token (first token)
-        return embeddings[:, 1:, :]
-    elif current_tokens == 256 and target_tokens == 257:
-        # Add dummy CLS token at the beginning
-        batch_size, _, hidden_dim = embeddings.shape
-        dummy_cls = torch.zeros(batch_size, 1, hidden_dim, dtype=embeddings.dtype)
-        return torch.cat([dummy_cls, embeddings], dim=1)
-    else:
-        raise ValueError(f"Cannot convert from {current_tokens} to {target_tokens} tokens")
 
 def find_data_files(temp_manager, max_shards=None):
     """Find downloaded tar files using temp manager."""
@@ -296,7 +272,7 @@ def process_single_tar(
     target_tokens: int = 257
 ) -> dict:
     """
-    Process a single TAR file and save embeddings
+    Process a single TAR file and save embeddings with CLS+patch support
     """
     
     print(f"\n🔄 Processing shard {shard_idx}: {Path(tar_file_path).name}")
@@ -432,20 +408,20 @@ def process_single_tar(
                 )
                 cleanup_memory()
                 
-                # Format to target token count
-                clip_blip3o = format_to_blip3o_tokens(clip_features, target_tokens=target_tokens)
-                eva_blip3o = format_to_blip3o_tokens(eva_features, target_tokens=target_tokens)
+                # Validate shapes match target tokens
+                assert clip_features.shape[1] == target_tokens, f"CLIP tokens: {clip_features.shape[1]} vs {target_tokens}"
+                assert eva_features.shape[1] == target_tokens, f"EVA tokens: {eva_features.shape[1]} vs {target_tokens}"
                 
                 # Move to CPU and store
-                shard_clip_embeddings.append(clip_blip3o.cpu())
-                shard_eva_embeddings.append(eva_blip3o.cpu())
+                shard_clip_embeddings.append(clip_features.cpu())
+                shard_eva_embeddings.append(eva_features.cpu())
                 shard_captions.extend(captions)
                 shard_keys.extend(keys)
                 
                 total_samples += len(images)
                 
                 # Clear intermediate variables
-                del clip_features, eva_features, clip_blip3o, eva_blip3o, images
+                del clip_features, eva_features, images
                 cleanup_memory()
                 
                 # Progress update
@@ -474,6 +450,11 @@ def process_single_tar(
         final_clip = torch.cat(shard_clip_embeddings, dim=0)
         final_eva = torch.cat(shard_eva_embeddings, dim=0)
         
+        # Final validation
+        assert final_clip.shape[1] == target_tokens, f"Final CLIP shape: {final_clip.shape}"
+        assert final_eva.shape[1] == target_tokens, f"Final EVA shape: {final_eva.shape}"
+        assert final_clip.shape[2] == 1024, f"CLIP dim: {final_clip.shape[2]}"
+        
         # Create shard data
         shard_data = {
             'clip_blip3o_embeddings': final_clip,
@@ -491,9 +472,11 @@ def process_single_tar(
                 'tokens': target_tokens,
                 'include_cls': include_cls,
                 'mode': mode_suffix,
-                'extraction_method': 'cls_patch_extraction_v2',
-                'format_version': f'blip3o_{target_tokens}_tokens_{"cls_" if include_cls else ""}patch_v2',
+                'extraction_method': 'cls_patch_extraction_v3',
+                'format_version': f'blip3o_{target_tokens}_tokens_{"cls_" if include_cls else ""}patch_v3',
                 'extraction_time': time.time() - start_time,
+                'cls_first': include_cls,  # CLS token is always first if included
+                'patch_order': '16x16_row_major',  # Patches are in row-major order
             }
         }
         
@@ -511,6 +494,7 @@ def process_single_tar(
             print(f"      Size: {file_size_mb:.1f} MB")
             print(f"      Samples: {total_samples}")
             print(f"      Mode: {mode_suffix} ({target_tokens} tokens)")
+            print(f"      CLS+Patches: [0]=CLS, [1:257]=patches" if include_cls else "      Patches only: [0:256]=patches")
             print(f"      Time: {time.time() - start_time:.1f}s")
             
             # Clear memory
@@ -525,7 +509,8 @@ def process_single_tar(
                 'output_path': str(shard_path),
                 'success': True,
                 'mode': mode_suffix,
-                'tokens': target_tokens
+                'tokens': target_tokens,
+                'include_cls': include_cls
             }
         
         except Exception as e:
@@ -565,6 +550,8 @@ def main():
     print("🚀 BLIP3-o Embedding Extraction with CLS+Patch Support")
     print("=" * 70)
     print(f"Mode: {mode_name} ({target_tokens} tokens)")
+    print(f"CLS token: {'First token [0]' if args.include_cls else 'Not included'}")
+    print(f"Patches: {'Tokens [1:257]' if args.include_cls else 'Tokens [0:256]'} (16x16 grid)")
     print(f"Max shards: {args.max_shards if args.max_shards else 'All'}")
     print("=" * 70)
     
@@ -663,12 +650,23 @@ def main():
         'extraction_mode': mode_name,
         'tokens_per_sample': target_tokens,
         'include_cls': args.include_cls,
+        'cls_token_position': 0 if args.include_cls else None,
+        'patch_tokens_range': [1, 257] if args.include_cls else [0, 256],
         'extraction_timestamp': time.time(),
         'shards': processing_results,
         'failed_shards': failed_shards,
-        'format_version': f'blip3o_{target_tokens}_tokens_{"cls_" if args.include_cls else ""}patch_v2',
+        'format_version': f'blip3o_{target_tokens}_tokens_{"cls_" if args.include_cls else ""}patch_v3',
+        'token_layout': {
+            'cls_token': {'included': args.include_cls, 'position': 0 if args.include_cls else None},
+            'patches': {
+                'count': 256,
+                'positions': [1, 257] if args.include_cls else [0, 256],
+                'layout': '16x16 grid in row-major order'
+            }
+        },
         'usage': {
-            'training_command': f'python train_blip3o_patch_dit.py --chunked_embeddings_dir {embeddings_dir} --training_mode {"cls_patch" if args.include_cls else "patch_only"}',
+            'training_command_cls_patch': f'python train_blip3o_enhanced.py --chunked_embeddings_dir {embeddings_dir} --training_mode cls_patch',
+            'training_command_patch_only': f'python train_blip3o_enhanced.py --chunked_embeddings_dir {embeddings_dir} --training_mode patch_only',
         }
     }
     
@@ -682,6 +680,8 @@ def main():
     print("=" * 80)
     print(f"📊 SUMMARY:")
     print(f"   Mode: {mode_name} ({target_tokens} tokens)")
+    print(f"   CLS token: {'Included at position [0]' if args.include_cls else 'Not included'}")
+    print(f"   Patches: {'Positions [1:257]' if args.include_cls else 'Positions [0:256]'} (16x16)")
     print(f"   TAR files processed: {len(tar_files)}")
     print(f"   Successful shards: {len(processing_results)}")
     print(f"   Total samples: {total_samples_all:,}")
@@ -691,9 +691,11 @@ def main():
     if len(processing_results) == len(tar_files):
         print(f"\n🎉 SUCCESS! All shards processed successfully!")
         print("Ready for BLIP3-o training!")
-        print(f"Use this command:")
-        mode_flag = "cls_patch" if args.include_cls else "patch_only"
-        print(f"python train_blip3o_patch_dit.py --chunked_embeddings_dir {embeddings_dir} --training_mode {mode_flag}")
+        print(f"\nUsage commands:")
+        print(f"CLS+Patch mode (257 tokens):")
+        print(f"  python train_blip3o_enhanced.py --chunked_embeddings_dir {embeddings_dir} --training_mode cls_patch")
+        print(f"Patch-only mode (256 tokens):")
+        print(f"  python train_blip3o_enhanced.py --chunked_embeddings_dir {embeddings_dir} --training_mode patch_only")
     
     print("=" * 80)
     

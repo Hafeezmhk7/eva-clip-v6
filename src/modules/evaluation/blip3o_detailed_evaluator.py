@@ -116,7 +116,7 @@ class BLIP3oDetailedEvaluator:
         
         # Storage for all results
         all_patch_similarities = []      # List of [num_patches] arrays for each image
-        all_image_averages = []          # List of scalar averages for each image
+        all_image_averages = []          # List of scalar averages for each image  
         all_generated_embeddings = []    # All generated embeddings
         all_target_embeddings = []       # All target embeddings
         batch_info = []                  # Metadata for each batch

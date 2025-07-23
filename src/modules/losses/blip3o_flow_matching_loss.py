@@ -1,12 +1,13 @@
 """
-Simplified BLIP3-o Flow Matching Loss - Paper Aligned
+Pure BLIP3-o Flow Matching Loss - Paper Aligned (No Contrastive Loss)
 src/modules/losses/blip3o_flow_matching_loss.py
 
 CHANGES:
-1. Removed contrastive loss components
-2. Keep only flow matching loss as in BLIP3-o paper
+1. Removed ALL contrastive loss components
+2. Keep ONLY flow matching loss as in BLIP3-o paper
 3. Simplified implementation focused on velocity prediction
 4. Support for both 256 and 257 token modes
+5. Detailed metrics for training monitoring
 """
 
 import torch
@@ -21,9 +22,9 @@ logger = logging.getLogger(__name__)
 
 class BLIP3oFlowMatchingLoss(nn.Module):
     """
-    Simplified Flow Matching Loss for BLIP3-o (Paper-aligned)
+    Pure Flow Matching Loss for BLIP3-o (Paper-aligned, NO contrastive loss)
     
-    Only uses flow matching loss without contrastive components.
+    Only uses flow matching loss without any contrastive components.
     This follows the original BLIP3-o paper implementation.
     """
     
@@ -46,10 +47,11 @@ class BLIP3oFlowMatchingLoss(nn.Module):
         self.register_buffer('ema_cosine_sim', torch.tensor(0.0))
         self.ema_decay = 0.99
         
-        logger.info(f"✅ Simplified BLIP3-o Flow Matching Loss initialized")
+        logger.info(f"✅ Pure BLIP3-o Flow Matching Loss initialized")
         logger.info(f"   Prediction type: {prediction_type}")
-        logger.info(f"   Paper-aligned: Only flow matching loss")
-        logger.info(f"   No contrastive loss components")
+        logger.info(f"   Paper-aligned: ONLY flow matching loss")
+        logger.info(f"   NO contrastive loss components")
+        logger.info(f"   Supports both 256 and 257 token modes")
 
     def sample_timesteps(self, batch_size: int, device: torch.device) -> torch.Tensor:
         """Sample random timesteps for flow matching"""
@@ -138,18 +140,18 @@ class BLIP3oFlowMatchingLoss(nn.Module):
         return_metrics: bool = False,
     ) -> Tuple[torch.Tensor, Optional[Dict[str, float]]]:
         """
-        Compute simplified BLIP3-o flow matching loss
+        Compute pure BLIP3-o flow matching loss (NO contrastive loss)
         
         Args:
             model_output: Predicted velocity [B, N, 1024]
             target_samples: Target CLIP embeddings [B, N, 1024] 
             timesteps: Flow matching timesteps [B]
-            eva_conditioning: EVA features [B, N, 4096]
+            eva_conditioning: EVA features [B, N, 4096] (for metrics only)
             noise: Noise for flow matching
             return_metrics: Whether to return detailed metrics
             
         Returns:
-            (loss, metrics)
+            (loss, metrics) - Pure flow matching loss only
         """
         batch_size = model_output.shape[0]
         num_tokens = model_output.shape[1]  # 256 or 257
@@ -184,7 +186,7 @@ class BLIP3oFlowMatchingLoss(nn.Module):
         # Compute velocity target (detached from gradients)
         velocity_target = self.compute_velocity_target(x_0, target_samples, timesteps, noise)
         
-        # Primary flow matching loss (MSE on velocity prediction)
+        # PURE FLOW MATCHING LOSS ONLY (no contrastive loss)
         flow_matching_loss = F.mse_loss(model_output, velocity_target, reduction='mean')
         
         # Verify loss has gradients
@@ -192,7 +194,7 @@ class BLIP3oFlowMatchingLoss(nn.Module):
             logger.error("CRITICAL: Flow matching loss doesn't require gradients!")
             raise RuntimeError("Flow matching loss doesn't require gradients!")
         
-        # Total loss is just the flow matching loss (paper-aligned)
+        # Total loss is ONLY the flow matching loss (paper-aligned)
         total_loss = flow_matching_loss
         
         # Update EMA metrics
@@ -220,7 +222,7 @@ class BLIP3oFlowMatchingLoss(nn.Module):
                     dim=-1
                 ).mean()
                 
-                # Global coherence metrics (for both CLS and patch modes)
+                # Mode-specific analysis
                 if num_tokens == 257:
                     # CLS + patches mode: separate CLS and patch analysis
                     pred_cls = model_output[:, 0, :]  # [B, 1024] - CLS token
@@ -255,13 +257,14 @@ class BLIP3oFlowMatchingLoss(nn.Module):
                     dim=-1
                 ) > 0.7).float().mean()
                 
-                # Estimate recall performance
+                # Estimate recall performance (for overfitting monitoring)
                 estimated_recall = torch.clamp(global_cosine_sim * 60, 0, 60)
                 
                 metrics = {
-                    # Loss components (simplified)
+                    # Loss components (ONLY flow matching)
                     'flow_matching_loss': flow_matching_loss.item(),
                     'total_loss': total_loss.item(),
+                    'contrastive_loss': 0.0,  # Not used in pure BLIP3-o
                     
                     # Velocity prediction quality
                     'velocity_cosine_sim': cosine_sim.item(),
@@ -279,7 +282,7 @@ class BLIP3oFlowMatchingLoss(nn.Module):
                     'global_cosine_sim': global_cosine_sim.item(),
                     'high_quality_tokens': high_quality_tokens.item(),
                     
-                    # Performance indicators
+                    # Performance indicators (for overfitting detection)
                     'estimated_recall_at_1': estimated_recall.item(),
                     'training_quality': (
                         'excellent' if global_cosine_sim > 0.8 else
@@ -302,10 +305,11 @@ class BLIP3oFlowMatchingLoss(nn.Module):
                     'model_output_has_grad': model_output.requires_grad,
                     'loss_has_grad': total_loss.requires_grad,
                     
-                    # Paper alignment
+                    # Paper alignment confirmation
                     'paper_aligned': True,
-                    'loss_type': 'flow_matching_only',
+                    'loss_type': 'pure_flow_matching_only',
                     'contrastive_loss_used': False,
+                    'blip3o_paper_compliant': True,
                 }
         
         return total_loss, metrics
@@ -317,7 +321,7 @@ def create_blip3o_flow_matching_loss(
     **kwargs
 ) -> BLIP3oFlowMatchingLoss:
     """
-    Factory function for creating simplified BLIP3-o flow matching loss
+    Factory function for creating pure BLIP3-o flow matching loss
     
     Args:
         prediction_type: "velocity" (recommended) or "epsilon"
@@ -325,7 +329,7 @@ def create_blip3o_flow_matching_loss(
         **kwargs: Additional arguments
         
     Returns:
-        Simplified BLIP3oFlowMatchingLoss instance
+        Pure BLIP3oFlowMatchingLoss instance (no contrastive loss)
     """
     return BLIP3oFlowMatchingLoss(
         prediction_type=prediction_type,

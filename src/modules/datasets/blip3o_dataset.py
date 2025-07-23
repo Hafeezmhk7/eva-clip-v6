@@ -7,6 +7,7 @@ CHANGES:
 2. Flexible shard selection for training size control
 3. Training on same data evaluation support
 4. Enhanced collate function for both modes
+5. Proper gradient flow setup
 """
 
 import torch
@@ -474,7 +475,7 @@ class BLIP3oEmbeddingDataset(IterableDataset):
 
 def flexible_collate_fn(batch: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
-    Flexible collate function supporting both 256 and 257 token modes
+    Flexible collate function supporting both 256 and 257 token modes with proper gradient flow
     """
     # Stack tensor data
     eva_embeddings = torch.stack([item['eva_embeddings'] for item in batch])  # [B, N, 4096]
@@ -497,7 +498,7 @@ def flexible_collate_fn(batch: List[Dict[str, Any]]) -> Dict[str, Any]:
     device = clip_embeddings.device
     dtype = clip_embeddings.dtype
     
-    # Detach conditioning and targets (no gradients needed)
+    # CRITICAL: Detach conditioning and targets (no gradients needed)
     eva_embeddings = eva_embeddings.detach()
     clip_embeddings = clip_embeddings.detach()
     
@@ -507,16 +508,16 @@ def flexible_collate_fn(batch: List[Dict[str, Any]]) -> Dict[str, Any]:
     # Create noise for flow matching
     noise = torch.randn_like(clip_embeddings, device=device, dtype=dtype)
     
-    # Create base noise with proper gradient requirement
+    # CRITICAL: Create base noise with proper gradient requirement
     base_noise = torch.randn_like(clip_embeddings, device=device, dtype=dtype, requires_grad=True)
     
-    # Linear interpolation for flow matching
+    # Linear interpolation for flow matching (rectified flow)
     alpha = timesteps.view(-1, 1, 1)  # [B, 1, 1]
     
     # Create noisy input for the model - this MUST have gradients
     hidden_states = (1 - alpha) * base_noise + alpha * clip_embeddings + 0.1 * noise
     
-    # Ensure the noisy input requires gradients
+    # CRITICAL: Ensure the noisy input requires gradients
     if not hidden_states.requires_grad:
         logger.warning("Noisy input doesn't require gradients, fixing...")
         hidden_states = hidden_states.requires_grad_(True)
@@ -529,11 +530,11 @@ def flexible_collate_fn(batch: List[Dict[str, Any]]) -> Dict[str, Any]:
     assert seq_len in [256, 257], f"Unexpected token count: {seq_len}"
     
     return {
-        # Core embeddings
+        # Core embeddings (for model input)
         'encoder_hidden_states': eva_embeddings,        # [B, N, 4096] - EVA conditioning
         'clip_embeddings': clip_embeddings,             # [B, N, 1024] - Target CLIP patches
         
-        # Flow matching inputs
+        # Flow matching inputs (with proper gradients)
         'hidden_states': hidden_states,                 # [B, N, 1024] - Noisy input (with gradients)
         'timestep': timesteps,                          # [B] - Flow matching timesteps
         'noise': noise,                                 # [B, N, 1024] - Original noise
