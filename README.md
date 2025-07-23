@@ -215,17 +215,7 @@ This implementation **exceeds** the BLIP3-o paper methodology with enhancements:
 - **EVA-CLIP Conditioning**: ✅ 4096-dim cross-attention
 - **256-Token Patches**: ✅ 16×16 spatial grids
 
-### ⭐ Enhanced Features (Beyond Paper)
-- **Pure Training Mode**: ✅ Evaluation-free training for stability
-- **Convergence Monitoring**: ✅ Real-time patience tracking
-- **Advanced Scheduling**: ✅ Cosine LR with optimized decay
-- **Enhanced Loss Weighting**: ✅ Optimized contrastive learning
-- **Memory Optimization**: ✅ Efficient multi-GPU handling
 
-### ✅ Evaluation (Paper + Enhanced)
-- **Image-to-Text Recall**: ✅ Primary metric (R@1, R@5, R@10)
-- **CLIP Baseline Comparison**: ✅ Performance benchmarking
-- **Enhanced Quality Metrics**: ✅ Convergence + embedding analysis
 
 
 <div align="center">
@@ -239,14 +229,6 @@ This implementation **exceeds** the BLIP3-o paper methodology with enhancements:
 ---
 
 ## 📊 Recent Updates
-
-### v2.0 - Enhanced Training (July 2024)
-- ✅ **Enhanced Trainer**: Advanced convergence monitoring
-- ✅ **Pure Training Mode**: Evaluation-free training for stability  
-- ✅ **Cosine Scheduling**: Smooth learning rate decay
-- ✅ **Fixed Evaluation**: Resolved CLIP dimension issues
-- ✅ **Optimized Hyperparameters**: Better default settings
-- ✅ **Successful Training**: Model trained and ready for evaluation
 
 ### v1.0 - Initial Implementation
 - ✅ **Paper-Aligned Architecture**: BLIP3-o DiT implementation
