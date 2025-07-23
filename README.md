@@ -226,26 +226,7 @@ python eval_blip3o_patch_similarity.py \
 
 
 
-## 📊 Evaluation Metrics
 
-### Cosine Similarity Analysis
-
-```mermaid
-graph LR
-    A[Generated Patches<br/>[B, 257, 1024]] --> B[Per-Patch Similarity<br/>[B, 257]]
-    C[Target Patches<br/>[B, 257, 1024]] --> B
-    
-    B --> D[Per-Image Average<br/>[B]]
-    D --> E[Global Average<br/>Scalar]
-    
-    B --> F[Quality Thresholds<br/>>0.7, >0.8, >0.9]
-    D --> G[Distribution Analysis<br/>Mean, Std, Percentiles]
-    E --> H[Final Performance<br/>Score]
-    
-    style B fill:#e8f5e8
-    style E fill:#ffe8e8
-    style H fill:#e8e8ff
-```
 
 ### Evaluation Outputs
 
