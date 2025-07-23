@@ -28,9 +28,6 @@ graph TD
     style F fill:#f3e5f5
 
 
-
-## 🚀 Quick Start
-
 ### 1. Installation
 
 ```bash
