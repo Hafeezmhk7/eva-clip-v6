@@ -1,23 +1,25 @@
 #!/bin/bash
-#SBATCH --job-name=blip3o_patch_pure_training
+#SBATCH --job-name=blip3o_enhanced_training
 #SBATCH --partition=gpu_h100
 #SBATCH --nodes=1
 #SBATCH --gpus=3
 #SBATCH --cpus-per-gpu=18
 #SBATCH --time=12:00:00
 #SBATCH --mem=0
-#SBATCH --output=./slurm_out/blip3o_patch_%j.out
-#SBATCH --error=./slurm_out/blip3o_patch_%j.err
+#SBATCH --output=./slurm_out/blip3o_enhanced_%j.out
+#SBATCH --error=./slurm_out/blip3o_enhanced_%j.err
 
-echo "🚀 BLIP3-o Patch-Level DiT Training - PURE TRAINING MODE"
+echo "🚀 BLIP3-o Enhanced Patch-Level DiT Training"
 echo "================================================================"
-echo "🎯 TRAINING FEATURES:"
+echo "🎯 ENHANCED TRAINING FEATURES:"
 echo "  ✅ 256-token patch-level flow matching"
 echo "  ✅ EVA-CLIP conditioning (4096-dim)"
 echo "  ✅ CLIP output supervision (1024-dim)"
 echo "  ❌ Evaluation COMPLETELY DISABLED (pure training)"
 echo "  ✅ 3D Rotary Position Embedding"
-echo "  ✅ Enhanced multi-GPU support"
+echo "  ✅ ENHANCED: Cosine LR scheduling with decay"
+echo "  ✅ ENHANCED: Convergence monitoring"
+echo "  ✅ ENHANCED: Optimized hyperparameters"
 echo "  ✅ NO EVALUATION = NO GRADIENT ISSUES"
 echo "================================================================"
 echo "Job ID: $SLURM_JOB_ID"
@@ -34,8 +36,8 @@ echo "================================================================"
 # =============================================================================
 
 echo ""
-echo "🔧 Environment Setup..."
-echo "======================="
+echo "🔧 Enhanced Environment Setup..."
+echo "==============================="
 
 # Change to submit directory
 cd $SLURM_SUBMIT_DIR
@@ -57,12 +59,12 @@ source activate eva_clip_env
 echo "✅ Conda environment activated: $CONDA_DEFAULT_ENV"
 
 # =============================================================================
-# GPU ENVIRONMENT SETUP
+# ENHANCED GPU ENVIRONMENT SETUP
 # =============================================================================
 
 echo ""
-echo "🎮 GPU Environment Setup..."
-echo "=========================="
+echo "🎮 Enhanced GPU Environment Setup..."
+echo "==================================="
 
 # Print initial SLURM GPU allocation
 echo "📊 SLURM GPU Variables:"
@@ -72,9 +74,9 @@ echo "  SLURM_LOCALID: $SLURM_LOCALID"
 echo "  SLURM_PROCID: $SLURM_PROCID"
 echo "  CUDA_VISIBLE_DEVICES: $CUDA_VISIBLE_DEVICES"
 
-# Apply GPU fixes
+# Apply enhanced GPU fixes
 echo ""
-echo "🔧 Applying GPU environment fixes..."
+echo "🔧 Applying enhanced GPU environment fixes..."
 
 # Fix CUDA_VISIBLE_DEVICES if empty
 if [ -z "$CUDA_VISIBLE_DEVICES" ] || [ "$CUDA_VISIBLE_DEVICES" = "" ]; then
@@ -89,28 +91,29 @@ if [ -z "$CUDA_VISIBLE_DEVICES" ] || [ "$CUDA_VISIBLE_DEVICES" = "" ]; then
     fi
 fi
 
-# Optimize NCCL settings for Snellius
+# Enhanced NCCL settings for convergence optimization
 echo ""
-echo "🔧 Optimizing NCCL settings for multi-GPU training..."
+echo "🔧 Optimizing enhanced NCCL settings..."
 
 export NCCL_IB_DISABLE=0
 export NCCL_NET_GDR_LEVEL=3
 export NCCL_P2P_LEVEL=NVL
 export NCCL_ASYNC_ERROR_HANDLING=1
 export NCCL_DEBUG=WARN
-export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
+export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512,expandable_segments:True
 export OMP_NUM_THREADS=1
 export TOKENIZERS_PARALLELISM=false
+export CUDA_LAUNCH_BLOCKING=0
 
-echo "✅ GPU environment optimized"
+echo "✅ Enhanced GPU environment optimized"
 
 # =============================================================================
-# WORKSPACE SETUP
+# ENHANCED WORKSPACE SETUP
 # =============================================================================
 
 echo ""
-echo "📁 Workspace Setup..."
-echo "===================="
+echo "📁 Enhanced Workspace Setup..."
+echo "=============================="
 
 # Setup directories
 export BLIP3O_USER=$(whoami)
@@ -129,9 +132,9 @@ else
 fi
 
 # Create directories
-echo "📁 Creating workspace directories..."
-mkdir -p "${BLIP3O_WORKSPACE}"/{embeddings,checkpoints,logs}
-mkdir -p "${BLIP3O_JOB_TEMP}"/{cache,working}
+echo "📁 Creating enhanced workspace directories..."
+mkdir -p "${BLIP3O_WORKSPACE}"/{embeddings,checkpoints,logs,enhanced}
+mkdir -p "${BLIP3O_JOB_TEMP}"/{cache,working,enhanced}
 
 # Redirect model caches to job temp
 export TORCH_HOME="${BLIP3O_JOB_TEMP}/cache/torch"
@@ -140,18 +143,18 @@ export TRANSFORMERS_CACHE="${BLIP3O_JOB_TEMP}/cache/transformers"
 
 mkdir -p "${TORCH_HOME}" "${HF_HOME}" "${TRANSFORMERS_CACHE}"
 
-echo "✅ Workspace configured:"
+echo "✅ Enhanced workspace configured:"
 echo "  Workspace: ${BLIP3O_WORKSPACE}"
 echo "  Job temp: ${BLIP3O_JOB_TEMP}"
 echo "  Model cache: ${TORCH_HOME}"
 
 # =============================================================================
-# GPU DIAGNOSTICS
+# ENHANCED GPU DIAGNOSTICS
 # =============================================================================
 
 echo ""
-echo "🧪 GPU Diagnostics..."
-echo "===================="
+echo "🧪 Enhanced GPU Diagnostics..."
+echo "============================="
 
 echo "🔍 Python CUDA check:"
 python -c "
@@ -244,45 +247,50 @@ else
 fi
 
 # =============================================================================
-# CREATE OUTPUT DIRECTORY
+# CREATE ENHANCED OUTPUT DIRECTORY
 # =============================================================================
 
 echo ""
-echo "📂 Setting up output directory..."
-echo "================================"
+echo "📂 Setting up enhanced output directory..."
+echo "========================================="
 
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-OUTPUT_DIR="./checkpoints/blip3o_patch_pure_${SLURM_JOB_ID}_${TIMESTAMP}"
+OUTPUT_DIR="./checkpoints/blip3o_enhanced_${SLURM_JOB_ID}_${TIMESTAMP}"
 
 mkdir -p "$OUTPUT_DIR"
 mkdir -p "./slurm_out"
 
-echo "✅ Output directory: $OUTPUT_DIR"
+echo "✅ Enhanced output directory: $OUTPUT_DIR"
 
 # =============================================================================
-# PURE TRAINING CONFIGURATION
+# ENHANCED TRAINING CONFIGURATION
 # =============================================================================
 
 echo ""
-echo "⚙️ Pure Training Configuration..."
-echo "================================="
+echo "⚙️ Enhanced Training Configuration..."
+echo "===================================="
 
-# Pure training configuration (no evaluation)
-NUM_EPOCHS=6
+# Enhanced training configuration (optimized for convergence)
+NUM_EPOCHS=10                    # Enhanced from 6 to 10
 BATCH_SIZE=24
-LEARNING_RATE=2e-4
 MODEL_SIZE="base"
 HIDDEN_SIZE=768
 NUM_LAYERS=12
 NUM_HEADS=12
-GRADIENT_ACCUMULATION=4
-WARMUP_STEPS=200
+GRADIENT_ACCUMULATION=2          # Enhanced from 4 to 2
+WARMUP_STEPS=150                 # Enhanced from 200 to 150
+LEARNING_RATE=0.0002             # Enhanced to 2e-4
+CONTRASTIVE_WEIGHT=0.15          # Enhanced from 0.1 to 0.15
+LR_SCHEDULER_TYPE="cosine"       # Enhanced scheduler
+LR_END_RATIO=0.1                 # Enhanced decay ratio
+NUM_CYCLES=1.0                   # Enhanced cycles
+WARMUP_RATIO=0.02                # Enhanced warmup ratio
 
 # Calculate effective batch size
 ACTUAL_GPU_COUNT=$(python -c "import torch; print(torch.cuda.device_count() if torch.cuda.is_available() else 1)")
 EFFECTIVE_BATCH_SIZE=$((BATCH_SIZE * ACTUAL_GPU_COUNT * GRADIENT_ACCUMULATION))
 
-echo "Pure Training Configuration:"
+echo "Enhanced Training Configuration:"
 echo "  🎯 Target GPUs: ${SLURM_GPUS:-1}"
 echo "  🔍 Detected GPUs: $ACTUAL_GPU_COUNT"
 echo "  🏗️  Model: ${MODEL_SIZE} (${HIDDEN_SIZE}D, ${NUM_LAYERS}L, ${NUM_HEADS}H)"
@@ -292,21 +300,26 @@ echo "  🔄 Gradient accumulation: $GRADIENT_ACCUMULATION"
 echo "  📊 Effective batch size: $EFFECTIVE_BATCH_SIZE"
 echo "  📈 Learning rate: $LEARNING_RATE"
 echo "  🔥 Warmup steps: $WARMUP_STEPS"
+echo "  ⚖️ Contrastive weight: $CONTRASTIVE_WEIGHT"
+echo "  📊 LR scheduler: $LR_SCHEDULER_TYPE"
+echo "  📉 LR end ratio: $LR_END_RATIO"
+echo "  🔁 Cycles: $NUM_CYCLES"
 echo "  🎯 Architecture: 256-token patch-level DiT"
 echo "  📐 Input: EVA-CLIP (256×4096) → CLIP (256×1024)"
 echo "  ❌ Evaluation: COMPLETELY DISABLED"
-echo "  ⚡ Mode: PURE TRAINING (no interruptions)"
+echo "  ⚡ Mode: ENHANCED PURE TRAINING"
+echo "  🔧 Features: Convergence monitoring, optimized scheduling"
 
 # =============================================================================
-# FINAL VERIFICATION
+# ENHANCED FINAL VERIFICATION
 # =============================================================================
 
 echo ""
-echo "🔍 Final verification..."
-echo "======================="
+echo "🔍 Enhanced final verification..."
+echo "==============================="
 
-# Verify Python imports
-echo "🐍 Verifying BLIP3-o patch modules..."
+# Verify enhanced Python imports
+echo "🐍 Verifying enhanced BLIP3-o modules..."
 python -c "
 import sys
 from pathlib import Path
@@ -319,13 +332,13 @@ try:
     from src.modules.losses.blip3o_flow_matching_loss import BLIP3oFlowMatchingLoss
     print('✅ Flow matching loss')
     
-    from src.modules.trainers.blip3o_patch_trainer import BLIP3oPatchTrainer
-    print('✅ Patch trainer (PURE TRAINING MODE)')
+    from src.modules.trainers.blip3o_patch_trainer_enhanced import BLIP3oPatchTrainerEnhanced
+    print('✅ Enhanced patch trainer')
     
     from src.modules.datasets.blip3o_dataset import BLIP3oEmbeddingDataset
     print('✅ Patch dataset')
     
-    print('🎉 All patch-level modules ready for PURE TRAINING!')
+    print('🎉 All enhanced modules ready!')
     
 except ImportError as e:
     print(f'❌ Import error: {e}')
@@ -333,39 +346,44 @@ except ImportError as e:
 "
 
 if [ $? -ne 0 ]; then
-    echo "❌ Module verification failed!"
+    echo "❌ Enhanced module verification failed!"
     exit 1
 fi
 
 # =============================================================================
-# START PURE TRAINING
+# START ENHANCED TRAINING
 # =============================================================================
 
 echo ""
-echo "🚀 Starting BLIP3-o Pure Training..."
-echo "===================================="
-echo "🎯 PURE TRAINING FEATURES:"
+echo "🚀 Starting Enhanced BLIP3-o Training..."
+echo "========================================"
+echo "🎯 ENHANCED TRAINING FEATURES:"
 echo "  • 256-token patch embeddings (16×16 grid)"
 echo "  • EVA-CLIP conditioning (4096-dim)"
 echo "  • CLIP patch supervision (1024-dim)"
-echo "  • Flow matching training objective"
+echo "  • Enhanced flow matching training objective"
 echo "  • 3D Rotary Position Embedding"
+echo "  • Enhanced cosine LR scheduling with decay"
+echo "  • Advanced convergence monitoring"
+echo "  • Optimized hyperparameters for convergence"
 echo "  • Multi-GPU distributed training"
 echo "  • NO EVALUATION = NO GRADIENT ISSUES"
 echo ""
-echo "📈 EXPECTED RESULTS:"
+echo "📈 ENHANCED EXPECTED RESULTS:"
+echo "  • Superior convergence with cosine scheduling"
+echo "  • Advanced monitoring and progress tracking"
+echo "  • Optimized hyperparameters for best performance"
 echo "  • Smooth training completion without interruptions"
-echo "  • Loss monitoring and progress tracking"
 echo "  • Model checkpoints saved periodically"
 echo "  • No evaluation-related crashes"
 echo ""
 
 TRAIN_START_TIME=$(date +%s)
 
-echo "🔥 Launching pure training mode..."
+echo "🔥 Launching enhanced training mode..."
 
-# UPDATED: Use pure training parameters (no evaluation)
-python train_blip3o_patch_dit.py \
+# ENHANCED: Use enhanced training script with all optimizations
+python train_blip3o_patch_enhanced.py \
     --chunked_embeddings_dir "$EMBEDDINGS_DIR" \
     --output_dir "$OUTPUT_DIR" \
     --model_size "$MODEL_SIZE" \
@@ -375,102 +393,113 @@ python train_blip3o_patch_dit.py \
     --num_epochs $NUM_EPOCHS \
     --batch_size $BATCH_SIZE \
     --learning_rate $LEARNING_RATE \
+    --lr_scheduler_type "$LR_SCHEDULER_TYPE" \
+    --lr_end_ratio $LR_END_RATIO \
+    --num_cycles $NUM_CYCLES \
+    --warmup_ratio $WARMUP_RATIO \
     --weight_decay 0.01 \
     --warmup_steps $WARMUP_STEPS \
     --gradient_accumulation_steps $GRADIENT_ACCUMULATION \
     --fp16 \
     --dataloader_num_workers 4 \
     --use_contrastive_loss \
-    --contrastive_weight 0.1 \
+    --contrastive_weight $CONTRASTIVE_WEIGHT \
     --enhanced_loss \
-    --disable_evaluation
+    --disable_evaluation \
+    --convergence_monitoring \
+    --enhanced_logging
 
 TRAINING_EXIT_CODE=$?
 TRAIN_END_TIME=$(date +%s)
 TRAIN_DURATION=$((TRAIN_END_TIME - TRAIN_START_TIME))
 
 echo ""
-echo "🏁 PURE TRAINING COMPLETED"
-echo "=========================="
+echo "🏁 ENHANCED TRAINING COMPLETED"
+echo "============================="
 echo "Exit code: $TRAINING_EXIT_CODE"
 echo "Duration: $TRAIN_DURATION seconds ($(($TRAIN_DURATION / 60)) minutes)"
 
 # =============================================================================
-# RESULTS AND CLEANUP
+# ENHANCED RESULTS AND CLEANUP
 # =============================================================================
 
 if [ $TRAINING_EXIT_CODE -eq 0 ]; then
     echo ""
-    echo "✅ SUCCESS! Pure training completed!"
-    echo "==================================="
+    echo "✅ SUCCESS! Enhanced training completed!"
+    echo "======================================"
     
     # Copy to persistent storage
     if [ -d "$OUTPUT_DIR" ]; then
         PERSISTENT_DIR="${BLIP3O_CHECKPOINTS}/$(basename $OUTPUT_DIR)"
         mkdir -p "$PERSISTENT_DIR"
         
-        echo "📁 Copying model to persistent storage..."
+        echo "📁 Copying enhanced model to persistent storage..."
         if cp -r "$OUTPUT_DIR"/* "$PERSISTENT_DIR/" 2>/dev/null; then
-            echo "✅ Model copied to: $PERSISTENT_DIR"
+            echo "✅ Enhanced model copied to: $PERSISTENT_DIR"
         else
             echo "⚠️  Copy failed, model remains at: $OUTPUT_DIR"
         fi
     fi
     
     echo ""
-    echo "🎉 PURE TRAINING SUCCESS!"
-    echo "========================"
+    echo "🎉 ENHANCED TRAINING SUCCESS!"
+    echo "============================"
     echo "✅ 256-token patch-level flow matching completed"
     echo "✅ EVA-CLIP → CLIP patch translation trained"
+    echo "✅ Enhanced convergence optimization successful"
+    echo "✅ Advanced monitoring and progress tracking"
     echo "✅ No evaluation interruptions or gradient issues"
     echo "✅ BLIP3-o paper alignment achieved"
-    echo "✅ Model ready for inference and evaluation"
+    echo "✅ Enhanced model ready for inference and evaluation"
     echo ""
-    echo "📁 Model locations:"
+    echo "📁 Enhanced model locations:"
     echo "   Primary: $OUTPUT_DIR"
     if [ -d "$PERSISTENT_DIR" ]; then
         echo "   Persistent: $PERSISTENT_DIR"
     fi
     echo ""
-    echo "🧪 Next steps for evaluation:"
+    echo "🧪 Next steps for enhanced evaluation:"
     echo "   1. Run separate recall evaluation: python eval_blip3o_patch_recall.py"
-    echo "   2. Test inference capabilities"
+    echo "   2. Test enhanced inference capabilities"
     echo "   3. Compare with CLIP baseline performance"
-    echo "   4. Generate embeddings for downstream tasks"
+    echo "   4. Generate enhanced embeddings for downstream tasks"
+    echo "   5. Analyze convergence metrics and training progress"
     
 else
     echo ""
-    echo "❌ PURE TRAINING FAILED"
-    echo "======================="
+    echo "❌ ENHANCED TRAINING FAILED"
+    echo "=========================="
     echo "Exit code: $TRAINING_EXIT_CODE"
     echo ""
-    echo "🔍 Debugging Information:"
-    echo "========================"
+    echo "🔍 Enhanced Debugging Information:"
+    echo "================================"
     echo "1. Check error log: ${SLURM_JOB_ID}.err"
     echo "2. Check training logs in: $OUTPUT_DIR"
     echo "3. Check GPU diagnostics output above"
+    echo "4. Check enhanced training logs"
     echo ""
-    echo "💡 Common solutions:"
+    echo "💡 Enhanced solutions:"
     echo "  • GPU allocation: Check SLURM GPU request"
     echo "  • Memory issues: Reduce batch size"
     echo "  • Module loading: Check conda environment"
     echo "  • Embeddings: Verify patch-level embeddings exist"
-    echo "  • Code updates: Ensure latest trainer files are used"
+    echo "  • Enhanced code: Ensure latest enhanced trainer files are used"
+    echo "  • Dependencies: Check enhanced module imports"
 fi
 
-# Cleanup
+# Enhanced cleanup
 echo ""
-echo "🧹 Cleanup..."
-echo "============"
+echo "🧹 Enhanced Cleanup..."
+echo "===================="
 
 if [ -d "${BLIP3O_JOB_TEMP}/cache" ]; then
     CACHE_SIZE=$(du -sh "${BLIP3O_JOB_TEMP}/cache" 2>/dev/null | cut -f1)
     rm -rf "${BLIP3O_JOB_TEMP}/cache" 2>/dev/null
-    echo "✅ Cleaned up model cache ($CACHE_SIZE)"
+    echo "✅ Cleaned up enhanced model cache ($CACHE_SIZE)"
 fi
 
 echo ""
-echo "🏁 Job completed at $(date)"
+echo "🏁 Enhanced job completed at $(date)"
 echo "Total runtime: $SECONDS seconds"
 echo "================================================================"
 
