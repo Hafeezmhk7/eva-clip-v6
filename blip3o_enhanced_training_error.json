@@ -4,7 +4,7 @@
   "training_mode": "patch_only",
   "training_args": {
     "chunked_embeddings_dir": "/scratch-shared/scur2711/blip3o_workspace/embeddings/chunked_256_tokens",
-    "output_dir": "./checkpoints/blip3o_enhanced_13271808_20250723_191643",
+    "output_dir": "./checkpoints/blip3o_enhanced_13272762_20250723_221333",
     "training_mode": "patch_only",
     "max_training_shards": 1,
     "overfitting_test": true,
@@ -40,5 +40,5 @@
     "WORLD_SIZE": null,
     "LOCAL_RANK": null
   },
-  "timestamp": "2025-07-23T19:16:53.184769"
+  "timestamp": "2025-07-23T22:13:52.455322"
 }

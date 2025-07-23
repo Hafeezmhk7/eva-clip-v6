@@ -1,6 +1,6 @@
 """
 src/modules/models/blip3o_patch_dit.py
-Flexible BLIP3-o Patch-Level DiT Model - Support for 256/257 tokens
+FIXED: BLIP3-o Patch-Level DiT Model with Gradient Checkpointing Support
 """
 
 import torch
@@ -11,11 +11,14 @@ import numpy as np
 import logging
 from transformers import PreTrainedModel
 from transformers import PretrainedConfig
+from torch.utils.checkpoint import checkpoint
 
 logger = logging.getLogger(__name__)
 
 class BLIP3oDiTConfig(PretrainedConfig):
     """Configuration class for BLIP3-o DiT model"""
+    model_type = "blip3o_patch_dit"
+    
     def __init__(
         self,
         hidden_size: int = 768,
@@ -27,8 +30,11 @@ class BLIP3oDiTConfig(PretrainedConfig):
         num_tokens: int = 257,
         max_position_embeddings: int = 257,
         dropout_prob: float = 0.1,
-        training_mode: str = "cls_patch"
+        training_mode: str = "cls_patch",
+        use_gradient_checkpointing: bool = False,
+        **kwargs
     ):
+        super().__init__(**kwargs)
         self.hidden_size = hidden_size
         self.num_hidden_layers = num_hidden_layers
         self.num_attention_heads = num_attention_heads
@@ -39,25 +45,30 @@ class BLIP3oDiTConfig(PretrainedConfig):
         self.max_position_embeddings = max_position_embeddings
         self.dropout_prob = dropout_prob
         self.training_mode = training_mode
+        self.use_gradient_checkpointing = use_gradient_checkpointing
 
     def to_dict(self) -> Dict[str, Any]:
-        return self.__dict__
+        output = super().to_dict()
+        return output
 
 class RotaryPositionalEmbedding3D(nn.Module):
-    """3D Rotary Position Embedding with flexible token support"""
-    def __init__(self, dim: int, max_position_embeddings: int = 257):
+    """3D Rotary Position Embedding with flexible token support (BLIP3-o aligned)"""
+    def __init__(self, dim: int, max_position_embeddings: int = 257, base: float = 10000.0):
         super().__init__()
         self.dim = dim
         self.max_position_embeddings = max_position_embeddings
-        inv_freq = 1.0 / (10000 ** (torch.arange(0, dim // 4, 2).float() / (dim // 4)))
-        self.register_buffer('inv_freq', inv_freq)
+        self.base = base
+        
+        # Create inverse frequency for rotary embedding
+        inv_freq = 1.0 / (base ** (torch.arange(0, dim // 4, 2).float() / (dim // 4)))
+        self.register_buffer('inv_freq', inv_freq, persistent=False)
         
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         batch_size, seq_len, hidden_size = x.shape
         if seq_len not in [256, 257]:
             return x
         
-        # Create position IDs based on token count
+        # Create position IDs based on token count (BLIP3-o style)
         if seq_len == 257:
             # CLS token at (0,0), patches in 16x16 grid
             cls_pos = torch.zeros(1, device=x.device)
@@ -92,8 +103,8 @@ class RotaryPositionalEmbedding3D(nn.Module):
         x1, x2, x3, x4 = torch.split(x, quarter_dim, dim=-1)
         
         # Compute frequencies
-        freqs_x = torch.einsum('i,j->ij', pos_x, self.inv_freq[:quarter_dim])
-        freqs_y = torch.einsum('i,j->ij', pos_y, self.inv_freq[:quarter_dim])
+        freqs_x = torch.outer(pos_x, self.inv_freq[:quarter_dim])
+        freqs_y = torch.outer(pos_y, self.inv_freq[:quarter_dim])
         
         cos_x, sin_x = freqs_x.cos(), freqs_x.sin()
         cos_y, sin_y = freqs_y.cos(), freqs_y.sin()
@@ -107,7 +118,7 @@ class RotaryPositionalEmbedding3D(nn.Module):
         return torch.cat([x1_rot, x2_rot, x3_rot, x4_rot], dim=-1)
 
 class TimestepEmbedder(nn.Module):
-    """Timestep embedding for flow matching"""
+    """Timestep embedding for flow matching (BLIP3-o aligned)"""
     def __init__(self, hidden_size: int, frequency_embedding_size: int = 256):
         super().__init__()
         self.mlp = nn.Sequential(
@@ -132,7 +143,7 @@ class TimestepEmbedder(nn.Module):
         return self.mlp(t_freq)
 
 class MultiHeadAttention(nn.Module):
-    """Multi-head attention with support for flexible sequence lengths"""
+    """Multi-head attention with gradient checkpointing support"""
     def __init__(self, hidden_size: int, num_heads: int, dropout: float = 0.0):
         super().__init__()
         self.hidden_size = hidden_size
@@ -166,23 +177,28 @@ class MultiHeadAttention(nn.Module):
         return self.o_proj(attn_output)
 
 class BLIP3oDiTBlock(nn.Module):
-    """DiT block with flexible token support"""
+    """DiT block with gradient checkpointing support"""
     def __init__(self, config: BLIP3oDiTConfig):
         super().__init__()
         self.hidden_size = config.hidden_size
+        self.use_gradient_checkpointing = config.use_gradient_checkpointing
         
-        # Normalization layers
+        # Normalization layers (BLIP3-o style)
         self.norm1 = nn.LayerNorm(config.hidden_size, eps=1e-6)
         self.norm2 = nn.LayerNorm(config.hidden_size, eps=1e-6)
+        self.norm3 = nn.LayerNorm(config.hidden_size, eps=1e-6)
         
         # Attention layers
         self.self_attn = MultiHeadAttention(config.hidden_size, config.num_attention_heads, config.dropout_prob)
+        self.cross_attn = MultiHeadAttention(config.hidden_size, config.num_attention_heads, config.dropout_prob)
         
-        # Feed-forward network
+        # Feed-forward network (BLIP3-o aligned)
         self.ffn = nn.Sequential(
             nn.Linear(config.hidden_size, config.intermediate_size),
             nn.GELU(),
+            nn.Dropout(config.dropout_prob),
             nn.Linear(config.intermediate_size, config.hidden_size),
+            nn.Dropout(config.dropout_prob),
         )
         
         # EVA feature projection
@@ -191,26 +207,43 @@ class BLIP3oDiTBlock(nn.Module):
         # 3D Rotary Position Embedding
         self.rope = RotaryPositionalEmbedding3D(config.hidden_size)
 
-    def forward(self, hidden_states: torch.Tensor, encoder_hidden_states: torch.Tensor) -> torch.Tensor:
+    def _self_attention_block(self, hidden_states: torch.Tensor) -> torch.Tensor:
         # Self-attention with RoPE
         norm_hidden = self.norm1(hidden_states)
         norm_hidden = self.rope(norm_hidden)
         attn_output = self.self_attn(norm_hidden, norm_hidden, norm_hidden)
-        hidden_states = hidden_states + attn_output
-        
+        return hidden_states + attn_output
+    
+    def _cross_attention_block(self, hidden_states: torch.Tensor, encoder_hidden_states: torch.Tensor) -> torch.Tensor:
         # Cross-attention with EVA features
         norm_hidden = self.norm2(hidden_states)
         eva_features = self.eva_proj(encoder_hidden_states)
-        cross_attn_output = self.self_attn(norm_hidden, eva_features, eva_features)
-        hidden_states = hidden_states + cross_attn_output
-        
+        cross_attn_output = self.cross_attn(norm_hidden, eva_features, eva_features)
+        return hidden_states + cross_attn_output
+    
+    def _ffn_block(self, hidden_states: torch.Tensor) -> torch.Tensor:
         # Feed-forward network
-        ffn_output = self.ffn(hidden_states)
+        norm_hidden = self.norm3(hidden_states)
+        ffn_output = self.ffn(norm_hidden)
         return hidden_states + ffn_output
+
+    def forward(self, hidden_states: torch.Tensor, encoder_hidden_states: torch.Tensor) -> torch.Tensor:
+        if self.use_gradient_checkpointing and self.training:
+            # Use gradient checkpointing for memory efficiency
+            hidden_states = checkpoint(self._self_attention_block, hidden_states, use_reentrant=False)
+            hidden_states = checkpoint(self._cross_attention_block, hidden_states, encoder_hidden_states, use_reentrant=False)
+            hidden_states = checkpoint(self._ffn_block, hidden_states, use_reentrant=False)
+        else:
+            # Normal forward pass
+            hidden_states = self._self_attention_block(hidden_states)
+            hidden_states = self._cross_attention_block(hidden_states, encoder_hidden_states)
+            hidden_states = self._ffn_block(hidden_states)
+        
+        return hidden_states
 
 class BLIP3oPatchDiTModel(PreTrainedModel):
     """
-    Flexible BLIP3-o Patch-Level DiT Model
+    FIXED: BLIP3-o Patch-Level DiT Model with Gradient Checkpointing Support
     
     Supports both:
     - 256 tokens (patch only mode)
@@ -218,21 +251,23 @@ class BLIP3oPatchDiTModel(PreTrainedModel):
     """
     
     config_class = BLIP3oDiTConfig
+    supports_gradient_checkpointing = True
     
     def __init__(self, config: BLIP3oDiTConfig):
         super().__init__(config)
         self.config = config
+        self.gradient_checkpointing = config.use_gradient_checkpointing
         
         # Input projection from CLIP to hidden size
         self.input_proj = nn.Linear(config.clip_embedding_size, config.hidden_size, bias=True)
         
-        # Timestep embedding
+        # Timestep embedding (BLIP3-o style)
         self.timestep_embedder = TimestepEmbedder(config.hidden_size)
         
         # Positional embeddings
         self.pos_embed = nn.Parameter(torch.zeros(1, config.max_position_embeddings, config.hidden_size))
         
-        # DiT blocks
+        # DiT blocks with gradient checkpointing support
         self.blocks = nn.ModuleList([
             BLIP3oDiTBlock(config) for _ in range(config.num_hidden_layers)
         ])
@@ -247,15 +282,33 @@ class BLIP3oPatchDiTModel(PreTrainedModel):
         nn.init.zeros_(self.output_proj.weight)
         nn.init.zeros_(self.output_proj.bias)
         
-        logger.info(f"✅ Flexible BLIP3-o model initialized")
+        logger.info(f"✅ FIXED BLIP3-o model initialized with gradient checkpointing support")
         logger.info(f"   Training mode: {config.training_mode}")
         logger.info(f"   Token count: {config.num_tokens}")
+        logger.info(f"   Gradient checkpointing: {self.gradient_checkpointing}")
 
     def _init_weights(self, module):
         if isinstance(module, nn.Linear):
             nn.init.normal_(module.weight, mean=0.0, std=0.02)
             if module.bias is not None:
                 nn.init.zeros_(module.bias)
+        elif isinstance(module, nn.LayerNorm):
+            nn.init.zeros_(module.bias)
+            nn.init.ones_(module.weight)
+
+    def gradient_checkpointing_enable(self):
+        """FIXED: Enable gradient checkpointing for memory efficiency"""
+        self.gradient_checkpointing = True
+        for block in self.blocks:
+            block.use_gradient_checkpointing = True
+        logger.info("✅ Gradient checkpointing enabled")
+
+    def gradient_checkpointing_disable(self):
+        """FIXED: Disable gradient checkpointing"""
+        self.gradient_checkpointing = False
+        for block in self.blocks:
+            block.use_gradient_checkpointing = False
+        logger.info("Gradient checkpointing disabled")
 
     def forward(
         self,
@@ -282,7 +335,11 @@ class BLIP3oPatchDiTModel(PreTrainedModel):
         # Timestep embedding
         timestep_emb = self.timestep_embedder(timestep)
         
-        # Pass through DiT blocks
+        # Add timestep embedding to all tokens
+        timestep_emb = timestep_emb.unsqueeze(1).expand(-1, seq_len, -1)
+        x = x + timestep_emb
+        
+        # Pass through DiT blocks with gradient checkpointing support
         for block in self.blocks:
             x = block(x, encoder_hidden_states)
         
@@ -304,6 +361,7 @@ class BLIP3oPatchDiTModel(PreTrainedModel):
         eva_features: torch.Tensor,
         num_inference_steps: int = 50,
         generator: Optional[torch.Generator] = None,
+        return_intermediate: bool = False,
     ) -> torch.Tensor:
         device = eva_features.device
         batch_size, num_tokens, _ = eva_features.shape
@@ -316,8 +374,10 @@ class BLIP3oPatchDiTModel(PreTrainedModel):
             dtype=eva_features.dtype
         )
         
-        # Flow matching sampling
+        # Flow matching sampling (BLIP3-o style)
         dt = 1.0 / num_inference_steps
+        
+        intermediates = [] if return_intermediate else None
         
         for step in range(num_inference_steps):
             t = torch.full((batch_size,), step * dt, device=device, dtype=eva_features.dtype)
@@ -328,11 +388,17 @@ class BLIP3oPatchDiTModel(PreTrainedModel):
                 return_dict=False
             )
             x = x + dt * velocity
+            
+            if return_intermediate:
+                intermediates.append(x.clone())
         
+        if return_intermediate:
+            return x, intermediates
         return x
     
     def get_num_parameters(self) -> int:
         return sum(p.numel() for p in self.parameters() if p.requires_grad)
+
 
 def create_blip3o_patch_dit_model(
     config: Optional[BLIP3oDiTConfig] = None,
@@ -340,7 +406,12 @@ def create_blip3o_patch_dit_model(
     hidden_size: int = 768,
     num_layers: int = 12,
     num_heads: int = 12,
+    use_gradient_checkpointing: bool = False,
+    **kwargs
 ) -> BLIP3oPatchDiTModel:
+    """
+    FIXED: Create BLIP3-o patch DiT model with gradient checkpointing support
+    """
     if config is None:
         num_tokens = 257 if training_mode == "cls_patch" else 256
         config = BLIP3oDiTConfig(
@@ -349,5 +420,8 @@ def create_blip3o_patch_dit_model(
             num_attention_heads=num_heads,
             num_tokens=num_tokens,
             training_mode=training_mode,
+            use_gradient_checkpointing=use_gradient_checkpointing,
+            **kwargs
         )
+    
     return BLIP3oPatchDiTModel(config)

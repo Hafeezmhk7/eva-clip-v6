@@ -1,22 +1,30 @@
 #!/bin/bash
-#SBATCH --job-name=blip3o_enhanced_training
+#SBATCH --job-name=blip3o_clean
 #SBATCH --partition=gpu_h100
 #SBATCH --nodes=1
 #SBATCH --gpus=3
 #SBATCH --cpus-per-gpu=18
 #SBATCH --time=12:00:00
 #SBATCH --mem=0
-#SBATCH --output=./slurm_out/blip3o_enhanced_%j.out
-#SBATCH --error=./slurm_out/blip3o_enhanced_%j.err
+#SBATCH --output=./slurm_out/blip3o_clean_%j.out
+#SBATCH --error=./slurm_out/blip3o_clean_%j.err
 
+# =============================================================================
+# COMPLETELY CLEAN BLIP3-O TRAINING JOB SCRIPT
+# No old broken tests, only working code
+# =============================================================================
+
+echo "🚀 Starting CLEAN BLIP3-o Training (No Old Broken Code)"
+echo "Job ID: ${SLURM_JOB_ID}"
+echo "Node: $(hostname)"
+echo "Time: $(date)"
+echo "============================================================"
+
+cd $SLURM_SUBMIT_DIR
 
 # =============================================================================
 # ENVIRONMENT SETUP
 # =============================================================================
-
-
-cd $SLURM_SUBMIT_DIR
-
 
 module purge
 module load 2024
@@ -24,11 +32,11 @@ module load Miniconda3/24.7.1-0
 module load CUDA/12.6.0
 source activate eva_clip_env
 
+echo "✅ Environment loaded"
 
 # =============================================================================
-# TEMP AND WORKSPACE SETUP
+# WORKSPACE SETUP
 # =============================================================================
-
 
 export BLIP3O_USER=$(whoami)
 export BLIP3O_JOB_ID=${SLURM_JOB_ID}
@@ -36,27 +44,32 @@ export BLIP3O_WORKSPACE="/scratch-shared/${BLIP3O_USER}/blip3o_workspace"
 export BLIP3O_EMBEDDINGS="${BLIP3O_WORKSPACE}/embeddings"
 export BLIP3O_CHECKPOINTS="${BLIP3O_WORKSPACE}/checkpoints"
 
-
+# Job temp directory
 if [ ! -z "$TMPDIR" ]; then
     export BLIP3O_JOB_TEMP="$TMPDIR/blip3o_job_${BLIP3O_JOB_ID}"
 else
     export BLIP3O_JOB_TEMP="/tmp/blip3o_job_${BLIP3O_USER}_${BLIP3O_JOB_ID}"
 fi
 
-
+# Create directories
 mkdir -p "${BLIP3O_WORKSPACE}"/{embeddings,checkpoints,logs}
 mkdir -p "${BLIP3O_JOB_TEMP}"/cache
+mkdir -p "./slurm_out"
 
-
+# Model cache
 export TORCH_HOME="${BLIP3O_JOB_TEMP}/cache/torch"
 export HF_HOME="${BLIP3O_JOB_TEMP}/cache/huggingface"
 export TRANSFORMERS_CACHE="${BLIP3O_JOB_TEMP}/cache/transformers"
 
+mkdir -p "$TORCH_HOME" "$HF_HOME" "$TRANSFORMERS_CACHE"
+
+echo "🗂️ Workspace setup complete"
+echo "   Persistent: $BLIP3O_WORKSPACE"
+echo "   Job temp: $BLIP3O_JOB_TEMP"
 
 # =============================================================================
-# NCCL & CUDA ENV SETTINGS
+# GPU SETUP
 # =============================================================================
-
 
 export NCCL_IB_DISABLE=0
 export NCCL_NET_GDR_LEVEL=3
@@ -66,34 +79,69 @@ export NCCL_DEBUG=WARN
 export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512,expandable_segments:True
 export OMP_NUM_THREADS=1
 export TOKENIZERS_PARALLELISM=false
-export CUDA_LAUNCH_BLOCKING=0
 
+echo "🎮 GPU Setup:"
+nvidia-smi --query-gpu=name,memory.total,memory.free --format=csv,noheader,nounits
 
 # =============================================================================
-# LOCATE EMBEDDINGS
+# TRAINING CONFIGURATION
 # =============================================================================
 
-# Set the embedding directory path as requested
+# Embeddings configuration
+TRAINING_MODE="patch_only"  # patch_only (256 tokens) or cls_patch (257 tokens)
 EMBEDDINGS_DIR="/scratch-shared/scur2711/blip3o_workspace/embeddings/chunked_256_tokens"
 
+echo "🎯 Training Configuration:"
+echo "   Mode: $TRAINING_MODE"
+echo "   Embeddings: $EMBEDDINGS_DIR"
 
-# =============================================================================
-# OUTPUT DIRECTORY
-# =============================================================================
+# Check embeddings exist
+if [ ! -d "$EMBEDDINGS_DIR" ]; then
+    echo "❌ Embeddings directory not found: $EMBEDDINGS_DIR"
+    echo "Available directories:"
+    ls -la "$BLIP3O_EMBEDDINGS/" 2>/dev/null || echo "No embeddings directory found"
+    exit 1
+fi
 
+# Count shard files
+SHARD_COUNT=$(find "$EMBEDDINGS_DIR" -name "*.pkl" | wc -l)
+echo "📦 Found $SHARD_COUNT shard files"
 
+if [ $SHARD_COUNT -eq 0 ]; then
+    echo "❌ No .pkl files found in $EMBEDDINGS_DIR"
+    exit 1
+fi
+
+# Output directory
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-OUTPUT_DIR="./checkpoints/blip3o_enhanced_${SLURM_JOB_ID}_${TIMESTAMP}"
+OUTPUT_DIR="${BLIP3O_CHECKPOINTS}/blip3o_${TRAINING_MODE}_${SLURM_JOB_ID}_${TIMESTAMP}"
 mkdir -p "$OUTPUT_DIR"
-mkdir -p "./slurm_out"
 
+echo "📤 Output: $OUTPUT_DIR"
 
 # =============================================================================
-# TRAINING CONFIG
+# CLEAN PRE-TRAINING TEST (NO OLD BROKEN CODE)
 # =============================================================================
 
+echo "🧪 Running CLEAN pre-training tests..."
+echo "   Using ONLY the fixed dataset implementation"
 
-TRAINING_MODE="patch_only"
+# Run the completely clean test
+python test_dataset_clean.py "$EMBEDDINGS_DIR" "$TRAINING_MODE"
+
+if [ $? -ne 0 ]; then
+    echo "❌ Clean dataset test failed!"
+    echo "   This means there's still an issue with the fixed dataset"
+    exit 1
+fi
+
+echo "✅ Clean dataset test passed!"
+
+# =============================================================================
+# TRAINING PARAMETERS
+# =============================================================================
+
+# Training parameters for overfitting test
 MAX_TRAINING_SHARDS=1
 MODEL_SIZE="base"
 HIDDEN_SIZE=768
@@ -111,11 +159,19 @@ DATALOADER_NUM_WORKERS=2
 LOGGING_STEPS=5
 SAVE_STEPS=100
 
+echo "⚙️ Training Parameters:"
+echo "   Max shards: $MAX_TRAINING_SHARDS (overfitting test)"
+echo "   Model: $MODEL_SIZE ($HIDDEN_SIZE dim, $NUM_LAYERS layers)"
+echo "   Batch size: $BATCH_SIZE"
+echo "   Learning rate: $LEARNING_RATE"
+echo "   Epochs: $NUM_EPOCHS"
 
 # =============================================================================
 # LAUNCH TRAINING
 # =============================================================================
 
+echo "🚀 Launching CLEAN training..."
+echo "============================================================"
 
 python train_blip3o_enhanced.py \
     --chunked_embeddings_dir "$EMBEDDINGS_DIR" \
@@ -149,18 +205,110 @@ python train_blip3o_enhanced.py \
     --detailed_logging \
     --test_gradient_flow
 
-
 EXIT_CODE=$?
 
+# =============================================================================
+# RESULTS ANALYSIS
+# =============================================================================
+
+echo ""
+echo "📊 Training completed with exit code: $EXIT_CODE"
+echo "============================================================"
+
+if [ $EXIT_CODE -eq 0 ]; then
+    echo "🎉 TRAINING COMPLETED SUCCESSFULLY!"
+    
+    # Show results summary
+    if [ -f "$OUTPUT_DIR/comprehensive_training_info.json" ]; then
+        echo ""
+        echo "📋 Training Summary:"
+        python -c "
+import json
+try:
+    with open('$OUTPUT_DIR/comprehensive_training_info.json', 'r') as f:
+        info = json.load(f)
+    print(f'   Mode: {info.get(\"training_mode\", \"Unknown\")}')
+    print(f'   Tokens: {info.get(\"expected_tokens\", \"Unknown\")}')
+    print(f'   Completed: {info.get(\"training_completed\", False)}')
+    
+    stats = info.get('training_statistics', {})
+    if 'loss_statistics' in stats:
+        loss_stats = stats['loss_statistics']
+        current_loss = loss_stats.get('current_loss', 'Unknown')
+        min_loss = loss_stats.get('min_loss', 'Unknown')
+        print(f'   Final Loss: {current_loss:.6f}' if isinstance(current_loss, (int, float)) else f'   Final Loss: {current_loss}')
+        print(f'   Best Loss: {min_loss:.6f}' if isinstance(min_loss, (int, float)) else f'   Best Loss: {min_loss}')
+    
+    if 'latest_evaluation_metrics' in stats:
+        eval_metrics = stats['latest_evaluation_metrics']
+        similarity = eval_metrics.get('per_image_mean_cosine', 'Unknown')
+        print(f'   Image Similarity: {similarity:.4f}' if isinstance(similarity, (int, float)) else f'   Image Similarity: {similarity}')
+        
+        if isinstance(similarity, (int, float)) and similarity > 0.8:
+            print('   🎉 EXCELLENT: High similarity achieved!')
+        elif isinstance(similarity, (int, float)) and similarity > 0.6:
+            print('   ✅ GOOD: Strong performance')
+        elif isinstance(similarity, (int, float)) and similarity > 0.4:
+            print('   🔄 FAIR: Making progress')
+            
+except Exception as e:
+    print(f'   Could not read training summary: {e}')
+"
+    fi
+    
+    echo ""
+    echo "📁 Results saved to:"
+    echo "   Output: $OUTPUT_DIR"
+    echo "   Logs: $OUTPUT_DIR/logs/"
+    echo "   Evaluations: $OUTPUT_DIR/evaluations/"
+    
+    # List key files
+    echo ""
+    echo "📄 Key result files:"
+    find "$OUTPUT_DIR" -name "*.json" | head -5 | sed 's/^/   /'
+    
+else
+    echo "❌ TRAINING FAILED!"
+    echo ""
+    
+    # Show error info if available
+    if [ -f "blip3o_enhanced_training_error.json" ]; then
+        echo "📋 Error Information:"
+        python -c "
+import json
+try:
+    with open('blip3o_enhanced_training_error.json', 'r') as f:
+        error_info = json.load(f)
+    print(f'   Error: {error_info.get(\"error\", \"Unknown error\")}')
+    print(f'   Mode: {error_info.get(\"training_mode\", \"Unknown\")}')
+except Exception as e:
+    print(f'   Could not read error file: {e}')
+"
+    fi
+    
+    # Show last lines of output
+    echo ""
+    echo "📋 Last few lines of SLURM output:"
+    tail -10 "./slurm_out/blip3o_clean_${SLURM_JOB_ID}.out" 2>/dev/null || echo "   No output available"
+fi
 
 # =============================================================================
 # CLEANUP
 # =============================================================================
 
+echo ""
+echo "🧹 Cleaning up temporary files..."
 
 if [ -d "${BLIP3O_JOB_TEMP}/cache" ]; then
+    echo "   Removing job cache..."
     rm -rf "${BLIP3O_JOB_TEMP}/cache"
 fi
 
+echo "   Preserving results in: $OUTPUT_DIR"
+
+echo ""
+echo "🏁 Job completed at $(date)"
+echo "💾 Runtime: $SECONDS seconds"
+echo "============================================================"
 
 exit $EXIT_CODE
