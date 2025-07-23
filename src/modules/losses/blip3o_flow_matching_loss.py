@@ -1,13 +1,12 @@
 """
-FIXED BLIP3-o Flow Matching Loss for Patch-Level Training
+Simplified BLIP3-o Flow Matching Loss - Paper Aligned
 src/modules/losses/blip3o_flow_matching_loss.py
 
-CRITICAL FIXES APPLIED:
-1. Added proper logger import
-2. Fixed gradient flow in interpolate_data
-3. Ensured all operations preserve gradients
-4. Added comprehensive gradient checking
-5. Proper error handling without breaking gradients
+CHANGES:
+1. Removed contrastive loss components
+2. Keep only flow matching loss as in BLIP3-o paper
+3. Simplified implementation focused on velocity prediction
+4. Support for both 256 and 257 token modes
 """
 
 import torch
@@ -17,19 +16,15 @@ from typing import Optional, Dict, Any, Tuple
 import math
 import logging
 
-# CRITICAL FIX: Add proper logger
 logger = logging.getLogger(__name__)
 
 
 class BLIP3oFlowMatchingLoss(nn.Module):
     """
-    FIXED Flow Matching Loss for BLIP3-o Patch-Level Training
+    Simplified Flow Matching Loss for BLIP3-o (Paper-aligned)
     
-    CRITICAL FIXES:
-    1. Proper gradient preservation
-    2. Robust interpolation with gradient flow
-    3. Enhanced error handling
-    4. Comprehensive gradient checking
+    Only uses flow matching loss without contrastive components.
+    This follows the original BLIP3-o paper implementation.
     """
     
     def __init__(
@@ -37,9 +32,6 @@ class BLIP3oFlowMatchingLoss(nn.Module):
         sigma_min: float = 1e-4,
         sigma_max: float = 1.0,
         prediction_type: str = "velocity",
-        use_contrastive_loss: bool = True,
-        contrastive_weight: float = 0.1,
-        temperature: float = 0.07,
         normalize_targets: bool = True,
     ):
         super().__init__()
@@ -47,9 +39,6 @@ class BLIP3oFlowMatchingLoss(nn.Module):
         self.sigma_min = sigma_min
         self.sigma_max = sigma_max
         self.prediction_type = prediction_type
-        self.use_contrastive_loss = use_contrastive_loss
-        self.contrastive_weight = contrastive_weight
-        self.temperature = temperature
         self.normalize_targets = normalize_targets
         
         # EMA tracking for metrics
@@ -57,10 +46,10 @@ class BLIP3oFlowMatchingLoss(nn.Module):
         self.register_buffer('ema_cosine_sim', torch.tensor(0.0))
         self.ema_decay = 0.99
         
-        logger.info(f"✅ BLIP3-o Flow Matching Loss initialized")
+        logger.info(f"✅ Simplified BLIP3-o Flow Matching Loss initialized")
         logger.info(f"   Prediction type: {prediction_type}")
-        logger.info(f"   Contrastive loss: {use_contrastive_loss}")
-        logger.info(f"   Training objective: Patch-level flow matching")
+        logger.info(f"   Paper-aligned: Only flow matching loss")
+        logger.info(f"   No contrastive loss components")
 
     def sample_timesteps(self, batch_size: int, device: torch.device) -> torch.Tensor:
         """Sample random timesteps for flow matching"""
@@ -68,80 +57,69 @@ class BLIP3oFlowMatchingLoss(nn.Module):
 
     def get_noise_schedule(self, t: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """Get noise schedule parameters for flow matching"""
-        # Linear schedule for rectified flow
+        # Linear schedule for rectified flow (BLIP3-o paper)
         alpha_t = t
         sigma_t = self.sigma_min + (self.sigma_max - self.sigma_min) * (1 - t)
         return alpha_t, sigma_t
 
     def interpolate_data(
         self,
-        x_0: torch.Tensor,  # Source (noise) [B, 256, 1024]
-        x_1: torch.Tensor,  # Target CLIP patches [B, 256, 1024]
+        x_0: torch.Tensor,  # Source (noise) [B, N, 1024]
+        x_1: torch.Tensor,  # Target CLIP embeddings [B, N, 1024]
         t: torch.Tensor,    # Timesteps [B]
         noise: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
         """
-        FIXED: Interpolate between source and target with proper gradient preservation
+        Interpolate between source and target (rectified flow)
         
-        CRITICAL FIXES:
-        1. Ensures x_0 requires gradients
-        2. Preserves gradient flow through interpolation
-        3. Comprehensive gradient checking
-        4. Robust error handling
+        Args:
+            x_0: Source noise [B, N, 1024] where N is 256 or 257
+            x_1: Target embeddings [B, N, 1024]
+            t: Timesteps [B]
+            noise: Additional noise (optional)
+            
+        Returns:
+            Interpolated state [B, N, 1024]
         """
         if noise is None:
             noise = torch.zeros_like(x_1)
         
-        # CRITICAL FIX 1: Ensure proper shapes for broadcasting
+        # Ensure proper shapes for broadcasting
         t = t.view(-1, 1, 1)  # [B, 1, 1]
         
         alpha_t, sigma_t = self.get_noise_schedule(t.squeeze(-1))
         alpha_t = alpha_t.view(-1, 1, 1)
         sigma_t = sigma_t.view(-1, 1, 1)
         
-        # CRITICAL FIX 2: Ensure x_0 requires gradients and is connected to computation graph
+        # Ensure x_0 requires gradients for proper flow
         if not x_0.requires_grad:
-            logger.debug("x_0 doesn't require gradients, creating new tensor with gradients")
             x_0 = x_0.detach().requires_grad_(True)
         
-        # CRITICAL FIX 3: Ensure noise has proper gradient properties
-        if not noise.requires_grad:
-            # Create noise with gradients if needed (though usually noise doesn't need gradients)
-            noise = noise.detach()
-        
-        # CRITICAL FIX 4: Linear interpolation preserving gradients
-        # This is the critical operation that must preserve gradients from x_0
+        # Linear interpolation (rectified flow)
         x_t = (1 - alpha_t) * x_0 + alpha_t * x_1.detach() + sigma_t * noise
         
-        # CRITICAL FIX 5: Verify output requires gradients
+        # Verify output requires gradients
         if not x_t.requires_grad:
-            logger.error("CRITICAL: Interpolated output doesn't require gradients!")
-            logger.error(f"x_0 requires_grad: {x_0.requires_grad}")
-            logger.error(f"x_1 requires_grad: {x_1.requires_grad}")
-            logger.error(f"alpha_t requires_grad: {alpha_t.requires_grad}")
-            logger.error(f"noise requires_grad: {noise.requires_grad}")
-            
-            # EMERGENCY FIX: Force gradient requirement
             x_t = x_t.requires_grad_(True)
-            logger.warning("Emergency fix: Forced gradient requirement on interpolated output")
+            logger.warning("Fixed gradient requirement on interpolated output")
         
         return x_t
 
     def compute_velocity_target(
         self,
-        x_0: torch.Tensor,  # Source [B, 256, 1024]
-        x_1: torch.Tensor,  # Target [B, 256, 1024]
+        x_0: torch.Tensor,  # Source [B, N, 1024]
+        x_1: torch.Tensor,  # Target [B, N, 1024]
         t: torch.Tensor,    # Timesteps [B]
         noise: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
         """
-        Compute velocity target for flow matching
+        Compute velocity target for flow matching (BLIP3-o paper)
         
         For rectified flow, the velocity target is x_1 - x_0
         """
         if self.prediction_type == "velocity":
-            # Rectified flow velocity
-            velocity_target = x_1.detach() - x_0.detach()  # Detach targets
+            # Rectified flow velocity (paper implementation)
+            velocity_target = x_1.detach() - x_0.detach()
         elif self.prediction_type == "epsilon":
             # Noise prediction target
             velocity_target = noise.detach() if noise is not None else torch.randn_like(x_1)
@@ -150,106 +128,43 @@ class BLIP3oFlowMatchingLoss(nn.Module):
         
         return velocity_target
 
-    def compute_patch_level_contrastive_loss(
-        self,
-        predicted_patches: torch.Tensor,  # [B, 256, 1024]
-        target_patches: torch.Tensor,    # [B, 256, 1024]
-    ) -> torch.Tensor:
-        """
-        Compute patch-level contrastive loss for better alignment
-        
-        This encourages patches to be well-aligned for image-text recall
-        """
-        batch_size, num_patches, patch_dim = predicted_patches.shape
-        
-        # Normalize patches
-        pred_norm = F.normalize(predicted_patches, p=2, dim=-1)  # [B, 256, 1024]
-        target_norm = F.normalize(target_patches.detach(), p=2, dim=-1)   # [B, 256, 1024]
-        
-        # Compute patch similarities within each sample
-        similarities = torch.einsum('bpd,bqd->bpq', pred_norm, target_norm)  # [B, 256, 256]
-        
-        # Create labels for diagonal (correct patch alignments)
-        labels = torch.arange(num_patches, device=predicted_patches.device)
-        labels = labels.unsqueeze(0).repeat(batch_size, 1)  # [B, 256]
-        
-        # Apply temperature scaling
-        similarities = similarities / self.temperature
-        
-        # Compute cross-entropy loss for each batch
-        contrastive_loss = F.cross_entropy(
-            similarities.view(-1, num_patches),  # [B*256, 256]
-            labels.view(-1),  # [B*256]
-            reduction='mean'
-        )
-        
-        return contrastive_loss
-
-    def compute_global_alignment_loss(
-        self,
-        predicted_patches: torch.Tensor,  # [B, 256, 1024]
-        target_patches: torch.Tensor,    # [B, 256, 1024]
-    ) -> torch.Tensor:
-        """
-        Compute global alignment loss using pooled features
-        
-        This helps with image-to-text recall by ensuring global coherence
-        """
-        # Global pooling (mean pooling across patches)
-        pred_global = predicted_patches.mean(dim=1)    # [B, 1024]
-        target_global = target_patches.detach().mean(dim=1)     # [B, 1024]
-        
-        # Normalize global features
-        pred_global_norm = F.normalize(pred_global, p=2, dim=-1)
-        target_global_norm = F.normalize(target_global, p=2, dim=-1)
-        
-        # Compute similarity matrix for contrastive learning
-        sim_matrix = torch.mm(pred_global_norm, target_global_norm.t()) / self.temperature
-        
-        # Create labels (diagonal should be positive pairs)
-        batch_size = predicted_patches.shape[0]
-        labels = torch.arange(batch_size, device=predicted_patches.device)
-        
-        # Symmetric contrastive loss
-        loss_i = F.cross_entropy(sim_matrix, labels, reduction='mean')
-        loss_j = F.cross_entropy(sim_matrix.t(), labels, reduction='mean')
-        global_alignment_loss = (loss_i + loss_j) / 2
-        
-        return global_alignment_loss
-
     def forward(
         self,
-        model_output: torch.Tensor,       # [B, 256, 1024] - Predicted velocity
-        target_samples: torch.Tensor,     # [B, 256, 1024] - Target CLIP patches
+        model_output: torch.Tensor,       # [B, N, 1024] - Predicted velocity (N=256 or 257)
+        target_samples: torch.Tensor,     # [B, N, 1024] - Target CLIP embeddings
         timesteps: torch.Tensor,          # [B] - Timesteps
-        eva_conditioning: torch.Tensor,   # [B, 256, 4096] - EVA features (for metrics)
+        eva_conditioning: torch.Tensor,   # [B, N, 4096] - EVA features (for metrics)
         noise: Optional[torch.Tensor] = None,
         return_metrics: bool = False,
     ) -> Tuple[torch.Tensor, Optional[Dict[str, float]]]:
         """
-        FIXED: Compute BLIP3-o flow matching loss with proper gradient handling
+        Compute simplified BLIP3-o flow matching loss
         
-        CRITICAL FIXES:
-        1. Comprehensive gradient verification
-        2. Proper loss computation with gradient preservation
-        3. Enhanced error handling
-        4. Robust fallback mechanisms
+        Args:
+            model_output: Predicted velocity [B, N, 1024]
+            target_samples: Target CLIP embeddings [B, N, 1024] 
+            timesteps: Flow matching timesteps [B]
+            eva_conditioning: EVA features [B, N, 4096]
+            noise: Noise for flow matching
+            return_metrics: Whether to return detailed metrics
+            
+        Returns:
+            (loss, metrics)
         """
         batch_size = model_output.shape[0]
+        num_tokens = model_output.shape[1]  # 256 or 257
         device = model_output.device
         
-        # CRITICAL FIX 1: Verify model output has gradients
+        # Verify model output has gradients
         if not model_output.requires_grad:
-            logger.error("CRITICAL: Model output doesn't require gradients in loss computation!")
-            logger.error(f"Model output shape: {model_output.shape}")
-            logger.error(f"Model output grad_fn: {model_output.grad_fn}")
+            logger.error("CRITICAL: Model output doesn't require gradients!")
             raise RuntimeError("Model output doesn't require gradients - training is broken!")
         
         # Input validation
         assert model_output.shape == target_samples.shape, \
             f"Shape mismatch: {model_output.shape} vs {target_samples.shape}"
-        assert model_output.shape[1] == 256, f"Expected 256 patches, got {model_output.shape[1]}"
-        assert model_output.shape[2] == 1024, f"Expected 1024-dim patches, got {model_output.shape[2]}"
+        assert num_tokens in [256, 257], f"Expected 256 or 257 tokens, got {num_tokens}"
+        assert model_output.shape[2] == 1024, f"Expected 1024-dim, got {model_output.shape[2]}"
         assert timesteps.shape[0] == batch_size, \
             f"Timestep batch size mismatch: {timesteps.shape[0]} vs {batch_size}"
         
@@ -257,60 +172,28 @@ class BLIP3oFlowMatchingLoss(nn.Module):
         if self.normalize_targets:
             target_samples = F.normalize(target_samples.detach(), p=2, dim=-1)
         else:
-            target_samples = target_samples.detach()  # Always detach targets
+            target_samples = target_samples.detach()
         
-        # CRITICAL FIX 2: Create source distribution with gradients
+        # Create source distribution with gradients
         x_0 = torch.randn_like(target_samples, requires_grad=True)
         
         # Sample noise if not provided
         if noise is None:
             noise = torch.randn_like(target_samples) * 0.1
         
-        # CRITICAL FIX 3: Compute velocity target (detached from gradients)
+        # Compute velocity target (detached from gradients)
         velocity_target = self.compute_velocity_target(x_0, target_samples, timesteps, noise)
         
-        # CRITICAL FIX 4: Primary flow matching loss (MSE on velocity prediction)
+        # Primary flow matching loss (MSE on velocity prediction)
         flow_matching_loss = F.mse_loss(model_output, velocity_target, reduction='mean')
         
-        # CRITICAL FIX 5: Verify loss has gradients
+        # Verify loss has gradients
         if not flow_matching_loss.requires_grad:
             logger.error("CRITICAL: Flow matching loss doesn't require gradients!")
-            logger.error(f"Model output grad_fn: {model_output.grad_fn}")
-            logger.error(f"Velocity target requires_grad: {velocity_target.requires_grad}")
-            raise RuntimeError("Flow matching loss doesn't require gradients - computation graph broken!")
+            raise RuntimeError("Flow matching loss doesn't require gradients!")
         
-        # Initialize total loss
+        # Total loss is just the flow matching loss (paper-aligned)
         total_loss = flow_matching_loss
-        
-        # Contrastive losses for better alignment
-        contrastive_loss = torch.tensor(0.0, device=device)
-        global_alignment_loss = torch.tensor(0.0, device=device)
-        
-        if self.use_contrastive_loss and self.contrastive_weight > 0:
-            try:
-                # Patch-level contrastive loss
-                contrastive_loss = self.compute_patch_level_contrastive_loss(
-                    model_output, target_samples
-                )
-                
-                # Global alignment loss
-                global_alignment_loss = self.compute_global_alignment_loss(
-                    model_output, target_samples
-                )
-                
-                # Add to total loss
-                total_contrastive = (contrastive_loss + global_alignment_loss) / 2
-                total_loss = total_loss + self.contrastive_weight * total_contrastive
-                
-            except Exception as e:
-                logger.warning(f"Contrastive loss computation failed: {e}")
-        
-        # CRITICAL FIX 6: Final verification that total loss has gradients
-        if not total_loss.requires_grad:
-            logger.error("CRITICAL: Total loss doesn't require gradients!")
-            logger.error(f"Flow matching loss grad_fn: {flow_matching_loss.grad_fn}")
-            logger.error(f"Contrastive loss grad_fn: {contrastive_loss.grad_fn}")
-            raise RuntimeError("Total loss doesn't require gradients - computation broken!")
         
         # Update EMA metrics
         with torch.no_grad():
@@ -330,44 +213,71 @@ class BLIP3oFlowMatchingLoss(nn.Module):
                 pred_norm = torch.norm(model_output, dim=-1).mean()
                 target_norm = torch.norm(velocity_target, dim=-1).mean()
                 
-                # Patch-level quality metrics
-                patch_cosine_sim = F.cosine_similarity(
+                # Token-level quality metrics
+                token_cosine_sim = F.cosine_similarity(
                     model_output.view(-1, 1024), 
                     velocity_target.view(-1, 1024), 
                     dim=-1
                 ).mean()
                 
-                # Global coherence metrics
-                pred_global = model_output.mean(dim=1)  # [B, 1024]
-                target_global = target_samples.mean(dim=1)  # [B, 1024]
-                global_cosine_sim = F.cosine_similarity(pred_global, target_global, dim=-1).mean()
+                # Global coherence metrics (for both CLS and patch modes)
+                if num_tokens == 257:
+                    # CLS + patches mode: separate CLS and patch analysis
+                    pred_cls = model_output[:, 0, :]  # [B, 1024] - CLS token
+                    pred_patches = model_output[:, 1:, :]  # [B, 256, 1024] - patches
+                    target_cls = target_samples[:, 0, :]
+                    target_patches = target_samples[:, 1:, :]
+                    
+                    cls_cosine_sim = F.cosine_similarity(pred_cls, target_cls, dim=-1).mean()
+                    patch_cosine_sim = F.cosine_similarity(
+                        pred_patches.view(-1, 1024), 
+                        target_patches.view(-1, 1024), 
+                        dim=-1
+                    ).mean()
+                    
+                    # Global features from patch average
+                    pred_global = pred_patches.mean(dim=1)  # [B, 1024]
+                    target_global = target_patches.mean(dim=1)
+                    global_cosine_sim = F.cosine_similarity(pred_global, target_global, dim=-1).mean()
+                    
+                else:
+                    # Patch-only mode: standard global pooling
+                    pred_global = model_output.mean(dim=1)  # [B, 1024]
+                    target_global = target_samples.mean(dim=1)
+                    global_cosine_sim = F.cosine_similarity(pred_global, target_global, dim=-1).mean()
+                    cls_cosine_sim = 0.0  # Not applicable
+                    patch_cosine_sim = token_cosine_sim
                 
-                # Quality indicators for image-text recall
-                high_quality_patches = (F.cosine_similarity(
+                # Quality indicators
+                high_quality_tokens = (F.cosine_similarity(
                     model_output.view(-1, 1024), 
                     target_samples.view(-1, 1024), 
                     dim=-1
                 ) > 0.7).float().mean()
                 
-                # Estimate recall performance based on similarity
-                estimated_recall = torch.clamp(global_cosine_sim * 60, 0, 60)  # Conservative estimate
+                # Estimate recall performance
+                estimated_recall = torch.clamp(global_cosine_sim * 60, 0, 60)
                 
                 metrics = {
-                    # Loss components
+                    # Loss components (simplified)
                     'flow_matching_loss': flow_matching_loss.item(),
-                    'contrastive_loss': contrastive_loss.item(),
-                    'global_alignment_loss': global_alignment_loss.item(),
                     'total_loss': total_loss.item(),
                     
                     # Velocity prediction quality
                     'velocity_cosine_sim': cosine_sim.item(),
-                    'patch_cosine_sim': patch_cosine_sim.item(),
+                    'token_cosine_sim': token_cosine_sim.item(),
                     'prediction_norm': pred_norm.item(),
                     'target_norm': target_norm.item(),
                     
+                    # Mode-specific metrics
+                    'num_tokens': num_tokens,
+                    'mode': 'cls_patch' if num_tokens == 257 else 'patch_only',
+                    'cls_cosine_sim': cls_cosine_sim if isinstance(cls_cosine_sim, float) else cls_cosine_sim.item(),
+                    'patch_cosine_sim': patch_cosine_sim.item(),
+                    
                     # Global coherence (important for recall)
                     'global_cosine_sim': global_cosine_sim.item(),
-                    'high_quality_patches': high_quality_patches.item(),
+                    'high_quality_tokens': high_quality_tokens.item(),
                     
                     # Performance indicators
                     'estimated_recall_at_1': estimated_recall.item(),
@@ -386,45 +296,43 @@ class BLIP3oFlowMatchingLoss(nn.Module):
                     'timestep_mean': timesteps.mean().item(),
                     'noise_level': torch.norm(noise, dim=-1).mean().item() if noise is not None else 0.0,
                     'batch_size': batch_size,
-                    'num_patches': model_output.shape[1],
                     
-                    # CRITICAL: Gradient flow status
+                    # Gradient flow status
                     'gradient_flow_ok': True,
                     'model_output_has_grad': model_output.requires_grad,
                     'loss_has_grad': total_loss.requires_grad,
+                    
+                    # Paper alignment
+                    'paper_aligned': True,
+                    'loss_type': 'flow_matching_only',
+                    'contrastive_loss_used': False,
                 }
         
         return total_loss, metrics
 
 
 def create_blip3o_flow_matching_loss(
-    enhanced: bool = True,
-    use_contrastive_loss: bool = True,
-    contrastive_weight: float = 0.1,
-    temperature: float = 0.07,
+    prediction_type: str = "velocity",
+    normalize_targets: bool = True,
     **kwargs
 ) -> BLIP3oFlowMatchingLoss:
     """
-    Factory function for creating BLIP3-o flow matching loss
+    Factory function for creating simplified BLIP3-o flow matching loss
     
     Args:
-        enhanced: Whether to use enhanced features (contrastive loss)
-        use_contrastive_loss: Whether to use contrastive loss for alignment
-        contrastive_weight: Weight for contrastive loss
-        temperature: Temperature for contrastive learning
+        prediction_type: "velocity" (recommended) or "epsilon"
+        normalize_targets: Whether to normalize target embeddings
         **kwargs: Additional arguments
         
     Returns:
-        BLIP3oFlowMatchingLoss instance
+        Simplified BLIP3oFlowMatchingLoss instance
     """
     return BLIP3oFlowMatchingLoss(
-        use_contrastive_loss=use_contrastive_loss and enhanced,
-        contrastive_weight=contrastive_weight,
-        temperature=temperature,
+        prediction_type=prediction_type,
+        normalize_targets=normalize_targets,
         **kwargs
     )
 
 
 # Backward compatibility
-BLIP3oFlowMatchingLoss = BLIP3oFlowMatchingLoss
 create_flow_matching_loss = create_blip3o_flow_matching_loss

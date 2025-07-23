@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """
-BLIP3-o Patch-Level Cosine Similarity Evaluation Script
+Simplified BLIP3-o Patch-Level Cosine Similarity Evaluation Script
 eval_blip3o_patch_similarity.py
 
-Evaluates the cosine similarity between predicted DiT patches and ground truth CLIP patches:
+Evaluates ONLY cosine similarity between predicted DiT patches and ground truth CLIP patches:
 1. 256 patch-level cosine similarities per image
-2. Average cosine similarity per image
-3. Detailed statistics and visualizations
+2. Average cosine similarity per image  
+3. Global average cosine similarity across all patches
+
+SIMPLIFIED - COSINE SIMILARITY ONLY
 """
 
 import os
@@ -23,9 +25,6 @@ from tqdm import tqdm
 import json
 import argparse
 import time
-import matplotlib.pyplot as plt
-import seaborn as sns
-from collections import defaultdict
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -49,7 +48,8 @@ def setup_paths():
 
 class BLIP3oPatchSimilarityEvaluator:
     """
-    Evaluator for patch-level cosine similarity between DiT predictions and CLIP ground truth
+    Simplified evaluator for patch-level cosine similarity between DiT predictions and CLIP ground truth
+    COSINE SIMILARITY ONLY
     """
     
     def __init__(self, device="auto"):
@@ -61,7 +61,7 @@ class BLIP3oPatchSimilarityEvaluator:
         self.blip3o_model = None
         self.model_info = {}
         
-        logger.info("BLIP3-o patch similarity evaluator initialized")
+        logger.info("BLIP3-o patch similarity evaluator initialized (cosine similarity only)")
     
     def _setup_device(self, device_arg):
         if device_arg == "auto":
@@ -219,7 +219,7 @@ class BLIP3oPatchSimilarityEvaluator:
         logger.info(f"   Enhanced: {self.model_info.get('enhanced', False)}")
     
     def extract_clip_patch_embeddings(self, images):
-        """Extract CLIP patch embeddings (256 patches, 1024-dim each)"""
+        """Extract CLIP patch embeddings (256 patches, 1024-dim each) from IMAGES ONLY"""
         logger.info(f"Extracting CLIP patch embeddings for {len(images)} images...")
         
         patch_embeddings = []
@@ -253,7 +253,7 @@ class BLIP3oPatchSimilarityEvaluator:
         return result
     
     def extract_eva_embeddings(self, images):
-        """Extract EVA-CLIP embeddings for conditioning"""
+        """Extract EVA-CLIP embeddings for conditioning from IMAGES ONLY"""
         logger.info(f"Extracting EVA-CLIP embeddings for {len(images)} images...")
         
         eva_embeddings = []
@@ -311,310 +311,88 @@ class BLIP3oPatchSimilarityEvaluator:
         logger.info(f"Generated patches shape: {result.shape}")
         return result
     
-    def compute_patch_cosine_similarity(self, predicted_patches, target_patches, normalize_embeddings=True, 
-                                       similarity_metrics=['cosine']):
+    def compute_patch_cosine_similarity(self, predicted_patches, target_patches, normalize_embeddings=True):
         """
-        Compute patch-level similarities with multiple metrics and normalization options
+        Compute ONLY cosine similarity between patches
         
         Args:
             predicted_patches: [N, 256, 1024] - Generated patches
             target_patches: [N, 256, 1024] - Ground truth CLIP patches
             normalize_embeddings: Whether to normalize embeddings to unit norm
-            similarity_metrics: List of metrics to compute ['cosine', 'dot_product', 'l2_distance']
             
         Returns:
-            Dict with similarity metrics and comprehensive analysis
+            Dict with cosine similarity metrics
         """
-        logger.info(f"Computing patch-level similarities...")
+        logger.info(f"Computing COSINE SIMILARITY ONLY...")
         logger.info(f"Predicted patches shape: {predicted_patches.shape}")
         logger.info(f"Target patches shape: {target_patches.shape}")
-        logger.info(f"Metrics: {similarity_metrics}")
         logger.info(f"Normalization: {'ON' if normalize_embeddings else 'OFF'}")
         
-        # Analyze embedding norms before normalization
-        pred_norms = torch.norm(predicted_patches, p=2, dim=-1)  # [N, 256]
-        target_norms = torch.norm(target_patches, p=2, dim=-1)   # [N, 256]
+        # Convert to torch tensors if they're numpy arrays
+        if isinstance(predicted_patches, np.ndarray):
+            predicted_patches = torch.from_numpy(predicted_patches)
+        if isinstance(target_patches, np.ndarray):
+            target_patches = torch.from_numpy(target_patches)
         
-        logger.info(f"Predicted embeddings - norm stats: mean={pred_norms.mean():.4f}, std={pred_norms.std():.4f}")
-        logger.info(f"Target embeddings - norm stats: mean={target_norms.mean():.4f}, std={target_norms.std():.4f}")
+        # Cosine similarity - always normalize for this metric
+        pred_norm = F.normalize(predicted_patches, p=2, dim=-1)  # [N, 256, 1024]
+        target_norm = F.normalize(target_patches, p=2, dim=-1)   # [N, 256, 1024]
         
-        results = {}
+        # Element-wise cosine similarity for each patch
+        patch_similarities = torch.sum(pred_norm * target_norm, dim=-1)  # [N, 256]
         
-        for metric in similarity_metrics:
-            logger.info(f"Computing {metric} similarity...")
-            
-            if metric == 'cosine':
-                # Cosine similarity - always normalize for this metric
-                pred_norm = F.normalize(predicted_patches, p=2, dim=-1)  # [N, 256, 1024]
-                target_norm = F.normalize(target_patches, p=2, dim=-1)   # [N, 256, 1024]
-                
-                # Element-wise cosine similarity for each patch
-                patch_similarities = torch.sum(pred_norm * target_norm, dim=-1)  # [N, 256]
-                
-            elif metric == 'dot_product':
-                # Dot product similarity - use normalization option
-                if normalize_embeddings:
-                    pred_use = F.normalize(predicted_patches, p=2, dim=-1)
-                    target_use = F.normalize(target_patches, p=2, dim=-1)
-                    logger.info("Using normalized embeddings for dot product")
-                else:
-                    pred_use = predicted_patches
-                    target_use = target_patches
-                    logger.info("Using raw embeddings for dot product")
-                
-                patch_similarities = torch.sum(pred_use * target_use, dim=-1)  # [N, 256]
-                
-            elif metric == 'l2_distance':
-                # L2 distance - use normalization option (convert to similarity: negative distance)
-                if normalize_embeddings:
-                    pred_use = F.normalize(predicted_patches, p=2, dim=-1)
-                    target_use = F.normalize(target_patches, p=2, dim=-1)
-                    logger.info("Using normalized embeddings for L2 distance")
-                else:
-                    pred_use = predicted_patches
-                    target_use = target_patches
-                    logger.info("Using raw embeddings for L2 distance")
-                
-                # L2 distance (negative for similarity interpretation)
-                patch_similarities = -torch.norm(pred_use - target_use, p=2, dim=-1)  # [N, 256]
-                
-            else:
-                logger.warning(f"Unknown metric: {metric}, skipping...")
-                continue
-            
-            # Per-image average similarity
-            per_image_avg_similarity = torch.mean(patch_similarities, dim=1)  # [N]
-            
-            # Overall statistics
-            all_patch_similarities = patch_similarities.flatten()
-            
-            metric_results = {
-                # Raw similarities
-                'patch_similarities': patch_similarities.numpy(),  # [N, 256]
-                'per_image_avg_similarity': per_image_avg_similarity.numpy(),  # [N]
-                
-                # Overall statistics
-                'overall_mean_similarity': float(torch.mean(all_patch_similarities)),
-                'overall_std_similarity': float(torch.std(all_patch_similarities)),
-                'overall_min_similarity': float(torch.min(all_patch_similarities)),
-                'overall_max_similarity': float(torch.max(all_patch_similarities)),
-                'overall_median_similarity': float(torch.median(all_patch_similarities)),
-                
-                # Per-image statistics
-                'per_image_mean': float(torch.mean(per_image_avg_similarity)),
-                'per_image_std': float(torch.std(per_image_avg_similarity)),
-                'per_image_min': float(torch.min(per_image_avg_similarity)),
-                'per_image_max': float(torch.max(per_image_avg_similarity)),
-                'per_image_median': float(torch.median(per_image_avg_similarity)),
-                
-                # Dataset info
-                'num_images': predicted_patches.shape[0],
-                'num_patches_per_image': 256,
-                'total_patches': predicted_patches.shape[0] * 256,
-                'metric': metric,
-                'normalized': normalize_embeddings if metric != 'cosine' else True,
-            }
-            
-            # Quality metrics (adjusted for each similarity type)
-            if metric == 'l2_distance':
-                # For L2 distance, more negative (smaller distance) is better
-                metric_results.update({
-                    'high_similarity_patches_ratio': float(torch.sum(all_patch_similarities > -0.5) / len(all_patch_similarities)),
-                    'good_similarity_patches_ratio': float(torch.sum(all_patch_similarities > -1.0) / len(all_patch_similarities)),
-                    'poor_similarity_patches_ratio': float(torch.sum(all_patch_similarities < -2.0) / len(all_patch_similarities)),
-                    'excellent_images_ratio': float(torch.sum(per_image_avg_similarity > -0.5) / len(per_image_avg_similarity)),
-                    'good_images_ratio': float(torch.sum(per_image_avg_similarity > -1.0) / len(per_image_avg_similarity)),
-                    'poor_images_ratio': float(torch.sum(per_image_avg_similarity < -2.0) / len(per_image_avg_similarity)),
-                })
-            else:
-                # For cosine and dot product, higher is better
-                metric_results.update({
-                    'high_similarity_patches_ratio': float(torch.sum(all_patch_similarities > 0.8) / len(all_patch_similarities)),
-                    'good_similarity_patches_ratio': float(torch.sum(all_patch_similarities > 0.6) / len(all_patch_similarities)),
-                    'poor_similarity_patches_ratio': float(torch.sum(all_patch_similarities < 0.3) / len(all_patch_similarities)),
-                    'excellent_images_ratio': float(torch.sum(per_image_avg_similarity > 0.8) / len(per_image_avg_similarity)),
-                    'good_images_ratio': float(torch.sum(per_image_avg_similarity > 0.6) / len(per_image_avg_similarity)),
-                    'poor_images_ratio': float(torch.sum(per_image_avg_similarity < 0.4) / len(per_image_avg_similarity)),
-                })
-            
-            results[metric] = metric_results
+        # Per-image average similarity
+        per_image_avg_similarity = torch.mean(patch_similarities, dim=1)  # [N]
         
-        # Add embedding norm analysis
-        results['embedding_analysis'] = {
-            'predicted_norms': {
-                'mean': float(pred_norms.mean()),
-                'std': float(pred_norms.std()),
-                'min': float(pred_norms.min()),
-                'max': float(pred_norms.max()),
-                'median': float(pred_norms.median()),
-            },
-            'target_norms': {
-                'mean': float(target_norms.mean()),
-                'std': float(target_norms.std()),
-                'min': float(target_norms.min()),
-                'max': float(target_norms.max()),
-                'median': float(target_norms.median()),
-            },
-            'norm_ratio': float(pred_norms.mean() / target_norms.mean()),
-            'norm_correlation': float(torch.corrcoef(torch.stack([pred_norms.flatten(), target_norms.flatten()]))[0, 1]),
+        # Overall statistics (global average)
+        all_patch_similarities = patch_similarities.flatten()
+        global_avg_similarity = torch.mean(all_patch_similarities)
+        
+        results = {
+            # Core similarity metrics (what you requested)
+            'patch_similarities': patch_similarities.numpy(),  # [N, 256] - Individual patch similarities
+            'per_image_avg_similarity': per_image_avg_similarity.numpy(),  # [N] - Average per image
+            'global_avg_similarity': float(global_avg_similarity),  # Single value - Average of ALL patches
+            
+            # Basic statistics
+            'overall_mean_similarity': float(torch.mean(all_patch_similarities)),
+            'overall_std_similarity': float(torch.std(all_patch_similarities)),
+            'overall_min_similarity': float(torch.min(all_patch_similarities)),
+            'overall_max_similarity': float(torch.max(all_patch_similarities)),
+            'overall_median_similarity': float(torch.median(all_patch_similarities)),
+            
+            # Per-image statistics
+            'per_image_mean': float(torch.mean(per_image_avg_similarity)),
+            'per_image_std': float(torch.std(per_image_avg_similarity)),
+            'per_image_min': float(torch.min(per_image_avg_similarity)),
+            'per_image_max': float(torch.max(per_image_avg_similarity)),
+            'per_image_median': float(torch.median(per_image_avg_similarity)),
+            
+            # Dataset info
+            'num_images': predicted_patches.shape[0],
+            'num_patches_per_image': 256,
+            'total_patches': predicted_patches.shape[0] * 256,
+            'metric': 'cosine',
+            'normalized': True,  # Always true for cosine similarity
         }
         
         return results
     
-    def analyze_patch_patterns(self, patch_similarities):
-        """Analyze spatial patterns in patch similarities"""
-        logger.info("Analyzing spatial patch patterns...")
-        
-        # Reshape to spatial grid [N, 16, 16]
-        spatial_similarities = patch_similarities.reshape(-1, 16, 16)
-        
-        # Compute spatial statistics
-        patterns = {
-            'center_vs_edge': self._analyze_center_vs_edge(spatial_similarities),
-            'spatial_variance': self._analyze_spatial_variance(spatial_similarities),
-            'hotspots': self._find_similarity_hotspots(spatial_similarities),
-        }
-        
-        return patterns
-    
-    def _analyze_center_vs_edge(self, spatial_similarities):
-        """Compare center vs edge patch similarities"""
-        N, H, W = spatial_similarities.shape
-        
-        # Define center region (inner 8x8)
-        center_start, center_end = 4, 12
-        center_patches = spatial_similarities[:, center_start:center_end, center_start:center_end]
-        
-        # Define edge region (outer border)
-        edge_mask = torch.ones(H, W, dtype=torch.bool)
-        edge_mask[1:-1, 1:-1] = False
-        edge_patches = spatial_similarities[:, edge_mask]
-        
-        return {
-            'center_mean': float(torch.mean(center_patches)),
-            'edge_mean': float(torch.mean(edge_patches)),
-            'center_vs_edge_diff': float(torch.mean(center_patches) - torch.mean(edge_patches)),
-        }
-    
-    def _analyze_spatial_variance(self, spatial_similarities):
-        """Analyze spatial variance within images"""
-        # Compute variance for each image
-        per_image_variance = torch.var(spatial_similarities.view(spatial_similarities.shape[0], -1), dim=1)
-        
-        return {
-            'mean_spatial_variance': float(torch.mean(per_image_variance)),
-            'std_spatial_variance': float(torch.std(per_image_variance)),
-        }
-    
-    def _find_similarity_hotspots(self, spatial_similarities):
-        """Find common high/low similarity regions"""
-        # Average across all images to find common patterns
-        avg_spatial = torch.mean(spatial_similarities, dim=0)  # [16, 16]
-        
-        # Find hotspots (highest similarities)
-        flat_avg = avg_spatial.flatten()
-        top_indices = torch.topk(flat_avg, k=5).indices
-        hotspot_coords = [(int(idx // 16), int(idx % 16)) for idx in top_indices]
-        
-        # Find coldspots (lowest similarities)
-        bottom_indices = torch.topk(flat_avg, k=5, largest=False).indices
-        coldspot_coords = [(int(idx // 16), int(idx % 16)) for idx in bottom_indices]
-        
-        return {
-            'avg_spatial_pattern': avg_spatial.numpy().tolist(),
-            'hotspots': hotspot_coords,
-            'coldspots': coldspot_coords,
-            'spatial_range': float(torch.max(avg_spatial) - torch.min(avg_spatial)),
-        }
-    
-    def create_metric_visualizations(self, metric_results, output_dir, metric_name):
-        """Create visualization plots for a specific metric"""
-        logger.info(f"Creating {metric_name} visualization plots...")
-        
-        output_dir = Path(output_dir)
-        output_dir.mkdir(parents=True, exist_ok=True)
-        
-        # 1. Per-image average similarity histogram
-        plt.figure(figsize=(10, 6))
-        plt.hist(metric_results['per_image_avg_similarity'], bins=50, alpha=0.7, edgecolor='black')
-        plt.axvline(metric_results['per_image_mean'], color='red', linestyle='--', 
-                   label=f'Mean: {metric_results["per_image_mean"]:.3f}')
-        plt.axvline(metric_results['per_image_median'], color='green', linestyle='--', 
-                   label=f'Median: {metric_results["per_image_median"]:.3f}')
-        plt.xlabel(f'Average {metric_name.title()} Similarity per Image')
-        plt.ylabel('Number of Images')
-        plt.title(f'Distribution of Per-Image Average {metric_name.title()} Similarities')
-        plt.legend()
-        plt.grid(True, alpha=0.3)
-        plt.savefig(output_dir / f'per_image_{metric_name}_distribution.png', dpi=300, bbox_inches='tight')
-        plt.close()
-        
-        # 2. All patch similarities histogram
-        all_similarities = metric_results['patch_similarities'].flatten()
-        plt.figure(figsize=(10, 6))
-        plt.hist(all_similarities, bins=100, alpha=0.7, edgecolor='black')
-        plt.axvline(metric_results['overall_mean_similarity'], color='red', linestyle='--', 
-                   label=f'Mean: {metric_results["overall_mean_similarity"]:.3f}')
-        plt.axvline(metric_results['overall_median_similarity'], color='green', linestyle='--', 
-                   label=f'Median: {metric_results["overall_median_similarity"]:.3f}')
-        plt.xlabel(f'Patch-Level {metric_name.title()} Similarity')
-        plt.ylabel('Number of Patches')
-        plt.title(f'Distribution of All Patch-Level {metric_name.title()} Similarities')
-        plt.legend()
-        plt.grid(True, alpha=0.3)
-        plt.savefig(output_dir / f'all_patches_{metric_name}_distribution.png', dpi=300, bbox_inches='tight')
-        plt.close()
-        
-        # 3. Quality distribution pie chart (metric-specific thresholds)
-        per_image_avg = metric_results['per_image_avg_similarity']
-        
-        if metric_name == 'l2_distance':
-            # For L2 distance, more negative (smaller distance) is better
-            excellent = np.sum(per_image_avg > -0.5) / len(per_image_avg) * 100
-            good = np.sum((per_image_avg > -1.0) & (per_image_avg <= -0.5)) / len(per_image_avg) * 100
-            fair = np.sum((per_image_avg > -2.0) & (per_image_avg <= -1.0)) / len(per_image_avg) * 100
-            poor = np.sum(per_image_avg <= -2.0) / len(per_image_avg) * 100
-            quality_labels = ['Excellent (>-0.5)', 'Good (-1.0 to -0.5)', 'Fair (-2.0 to -1.0)', 'Poor (≤-2.0)']
-        else:
-            # For cosine and dot product, higher is better
-            excellent = np.sum(per_image_avg > 0.8) / len(per_image_avg) * 100
-            good = np.sum((per_image_avg > 0.6) & (per_image_avg <= 0.8)) / len(per_image_avg) * 100
-            fair = np.sum((per_image_avg > 0.4) & (per_image_avg <= 0.6)) / len(per_image_avg) * 100
-            poor = np.sum(per_image_avg <= 0.4) / len(per_image_avg) * 100
-            quality_labels = ['Excellent (>0.8)', 'Good (0.6-0.8)', 'Fair (0.4-0.6)', 'Poor (≤0.4)']
-        
-        quality_values = [excellent, good, fair, poor]
-        colors = ['#2ecc71', '#f1c40f', '#e67e22', '#e74c3c']
-        
-        plt.figure(figsize=(8, 8))
-        plt.pie(quality_values, labels=quality_labels, colors=colors, autopct='%1.1f%%', startangle=90)
-        plt.title(f'Image Quality Distribution - {metric_name.title()} Similarity')
-        plt.savefig(output_dir / f'{metric_name}_quality_distribution.png', dpi=300, bbox_inches='tight')
-        plt.close()
-        
-        logger.info(f"{metric_name} visualizations saved to: {output_dir}")
-    
-    def evaluate_on_dataset(self, images, captions_per_image, num_inference_steps=50, 
-                          output_dir=None, save_detailed=True, normalize_embeddings=True,
-                          similarity_metrics=['cosine']):
+    def evaluate_on_dataset(
+        self, 
+        images, 
+        captions_per_image, 
+        num_inference_steps=50, 
+        output_dir=None, 
+        save_detailed=True, 
+        normalize_embeddings=True
+    ):
         """
-        Main evaluation function for patch-level similarity with multiple metrics
-        
-        Args:
-            images: List of PIL images
-            captions_per_image: List of caption lists (for metadata)
-            num_inference_steps: Number of inference steps for generation
-            output_dir: Directory to save results
-            save_detailed: Whether to save detailed per-image results
-            normalize_embeddings: Whether to normalize embeddings
-            similarity_metrics: List of similarity metrics to compute
-            
-        Returns:
-            Dictionary with evaluation results for all metrics
+        Main evaluation function for patch-level cosine similarity
+        SIMPLIFIED - COSINE SIMILARITY ONLY
         """
-        logger.info(f"Starting patch-level similarity evaluation on {len(images)} images")
-        logger.info(f"Metrics: {similarity_metrics}")
-        logger.info(f"Normalization: {normalize_embeddings}")
+        logger.info(f"Starting patch-level COSINE SIMILARITY evaluation on {len(images)} images")
+        logger.info(f"Using IMAGES ONLY for similarity computation")
         
         # Extract EVA embeddings for conditioning
         logger.info("Step 1: Extracting EVA-CLIP embeddings...")
@@ -628,18 +406,11 @@ class BLIP3oPatchSimilarityEvaluator:
         logger.info("Step 3: Generating BLIP3-o patches...")
         predicted_patches = self.generate_blip3o_patches(eva_embeddings, num_inference_steps)
         
-        # Compute similarities with multiple metrics
-        logger.info("Step 4: Computing patch-level similarities...")
+        # Compute COSINE similarity only
+        logger.info("Step 4: Computing COSINE similarities...")
         similarity_results = self.compute_patch_cosine_similarity(
-            predicted_patches, target_patches, normalize_embeddings, similarity_metrics
+            predicted_patches, target_patches, normalize_embeddings
         )
-        
-        # Analyze spatial patterns for the primary metric
-        primary_metric = similarity_metrics[0]
-        if primary_metric in similarity_results:
-            logger.info("Step 5: Analyzing spatial patterns...")
-            patterns = self.analyze_patch_patterns(similarity_results[primary_metric]['patch_similarities'])
-            similarity_results['spatial_patterns'] = patterns
         
         # Add metadata
         similarity_results.update({
@@ -649,18 +420,11 @@ class BLIP3oPatchSimilarityEvaluator:
                 'num_images': len(images),
                 'captions_provided': len([cap for caps in captions_per_image for cap in caps]),
                 'normalize_embeddings': normalize_embeddings,
-                'similarity_metrics': similarity_metrics,
+                'similarity_metric': 'cosine_only',
+                'uses_images_only': True,
             },
             'timestamp': time.time(),
         })
-        
-        # Create visualizations for each metric
-        if output_dir:
-            viz_dir = Path(output_dir) / 'visualizations'
-            for metric in similarity_metrics:
-                if metric in similarity_results:
-                    metric_viz_dir = viz_dir / metric
-                    self.create_metric_visualizations(similarity_results[metric], metric_viz_dir, metric)
         
         # Save detailed results
         if output_dir and save_detailed:
@@ -670,41 +434,30 @@ class BLIP3oPatchSimilarityEvaluator:
             # Save main results
             with open(output_path / 'patch_similarity_results.json', 'w') as f:
                 # Convert numpy arrays to lists for JSON serialization
-                json_results = {}
-                for metric, metric_data in similarity_results.items():
-                    if isinstance(metric_data, dict) and 'patch_similarities' in metric_data:
-                        json_metric_data = metric_data.copy()
-                        json_metric_data['patch_similarities'] = metric_data['patch_similarities'].tolist()
-                        json_metric_data['per_image_avg_similarity'] = metric_data['per_image_avg_similarity'].tolist()
-                        json_results[metric] = json_metric_data
-                    else:
-                        json_results[metric] = metric_data
-                        
+                json_results = similarity_results.copy()
+                json_results['patch_similarities'] = similarity_results['patch_similarities'].tolist()
+                json_results['per_image_avg_similarity'] = similarity_results['per_image_avg_similarity'].tolist()
                 json.dump(json_results, f, indent=2)
             
-            # Save detailed per-image results for each metric
-            for metric in similarity_metrics:
-                if metric in similarity_results:
-                    metric_data = similarity_results[metric]
-                    per_image_details = []
-                    
-                    for i, (patches_sim, avg_sim) in enumerate(zip(
-                        metric_data['patch_similarities'], 
-                        metric_data['per_image_avg_similarity']
-                    )):
-                        per_image_details.append({
-                            'image_id': i,
-                            'metric': metric,
-                            'average_similarity': float(avg_sim),
-                            'patch_similarities': patches_sim.tolist(),
-                            'max_patch_similarity': float(np.max(patches_sim)),
-                            'min_patch_similarity': float(np.min(patches_sim)),
-                            'std_patch_similarity': float(np.std(patches_sim)),
-                            'captions': captions_per_image[i] if i < len(captions_per_image) else [],
-                        })
-                    
-                    with open(output_path / f'per_image_details_{metric}.json', 'w') as f:
-                        json.dump(per_image_details, f, indent=2)
+            # Save detailed per-image results
+            per_image_details = []
+            for i, (patches_sim, avg_sim) in enumerate(zip(
+                similarity_results['patch_similarities'], 
+                similarity_results['per_image_avg_similarity']
+            )):
+                per_image_details.append({
+                    'image_id': i,
+                    'metric': 'cosine',
+                    'average_similarity': float(avg_sim),
+                    'patch_similarities': patches_sim.tolist(),
+                    'max_patch_similarity': float(np.max(patches_sim)),
+                    'min_patch_similarity': float(np.min(patches_sim)),
+                    'std_patch_similarity': float(np.std(patches_sim)),
+                    'captions': captions_per_image[i] if i < len(captions_per_image) else [],
+                })
+            
+            with open(output_path / f'per_image_details_cosine.json', 'w') as f:
+                json.dump(per_image_details, f, indent=2)
             
             logger.info(f"Detailed results saved to: {output_path}")
         
@@ -781,7 +534,7 @@ def load_coco_samples(coco_root, num_samples=1000):
 
 def main():
     """Main evaluation function"""
-    parser = argparse.ArgumentParser(description="Evaluate BLIP3-o Patch-Level Cosine Similarity")
+    parser = argparse.ArgumentParser(description="Evaluate BLIP3-o Patch-Level Cosine Similarity (COSINE ONLY)")
     parser.add_argument("--coco_root", type=str, required=True, help="COCO dataset root")
     parser.add_argument("--model_path", type=str, required=True, help="BLIP3-o model path")
     parser.add_argument("--num_samples", type=int, default=1000, help="Number of samples to evaluate")
@@ -792,7 +545,7 @@ def main():
     
     args = parser.parse_args()
     
-    logger.info("🚀 Starting BLIP3-o Patch-Level Cosine Similarity Evaluation")
+    logger.info("🚀 Starting BLIP3-o Patch-Level Cosine Similarity Evaluation (COSINE ONLY)")
     logger.info("=" * 70)
     
     # Setup imports
@@ -829,66 +582,53 @@ def main():
             captions_per_image=captions_per_image,
             num_inference_steps=args.num_inference_steps,
             output_dir=args.output_dir,
-            save_detailed=True
+            save_detailed=True,
+            normalize_embeddings=True
         )
         
         # Print summary results
         print(f"\n{'='*70}")
-        print("🎯 BLIP3-O PATCH-LEVEL COSINE SIMILARITY RESULTS")
+        print("🎯 BLIP3-O PATCH-LEVEL COSINE SIMILARITY RESULTS (COSINE ONLY)")
         print(f"{'='*70}")
         
         print(f"📊 Dataset Information:")
         print(f"   Images evaluated: {results['num_images']:,}")
         print(f"   Total patches: {results['total_patches']:,}")
         print(f"   Patches per image: {results['num_patches_per_image']}")
+        print(f"   Uses images only: ✅")
         
-        print(f"\n🎯 Overall Patch-Level Statistics:")
-        print(f"   Mean similarity: {results['overall_mean_similarity']:.4f}")
-        print(f"   Std similarity:  {results['overall_std_similarity']:.4f}")
-        print(f"   Min similarity:  {results['overall_min_similarity']:.4f}")
-        print(f"   Max similarity:  {results['overall_max_similarity']:.4f}")
-        print(f"   Median similarity: {results['overall_median_similarity']:.4f}")
+        print(f"\n🎯 COSINE SIMILARITY ANALYSIS:")
+        print(f"   Per-patch cosine similarity: {results['overall_mean_similarity']:.4f}")
+        print(f"   Std similarity:              {results['overall_std_similarity']:.4f}")
+        print(f"   Min similarity:              {results['overall_min_similarity']:.4f}")
+        print(f"   Max similarity:              {results['overall_max_similarity']:.4f}")
+        print(f"   Median similarity:           {results['overall_median_similarity']:.4f}")
         
-        print(f"\n🖼️  Per-Image Average Statistics:")
-        print(f"   Mean per-image avg: {results['per_image_mean']:.4f}")
-        print(f"   Std per-image avg:  {results['per_image_std']:.4f}")
-        print(f"   Min per-image avg:  {results['per_image_min']:.4f}")
-        print(f"   Max per-image avg:  {results['per_image_max']:.4f}")
-        print(f"   Median per-image avg: {results['per_image_median']:.4f}")
+        print(f"\n🖼️  PER-IMAGE AVERAGE SIMILARITY:")
+        print(f"   Mean per-image avg:          {results['per_image_mean']:.4f}")
+        print(f"   Std per-image avg:           {results['per_image_std']:.4f}")
+        print(f"   Min per-image avg:           {results['per_image_min']:.4f}")
+        print(f"   Max per-image avg:           {results['per_image_max']:.4f}")
+        print(f"   Median per-image avg:        {results['per_image_median']:.4f}")
         
-        print(f"\n🏆 Quality Assessment:")
-        print(f"   Excellent images (>0.8): {results['excellent_images_ratio']*100:.1f}%")
-        print(f"   Good images (>0.6):     {results['good_images_ratio']*100:.1f}%")
-        print(f"   Poor images (<0.4):     {results['poor_images_ratio']*100:.1f}%")
-        
-        print(f"\n📊 Patch Quality Distribution:")
-        print(f"   High similarity patches (>0.8): {results['high_similarity_patches_ratio']*100:.1f}%")
-        print(f"   Good similarity patches (>0.6): {results['good_similarity_patches_ratio']*100:.1f}%")
-        print(f"   Poor similarity patches (<0.3): {results['poor_similarity_patches_ratio']*100:.1f}%")
-        
-        if 'patterns' in results:
-            patterns = results['patterns']
-            print(f"\n🗺️  Spatial Pattern Analysis:")
-            print(f"   Center vs Edge similarity diff: {patterns['center_vs_edge']['center_vs_edge_diff']:+.4f}")
-            print(f"   Center mean: {patterns['center_vs_edge']['center_mean']:.4f}")
-            print(f"   Edge mean:   {patterns['center_vs_edge']['edge_mean']:.4f}")
-            print(f"   Mean spatial variance: {patterns['spatial_variance']['mean_spatial_variance']:.4f}")
+        print(f"\n🌐 GLOBAL AVERAGE COSINE SIMILARITY:")
+        print(f"   Global average (all patches): {results['global_avg_similarity']:.4f}")
+        print(f"   This is the average of ALL {results['total_patches']:,} patch similarities!")
         
         print(f"\n💾 Results saved to: {args.output_dir}")
-        print(f"   📈 Visualizations: {args.output_dir}/visualizations/")
         print(f"   📋 Main results: patch_similarity_results.json")
-        print(f"   🖼️  Per-image details: per_image_details.json")
+        print(f"   🖼️  Per-image details: per_image_details_cosine.json")
         
         # Performance assessment
-        overall_quality = results['per_image_mean']
+        overall_quality = results['global_avg_similarity']
         if overall_quality > 0.8:
-            print(f"\n🎉 EXCELLENT: Very high patch-level similarity!")
+            print(f"\n🎉 EXCELLENT: Very high patch-level cosine similarity!")
         elif overall_quality > 0.6:
-            print(f"\n✅ GOOD: Strong patch-level similarity")
+            print(f"\n✅ GOOD: Strong patch-level cosine similarity")
         elif overall_quality > 0.4:
-            print(f"\n⚠️  FAIR: Moderate patch-level similarity")
+            print(f"\n⚠️  FAIR: Moderate patch-level cosine similarity")
         else:
-            print(f"\n❌ POOR: Low patch-level similarity - model needs improvement")
+            print(f"\n❌ POOR: Low patch-level cosine similarity - model needs improvement")
         
         print(f"{'='*70}")
         
