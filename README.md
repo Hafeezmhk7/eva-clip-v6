@@ -1,45 +1,32 @@
 # BLIP3-o Enhanced Patch-Level DiT: Image-to-Text Translation via Flow Matching
-
-[![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://python.org)
-[![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-red.svg)](https://pytorch.org)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Training](https://img.shields.io/badge/Training-Enhanced-green.svg)](docs/training.md)
-
 An implementation* of BLIP3-o patch-level Diffusion Transformer (DiT) for image-to-text translation using flow matching. This project implements flexible training with support for both **CLS+patch (257 tokens)** and **patch-only (256 tokens)** modes, with detailed cosine similarity evaluation and overfitting verification.
-
-
-
 ## 🏗️ Architecture Overview
 
-```mermaid
 graph TD
     A[Input Images] --> B[EVA-CLIP Encoder]
     A --> C[CLIP ViT Encoder]
     
-    B --> D[EVA Features<br/>[B, 257, 4096]]
-    C --> E[CLIP Features<br/>[B, 257, 1024]]
+    B --> D["EVA Features\n[B, 257, 4096]"]
+    C --> E["CLIP Features\n[B, 257, 1024]"]
     
-    D --> F[Cross-Attention<br/>Conditioning]
-    E --> G[Flow Matching<br/>Target]
+    D --> F["Cross-Attention\nConditioning"]
+    E --> G["Flow Matching\nTarget"]
     
-    H[Noise<br/>[B, 257, 1024]] --> I[Linear Interpolation<br/>x_t = (1-α)x_0 + αx_1]
+    H["Noise\n[B, 257, 1024]"] --> I["Linear Interpolation\nx_t = (1-α)x_0 + αx_1"]
     G --> I
     
-    I --> J[BLIP3-o DiT Model<br/>12 Layers, 768 Hidden]
+    I --> J["BLIP3-o DiT Model\n12 Layers, 768 Hidden"]
     F --> J
     
-    J --> K[Velocity Prediction<br/>[B, 257, 1024]]
+    J --> K["Velocity Prediction\n[B, 257, 1024]"]
     
-    K --> L[Flow Matching Loss<br/>MSE(v_pred, v_target)]
+    K --> L["Flow Matching Loss\nMSE(v_pred, v_target)"]
     G --> L
     
     style J fill:#e1f5fe
     style L fill:#ffebee
     style F fill:#f3e5f5
-```
 
-
-## 🚀 Quick Start
 
 ### 1. Installation
 
@@ -51,6 +38,7 @@ cd eva-clip-flow-matching/eva-clip-v3
 # Create conda environment
 conda create -n eva_clip_env python=3.11 -y
 conda activate eva_clip_env
+run the requirement.txt file
 
 # Install dependencies
 pip install torch torchvision transformers datasets
@@ -134,24 +122,10 @@ python eval_blip3o_patch_similarity.py \
 | **Token Count** | 257 | 256 |
 | **Input Format** | [CLS] + 16×16 patches | 16×16 patches only |
 | **Token Layout** | [0]=CLS, [1:257]=patches | [0:256]=patches |
-| **Global Representation** | Explicit CLS token | Pooled from patches |
-| **Spatial Encoding** | 3D RoPE with CLS handling | Standard 3D RoPE |
-| **Memory Usage** | Slightly higher | Standard |
-| **Recall Performance** | May benefit from CLS | Relies on patch pooling |
 
-## 🔧 Enhanced Configuration
 
-### Model Sizes
 
-```python
-# Available model configurations
-model_sizes = {
-    "tiny": {"hidden_size": 512, "num_layers": 6, "num_heads": 8},
-    "small": {"hidden_size": 768, "num_layers": 8, "num_heads": 12}, 
-    "base": {"hidden_size": 768, "num_layers": 12, "num_heads": 12},  # ← Recommended
-    "large": {"hidden_size": 1024, "num_layers": 16, "num_heads": 16}
-}
-```
+
 
 ### Training Configuration
 
@@ -226,103 +200,6 @@ python eval_blip3o_patch_similarity.py \
 
 
 
-## 📊 Evaluation Metrics
-
-### Cosine Similarity Analysis
-
-```mermaid
-graph LR
-    A[Generated Patches<br/>[B, 257, 1024]] --> B[Per-Patch Similarity<br/>[B, 257]]
-    C[Target Patches<br/>[B, 257, 1024]] --> B
-    
-    B --> D[Per-Image Average<br/>[B]]
-    D --> E[Global Average<br/>Scalar]
-    
-    B --> F[Quality Thresholds<br/>>0.7, >0.8, >0.9]
-    D --> G[Distribution Analysis<br/>Mean, Std, Percentiles]
-    E --> H[Final Performance<br/>Score]
-    
-    style B fill:#e8f5e8
-    style E fill:#ffe8e8
-    style H fill:#e8e8ff
-```
-
-### Evaluation Outputs
-
-1. **Per-Patch Analysis**: Individual cosine similarity for each patch
-2. **Per-Image Analysis**: Average similarity per image with statistics
-3. **Global Analysis**: Overall performance metrics and quality assessment
-4. **Visualization**: Distribution plots, heatmaps, and quality analysis
-5. **JSON Reports**: Detailed numerical results for further analysis
-
-
-
-
-
-
-
-
-## 🚀 SLURM Training (Snellius)
-
-### Quick Training
-```bash
-# Submit enhanced training job
-sbatch job_scripts/train_blip3o_enhanced.job
-```
-
-### Quick Evaluation
-```bash
-# Submit evaluation job (update paths in script)
-sbatch job_scripts/eval_blip3o_similarity.job
-```
-
-
-
-### Example 1: Pipeline Validation
-```bash
-# 1. Extract embeddings with CLS+patch
-python src/modules/extract_embeddings_g.py --include_cls --max_shards 1
-
-# 2. Train on single shard
-python train_blip3o_enhanced.py \
-    --training_mode "cls_patch" \
-    --max_training_shards 1 \
-    --overfitting_test
-
-# 3. Evaluate same data
-python eval_blip3o_patch_similarity.py \
-    --model_path "./checkpoints/latest" \
-    --same_data_eval \
-    --max_eval_shards 1
-```
-
-
-
-
-
-
-
-```bash
-# Test gradient flow
-python train_blip3o_enhanced.py --test_gradient_flow
-
-# Verify embeddings
-python -c "
-import json
-with open('./embeddings/embeddings_manifest.json') as f:
-    print(json.load(f))
-"
-
-# Check model architecture
-python -c "
-from src.modules.models.blip3o_patch_dit import create_blip3o_patch_dit_model
-model = create_blip3o_patch_dit_model()
-print(f'Parameters: {model.get_num_parameters():,}')
-"
-```
-
-
-
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
@@ -338,10 +215,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-<div align="center">
 
-**🚀 Enhanced BLIP3-o: Comprehensive Patch-Level Training with Flexible Token Support**
-
-[Quick Start](#-quick-start) • [Training](#-training-options) • [Evaluation](#-evaluation-and-analysis) • [Results](#-performance-benchmarks)
-
-</div>
