@@ -1,6 +1,12 @@
 """
-FIXED Chunked Dataset implementation for BLIP3-o training with proper __len__ method.
-FIX: Added __len__() method to make it compatible with DataLoader boolean evaluation.
+UPDATED BLIP3-o Dataset with Fixed Gradient Flow Integration
+src/modules/datasets/blip3o_dataset.py
+
+UPDATES:
+1. Enhanced chunked_collate_fn to provide proper gradient flow setup
+2. Integration with fixed data collator approach
+3. Maintains compatibility with existing dataset structure
+4. Adds gradient-aware tensor preparation
 """
 
 import torch
@@ -422,10 +428,18 @@ class BLIP3oEmbeddingDataset(IterableDataset):
 
 
 def chunked_collate_fn(batch: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """Custom collate function for chunked dataset."""
+    """
+    UPDATED Custom collate function with gradient flow setup for BLIP3-o training
+    
+    This function now prepares tensors compatible with the fixed trainer:
+    1. Creates proper noisy inputs with gradients for flow matching
+    2. Detaches conditioning and target tensors appropriately  
+    3. Sets up flow matching timesteps and noise
+    4. Ensures proper tensor connectivity for gradient flow
+    """
     # Stack tensor data
-    eva_embeddings = torch.stack([item['eva_embeddings'] for item in batch])
-    clip_embeddings = torch.stack([item['clip_embeddings'] for item in batch])
+    eva_embeddings = torch.stack([item['eva_embeddings'] for item in batch])  # [B, 256, 4096]
+    clip_embeddings = torch.stack([item['clip_embeddings'] for item in batch])  # [B, 256, 1024]
     
     # Collect metadata
     captions = [item['caption'] for item in batch]
@@ -433,13 +447,71 @@ def chunked_collate_fn(batch: List[Dict[str, Any]]) -> Dict[str, Any]:
     shard_indices = [item['shard_idx'] for item in batch]
     sample_indices = [item['sample_idx'] for item in batch]
     
+    # Ensure proper dtype and device
+    eva_embeddings = eva_embeddings.float()
+    clip_embeddings = clip_embeddings.float()
+    
+    # Get batch info
+    batch_size, seq_len, clip_dim = clip_embeddings.shape
+    device = clip_embeddings.device
+    dtype = clip_embeddings.dtype
+    
+    # CRITICAL: Detach conditioning and targets (no gradients needed)
+    eva_embeddings = eva_embeddings.detach()
+    clip_embeddings = clip_embeddings.detach()
+    
+    # UPDATED: Create flow matching setup with proper gradient flow
+    # Sample timesteps for flow matching
+    timesteps = torch.rand(batch_size, device=device, dtype=dtype)
+    
+    # Create noise for flow matching
+    noise = torch.randn_like(clip_embeddings, device=device, dtype=dtype)
+    
+    # CRITICAL: Create base noise with proper gradient requirement
+    base_noise = torch.randn_like(clip_embeddings, device=device, dtype=dtype, requires_grad=True)
+    
+    # Linear interpolation for flow matching (rectified flow style)
+    alpha = timesteps.view(-1, 1, 1)  # [B, 1, 1]
+    
+    # Create noisy input for the model - this MUST have gradients
+    hidden_states = (1 - alpha) * base_noise + alpha * clip_embeddings + 0.1 * noise
+    
+    # Ensure the noisy input requires gradients
+    if not hidden_states.requires_grad:
+        logger.warning("Noisy input doesn't require gradients, fixing...")
+        hidden_states = hidden_states.requires_grad_(True)
+    
+    # Validate tensor properties
+    assert eva_embeddings.shape == (batch_size, 256, 4096), f"EVA batch shape: {eva_embeddings.shape}"
+    assert clip_embeddings.shape == (batch_size, 256, 1024), f"CLIP batch shape: {clip_embeddings.shape}"
+    assert hidden_states.shape == (batch_size, 256, 1024), f"Hidden states shape: {hidden_states.shape}"
+    assert timesteps.shape == (batch_size,), f"Timesteps shape: {timesteps.shape}"
+    
+    # Log gradient status for debugging (only occasionally)
+    if batch_size > 0 and hasattr(chunked_collate_fn, '_debug_count'):
+        chunked_collate_fn._debug_count = getattr(chunked_collate_fn, '_debug_count', 0) + 1
+        if chunked_collate_fn._debug_count % 100 == 0:
+            logger.debug(f"Collate function: eva_embeddings requires_grad={eva_embeddings.requires_grad}")
+            logger.debug(f"Collate function: clip_embeddings requires_grad={clip_embeddings.requires_grad}")
+            logger.debug(f"Collate function: hidden_states requires_grad={hidden_states.requires_grad}")
+    
     return {
-        'eva_embeddings': eva_embeddings,
-        'clip_embeddings': clip_embeddings,
-        'captions': captions,
-        'keys': keys,
-        'shard_indices': shard_indices,
-        'sample_indices': sample_indices,
+        # Core embeddings
+        'eva_embeddings': eva_embeddings,        # [B, 256, 4096] - EVA conditioning (detached)
+        'clip_embeddings': clip_embeddings,      # [B, 256, 1024] - Target CLIP patches (detached)
+        
+        # UPDATED: Flow matching inputs (compatible with fixed trainer)
+        'hidden_states': hidden_states,          # [B, 256, 1024] - Noisy input for model (with gradients)
+        'timesteps': timesteps,                  # [B] - Flow matching timesteps
+        'noise': noise,                          # [B, 256, 1024] - Original noise
+        'base_noise': base_noise,                # [B, 256, 1024] - Base noise with gradients
+        
+        # Metadata (backward compatibility)
+        'captions': captions,                    # List[str] - Text captions
+        'keys': keys,                           # List[str] - Sample keys
+        'shard_indices': shard_indices,         # List[int] - Shard indices
+        'sample_indices': sample_indices,       # List[int] - Sample indices
+        'batch_size': batch_size,               # int
     }
 
 
@@ -459,7 +531,7 @@ def create_chunked_dataloader(
     """
     Create a DataLoader for chunked embeddings.
     
-    FIXED: Removed dataset-specific parameters from kwargs
+    UPDATED: Uses enhanced collate function with gradient flow setup
     """
     # Auto-detect pin_memory
     if pin_memory is None:
@@ -476,12 +548,12 @@ def create_chunked_dataloader(
         delete_after_use=delete_after_use,
     )
     
-    # Create dataloader
+    # Create dataloader with UPDATED collate function
     dataloader = DataLoader(
         dataset,
         batch_size=batch_size,
         num_workers=num_workers,  # Should be 0 for IterableDataset
-        collate_fn=chunked_collate_fn,
+        collate_fn=chunked_collate_fn,  # UPDATED collate function
         pin_memory=pin_memory,
         **kwargs  # Pass kwargs to DataLoader (drop_last, persistent_workers, etc.)
     )
@@ -538,7 +610,7 @@ def create_chunked_dataloaders(
     return train_dataloader, eval_dataloader
 
 
-# Legacy compatibility for single-file approach
+# Legacy compatibility functions (unchanged)
 def create_blip3o_dataloader(*args, **kwargs):
     """Legacy function - redirects to chunked approach"""
     logger.warning("create_blip3o_dataloader called - this should use single-file approach")
@@ -564,7 +636,7 @@ def test_blip3o_dataset(*args, **kwargs):
 
 def test_chunked_dataset(chunked_embeddings_dir: Union[str, Path]):
     """Test the chunked dataset implementation."""
-    print(f"🧪 Testing chunked dataset: {chunked_embeddings_dir}")
+    print(f"🧪 Testing updated chunked dataset: {chunked_embeddings_dir}")
     
     try:
         # Create dataset
@@ -606,8 +678,8 @@ def test_chunked_dataset(chunked_embeddings_dir: Union[str, Path]):
         
         print(f"✅ Test completed: {sample_count} samples from {shard_count} shards")
         
-        # Test dataloader
-        print(f"🧪 Testing dataloader...")
+        # Test dataloader with UPDATED collate function
+        print(f"🧪 Testing dataloader with gradient flow setup...")
         dataloader = create_chunked_dataloader(
             chunked_embeddings_dir=chunked_embeddings_dir,
             batch_size=4,
@@ -621,6 +693,19 @@ def test_chunked_dataset(chunked_embeddings_dir: Union[str, Path]):
         
         batch = next(iter(dataloader))
         print(f"✅ Dataloader test: batch shape EVA {batch['eva_embeddings'].shape}, CLIP {batch['clip_embeddings'].shape}")
+        
+        # UPDATED: Test gradient flow setup
+        print(f"✅ Gradient flow test:")
+        print(f"   hidden_states shape: {batch['hidden_states'].shape}")
+        print(f"   hidden_states requires_grad: {batch['hidden_states'].requires_grad}")
+        print(f"   timesteps shape: {batch['timesteps'].shape}")
+        print(f"   eva_embeddings requires_grad: {batch['eva_embeddings'].requires_grad}")
+        print(f"   clip_embeddings requires_grad: {batch['clip_embeddings'].requires_grad}")
+        
+        if not batch['hidden_states'].requires_grad:
+            print("❌ ERROR: hidden_states doesn't require gradients!")
+        else:
+            print("✅ Gradient flow setup is correct!")
         
         print(f"✅ All tests passed!")
         

@@ -134,6 +134,16 @@ class BLIP3oRecallEvaluator:
         return torch.cat(text_embeddings, dim=0)
 
 
+    """
+Quick Fix for Recall Evaluator - Remove Training Mode Warnings
+src/modules/evaluation/blip3o_recall_evaluator.py
+
+Just update the generate_image_embeddings method to remove the warnings
+"""
+
+# In your src/modules/evaluation/blip3o_recall_evaluator.py file
+# Find the generate_image_embeddings method and replace it with this:
+
     def generate_image_embeddings(
         self,
         eva_embeddings: torch.Tensor,  # [B, 256, 4096]
@@ -152,6 +162,10 @@ class BLIP3oRecallEvaluator:
             Generated CLIP embeddings [N, 768] (global features)
         """
         generated_embeddings = []
+        
+        # FIXED: Set model to eval mode during generation to avoid warnings
+        was_training = self.model.training
+        self.model.eval()
         
         with torch.no_grad():
             for i in range(0, eva_embeddings.shape[0], batch_size):
@@ -174,6 +188,10 @@ class BLIP3oRecallEvaluator:
                     global_features = F.normalize(global_features, p=2, dim=-1)
                 
                 generated_embeddings.append(global_features.cpu())
+        
+        # FIXED: Restore original training mode
+        if was_training:
+            self.model.train()
         
         return torch.cat(generated_embeddings, dim=0)
     

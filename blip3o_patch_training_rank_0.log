@@ -1,539 +1,125 @@
-[Rank 0] 2025-07-23 01:43:03,914 - INFO - ✅ Using BLIP3-o recall evaluator as default
-[Rank 0] 2025-07-23 01:43:03,916 - INFO - BLIP3-o evaluation utilities loaded successfully
-[Rank 0] 2025-07-23 01:43:04,611 - INFO - BLIP3-o configurations loaded successfully
-[Rank 0] 2025-07-23 01:43:04,611 - INFO -   ✅ Memory optimization features available
-[Rank 0] 2025-07-23 01:43:06,367 - INFO - ✅ BLIP3-o patch-level DiT model loaded successfully
-[Rank 0] 2025-07-23 01:43:06,368 - INFO - ✅ Using BLIP3-o patch-level DiT model as primary model
-[Rank 0] 2025-07-23 01:43:06,368 - INFO - BLIP3-o patch-level DiT model loaded successfully - Paper-aligned architecture
-[Rank 0] 2025-07-23 01:43:06,368 - INFO - ✅ BLIP3-o patch-level flow matching loss loaded successfully
-[Rank 0] 2025-07-23 01:43:06,368 - INFO - ✅ Using BLIP3-o patch-level flow matching loss as primary loss
-[Rank 0] 2025-07-23 01:43:06,368 - INFO - BLIP3-o patch-level flow matching loss loaded successfully - Paper-aligned training
-[Rank 0] 2025-07-23 01:43:06,954 - INFO - PyTorch version 2.7.1 available.
-[Rank 0] 2025-07-23 01:43:07,145 - INFO - ✅ Using BLIP3-o patch-level trainer as default
-[Rank 0] 2025-07-23 01:43:07,146 - INFO - BLIP3-o patch-level trainer loaded successfully - Paper-aligned training
-[Rank 0] 2025-07-23 01:43:07,146 - INFO - ✅ Using enhanced DDP dataloaders as default
-[Rank 0] 2025-07-23 01:43:07,146 - INFO - BLIP3-o datasets loaded successfully (default: enhanced_ddp)
-[Rank 0] 2025-07-23 01:43:09,156 - INFO - ✅ BLIP3-o Patch DiT model created
-[Rank 0] 2025-07-23 01:43:09,157 - INFO -    Parameters: 196,188,928
-[Rank 0] 2025-07-23 01:43:09,157 - INFO -    Architecture: Patch-level DiT for image-to-text recall
-[Rank 0] 2025-07-23 01:43:09,157 - INFO -    Input: 256 CLIP patches (1024-dim)
-[Rank 0] 2025-07-23 01:43:09,157 - INFO -    Conditioning: 256 EVA-CLIP patches (4096-dim)
-[Rank 0] 2025-07-23 01:43:09,157 - INFO -    Output: 256 denoised CLIP patches (1024-dim)
-[Rank 0] 2025-07-23 01:43:09,230 - INFO - ✅ BLIP3-o Flow Matching Loss initialized
-[Rank 0] 2025-07-23 01:43:09,230 - INFO -    Prediction type: velocity
-[Rank 0] 2025-07-23 01:43:09,230 - INFO -    Contrastive loss: True
-[Rank 0] 2025-07-23 01:43:09,230 - INFO -    Training objective: Patch-level flow matching
-[Rank 0] 2025-07-23 01:43:09,231 - INFO - Loaded manifest: 30 shards, 78,475 samples
-[Rank 0] 2025-07-23 01:43:09,231 - INFO - Found 30 shard files:
-[Rank 0] 2025-07-23 01:43:09,232 - INFO -   embeddings_shard_00000.pkl (EXISTS)
-[Rank 0] 2025-07-23 01:43:09,232 - INFO -   embeddings_shard_00001.pkl (EXISTS)
-[Rank 0] 2025-07-23 01:43:09,233 - INFO -   embeddings_shard_00002.pkl (EXISTS)
-[Rank 0] 2025-07-23 01:43:09,233 - INFO -   embeddings_shard_00003.pkl (EXISTS)
-[Rank 0] 2025-07-23 01:43:09,233 - INFO -   embeddings_shard_00004.pkl (EXISTS)
-[Rank 0] 2025-07-23 01:43:09,234 - INFO -   embeddings_shard_00005.pkl (EXISTS)
-[Rank 0] 2025-07-23 01:43:09,234 - INFO -   embeddings_shard_00006.pkl (EXISTS)
-[Rank 0] 2025-07-23 01:43:09,234 - INFO -   embeddings_shard_00007.pkl (EXISTS)
-[Rank 0] 2025-07-23 01:43:09,234 - INFO -   embeddings_shard_00008.pkl (EXISTS)
-[Rank 0] 2025-07-23 01:43:09,235 - INFO -   embeddings_shard_00009.pkl (EXISTS)
-[Rank 0] 2025-07-23 01:43:09,235 - INFO -   embeddings_shard_00010.pkl (EXISTS)
-[Rank 0] 2025-07-23 01:43:09,235 - INFO -   embeddings_shard_00011.pkl (EXISTS)
-[Rank 0] 2025-07-23 01:43:09,236 - INFO -   embeddings_shard_00012.pkl (EXISTS)
-[Rank 0] 2025-07-23 01:43:09,236 - INFO -   embeddings_shard_00013.pkl (EXISTS)
-[Rank 0] 2025-07-23 01:43:09,236 - INFO -   embeddings_shard_00014.pkl (EXISTS)
-[Rank 0] 2025-07-23 01:43:09,237 - INFO -   embeddings_shard_00015.pkl (EXISTS)
-[Rank 0] 2025-07-23 01:43:09,237 - INFO -   embeddings_shard_00016.pkl (EXISTS)
-[Rank 0] 2025-07-23 01:43:09,237 - INFO -   embeddings_shard_00017.pkl (EXISTS)
-[Rank 0] 2025-07-23 01:43:09,237 - INFO -   embeddings_shard_00018.pkl (EXISTS)
-[Rank 0] 2025-07-23 01:43:09,238 - INFO -   embeddings_shard_00019.pkl (EXISTS)
-[Rank 0] 2025-07-23 01:43:09,238 - INFO -   embeddings_shard_00020.pkl (EXISTS)
-[Rank 0] 2025-07-23 01:43:09,239 - INFO -   embeddings_shard_00021.pkl (EXISTS)
-[Rank 0] 2025-07-23 01:43:09,239 - INFO -   embeddings_shard_00022.pkl (EXISTS)
-[Rank 0] 2025-07-23 01:43:09,239 - INFO -   embeddings_shard_00023.pkl (EXISTS)
-[Rank 0] 2025-07-23 01:43:09,239 - INFO -   embeddings_shard_00024.pkl (EXISTS)
-[Rank 0] 2025-07-23 01:43:09,240 - INFO -   embeddings_shard_00025.pkl (EXISTS)
-[Rank 0] 2025-07-23 01:43:09,240 - INFO -   embeddings_shard_00026.pkl (EXISTS)
-[Rank 0] 2025-07-23 01:43:09,240 - INFO -   embeddings_shard_00027.pkl (EXISTS)
-[Rank 0] 2025-07-23 01:43:09,240 - INFO -   embeddings_shard_00028.pkl (EXISTS)
-[Rank 0] 2025-07-23 01:43:09,241 - INFO -   embeddings_shard_00029.pkl (EXISTS)
-[Rank 0] 2025-07-23 01:43:09,241 - INFO - Prepared 27 shard files for train split
-[Rank 0] 2025-07-23 01:43:09,241 - INFO - Single-node mode:
-[Rank 0] 2025-07-23 01:43:09,241 - INFO -   Total samples: 78,475
-[Rank 0] 2025-07-23 01:43:09,241 - INFO -   Split samples (train): 70,627
-[Rank 0] 2025-07-23 01:43:09,241 - INFO - ChunkedDataset initialized:
-[Rank 0] 2025-07-23 01:43:09,241 - INFO -   Directory: /scratch-shared/scur2711/blip3o_workspace/embeddings/chunked_256_tokens
-[Rank 0] 2025-07-23 01:43:09,241 - INFO -   Split: train
-[Rank 0] 2025-07-23 01:43:09,241 - INFO -   Total shards: 27
-[Rank 0] 2025-07-23 01:43:09,241 - INFO -   Estimated samples: 70,627
-[Rank 0] 2025-07-23 01:43:09,241 - INFO -   Delete after use: False
-[Rank 0] 2025-07-23 01:43:09,241 - INFO - IterableDataset detected: Forcing shuffle=False for DataLoader
-[Rank 0] 2025-07-23 01:43:09,242 - INFO - Loaded manifest: 30 shards, 78,475 samples
-[Rank 0] 2025-07-23 01:43:09,242 - INFO - Found 30 shard files:
-[Rank 0] 2025-07-23 01:43:09,242 - INFO -   embeddings_shard_00000.pkl (EXISTS)
-[Rank 0] 2025-07-23 01:43:09,242 - INFO -   embeddings_shard_00001.pkl (EXISTS)
-[Rank 0] 2025-07-23 01:43:09,242 - INFO -   embeddings_shard_00002.pkl (EXISTS)
-[Rank 0] 2025-07-23 01:43:09,242 - INFO -   embeddings_shard_00003.pkl (EXISTS)
-[Rank 0] 2025-07-23 01:43:09,242 - INFO -   embeddings_shard_00004.pkl (EXISTS)
-[Rank 0] 2025-07-23 01:43:09,242 - INFO -   embeddings_shard_00005.pkl (EXISTS)
-[Rank 0] 2025-07-23 01:43:09,242 - INFO -   embeddings_shard_00006.pkl (EXISTS)
-[Rank 0] 2025-07-23 01:43:09,242 - INFO -   embeddings_shard_00007.pkl (EXISTS)
-[Rank 0] 2025-07-23 01:43:09,242 - INFO -   embeddings_shard_00008.pkl (EXISTS)
-[Rank 0] 2025-07-23 01:43:09,242 - INFO -   embeddings_shard_00009.pkl (EXISTS)
-[Rank 0] 2025-07-23 01:43:09,242 - INFO -   embeddings_shard_00010.pkl (EXISTS)
-[Rank 0] 2025-07-23 01:43:09,242 - INFO -   embeddings_shard_00011.pkl (EXISTS)
-[Rank 0] 2025-07-23 01:43:09,243 - INFO -   embeddings_shard_00012.pkl (EXISTS)
-[Rank 0] 2025-07-23 01:43:09,243 - INFO -   embeddings_shard_00013.pkl (EXISTS)
-[Rank 0] 2025-07-23 01:43:09,243 - INFO -   embeddings_shard_00014.pkl (EXISTS)
-[Rank 0] 2025-07-23 01:43:09,243 - INFO -   embeddings_shard_00015.pkl (EXISTS)
-[Rank 0] 2025-07-23 01:43:09,243 - INFO -   embeddings_shard_00016.pkl (EXISTS)
-[Rank 0] 2025-07-23 01:43:09,243 - INFO -   embeddings_shard_00017.pkl (EXISTS)
-[Rank 0] 2025-07-23 01:43:09,243 - INFO -   embeddings_shard_00018.pkl (EXISTS)
-[Rank 0] 2025-07-23 01:43:09,243 - INFO -   embeddings_shard_00019.pkl (EXISTS)
-[Rank 0] 2025-07-23 01:43:09,243 - INFO -   embeddings_shard_00020.pkl (EXISTS)
-[Rank 0] 2025-07-23 01:43:09,243 - INFO -   embeddings_shard_00021.pkl (EXISTS)
-[Rank 0] 2025-07-23 01:43:09,243 - INFO -   embeddings_shard_00022.pkl (EXISTS)
-[Rank 0] 2025-07-23 01:43:09,243 - INFO -   embeddings_shard_00023.pkl (EXISTS)
-[Rank 0] 2025-07-23 01:43:09,243 - INFO -   embeddings_shard_00024.pkl (EXISTS)
-[Rank 0] 2025-07-23 01:43:09,243 - INFO -   embeddings_shard_00025.pkl (EXISTS)
-[Rank 0] 2025-07-23 01:43:09,243 - INFO -   embeddings_shard_00026.pkl (EXISTS)
-[Rank 0] 2025-07-23 01:43:09,243 - INFO -   embeddings_shard_00027.pkl (EXISTS)
-[Rank 0] 2025-07-23 01:43:09,243 - INFO -   embeddings_shard_00028.pkl (EXISTS)
-[Rank 0] 2025-07-23 01:43:09,243 - INFO -   embeddings_shard_00029.pkl (EXISTS)
-[Rank 0] 2025-07-23 01:43:09,243 - INFO - Prepared 3 shard files for eval split
-[Rank 0] 2025-07-23 01:43:09,243 - INFO - Single-node mode:
-[Rank 0] 2025-07-23 01:43:09,243 - INFO -   Total samples: 78,475
-[Rank 0] 2025-07-23 01:43:09,243 - INFO -   Split samples (eval): 7,847
-[Rank 0] 2025-07-23 01:43:09,243 - INFO - ChunkedDataset initialized:
-[Rank 0] 2025-07-23 01:43:09,243 - INFO -   Directory: /scratch-shared/scur2711/blip3o_workspace/embeddings/chunked_256_tokens
-[Rank 0] 2025-07-23 01:43:09,243 - INFO -   Split: eval
-[Rank 0] 2025-07-23 01:43:09,243 - INFO -   Total shards: 3
-[Rank 0] 2025-07-23 01:43:09,243 - INFO -   Estimated samples: 7,847
-[Rank 0] 2025-07-23 01:43:09,243 - INFO -   Delete after use: False
-[Rank 0] 2025-07-23 01:43:09,243 - INFO - IterableDataset detected: Forcing shuffle=False for DataLoader
-[Rank 0] 2025-07-23 01:43:18,306 - INFO - CLIP text encoder loaded successfully
-[Rank 0] 2025-07-23 01:43:18,309 - INFO - BLIP3-o Recall Evaluator initialized
-[Rank 0] 2025-07-23 01:43:18,310 - INFO - Device: cuda:0
-[Rank 0] 2025-07-23 01:43:18,310 - INFO - Normalize embeddings: True
-[Rank 0] 2025-07-23 01:43:18,310 - INFO - ✅ Recall evaluator initialized
-[Rank 0] 2025-07-23 01:43:18,310 - INFO - ✅ BLIP3-o Patch Trainer initialized
-[Rank 0] 2025-07-23 01:43:18,310 - INFO - 🎯 Training mode: Patch-level flow matching
-[Rank 0] 2025-07-23 01:43:18,310 - INFO - 📊 Recall evaluation: enabled
-[Rank 0] 2025-07-23 01:43:36,772 - INFO - Loaded shard 1/27: 2630 samples
-[Rank 0] 2025-07-23 01:43:36,880 - INFO - Loaded shard 1/27: 2630 samples
-[Rank 0] 2025-07-23 01:43:36,915 - INFO - Loaded shard 1/27: 2630 samples
-[Rank 0] 2025-07-23 01:43:36,922 - INFO - Loaded shard 1/27: 2630 samples
-[Rank 0] 2025-07-23 01:43:38,787 - INFO - Step 0: Loss=1.3816, VelCos=0.000, PatchCos=0.000, GlobalCos=0.000, HighQ=0.000, EstR@1=0.0%, Quality=needs_improvement, GradOK=True, Mem=3.6GB
-[Rank 0] 2025-07-23 01:44:13,143 - INFO - Starting evaluation on 8 images
-[Rank 0] 2025-07-23 01:44:13,146 - INFO - Extracted 8 text captions
-[Rank 0] 2025-07-23 01:44:13,146 - INFO - Extracting text embeddings...
-[Rank 0] 2025-07-23 01:44:13,208 - INFO - Generating image embeddings...
-[Rank 0] 2025-07-23 01:44:13,209 - WARNING - Input hidden_states doesn't require gradients during training
-[Rank 0] 2025-07-23 01:44:13,209 - ERROR - CRITICAL: Gradient flow broken after input projection!
-[Rank 0] 2025-07-23 01:44:13,210 - ERROR - Input requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,210 - ERROR - input_proj weight requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,210 - ERROR - input_proj bias requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,210 - ERROR - Model forward pass failed: Gradient flow broken at input projection
-[Rank 0] 2025-07-23 01:44:13,210 - ERROR - Input shapes: hidden_states=torch.Size([4, 256, 1024]), timestep=torch.Size([4]), encoder=torch.Size([4, 256, 4096])
-[Rank 0] 2025-07-23 01:44:13,210 - ERROR - Model training mode: True
-[Rank 0] 2025-07-23 01:44:13,210 - WARNING - Attempting emergency model fallback...
-[Rank 0] 2025-07-23 01:44:13,210 - WARNING - Emergency model fallback successful
-[Rank 0] 2025-07-23 01:44:13,210 - WARNING - Input hidden_states doesn't require gradients during training
-[Rank 0] 2025-07-23 01:44:13,210 - ERROR - CRITICAL: Gradient flow broken after input projection!
-[Rank 0] 2025-07-23 01:44:13,210 - ERROR - Input requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,210 - ERROR - input_proj weight requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,210 - ERROR - input_proj bias requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,210 - ERROR - Model forward pass failed: Gradient flow broken at input projection
-[Rank 0] 2025-07-23 01:44:13,210 - ERROR - Input shapes: hidden_states=torch.Size([4, 256, 1024]), timestep=torch.Size([4]), encoder=torch.Size([4, 256, 4096])
-[Rank 0] 2025-07-23 01:44:13,210 - ERROR - Model training mode: True
-[Rank 0] 2025-07-23 01:44:13,210 - WARNING - Attempting emergency model fallback...
-[Rank 0] 2025-07-23 01:44:13,210 - WARNING - Emergency model fallback successful
-[Rank 0] 2025-07-23 01:44:13,211 - WARNING - Input hidden_states doesn't require gradients during training
-[Rank 0] 2025-07-23 01:44:13,211 - ERROR - CRITICAL: Gradient flow broken after input projection!
-[Rank 0] 2025-07-23 01:44:13,211 - ERROR - Input requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,211 - ERROR - input_proj weight requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,211 - ERROR - input_proj bias requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,211 - ERROR - Model forward pass failed: Gradient flow broken at input projection
-[Rank 0] 2025-07-23 01:44:13,211 - ERROR - Input shapes: hidden_states=torch.Size([4, 256, 1024]), timestep=torch.Size([4]), encoder=torch.Size([4, 256, 4096])
-[Rank 0] 2025-07-23 01:44:13,211 - ERROR - Model training mode: True
-[Rank 0] 2025-07-23 01:44:13,211 - WARNING - Attempting emergency model fallback...
-[Rank 0] 2025-07-23 01:44:13,211 - WARNING - Emergency model fallback successful
-[Rank 0] 2025-07-23 01:44:13,211 - WARNING - Input hidden_states doesn't require gradients during training
-[Rank 0] 2025-07-23 01:44:13,211 - ERROR - CRITICAL: Gradient flow broken after input projection!
-[Rank 0] 2025-07-23 01:44:13,211 - ERROR - Input requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,211 - ERROR - input_proj weight requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,211 - ERROR - input_proj bias requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,211 - ERROR - Model forward pass failed: Gradient flow broken at input projection
-[Rank 0] 2025-07-23 01:44:13,211 - ERROR - Input shapes: hidden_states=torch.Size([4, 256, 1024]), timestep=torch.Size([4]), encoder=torch.Size([4, 256, 4096])
-[Rank 0] 2025-07-23 01:44:13,211 - ERROR - Model training mode: True
-[Rank 0] 2025-07-23 01:44:13,211 - WARNING - Attempting emergency model fallback...
-[Rank 0] 2025-07-23 01:44:13,211 - WARNING - Emergency model fallback successful
-[Rank 0] 2025-07-23 01:44:13,211 - WARNING - Input hidden_states doesn't require gradients during training
-[Rank 0] 2025-07-23 01:44:13,212 - ERROR - CRITICAL: Gradient flow broken after input projection!
-[Rank 0] 2025-07-23 01:44:13,212 - ERROR - Input requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,212 - ERROR - input_proj weight requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,212 - ERROR - input_proj bias requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,212 - ERROR - Model forward pass failed: Gradient flow broken at input projection
-[Rank 0] 2025-07-23 01:44:13,212 - ERROR - Input shapes: hidden_states=torch.Size([4, 256, 1024]), timestep=torch.Size([4]), encoder=torch.Size([4, 256, 4096])
-[Rank 0] 2025-07-23 01:44:13,212 - ERROR - Model training mode: True
-[Rank 0] 2025-07-23 01:44:13,212 - WARNING - Attempting emergency model fallback...
-[Rank 0] 2025-07-23 01:44:13,212 - WARNING - Emergency model fallback successful
-[Rank 0] 2025-07-23 01:44:13,212 - WARNING - Input hidden_states doesn't require gradients during training
-[Rank 0] 2025-07-23 01:44:13,212 - ERROR - CRITICAL: Gradient flow broken after input projection!
-[Rank 0] 2025-07-23 01:44:13,212 - ERROR - Input requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,212 - ERROR - input_proj weight requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,212 - ERROR - input_proj bias requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,212 - ERROR - Model forward pass failed: Gradient flow broken at input projection
-[Rank 0] 2025-07-23 01:44:13,212 - ERROR - Input shapes: hidden_states=torch.Size([4, 256, 1024]), timestep=torch.Size([4]), encoder=torch.Size([4, 256, 4096])
-[Rank 0] 2025-07-23 01:44:13,212 - ERROR - Model training mode: True
-[Rank 0] 2025-07-23 01:44:13,212 - WARNING - Attempting emergency model fallback...
-[Rank 0] 2025-07-23 01:44:13,213 - WARNING - Emergency model fallback successful
-[Rank 0] 2025-07-23 01:44:13,213 - WARNING - Input hidden_states doesn't require gradients during training
-[Rank 0] 2025-07-23 01:44:13,213 - ERROR - CRITICAL: Gradient flow broken after input projection!
-[Rank 0] 2025-07-23 01:44:13,213 - ERROR - Input requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,213 - ERROR - input_proj weight requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,213 - ERROR - input_proj bias requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,213 - ERROR - Model forward pass failed: Gradient flow broken at input projection
-[Rank 0] 2025-07-23 01:44:13,213 - ERROR - Input shapes: hidden_states=torch.Size([4, 256, 1024]), timestep=torch.Size([4]), encoder=torch.Size([4, 256, 4096])
-[Rank 0] 2025-07-23 01:44:13,213 - ERROR - Model training mode: True
-[Rank 0] 2025-07-23 01:44:13,213 - WARNING - Attempting emergency model fallback...
-[Rank 0] 2025-07-23 01:44:13,213 - WARNING - Emergency model fallback successful
-[Rank 0] 2025-07-23 01:44:13,213 - WARNING - Input hidden_states doesn't require gradients during training
-[Rank 0] 2025-07-23 01:44:13,213 - ERROR - CRITICAL: Gradient flow broken after input projection!
-[Rank 0] 2025-07-23 01:44:13,213 - ERROR - Input requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,213 - ERROR - input_proj weight requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,213 - ERROR - input_proj bias requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,213 - ERROR - Model forward pass failed: Gradient flow broken at input projection
-[Rank 0] 2025-07-23 01:44:13,213 - ERROR - Input shapes: hidden_states=torch.Size([4, 256, 1024]), timestep=torch.Size([4]), encoder=torch.Size([4, 256, 4096])
-[Rank 0] 2025-07-23 01:44:13,213 - ERROR - Model training mode: True
-[Rank 0] 2025-07-23 01:44:13,213 - WARNING - Attempting emergency model fallback...
-[Rank 0] 2025-07-23 01:44:13,213 - WARNING - Emergency model fallback successful
-[Rank 0] 2025-07-23 01:44:13,213 - WARNING - Input hidden_states doesn't require gradients during training
-[Rank 0] 2025-07-23 01:44:13,214 - ERROR - CRITICAL: Gradient flow broken after input projection!
-[Rank 0] 2025-07-23 01:44:13,214 - ERROR - Input requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,214 - ERROR - input_proj weight requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,214 - ERROR - input_proj bias requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,214 - ERROR - Model forward pass failed: Gradient flow broken at input projection
-[Rank 0] 2025-07-23 01:44:13,214 - ERROR - Input shapes: hidden_states=torch.Size([4, 256, 1024]), timestep=torch.Size([4]), encoder=torch.Size([4, 256, 4096])
-[Rank 0] 2025-07-23 01:44:13,214 - ERROR - Model training mode: True
-[Rank 0] 2025-07-23 01:44:13,214 - WARNING - Attempting emergency model fallback...
-[Rank 0] 2025-07-23 01:44:13,214 - WARNING - Emergency model fallback successful
-[Rank 0] 2025-07-23 01:44:13,214 - WARNING - Input hidden_states doesn't require gradients during training
-[Rank 0] 2025-07-23 01:44:13,214 - ERROR - CRITICAL: Gradient flow broken after input projection!
-[Rank 0] 2025-07-23 01:44:13,214 - ERROR - Input requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,214 - ERROR - input_proj weight requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,214 - ERROR - input_proj bias requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,214 - ERROR - Model forward pass failed: Gradient flow broken at input projection
-[Rank 0] 2025-07-23 01:44:13,214 - ERROR - Input shapes: hidden_states=torch.Size([4, 256, 1024]), timestep=torch.Size([4]), encoder=torch.Size([4, 256, 4096])
-[Rank 0] 2025-07-23 01:44:13,214 - ERROR - Model training mode: True
-[Rank 0] 2025-07-23 01:44:13,214 - WARNING - Attempting emergency model fallback...
-[Rank 0] 2025-07-23 01:44:13,214 - WARNING - Emergency model fallback successful
-[Rank 0] 2025-07-23 01:44:13,215 - WARNING - Input hidden_states doesn't require gradients during training
-[Rank 0] 2025-07-23 01:44:13,215 - ERROR - CRITICAL: Gradient flow broken after input projection!
-[Rank 0] 2025-07-23 01:44:13,215 - ERROR - Input requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,215 - ERROR - input_proj weight requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,215 - ERROR - input_proj bias requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,215 - ERROR - Model forward pass failed: Gradient flow broken at input projection
-[Rank 0] 2025-07-23 01:44:13,215 - ERROR - Input shapes: hidden_states=torch.Size([4, 256, 1024]), timestep=torch.Size([4]), encoder=torch.Size([4, 256, 4096])
-[Rank 0] 2025-07-23 01:44:13,215 - ERROR - Model training mode: True
-[Rank 0] 2025-07-23 01:44:13,215 - WARNING - Attempting emergency model fallback...
-[Rank 0] 2025-07-23 01:44:13,215 - WARNING - Emergency model fallback successful
-[Rank 0] 2025-07-23 01:44:13,215 - WARNING - Input hidden_states doesn't require gradients during training
-[Rank 0] 2025-07-23 01:44:13,215 - ERROR - CRITICAL: Gradient flow broken after input projection!
-[Rank 0] 2025-07-23 01:44:13,215 - ERROR - Input requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,215 - ERROR - input_proj weight requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,215 - ERROR - input_proj bias requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,215 - ERROR - Model forward pass failed: Gradient flow broken at input projection
-[Rank 0] 2025-07-23 01:44:13,215 - ERROR - Input shapes: hidden_states=torch.Size([4, 256, 1024]), timestep=torch.Size([4]), encoder=torch.Size([4, 256, 4096])
-[Rank 0] 2025-07-23 01:44:13,215 - ERROR - Model training mode: True
-[Rank 0] 2025-07-23 01:44:13,215 - WARNING - Attempting emergency model fallback...
-[Rank 0] 2025-07-23 01:44:13,215 - WARNING - Emergency model fallback successful
-[Rank 0] 2025-07-23 01:44:13,215 - WARNING - Input hidden_states doesn't require gradients during training
-[Rank 0] 2025-07-23 01:44:13,216 - ERROR - CRITICAL: Gradient flow broken after input projection!
-[Rank 0] 2025-07-23 01:44:13,216 - ERROR - Input requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,216 - ERROR - input_proj weight requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,216 - ERROR - input_proj bias requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,216 - ERROR - Model forward pass failed: Gradient flow broken at input projection
-[Rank 0] 2025-07-23 01:44:13,216 - ERROR - Input shapes: hidden_states=torch.Size([4, 256, 1024]), timestep=torch.Size([4]), encoder=torch.Size([4, 256, 4096])
-[Rank 0] 2025-07-23 01:44:13,216 - ERROR - Model training mode: True
-[Rank 0] 2025-07-23 01:44:13,216 - WARNING - Attempting emergency model fallback...
-[Rank 0] 2025-07-23 01:44:13,216 - WARNING - Emergency model fallback successful
-[Rank 0] 2025-07-23 01:44:13,216 - WARNING - Input hidden_states doesn't require gradients during training
-[Rank 0] 2025-07-23 01:44:13,216 - ERROR - CRITICAL: Gradient flow broken after input projection!
-[Rank 0] 2025-07-23 01:44:13,216 - ERROR - Input requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,216 - ERROR - input_proj weight requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,216 - ERROR - input_proj bias requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,216 - ERROR - Model forward pass failed: Gradient flow broken at input projection
-[Rank 0] 2025-07-23 01:44:13,216 - ERROR - Input shapes: hidden_states=torch.Size([4, 256, 1024]), timestep=torch.Size([4]), encoder=torch.Size([4, 256, 4096])
-[Rank 0] 2025-07-23 01:44:13,216 - ERROR - Model training mode: True
-[Rank 0] 2025-07-23 01:44:13,216 - WARNING - Attempting emergency model fallback...
-[Rank 0] 2025-07-23 01:44:13,216 - WARNING - Emergency model fallback successful
-[Rank 0] 2025-07-23 01:44:13,216 - WARNING - Input hidden_states doesn't require gradients during training
-[Rank 0] 2025-07-23 01:44:13,217 - ERROR - CRITICAL: Gradient flow broken after input projection!
-[Rank 0] 2025-07-23 01:44:13,217 - ERROR - Input requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,217 - ERROR - input_proj weight requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,217 - ERROR - input_proj bias requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,217 - ERROR - Model forward pass failed: Gradient flow broken at input projection
-[Rank 0] 2025-07-23 01:44:13,217 - ERROR - Input shapes: hidden_states=torch.Size([4, 256, 1024]), timestep=torch.Size([4]), encoder=torch.Size([4, 256, 4096])
-[Rank 0] 2025-07-23 01:44:13,217 - ERROR - Model training mode: True
-[Rank 0] 2025-07-23 01:44:13,217 - WARNING - Attempting emergency model fallback...
-[Rank 0] 2025-07-23 01:44:13,217 - WARNING - Emergency model fallback successful
-[Rank 0] 2025-07-23 01:44:13,217 - WARNING - Input hidden_states doesn't require gradients during training
-[Rank 0] 2025-07-23 01:44:13,217 - ERROR - CRITICAL: Gradient flow broken after input projection!
-[Rank 0] 2025-07-23 01:44:13,217 - ERROR - Input requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,217 - ERROR - input_proj weight requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,217 - ERROR - input_proj bias requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,217 - ERROR - Model forward pass failed: Gradient flow broken at input projection
-[Rank 0] 2025-07-23 01:44:13,217 - ERROR - Input shapes: hidden_states=torch.Size([4, 256, 1024]), timestep=torch.Size([4]), encoder=torch.Size([4, 256, 4096])
-[Rank 0] 2025-07-23 01:44:13,217 - ERROR - Model training mode: True
-[Rank 0] 2025-07-23 01:44:13,217 - WARNING - Attempting emergency model fallback...
-[Rank 0] 2025-07-23 01:44:13,217 - WARNING - Emergency model fallback successful
-[Rank 0] 2025-07-23 01:44:13,217 - WARNING - Input hidden_states doesn't require gradients during training
-[Rank 0] 2025-07-23 01:44:13,217 - ERROR - CRITICAL: Gradient flow broken after input projection!
-[Rank 0] 2025-07-23 01:44:13,217 - ERROR - Input requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,217 - ERROR - input_proj weight requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,217 - ERROR - input_proj bias requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,218 - ERROR - Model forward pass failed: Gradient flow broken at input projection
-[Rank 0] 2025-07-23 01:44:13,218 - ERROR - Input shapes: hidden_states=torch.Size([4, 256, 1024]), timestep=torch.Size([4]), encoder=torch.Size([4, 256, 4096])
-[Rank 0] 2025-07-23 01:44:13,218 - ERROR - Model training mode: True
-[Rank 0] 2025-07-23 01:44:13,218 - WARNING - Attempting emergency model fallback...
-[Rank 0] 2025-07-23 01:44:13,218 - WARNING - Emergency model fallback successful
-[Rank 0] 2025-07-23 01:44:13,218 - WARNING - Input hidden_states doesn't require gradients during training
-[Rank 0] 2025-07-23 01:44:13,218 - ERROR - CRITICAL: Gradient flow broken after input projection!
-[Rank 0] 2025-07-23 01:44:13,218 - ERROR - Input requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,218 - ERROR - input_proj weight requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,218 - ERROR - input_proj bias requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,218 - ERROR - Model forward pass failed: Gradient flow broken at input projection
-[Rank 0] 2025-07-23 01:44:13,218 - ERROR - Input shapes: hidden_states=torch.Size([4, 256, 1024]), timestep=torch.Size([4]), encoder=torch.Size([4, 256, 4096])
-[Rank 0] 2025-07-23 01:44:13,218 - ERROR - Model training mode: True
-[Rank 0] 2025-07-23 01:44:13,218 - WARNING - Attempting emergency model fallback...
-[Rank 0] 2025-07-23 01:44:13,218 - WARNING - Emergency model fallback successful
-[Rank 0] 2025-07-23 01:44:13,218 - WARNING - Input hidden_states doesn't require gradients during training
-[Rank 0] 2025-07-23 01:44:13,219 - ERROR - CRITICAL: Gradient flow broken after input projection!
-[Rank 0] 2025-07-23 01:44:13,219 - ERROR - Input requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,219 - ERROR - input_proj weight requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,219 - ERROR - input_proj bias requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,219 - ERROR - Model forward pass failed: Gradient flow broken at input projection
-[Rank 0] 2025-07-23 01:44:13,219 - ERROR - Input shapes: hidden_states=torch.Size([4, 256, 1024]), timestep=torch.Size([4]), encoder=torch.Size([4, 256, 4096])
-[Rank 0] 2025-07-23 01:44:13,219 - ERROR - Model training mode: True
-[Rank 0] 2025-07-23 01:44:13,219 - WARNING - Attempting emergency model fallback...
-[Rank 0] 2025-07-23 01:44:13,219 - WARNING - Emergency model fallback successful
-[Rank 0] 2025-07-23 01:44:13,219 - WARNING - Input hidden_states doesn't require gradients during training
-[Rank 0] 2025-07-23 01:44:13,219 - ERROR - CRITICAL: Gradient flow broken after input projection!
-[Rank 0] 2025-07-23 01:44:13,219 - ERROR - Input requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,219 - ERROR - input_proj weight requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,219 - ERROR - input_proj bias requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,219 - ERROR - Model forward pass failed: Gradient flow broken at input projection
-[Rank 0] 2025-07-23 01:44:13,219 - ERROR - Input shapes: hidden_states=torch.Size([4, 256, 1024]), timestep=torch.Size([4]), encoder=torch.Size([4, 256, 4096])
-[Rank 0] 2025-07-23 01:44:13,219 - ERROR - Model training mode: True
-[Rank 0] 2025-07-23 01:44:13,219 - WARNING - Attempting emergency model fallback...
-[Rank 0] 2025-07-23 01:44:13,219 - WARNING - Emergency model fallback successful
-[Rank 0] 2025-07-23 01:44:13,220 - WARNING - Input hidden_states doesn't require gradients during training
-[Rank 0] 2025-07-23 01:44:13,220 - ERROR - CRITICAL: Gradient flow broken after input projection!
-[Rank 0] 2025-07-23 01:44:13,221 - ERROR - Input requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,221 - ERROR - input_proj weight requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,221 - ERROR - input_proj bias requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,221 - ERROR - Model forward pass failed: Gradient flow broken at input projection
-[Rank 0] 2025-07-23 01:44:13,221 - ERROR - Input shapes: hidden_states=torch.Size([4, 256, 1024]), timestep=torch.Size([4]), encoder=torch.Size([4, 256, 4096])
-[Rank 0] 2025-07-23 01:44:13,221 - ERROR - Model training mode: True
-[Rank 0] 2025-07-23 01:44:13,221 - WARNING - Attempting emergency model fallback...
-[Rank 0] 2025-07-23 01:44:13,221 - WARNING - Emergency model fallback successful
-[Rank 0] 2025-07-23 01:44:13,221 - WARNING - Input hidden_states doesn't require gradients during training
-[Rank 0] 2025-07-23 01:44:13,221 - ERROR - CRITICAL: Gradient flow broken after input projection!
-[Rank 0] 2025-07-23 01:44:13,221 - ERROR - Input requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,221 - ERROR - input_proj weight requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,221 - ERROR - input_proj bias requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,221 - ERROR - Model forward pass failed: Gradient flow broken at input projection
-[Rank 0] 2025-07-23 01:44:13,221 - ERROR - Input shapes: hidden_states=torch.Size([4, 256, 1024]), timestep=torch.Size([4]), encoder=torch.Size([4, 256, 4096])
-[Rank 0] 2025-07-23 01:44:13,221 - ERROR - Model training mode: True
-[Rank 0] 2025-07-23 01:44:13,221 - WARNING - Attempting emergency model fallback...
-[Rank 0] 2025-07-23 01:44:13,221 - WARNING - Emergency model fallback successful
-[Rank 0] 2025-07-23 01:44:13,222 - WARNING - Input hidden_states doesn't require gradients during training
-[Rank 0] 2025-07-23 01:44:13,222 - ERROR - CRITICAL: Gradient flow broken after input projection!
-[Rank 0] 2025-07-23 01:44:13,222 - ERROR - Input requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,222 - ERROR - input_proj weight requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,222 - ERROR - input_proj bias requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,222 - ERROR - Model forward pass failed: Gradient flow broken at input projection
-[Rank 0] 2025-07-23 01:44:13,222 - ERROR - Input shapes: hidden_states=torch.Size([4, 256, 1024]), timestep=torch.Size([4]), encoder=torch.Size([4, 256, 4096])
-[Rank 0] 2025-07-23 01:44:13,222 - ERROR - Model training mode: True
-[Rank 0] 2025-07-23 01:44:13,222 - WARNING - Attempting emergency model fallback...
-[Rank 0] 2025-07-23 01:44:13,222 - WARNING - Emergency model fallback successful
-[Rank 0] 2025-07-23 01:44:13,222 - WARNING - Input hidden_states doesn't require gradients during training
-[Rank 0] 2025-07-23 01:44:13,222 - ERROR - CRITICAL: Gradient flow broken after input projection!
-[Rank 0] 2025-07-23 01:44:13,222 - ERROR - Input requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,222 - ERROR - input_proj weight requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,222 - ERROR - input_proj bias requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,222 - ERROR - Model forward pass failed: Gradient flow broken at input projection
-[Rank 0] 2025-07-23 01:44:13,222 - ERROR - Input shapes: hidden_states=torch.Size([4, 256, 1024]), timestep=torch.Size([4]), encoder=torch.Size([4, 256, 4096])
-[Rank 0] 2025-07-23 01:44:13,222 - ERROR - Model training mode: True
-[Rank 0] 2025-07-23 01:44:13,222 - WARNING - Attempting emergency model fallback...
-[Rank 0] 2025-07-23 01:44:13,222 - WARNING - Emergency model fallback successful
-[Rank 0] 2025-07-23 01:44:13,222 - WARNING - Input hidden_states doesn't require gradients during training
-[Rank 0] 2025-07-23 01:44:13,223 - ERROR - CRITICAL: Gradient flow broken after input projection!
-[Rank 0] 2025-07-23 01:44:13,223 - ERROR - Input requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,223 - ERROR - input_proj weight requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,223 - ERROR - input_proj bias requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,223 - ERROR - Model forward pass failed: Gradient flow broken at input projection
-[Rank 0] 2025-07-23 01:44:13,223 - ERROR - Input shapes: hidden_states=torch.Size([4, 256, 1024]), timestep=torch.Size([4]), encoder=torch.Size([4, 256, 4096])
-[Rank 0] 2025-07-23 01:44:13,223 - ERROR - Model training mode: True
-[Rank 0] 2025-07-23 01:44:13,223 - WARNING - Attempting emergency model fallback...
-[Rank 0] 2025-07-23 01:44:13,223 - WARNING - Emergency model fallback successful
-[Rank 0] 2025-07-23 01:44:13,223 - WARNING - Input hidden_states doesn't require gradients during training
-[Rank 0] 2025-07-23 01:44:13,223 - ERROR - CRITICAL: Gradient flow broken after input projection!
-[Rank 0] 2025-07-23 01:44:13,223 - ERROR - Input requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,223 - ERROR - input_proj weight requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,223 - ERROR - input_proj bias requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,223 - ERROR - Model forward pass failed: Gradient flow broken at input projection
-[Rank 0] 2025-07-23 01:44:13,223 - ERROR - Input shapes: hidden_states=torch.Size([4, 256, 1024]), timestep=torch.Size([4]), encoder=torch.Size([4, 256, 4096])
-[Rank 0] 2025-07-23 01:44:13,223 - ERROR - Model training mode: True
-[Rank 0] 2025-07-23 01:44:13,223 - WARNING - Attempting emergency model fallback...
-[Rank 0] 2025-07-23 01:44:13,223 - WARNING - Emergency model fallback successful
-[Rank 0] 2025-07-23 01:44:13,223 - WARNING - Input hidden_states doesn't require gradients during training
-[Rank 0] 2025-07-23 01:44:13,223 - ERROR - CRITICAL: Gradient flow broken after input projection!
-[Rank 0] 2025-07-23 01:44:13,223 - ERROR - Input requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,223 - ERROR - input_proj weight requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,224 - ERROR - input_proj bias requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,224 - ERROR - Model forward pass failed: Gradient flow broken at input projection
-[Rank 0] 2025-07-23 01:44:13,224 - ERROR - Input shapes: hidden_states=torch.Size([4, 256, 1024]), timestep=torch.Size([4]), encoder=torch.Size([4, 256, 4096])
-[Rank 0] 2025-07-23 01:44:13,224 - ERROR - Model training mode: True
-[Rank 0] 2025-07-23 01:44:13,224 - WARNING - Attempting emergency model fallback...
-[Rank 0] 2025-07-23 01:44:13,224 - WARNING - Emergency model fallback successful
-[Rank 0] 2025-07-23 01:44:13,224 - WARNING - Input hidden_states doesn't require gradients during training
-[Rank 0] 2025-07-23 01:44:13,224 - ERROR - CRITICAL: Gradient flow broken after input projection!
-[Rank 0] 2025-07-23 01:44:13,224 - ERROR - Input requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,224 - ERROR - input_proj weight requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,224 - ERROR - input_proj bias requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,224 - ERROR - Model forward pass failed: Gradient flow broken at input projection
-[Rank 0] 2025-07-23 01:44:13,224 - ERROR - Input shapes: hidden_states=torch.Size([4, 256, 1024]), timestep=torch.Size([4]), encoder=torch.Size([4, 256, 4096])
-[Rank 0] 2025-07-23 01:44:13,224 - ERROR - Model training mode: True
-[Rank 0] 2025-07-23 01:44:13,224 - WARNING - Attempting emergency model fallback...
-[Rank 0] 2025-07-23 01:44:13,224 - WARNING - Emergency model fallback successful
-[Rank 0] 2025-07-23 01:44:13,224 - WARNING - Input hidden_states doesn't require gradients during training
-[Rank 0] 2025-07-23 01:44:13,224 - ERROR - CRITICAL: Gradient flow broken after input projection!
-[Rank 0] 2025-07-23 01:44:13,224 - ERROR - Input requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,225 - ERROR - input_proj weight requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,225 - ERROR - input_proj bias requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,225 - ERROR - Model forward pass failed: Gradient flow broken at input projection
-[Rank 0] 2025-07-23 01:44:13,225 - ERROR - Input shapes: hidden_states=torch.Size([4, 256, 1024]), timestep=torch.Size([4]), encoder=torch.Size([4, 256, 4096])
-[Rank 0] 2025-07-23 01:44:13,225 - ERROR - Model training mode: True
-[Rank 0] 2025-07-23 01:44:13,225 - WARNING - Attempting emergency model fallback...
-[Rank 0] 2025-07-23 01:44:13,225 - WARNING - Emergency model fallback successful
-[Rank 0] 2025-07-23 01:44:13,225 - WARNING - Input hidden_states doesn't require gradients during training
-[Rank 0] 2025-07-23 01:44:13,225 - ERROR - CRITICAL: Gradient flow broken after input projection!
-[Rank 0] 2025-07-23 01:44:13,225 - ERROR - Input requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,225 - ERROR - input_proj weight requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,225 - ERROR - input_proj bias requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,225 - ERROR - Model forward pass failed: Gradient flow broken at input projection
-[Rank 0] 2025-07-23 01:44:13,225 - ERROR - Input shapes: hidden_states=torch.Size([4, 256, 1024]), timestep=torch.Size([4]), encoder=torch.Size([4, 256, 4096])
-[Rank 0] 2025-07-23 01:44:13,225 - ERROR - Model training mode: True
-[Rank 0] 2025-07-23 01:44:13,225 - WARNING - Attempting emergency model fallback...
-[Rank 0] 2025-07-23 01:44:13,225 - WARNING - Emergency model fallback successful
-[Rank 0] 2025-07-23 01:44:13,225 - WARNING - Input hidden_states doesn't require gradients during training
-[Rank 0] 2025-07-23 01:44:13,225 - ERROR - CRITICAL: Gradient flow broken after input projection!
-[Rank 0] 2025-07-23 01:44:13,225 - ERROR - Input requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,225 - ERROR - input_proj weight requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,225 - ERROR - input_proj bias requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,225 - ERROR - Model forward pass failed: Gradient flow broken at input projection
-[Rank 0] 2025-07-23 01:44:13,225 - ERROR - Input shapes: hidden_states=torch.Size([4, 256, 1024]), timestep=torch.Size([4]), encoder=torch.Size([4, 256, 4096])
-[Rank 0] 2025-07-23 01:44:13,226 - ERROR - Model training mode: True
-[Rank 0] 2025-07-23 01:44:13,226 - WARNING - Attempting emergency model fallback...
-[Rank 0] 2025-07-23 01:44:13,226 - WARNING - Emergency model fallback successful
-[Rank 0] 2025-07-23 01:44:13,226 - WARNING - Input hidden_states doesn't require gradients during training
-[Rank 0] 2025-07-23 01:44:13,226 - ERROR - CRITICAL: Gradient flow broken after input projection!
-[Rank 0] 2025-07-23 01:44:13,226 - ERROR - Input requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,226 - ERROR - input_proj weight requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,226 - ERROR - input_proj bias requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,226 - ERROR - Model forward pass failed: Gradient flow broken at input projection
-[Rank 0] 2025-07-23 01:44:13,226 - ERROR - Input shapes: hidden_states=torch.Size([4, 256, 1024]), timestep=torch.Size([4]), encoder=torch.Size([4, 256, 4096])
-[Rank 0] 2025-07-23 01:44:13,226 - ERROR - Model training mode: True
-[Rank 0] 2025-07-23 01:44:13,226 - WARNING - Attempting emergency model fallback...
-[Rank 0] 2025-07-23 01:44:13,226 - WARNING - Emergency model fallback successful
-[Rank 0] 2025-07-23 01:44:13,226 - WARNING - Input hidden_states doesn't require gradients during training
-[Rank 0] 2025-07-23 01:44:13,226 - ERROR - CRITICAL: Gradient flow broken after input projection!
-[Rank 0] 2025-07-23 01:44:13,226 - ERROR - Input requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,226 - ERROR - input_proj weight requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,226 - ERROR - input_proj bias requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,226 - ERROR - Model forward pass failed: Gradient flow broken at input projection
-[Rank 0] 2025-07-23 01:44:13,227 - ERROR - Input shapes: hidden_states=torch.Size([4, 256, 1024]), timestep=torch.Size([4]), encoder=torch.Size([4, 256, 4096])
-[Rank 0] 2025-07-23 01:44:13,227 - ERROR - Model training mode: True
-[Rank 0] 2025-07-23 01:44:13,227 - WARNING - Attempting emergency model fallback...
-[Rank 0] 2025-07-23 01:44:13,227 - WARNING - Emergency model fallback successful
-[Rank 0] 2025-07-23 01:44:13,227 - WARNING - Input hidden_states doesn't require gradients during training
-[Rank 0] 2025-07-23 01:44:13,227 - ERROR - CRITICAL: Gradient flow broken after input projection!
-[Rank 0] 2025-07-23 01:44:13,227 - ERROR - Input requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,227 - ERROR - input_proj weight requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,227 - ERROR - input_proj bias requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,227 - ERROR - Model forward pass failed: Gradient flow broken at input projection
-[Rank 0] 2025-07-23 01:44:13,227 - ERROR - Input shapes: hidden_states=torch.Size([4, 256, 1024]), timestep=torch.Size([4]), encoder=torch.Size([4, 256, 4096])
-[Rank 0] 2025-07-23 01:44:13,227 - ERROR - Model training mode: True
-[Rank 0] 2025-07-23 01:44:13,227 - WARNING - Attempting emergency model fallback...
-[Rank 0] 2025-07-23 01:44:13,227 - WARNING - Emergency model fallback successful
-[Rank 0] 2025-07-23 01:44:13,227 - WARNING - Input hidden_states doesn't require gradients during training
-[Rank 0] 2025-07-23 01:44:13,227 - ERROR - CRITICAL: Gradient flow broken after input projection!
-[Rank 0] 2025-07-23 01:44:13,227 - ERROR - Input requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,227 - ERROR - input_proj weight requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,227 - ERROR - input_proj bias requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,227 - ERROR - Model forward pass failed: Gradient flow broken at input projection
-[Rank 0] 2025-07-23 01:44:13,227 - ERROR - Input shapes: hidden_states=torch.Size([4, 256, 1024]), timestep=torch.Size([4]), encoder=torch.Size([4, 256, 4096])
-[Rank 0] 2025-07-23 01:44:13,227 - ERROR - Model training mode: True
-[Rank 0] 2025-07-23 01:44:13,227 - WARNING - Attempting emergency model fallback...
-[Rank 0] 2025-07-23 01:44:13,227 - WARNING - Emergency model fallback successful
-[Rank 0] 2025-07-23 01:44:13,228 - WARNING - Input hidden_states doesn't require gradients during training
-[Rank 0] 2025-07-23 01:44:13,228 - ERROR - CRITICAL: Gradient flow broken after input projection!
-[Rank 0] 2025-07-23 01:44:13,228 - ERROR - Input requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,228 - ERROR - input_proj weight requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,228 - ERROR - input_proj bias requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,228 - ERROR - Model forward pass failed: Gradient flow broken at input projection
-[Rank 0] 2025-07-23 01:44:13,228 - ERROR - Input shapes: hidden_states=torch.Size([4, 256, 1024]), timestep=torch.Size([4]), encoder=torch.Size([4, 256, 4096])
-[Rank 0] 2025-07-23 01:44:13,228 - ERROR - Model training mode: True
-[Rank 0] 2025-07-23 01:44:13,228 - WARNING - Attempting emergency model fallback...
-[Rank 0] 2025-07-23 01:44:13,228 - WARNING - Emergency model fallback successful
-[Rank 0] 2025-07-23 01:44:13,228 - WARNING - Input hidden_states doesn't require gradients during training
-[Rank 0] 2025-07-23 01:44:13,228 - ERROR - CRITICAL: Gradient flow broken after input projection!
-[Rank 0] 2025-07-23 01:44:13,228 - ERROR - Input requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,228 - ERROR - input_proj weight requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,228 - ERROR - input_proj bias requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,228 - ERROR - Model forward pass failed: Gradient flow broken at input projection
-[Rank 0] 2025-07-23 01:44:13,228 - ERROR - Input shapes: hidden_states=torch.Size([4, 256, 1024]), timestep=torch.Size([4]), encoder=torch.Size([4, 256, 4096])
-[Rank 0] 2025-07-23 01:44:13,229 - ERROR - Model training mode: True
-[Rank 0] 2025-07-23 01:44:13,229 - WARNING - Attempting emergency model fallback...
-[Rank 0] 2025-07-23 01:44:13,229 - WARNING - Emergency model fallback successful
-[Rank 0] 2025-07-23 01:44:13,229 - WARNING - Input hidden_states doesn't require gradients during training
-[Rank 0] 2025-07-23 01:44:13,229 - ERROR - CRITICAL: Gradient flow broken after input projection!
-[Rank 0] 2025-07-23 01:44:13,229 - ERROR - Input requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,229 - ERROR - input_proj weight requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,229 - ERROR - input_proj bias requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,229 - ERROR - Model forward pass failed: Gradient flow broken at input projection
-[Rank 0] 2025-07-23 01:44:13,229 - ERROR - Input shapes: hidden_states=torch.Size([4, 256, 1024]), timestep=torch.Size([4]), encoder=torch.Size([4, 256, 4096])
-[Rank 0] 2025-07-23 01:44:13,229 - ERROR - Model training mode: True
-[Rank 0] 2025-07-23 01:44:13,229 - WARNING - Attempting emergency model fallback...
-[Rank 0] 2025-07-23 01:44:13,229 - WARNING - Emergency model fallback successful
-[Rank 0] 2025-07-23 01:44:13,229 - WARNING - Input hidden_states doesn't require gradients during training
-[Rank 0] 2025-07-23 01:44:13,229 - ERROR - CRITICAL: Gradient flow broken after input projection!
-[Rank 0] 2025-07-23 01:44:13,229 - ERROR - Input requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,229 - ERROR - input_proj weight requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,229 - ERROR - input_proj bias requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,229 - ERROR - Model forward pass failed: Gradient flow broken at input projection
-[Rank 0] 2025-07-23 01:44:13,229 - ERROR - Input shapes: hidden_states=torch.Size([4, 256, 1024]), timestep=torch.Size([4]), encoder=torch.Size([4, 256, 4096])
-[Rank 0] 2025-07-23 01:44:13,229 - ERROR - Model training mode: True
-[Rank 0] 2025-07-23 01:44:13,229 - WARNING - Attempting emergency model fallback...
-[Rank 0] 2025-07-23 01:44:13,229 - WARNING - Emergency model fallback successful
-[Rank 0] 2025-07-23 01:44:13,230 - WARNING - Input hidden_states doesn't require gradients during training
-[Rank 0] 2025-07-23 01:44:13,230 - ERROR - CRITICAL: Gradient flow broken after input projection!
-[Rank 0] 2025-07-23 01:44:13,230 - ERROR - Input requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,230 - ERROR - input_proj weight requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,230 - ERROR - input_proj bias requires_grad: True
-[Rank 0] 2025-07-23 01:44:13,230 - ERROR - Model forward pass failed: Gradient flow broken at input projection
-[Rank 0] 2025-07-23 01:44:13,230 - ERROR - Input shapes: hidden_states=torch.Size([4, 256, 1024]), timestep=torch.Size([4]), encoder=torch.Size([4, 256, 4096])
-[Rank 0] 2025-07-23 01:44:13,230 - ERROR - Model training mode: True
-[Rank 0] 2025-07-23 01:44:13,230 - WARNING - Attempting emergency model fallback...
-[Rank 0] 2025-07-23 01:44:13,230 - WARNING - Emergency model fallback successful
-[Rank 0] 2025-07-23 01:44:13,230 - INFO - Computing similarity matrix...
-[Rank 0] 2025-07-23 01:44:13,235 - INFO - Computing recall metrics...
-[Rank 0] 2025-07-23 01:44:13,235 - INFO - Computing recall metrics for 8 images
-[Rank 0] 2025-07-23 01:44:13,235 - INFO - Similarity matrix shape: torch.Size([8, 8])
-[Rank 0] 2025-07-23 01:44:13,240 - INFO - Similarity range: [-0.1383, 0.1136]
-[Rank 0] 2025-07-23 01:44:13,240 - INFO - Recall@1: 2/8 = 0.2500 (25.00%)
-[Rank 0] 2025-07-23 01:44:13,240 - INFO - Recall@5: 5/8 = 0.6250 (62.50%)
-[Rank 0] 2025-07-23 01:44:13,241 - INFO - 🎯 Recall evaluation (step 250):
-[Rank 0] 2025-07-23 01:44:13,241 - INFO -    R@1: 25.0%, R@5: 62.5%
-[Rank 0] 2025-07-23 01:44:13,241 - INFO - ✅ GOOD recall performance
-[Rank 0] 2025-07-23 01:44:15,174 - INFO - Step 264: Loss=1.3819, VelCos=0.001, PatchCos=0.001, GlobalCos=0.110, HighQ=0.000, EstR@1=6.6%, Quality=needs_improvement, GradOK=True, Mem=5.2GB
+[Rank 0] 2025-07-23 03:16:03,796 - INFO - ✅ Using BLIP3-o recall evaluator as default
+[Rank 0] 2025-07-23 03:16:03,797 - INFO - BLIP3-o evaluation utilities loaded successfully
+[Rank 0] 2025-07-23 03:16:06,579 - INFO - BLIP3-o configurations loaded successfully
+[Rank 0] 2025-07-23 03:16:06,579 - INFO -   ✅ Memory optimization features available
+[Rank 0] 2025-07-23 03:16:06,579 - INFO - ✅ BLIP3-o patch-level DiT model loaded successfully
+[Rank 0] 2025-07-23 03:16:06,579 - INFO - ✅ Using BLIP3-o patch-level DiT model as primary model
+[Rank 0] 2025-07-23 03:16:06,579 - INFO - BLIP3-o patch-level DiT model loaded successfully - Paper-aligned architecture
+[Rank 0] 2025-07-23 03:16:06,580 - INFO - ✅ BLIP3-o patch-level flow matching loss loaded successfully
+[Rank 0] 2025-07-23 03:16:06,581 - INFO - ✅ Using BLIP3-o patch-level flow matching loss as primary loss
+[Rank 0] 2025-07-23 03:16:06,581 - INFO - BLIP3-o patch-level flow matching loss loaded successfully - Paper-aligned training
+[Rank 0] 2025-07-23 03:16:07,274 - INFO - PyTorch version 2.7.1 available.
+[Rank 0] 2025-07-23 03:16:07,491 - INFO - ✅ Using BLIP3-o patch-level trainer as default
+[Rank 0] 2025-07-23 03:16:07,492 - INFO - BLIP3-o patch-level trainer loaded successfully - Paper-aligned training
+[Rank 0] 2025-07-23 03:16:07,493 - INFO - ✅ Using enhanced DDP dataloaders with gradient flow as default
+[Rank 0] 2025-07-23 03:16:07,493 - INFO - BLIP3-o datasets loaded successfully with gradient flow (default: enhanced_ddp_gradient_flow)
+[Rank 0] 2025-07-23 03:16:07,493 - INFO - ✅ Gradient flow setup is active and ready for training
+[Rank 0] 2025-07-23 03:16:09,794 - INFO - ✅ BLIP3-o Patch DiT model created (Paper-aligned)
+[Rank 0] 2025-07-23 03:16:09,796 - INFO -    Parameters: 224,425,984
+[Rank 0] 2025-07-23 03:16:09,796 - INFO -    Architecture: Lumina-Next based DiT
+[Rank 0] 2025-07-23 03:16:09,796 - INFO -    Features: 3D RoPE, RMSNorm, SwiGLU, AdaLN
+[Rank 0] 2025-07-23 03:16:09,796 - INFO -    Training: Flow matching on CLIP features
+[Rank 0] 2025-07-23 03:16:09,889 - INFO - ✅ BLIP3-o Flow Matching Loss initialized
+[Rank 0] 2025-07-23 03:16:09,889 - INFO -    Prediction type: velocity
+[Rank 0] 2025-07-23 03:16:09,890 - INFO -    Contrastive loss: True
+[Rank 0] 2025-07-23 03:16:09,890 - INFO -    Training objective: Patch-level flow matching
+[Rank 0] 2025-07-23 03:16:09,890 - INFO - Creating standard dataloaders with gradient flow support
+[Rank 0] 2025-07-23 03:16:09,890 - INFO - Loaded manifest: 30 shards, 78,475 samples
+[Rank 0] 2025-07-23 03:16:09,891 - INFO - Found 30 shard files:
+[Rank 0] 2025-07-23 03:16:09,891 - INFO -   embeddings_shard_00000.pkl (EXISTS)
+[Rank 0] 2025-07-23 03:16:09,891 - INFO -   embeddings_shard_00001.pkl (EXISTS)
+[Rank 0] 2025-07-23 03:16:09,891 - INFO -   embeddings_shard_00002.pkl (EXISTS)
+[Rank 0] 2025-07-23 03:16:09,891 - INFO -   embeddings_shard_00003.pkl (EXISTS)
+[Rank 0] 2025-07-23 03:16:09,892 - INFO -   embeddings_shard_00004.pkl (EXISTS)
+[Rank 0] 2025-07-23 03:16:09,892 - INFO -   embeddings_shard_00005.pkl (EXISTS)
+[Rank 0] 2025-07-23 03:16:09,892 - INFO -   embeddings_shard_00006.pkl (EXISTS)
+[Rank 0] 2025-07-23 03:16:09,892 - INFO -   embeddings_shard_00007.pkl (EXISTS)
+[Rank 0] 2025-07-23 03:16:09,892 - INFO -   embeddings_shard_00008.pkl (EXISTS)
+[Rank 0] 2025-07-23 03:16:09,892 - INFO -   embeddings_shard_00009.pkl (EXISTS)
+[Rank 0] 2025-07-23 03:16:09,892 - INFO -   embeddings_shard_00010.pkl (EXISTS)
+[Rank 0] 2025-07-23 03:16:09,892 - INFO -   embeddings_shard_00011.pkl (EXISTS)
+[Rank 0] 2025-07-23 03:16:09,892 - INFO -   embeddings_shard_00012.pkl (EXISTS)
+[Rank 0] 2025-07-23 03:16:09,893 - INFO -   embeddings_shard_00013.pkl (EXISTS)
+[Rank 0] 2025-07-23 03:16:09,893 - INFO -   embeddings_shard_00014.pkl (EXISTS)
+[Rank 0] 2025-07-23 03:16:09,893 - INFO -   embeddings_shard_00015.pkl (EXISTS)
+[Rank 0] 2025-07-23 03:16:09,893 - INFO -   embeddings_shard_00016.pkl (EXISTS)
+[Rank 0] 2025-07-23 03:16:09,893 - INFO -   embeddings_shard_00017.pkl (EXISTS)
+[Rank 0] 2025-07-23 03:16:09,893 - INFO -   embeddings_shard_00018.pkl (EXISTS)
+[Rank 0] 2025-07-23 03:16:09,893 - INFO -   embeddings_shard_00019.pkl (EXISTS)
+[Rank 0] 2025-07-23 03:16:09,893 - INFO -   embeddings_shard_00020.pkl (EXISTS)
+[Rank 0] 2025-07-23 03:16:09,894 - INFO -   embeddings_shard_00021.pkl (EXISTS)
+[Rank 0] 2025-07-23 03:16:09,894 - INFO -   embeddings_shard_00022.pkl (EXISTS)
+[Rank 0] 2025-07-23 03:16:09,894 - INFO -   embeddings_shard_00023.pkl (EXISTS)
+[Rank 0] 2025-07-23 03:16:09,894 - INFO -   embeddings_shard_00024.pkl (EXISTS)
+[Rank 0] 2025-07-23 03:16:09,894 - INFO -   embeddings_shard_00025.pkl (EXISTS)
+[Rank 0] 2025-07-23 03:16:09,894 - INFO -   embeddings_shard_00026.pkl (EXISTS)
+[Rank 0] 2025-07-23 03:16:09,894 - INFO -   embeddings_shard_00027.pkl (EXISTS)
+[Rank 0] 2025-07-23 03:16:09,894 - INFO -   embeddings_shard_00028.pkl (EXISTS)
+[Rank 0] 2025-07-23 03:16:09,894 - INFO -   embeddings_shard_00029.pkl (EXISTS)
+[Rank 0] 2025-07-23 03:16:09,895 - INFO - Prepared 27 shard files for train split
+[Rank 0] 2025-07-23 03:16:09,895 - INFO - Single-node mode:
+[Rank 0] 2025-07-23 03:16:09,895 - INFO -   Total samples: 78,475
+[Rank 0] 2025-07-23 03:16:09,895 - INFO -   Split samples (train): 70,627
+[Rank 0] 2025-07-23 03:16:09,895 - INFO - ChunkedDataset initialized:
+[Rank 0] 2025-07-23 03:16:09,895 - INFO -   Directory: /scratch-shared/scur2711/blip3o_workspace/embeddings/chunked_256_tokens
+[Rank 0] 2025-07-23 03:16:09,895 - INFO -   Split: train
+[Rank 0] 2025-07-23 03:16:09,895 - INFO -   Total shards: 27
+[Rank 0] 2025-07-23 03:16:09,895 - INFO -   Estimated samples: 70,627
+[Rank 0] 2025-07-23 03:16:09,895 - INFO -   Delete after use: False
+[Rank 0] 2025-07-23 03:16:09,895 - INFO - Loaded manifest: 30 shards, 78,475 samples
+[Rank 0] 2025-07-23 03:16:09,896 - INFO - Found 30 shard files:
+[Rank 0] 2025-07-23 03:16:09,896 - INFO -   embeddings_shard_00000.pkl (EXISTS)
+[Rank 0] 2025-07-23 03:16:09,896 - INFO -   embeddings_shard_00001.pkl (EXISTS)
+[Rank 0] 2025-07-23 03:16:09,896 - INFO -   embeddings_shard_00002.pkl (EXISTS)
+[Rank 0] 2025-07-23 03:16:09,896 - INFO -   embeddings_shard_00003.pkl (EXISTS)
+[Rank 0] 2025-07-23 03:16:09,896 - INFO -   embeddings_shard_00004.pkl (EXISTS)
+[Rank 0] 2025-07-23 03:16:09,896 - INFO -   embeddings_shard_00005.pkl (EXISTS)
+[Rank 0] 2025-07-23 03:16:09,896 - INFO -   embeddings_shard_00006.pkl (EXISTS)
+[Rank 0] 2025-07-23 03:16:09,896 - INFO -   embeddings_shard_00007.pkl (EXISTS)
+[Rank 0] 2025-07-23 03:16:09,896 - INFO -   embeddings_shard_00008.pkl (EXISTS)
+[Rank 0] 2025-07-23 03:16:09,896 - INFO -   embeddings_shard_00009.pkl (EXISTS)
+[Rank 0] 2025-07-23 03:16:09,896 - INFO -   embeddings_shard_00010.pkl (EXISTS)
+[Rank 0] 2025-07-23 03:16:09,896 - INFO -   embeddings_shard_00011.pkl (EXISTS)
+[Rank 0] 2025-07-23 03:16:09,896 - INFO -   embeddings_shard_00012.pkl (EXISTS)
+[Rank 0] 2025-07-23 03:16:09,896 - INFO -   embeddings_shard_00013.pkl (EXISTS)
+[Rank 0] 2025-07-23 03:16:09,896 - INFO -   embeddings_shard_00014.pkl (EXISTS)
+[Rank 0] 2025-07-23 03:16:09,896 - INFO -   embeddings_shard_00015.pkl (EXISTS)
+[Rank 0] 2025-07-23 03:16:09,896 - INFO -   embeddings_shard_00016.pkl (EXISTS)
+[Rank 0] 2025-07-23 03:16:09,896 - INFO -   embeddings_shard_00017.pkl (EXISTS)
+[Rank 0] 2025-07-23 03:16:09,896 - INFO -   embeddings_shard_00018.pkl (EXISTS)
+[Rank 0] 2025-07-23 03:16:09,896 - INFO -   embeddings_shard_00019.pkl (EXISTS)
+[Rank 0] 2025-07-23 03:16:09,896 - INFO -   embeddings_shard_00020.pkl (EXISTS)
+[Rank 0] 2025-07-23 03:16:09,896 - INFO -   embeddings_shard_00021.pkl (EXISTS)
+[Rank 0] 2025-07-23 03:16:09,896 - INFO -   embeddings_shard_00022.pkl (EXISTS)
+[Rank 0] 2025-07-23 03:16:09,896 - INFO -   embeddings_shard_00023.pkl (EXISTS)
+[Rank 0] 2025-07-23 03:16:09,896 - INFO -   embeddings_shard_00024.pkl (EXISTS)
+[Rank 0] 2025-07-23 03:16:09,896 - INFO -   embeddings_shard_00025.pkl (EXISTS)
+[Rank 0] 2025-07-23 03:16:09,896 - INFO -   embeddings_shard_00026.pkl (EXISTS)
+[Rank 0] 2025-07-23 03:16:09,897 - INFO -   embeddings_shard_00027.pkl (EXISTS)
+[Rank 0] 2025-07-23 03:16:09,897 - INFO -   embeddings_shard_00028.pkl (EXISTS)
+[Rank 0] 2025-07-23 03:16:09,897 - INFO -   embeddings_shard_00029.pkl (EXISTS)
+[Rank 0] 2025-07-23 03:16:09,897 - INFO - Prepared 3 shard files for eval split
+[Rank 0] 2025-07-23 03:16:09,897 - INFO - Single-node mode:
+[Rank 0] 2025-07-23 03:16:09,897 - INFO -   Total samples: 78,475
+[Rank 0] 2025-07-23 03:16:09,897 - INFO -   Split samples (eval): 7,847
+[Rank 0] 2025-07-23 03:16:09,897 - INFO - ChunkedDataset initialized:
+[Rank 0] 2025-07-23 03:16:09,897 - INFO -   Directory: /scratch-shared/scur2711/blip3o_workspace/embeddings/chunked_256_tokens
+[Rank 0] 2025-07-23 03:16:09,897 - INFO -   Split: eval
+[Rank 0] 2025-07-23 03:16:09,897 - INFO -   Total shards: 3
+[Rank 0] 2025-07-23 03:16:09,897 - INFO -   Estimated samples: 7,847
+[Rank 0] 2025-07-23 03:16:09,897 - INFO -   Delete after use: False
+[Rank 0] 2025-07-23 03:16:09,897 - INFO - Adjusted save_steps to 660 to be compatible with eval_steps 220
+[Rank 0] 2025-07-23 03:16:17,088 - INFO - CLIP text encoder loaded successfully
+[Rank 0] 2025-07-23 03:16:17,092 - INFO - BLIP3-o Recall Evaluator initialized
+[Rank 0] 2025-07-23 03:16:17,092 - INFO - Device: cuda:0
+[Rank 0] 2025-07-23 03:16:17,092 - INFO - Normalize embeddings: True
+[Rank 0] 2025-07-23 03:16:17,092 - INFO - ✅ Recall evaluator initialized
+[Rank 0] 2025-07-23 03:16:17,092 - INFO - ✅ BLIP3-o Fixed Patch Trainer initialized
+[Rank 0] 2025-07-23 03:16:17,092 - INFO - 🎯 Training mode: Fixed gradient flow patch-level flow matching
+[Rank 0] 2025-07-23 03:16:17,092 - INFO - 📊 Recall evaluation: enabled
+[Rank 0] 2025-07-23 03:16:30,275 - INFO - Loaded shard 1/27: 2630 samples
+[Rank 0] 2025-07-23 03:16:32,732 - INFO - Step 0: Loss=1.4372, VelCos=0.000, GlobalCos=0.000, EstR@1=0.0%, Quality=needs_improvement, Mem=2.8GB
+[Rank 0] 2025-07-23 03:17:12,783 - INFO - Step 88: Loss=1.3625, VelCos=0.001, GlobalCos=0.246, EstR@1=14.7%, Quality=needs_improvement, Mem=4.6GB
+[Rank 0] 2025-07-23 03:17:28,193 - INFO - Loaded shard 2/27: 2513 samples
+[Rank 0] 2025-07-23 03:17:58,785 - INFO - Step 176: Loss=1.3360, VelCos=0.002, GlobalCos=0.227, EstR@1=13.6%, Quality=needs_improvement, Mem=4.6GB
+[Rank 0] 2025-07-23 03:18:21,383 - INFO - Loaded shard 3/27: 2596 samples

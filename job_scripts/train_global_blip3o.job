@@ -268,15 +268,15 @@ echo "============================"
 
 # Patch-level training configuration
 NUM_EPOCHS=6
-BATCH_SIZE=8
+BATCH_SIZE=24
 EVAL_BATCH_SIZE=4
-LEARNING_RATE=1e-4
+LEARNING_RATE=2e-4
 MODEL_SIZE="base"
 HIDDEN_SIZE=768
 NUM_LAYERS=12
 NUM_HEADS=12
 GRADIENT_ACCUMULATION=4
-WARMUP_STEPS=100
+WARMUP_STEPS=200
 
 # Calculate effective batch size
 ACTUAL_GPU_COUNT=$(python -c "import torch; print(torch.cuda.device_count() if torch.cuda.is_available() else 1)")
@@ -383,8 +383,8 @@ python train_blip3o_patch_dit.py \
     --fp16 \
     --dataloader_num_workers 4 \
     --enable_recall_eval \
-    --recall_eval_steps 250 \
-    --recall_eval_samples 50 \
+    --recall_eval_steps 440 \
+    --recall_eval_samples 330 \
     --use_contrastive_loss \
     --contrastive_weight 0.1 \
     --enhanced_loss
