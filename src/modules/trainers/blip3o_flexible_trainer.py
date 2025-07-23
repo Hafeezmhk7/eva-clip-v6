@@ -1,13 +1,6 @@
 """
-Enhanced BLIP3-o Trainer with CLS+Patch Support and Flexible Training
 src/modules/trainers/blip3o_flexible_trainer.py
-
-Supports:
-1. Both patch-only (256 tokens) and CLS+patch (257 tokens) modes
-2. Flexible shard selection for training
-3. Training on same data evaluation (overfitting test)
-4. Pure flow matching loss (BLIP3-o paper aligned)
-5. Detailed progress tracking
+Enhanced BLIP3-o Trainer with CLS+Patch Support and Flexible Training
 """
 
 import torch
