@@ -1,9 +1,8 @@
 """
-Training utilities for BLIP3-o DiT - Both Original and Enhanced Versions
-
+Training utilities for BLIP3-o DiT - Enhanced Flexible Training
+src/modules/trainers/__init__.py
 Contains:
-- BLIP3oPatchTrainer: Original trainer for patch-level flow matching
-- BLIP3oPatchTrainerEnhanced: Enhanced trainer with convergence optimization
+- BLIP3oFlexibleTrainer: Enhanced trainer with CLS+Patch support
 - Training argument creation utilities
 - Paper-aligned training pipeline
 """
@@ -12,47 +11,26 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Import original patch-level trainer (currently running)
-PATCH_TRAINER_AVAILABLE = False
+# Import flexible trainer
+FLEXIBLE_TRAINER_AVAILABLE = False
 try:
-    from .blip3o_patch_trainer import (
-        BLIP3oPatchTrainer,
-        create_blip3o_patch_training_args,
+    from .blip3o_flexible_trainer import (
+        BLIP3oFlexibleTrainer,
+        create_blip3o_flexible_training_args,
     )
-    logger.debug("✅ BLIP3-o original patch-level trainer loaded")
-    PATCH_TRAINER_AVAILABLE = True
+    logger.debug("✅ BLIP3-o flexible trainer loaded")
+    FLEXIBLE_TRAINER_AVAILABLE = True
 except ImportError as e:
-    logger.error(f"❌ Failed to load original BLIP3-o patch-level trainer: {e}")
-    PATCH_TRAINER_AVAILABLE = False
-
-# Import enhanced patch-level trainer (new version)
-ENHANCED_TRAINER_AVAILABLE = False
-try:
-    from .blip3o_patch_trainer_enhanced import (
-        BLIP3oPatchTrainerEnhanced,
-        create_blip3o_enhanced_training_args,
-    )
-    logger.debug("✅ BLIP3-o enhanced patch-level trainer loaded")
-    ENHANCED_TRAINER_AVAILABLE = True
-except ImportError as e:
-    logger.warning(f"⚠️ Enhanced BLIP3-o trainer not available: {e}")
-    ENHANCED_TRAINER_AVAILABLE = False
+    logger.error(f"❌ Failed to load flexible BLIP3-o trainer: {e}")
+    FLEXIBLE_TRAINER_AVAILABLE = False
 
 # Set defaults based on availability
-if ENHANCED_TRAINER_AVAILABLE:
-    # Prefer enhanced trainer as default for new trainings
-    BLIP3oTrainer = BLIP3oPatchTrainerEnhanced
-    create_training_args = create_blip3o_enhanced_training_args
-    DEFAULT_TRAINER = "enhanced_patch_level"
-    logger.info("✅ Using enhanced patch-level trainer as default")
-elif PATCH_TRAINER_AVAILABLE:
-    # Fallback to original trainer
-    BLIP3oTrainer = BLIP3oPatchTrainer
-    create_training_args = create_blip3o_patch_training_args
-    DEFAULT_TRAINER = "patch_level"
-    logger.info("✅ Using original patch-level trainer as default")
+if FLEXIBLE_TRAINER_AVAILABLE:
+    BLIP3oTrainer = BLIP3oFlexibleTrainer
+    create_training_args = create_blip3o_flexible_training_args
+    DEFAULT_TRAINER = "flexible"
+    logger.info("✅ Using flexible trainer as default")
 else:
-    # No trainers available
     BLIP3oTrainer = None
     create_training_args = None
     DEFAULT_TRAINER = None
@@ -60,23 +38,15 @@ else:
 
 __all__ = [
     # Availability flags
-    "PATCH_TRAINER_AVAILABLE",
-    "ENHANCED_TRAINER_AVAILABLE", 
+    "FLEXIBLE_TRAINER_AVAILABLE",
     "DEFAULT_TRAINER",
 ]
 
-# Export original trainer components if available
-if PATCH_TRAINER_AVAILABLE:
+# Export flexible trainer components if available
+if FLEXIBLE_TRAINER_AVAILABLE:
     __all__.extend([
-        "BLIP3oPatchTrainer",
-        "create_blip3o_patch_training_args",
-    ])
-
-# Export enhanced trainer components if available
-if ENHANCED_TRAINER_AVAILABLE:
-    __all__.extend([
-        "BLIP3oPatchTrainerEnhanced",
-        "create_blip3o_enhanced_training_args",
+        "BLIP3oFlexibleTrainer",
+        "create_blip3o_flexible_training_args",
     ])
 
 # Export default interface if available
@@ -91,7 +61,7 @@ def get_trainer_class(trainer_type: str = "auto"):
     Get the appropriate trainer class
     
     Args:
-        trainer_type: "auto", "original", "enhanced", "patch_level"
+        trainer_type: "auto" or "flexible"
         
     Returns:
         Trainer class
@@ -101,15 +71,10 @@ def get_trainer_class(trainer_type: str = "auto"):
             raise ValueError("No trainer class available")
         return BLIP3oTrainer
         
-    elif trainer_type in ("original", "patch_level"):
-        if not PATCH_TRAINER_AVAILABLE:
-            raise ValueError("Original patch-level trainer not available")
-        return BLIP3oPatchTrainer
-        
-    elif trainer_type == "enhanced":
-        if not ENHANCED_TRAINER_AVAILABLE:
-            raise ValueError("Enhanced trainer not available")
-        return BLIP3oPatchTrainerEnhanced
+    elif trainer_type == "flexible":
+        if not FLEXIBLE_TRAINER_AVAILABLE:
+            raise ValueError("Flexible trainer not available")
+        return BLIP3oFlexibleTrainer
         
     else:
         raise ValueError(f"Unknown trainer type: {trainer_type}")
@@ -119,7 +84,7 @@ def get_training_args_factory(trainer_type: str = "auto"):
     Get the appropriate training args factory
     
     Args:
-        trainer_type: "auto", "original", "enhanced", "patch_level"
+        trainer_type: "auto" or "flexible"
         
     Returns:
         Training args factory function
@@ -129,15 +94,10 @@ def get_training_args_factory(trainer_type: str = "auto"):
             raise ValueError("No training args factory available")
         return create_training_args
         
-    elif trainer_type in ("original", "patch_level"):
-        if not PATCH_TRAINER_AVAILABLE:
-            raise ValueError("Original patch-level trainer not available")
-        return create_blip3o_patch_training_args
-        
-    elif trainer_type == "enhanced":
-        if not ENHANCED_TRAINER_AVAILABLE:
-            raise ValueError("Enhanced trainer not available")
-        return create_blip3o_enhanced_training_args
+    elif trainer_type == "flexible":
+        if not FLEXIBLE_TRAINER_AVAILABLE:
+            raise ValueError("Flexible trainer not available")
+        return create_blip3o_flexible_training_args
         
     else:
         raise ValueError(f"Unknown trainer type: {trainer_type}")
@@ -149,7 +109,7 @@ def create_trainer(model, flow_matching_loss, trainer_type="auto", **kwargs):
     Args:
         model: BLIP3-o model
         flow_matching_loss: Flow matching loss function
-        trainer_type: "auto", "original", "enhanced", "patch_level"
+        trainer_type: "auto" or "flexible"
         **kwargs: Additional trainer arguments
         
     Returns:
@@ -173,44 +133,31 @@ def print_trainer_status():
     print()
     print("Available trainers:")
     
-    if PATCH_TRAINER_AVAILABLE:
-        print("  ✅ Original BLIP3-o Patch Trainer")
-        print("    - 256-token patch-level training")
-        print("    - Flow matching optimization")
-        print("    - Basic recall evaluation")
-        print("    - Standard hyperparameters")
+    if FLEXIBLE_TRAINER_AVAILABLE:
+        print("  ✅ Flexible BLIP3-o Trainer")
+        print("    - Both 256 (patch-only) and 257 (CLS+patch) token modes")
+        print("    - Flexible shard selection for training")
+        print("    - Same-data evaluation (overfitting tests)")
+        print("    - Pure flow matching loss (BLIP3-o paper aligned)")
+        print("    - Detailed training metrics and progress tracking")
         print("    - Multi-GPU distributed training")
-        print("    - Paper-aligned training pipeline")
+        print("    - Enhanced logging and evaluation")
     else:
-        print("  ❌ Original BLIP3-o Patch Trainer")
-        
-    if ENHANCED_TRAINER_AVAILABLE:
-        print("  ✅ Enhanced BLIP3-o Patch Trainer (RECOMMENDED)")
-        print("    - 256-token patch-level training")
-        print("    - Enhanced flow matching optimization")
-        print("    - Advanced convergence monitoring")
-        print("    - Cosine LR scheduling with decay")
-        print("    - Optimized hyperparameters")
-        print("    - Enhanced logging and progress tracking")
-        print("    - Pure training mode (no evaluation)")
-        print("    - Superior convergence optimization")
-    else:
-        print("  ❌ Enhanced BLIP3-o Patch Trainer")
+        print("  ❌ Flexible BLIP3-o Trainer")
     
-    if not any([PATCH_TRAINER_AVAILABLE, ENHANCED_TRAINER_AVAILABLE]):
+    if not FLEXIBLE_TRAINER_AVAILABLE:
         print("  ⚠️  No trainers available!")
         print("  💡 Make sure trainer files are properly implemented")
     
     print()
-    print("Training features comparison:")
-    print("  Original: Basic training with standard features")
-    print("  Enhanced: Advanced convergence optimization")
+    print("Training features:")
     print("  📊 Objective: Patch-level flow matching")
-    print("  📐 Input: EVA-CLIP patches [B, 256, 4096]")
-    print("  🎯 Output: CLIP patches [B, 256, 1024]")
+    print("  📐 Input: EVA-CLIP patches [B, N, 4096] (N=256 or 257)")
+    print("  🎯 Output: CLIP patches [B, N, 1024] (N=256 or 257)")
     print("  📊 Evaluation: Image-to-text recall")
-    print("  🔄 Loss: Flow matching + contrastive")
+    print("  🔄 Loss: Pure flow matching (BLIP3-o paper)")
     print("  💾 Memory: Optimized for multi-GPU")
+    print("  🧪 Testing: Same-data evaluation for overfitting")
     
     print("=" * 40)
 
@@ -221,39 +168,8 @@ def get_recommended_trainer():
     Returns:
         Recommended trainer class and type
     """
-    if ENHANCED_TRAINER_AVAILABLE:
-        return BLIP3oPatchTrainerEnhanced, "enhanced"
-    elif PATCH_TRAINER_AVAILABLE:
-        return BLIP3oPatchTrainer, "original"
-    else:
-        raise ValueError("No trainers available")
-
-def create_enhanced_trainer_if_available(model, flow_matching_loss, **kwargs):
-    """
-    Create enhanced trainer if available, otherwise fallback to original
-    
-    Args:
-        model: BLIP3-o model
-        flow_matching_loss: Flow matching loss function
-        **kwargs: Additional trainer arguments
-        
-    Returns:
-        Trainer instance and trainer type used
-    """
-    if ENHANCED_TRAINER_AVAILABLE:
-        trainer = BLIP3oPatchTrainerEnhanced(
-            model=model,
-            flow_matching_loss=flow_matching_loss,
-            **kwargs
-        )
-        return trainer, "enhanced"
-    elif PATCH_TRAINER_AVAILABLE:
-        trainer = BLIP3oPatchTrainer(
-            model=model,
-            flow_matching_loss=flow_matching_loss,
-            **kwargs
-        )
-        return trainer, "original"
+    if FLEXIBLE_TRAINER_AVAILABLE:
+        return BLIP3oFlexibleTrainer, "flexible"
     else:
         raise ValueError("No trainers available")
 
@@ -264,15 +180,12 @@ __all__.extend([
     "create_trainer",
     "print_trainer_status",
     "get_recommended_trainer",
-    "create_enhanced_trainer_if_available",
 ])
 
 # Enhanced status logging
 trainer_status = []
-if PATCH_TRAINER_AVAILABLE:
-    trainer_status.append("original")
-if ENHANCED_TRAINER_AVAILABLE:
-    trainer_status.append("enhanced")
+if FLEXIBLE_TRAINER_AVAILABLE:
+    trainer_status.append("flexible")
 
 if trainer_status:
     logger.info(f"BLIP3-o trainers loaded successfully: {', '.join(trainer_status)}")
@@ -281,10 +194,9 @@ if trainer_status:
 else:
     logger.warning("No BLIP3-o trainers available")
 
-# Version compatibility message
-if ENHANCED_TRAINER_AVAILABLE and PATCH_TRAINER_AVAILABLE:
-    logger.info("Both trainer versions available - enhanced trainer recommended for new training")
-elif PATCH_TRAINER_AVAILABLE:
-    logger.info("Original trainer available - enhanced trainer can be added for better convergence")
-elif ENHANCED_TRAINER_AVAILABLE:
-    logger.info("Enhanced trainer available - original trainer as fallback")
+# Ensure flexible trainer is available
+if not FLEXIBLE_TRAINER_AVAILABLE:
+    logger.error("❌ BLIP3-o flexible trainer is required but not available!")
+    raise ImportError("BLIP3-o flexible trainer is required for this project")
+
+logger.info("BLIP3-o flexible trainer loaded successfully - Enhanced features available")

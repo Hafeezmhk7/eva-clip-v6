@@ -9,18 +9,15 @@
 #SBATCH --output=./slurm_out/blip3o_enhanced_%j.out
 #SBATCH --error=./slurm_out/blip3o_enhanced_%j.err
 
-echo "🚀 BLIP3-o Enhanced Patch-Level DiT Training"
+echo "🚀 Enhanced BLIP3-o Training with CLS+Patch Support"
 echo "================================================================"
 echo "🎯 ENHANCED TRAINING FEATURES:"
-echo "  ✅ 256-token patch-level flow matching"
-echo "  ✅ EVA-CLIP conditioning (4096-dim)"
-echo "  ✅ CLIP output supervision (1024-dim)"
-echo "  ❌ Evaluation COMPLETELY DISABLED (pure training)"
-echo "  ✅ 3D Rotary Position Embedding"
-echo "  ✅ ENHANCED: Cosine LR scheduling with decay"
-echo "  ✅ ENHANCED: Convergence monitoring"
-echo "  ✅ ENHANCED: Optimized hyperparameters"
-echo "  ✅ NO EVALUATION = NO GRADIENT ISSUES"
+echo "  ✅ Support for both patch-only (256) and CLS+patch (257) modes"
+echo "  ✅ Flexible shard selection for training"
+echo "  ✅ Same-data evaluation (overfitting verification)"
+echo "  ✅ Pure flow matching loss (BLIP3-o paper aligned)"
+echo "  ✅ Detailed cosine similarity evaluation with plots"
+echo "  ✅ Comprehensive logging and progress tracking"
 echo "================================================================"
 echo "Job ID: $SLURM_JOB_ID"
 echo "Node: $SLURMD_NODENAME"
@@ -191,16 +188,16 @@ fi
 # =============================================================================
 
 echo ""
-echo "🔍 Finding patch-level embeddings..."
-echo "==================================="
+echo "🔍 Finding embeddings for enhanced training..."
+echo "=============================================="
 
 EMBEDDINGS_DIR=""
 
 SEARCH_LOCATIONS=(
-    "${BLIP3O_EMBEDDINGS}/chunked_256_tokens"
     "${BLIP3O_EMBEDDINGS}"
-    "./embeddings/chunked_256_tokens"
     "./embeddings"
+    "./embeddings/chunked_256_tokens"
+    "./embeddings/chunked_257_tokens"
 )
 
 for location in "${SEARCH_LOCATIONS[@]}"; do
@@ -212,14 +209,14 @@ for location in "${SEARCH_LOCATIONS[@]}"; do
 done
 
 if [ -z "$EMBEDDINGS_DIR" ]; then
-    echo "❌ No patch-level embeddings found!"
+    echo "❌ No embeddings found!"
     echo "💡 Searched locations:"
     for location in "${SEARCH_LOCATIONS[@]}"; do
         echo "    $location"
     done
     echo ""
     echo "💡 Please run embedding extraction first:"
-    echo "    python src/modules/extract_embeddings_g.py"
+    echo "    python src/modules/extract_embeddings_g.py --include_cls"
     exit 1
 fi
 
@@ -234,10 +231,9 @@ try:
         manifest = json.load(f)
     print(f'  Total shards: {manifest.get(\"total_shards\", \"unknown\")}')
     print(f'  Total samples: {manifest.get(\"total_samples\", \"unknown\"):,}')
+    print(f'  Extraction mode: {manifest.get(\"extraction_mode\", \"unknown\")}')
+    print(f'  Tokens per sample: {manifest.get(\"tokens_per_sample\", \"unknown\")}')
     print(f'  Format: {manifest.get(\"format_version\", \"unknown\")}')
-    print(f'  Tokens per image: 256 (patch-level)')
-    print(f'  CLIP dimension: 1024')
-    print(f'  EVA dimension: 4096')
 except Exception as e:
     print(f'  Error reading manifest: {e}')
 "
@@ -270,45 +266,53 @@ echo ""
 echo "⚙️ Enhanced Training Configuration..."
 echo "===================================="
 
-# Enhanced training configuration (optimized for convergence)
-NUM_EPOCHS=10                    # Enhanced from 6 to 10
-BATCH_SIZE=24
+# Configuration options
+TRAINING_MODE="cls_patch"           # "cls_patch" (257 tokens) or "patch_only" (256 tokens)
+MAX_TRAINING_SHARDS=1               # Use single shard for overfitting test
+OVERFITTING_TEST="--overfitting_test"  # Enable overfitting test
+ENABLE_SAME_DATA_EVAL="--enable_same_data_eval"
+ENABLE_DETAILED_EVAL="--enable_detailed_eval"
+
+# Model configuration
 MODEL_SIZE="base"
 HIDDEN_SIZE=768
 NUM_LAYERS=12
 NUM_HEADS=12
-GRADIENT_ACCUMULATION=2          # Enhanced from 4 to 2
-WARMUP_STEPS=150                 # Enhanced from 200 to 150
-LEARNING_RATE=0.0002             # Enhanced to 2e-4
-CONTRASTIVE_WEIGHT=0.15          # Enhanced from 0.1 to 0.15
-LR_SCHEDULER_TYPE="cosine"       # Enhanced scheduler
-LR_END_RATIO=0.1                 # Enhanced decay ratio
-NUM_CYCLES=1.0                   # Enhanced cycles
-WARMUP_RATIO=0.02                # Enhanced warmup ratio
 
-# Calculate effective batch size
-ACTUAL_GPU_COUNT=$(python -c "import torch; print(torch.cuda.device_count() if torch.cuda.is_available() else 1)")
-EFFECTIVE_BATCH_SIZE=$((BATCH_SIZE * ACTUAL_GPU_COUNT * GRADIENT_ACCUMULATION))
+# Training hyperparameters
+NUM_EPOCHS=10
+BATCH_SIZE=4
+EVAL_BATCH_SIZE=2
+LEARNING_RATE=1e-4
+WEIGHT_DECAY=0.01
+WARMUP_STEPS=50
+GRADIENT_ACCUMULATION_STEPS=2
+LR_SCHEDULER="cosine"
+
+# Hardware settings
+FP16="--fp16"
+DATALOADER_NUM_WORKERS=2
+
+# Evaluation settings
+SAME_DATA_EVAL_FREQUENCY=50
+DETAILED_EVAL_FREQUENCY=200
+MAX_EVAL_BATCHES=20
+
+# Logging
+LOGGING_STEPS=5
+SAVE_STEPS=100
+DETAILED_LOGGING="--detailed_logging"
 
 echo "Enhanced Training Configuration:"
-echo "  🎯 Target GPUs: ${SLURM_GPUS:-1}"
-echo "  🔍 Detected GPUs: $ACTUAL_GPU_COUNT"
+echo "  🎯 Training mode: ${TRAINING_MODE}"
+echo "  📦 Max training shards: ${MAX_TRAINING_SHARDS} (overfitting test)"
 echo "  🏗️  Model: ${MODEL_SIZE} (${HIDDEN_SIZE}D, ${NUM_LAYERS}L, ${NUM_HEADS}H)"
 echo "  📚 Epochs: $NUM_EPOCHS"
 echo "  📦 Batch size per GPU: $BATCH_SIZE"
-echo "  🔄 Gradient accumulation: $GRADIENT_ACCUMULATION"
-echo "  📊 Effective batch size: $EFFECTIVE_BATCH_SIZE"
 echo "  📈 Learning rate: $LEARNING_RATE"
-echo "  🔥 Warmup steps: $WARMUP_STEPS"
-echo "  ⚖️ Contrastive weight: $CONTRASTIVE_WEIGHT"
-echo "  📊 LR scheduler: $LR_SCHEDULER_TYPE"
-echo "  📉 LR end ratio: $LR_END_RATIO"
-echo "  🔁 Cycles: $NUM_CYCLES"
-echo "  🎯 Architecture: 256-token patch-level DiT"
-echo "  📐 Input: EVA-CLIP (256×4096) → CLIP (256×1024)"
-echo "  ❌ Evaluation: COMPLETELY DISABLED"
-echo "  ⚡ Mode: ENHANCED PURE TRAINING"
-echo "  🔧 Features: Convergence monitoring, optimized scheduling"
+echo "  🔄 Same-data evaluation: Yes (every ${SAME_DATA_EVAL_FREQUENCY} steps)"
+echo "  📊 Detailed evaluation: Yes (every ${DETAILED_EVAL_FREQUENCY} steps)"
+echo "  🔧 Features: Overfitting test, pure flow matching, detailed analysis"
 
 # =============================================================================
 # ENHANCED FINAL VERIFICATION
@@ -326,17 +330,20 @@ from pathlib import Path
 sys.path.insert(0, str(Path.cwd() / 'src'))
 
 try:
-    from src.modules.models.blip3o_patch_dit import BLIP3oPatchDiTModel
-    print('✅ Patch DiT model')
+    from src.modules.models.blip3o_patch_dit import create_blip3o_patch_dit_model, BLIP3oDiTConfig
+    print('✅ Enhanced patch DiT model')
     
-    from src.modules.losses.blip3o_flow_matching_loss import BLIP3oFlowMatchingLoss
-    print('✅ Flow matching loss')
+    from src.modules.losses.blip3o_flow_matching_loss import create_blip3o_flow_matching_loss
+    print('✅ Pure flow matching loss')
     
-    from src.modules.trainers.blip3o_patch_trainer_enhanced import BLIP3oPatchTrainerEnhanced
-    print('✅ Enhanced patch trainer')
+    from src.modules.trainers.blip3o_flexible_trainer import BLIP3oFlexibleTrainer, create_blip3o_flexible_training_args
+    print('✅ Flexible trainer')
     
-    from src.modules.datasets.blip3o_dataset import BLIP3oEmbeddingDataset
-    print('✅ Patch dataset')
+    from src.modules.datasets.blip3o_dataset import create_flexible_dataloaders
+    print('✅ Flexible dataset')
+    
+    from src.modules.evaluation.blip3o_detailed_evaluator import create_detailed_evaluator
+    print('✅ Detailed evaluator')
     
     print('🎉 All enhanced modules ready!')
     
@@ -358,56 +365,57 @@ echo ""
 echo "🚀 Starting Enhanced BLIP3-o Training..."
 echo "========================================"
 echo "🎯 ENHANCED TRAINING FEATURES:"
-echo "  • 256-token patch embeddings (16×16 grid)"
-echo "  • EVA-CLIP conditioning (4096-dim)"
-echo "  • CLIP patch supervision (1024-dim)"
-echo "  • Enhanced flow matching training objective"
-echo "  • 3D Rotary Position Embedding"
-echo "  • Enhanced cosine LR scheduling with decay"
-echo "  • Advanced convergence monitoring"
-echo "  • Optimized hyperparameters for convergence"
-echo "  • Multi-GPU distributed training"
-echo "  • NO EVALUATION = NO GRADIENT ISSUES"
+echo "  • Support for CLS+patch (257 tokens) and patch-only (256 tokens)"
+echo "  • Flexible shard selection for controlled training"
+echo "  • Same-data evaluation for overfitting verification"
+echo "  • Pure flow matching loss (BLIP3-o paper aligned)"
+echo "  • Detailed cosine similarity evaluation with plots"
+echo "  • Comprehensive logging and progress tracking"
 echo ""
 echo "📈 ENHANCED EXPECTED RESULTS:"
-echo "  • Superior convergence with cosine scheduling"
-echo "  • Advanced monitoring and progress tracking"
-echo "  • Optimized hyperparameters for best performance"
-echo "  • Smooth training completion without interruptions"
-echo "  • Model checkpoints saved periodically"
-echo "  • No evaluation-related crashes"
+echo "  • Overfitting test with single shard"
+echo "  • High cosine similarity on training data"
+echo "  • Detailed per-patch and per-image analysis"
+echo "  • Comprehensive evaluation plots and JSON reports"
+echo "  • Verification of training pipeline effectiveness"
 echo ""
 
 TRAIN_START_TIME=$(date +%s)
 
 echo "🔥 Launching enhanced training mode..."
 
-# ENHANCED: Use enhanced training script with all optimizations
-python train_blip3o_patch_enhanced.py \
+# ENHANCED: Use enhanced training script with all features
+python train_blip3o_enhanced.py \
     --chunked_embeddings_dir "$EMBEDDINGS_DIR" \
     --output_dir "$OUTPUT_DIR" \
+    --training_mode "$TRAINING_MODE" \
+    --max_training_shards $MAX_TRAINING_SHARDS \
+    $OVERFITTING_TEST \
+    $ENABLE_SAME_DATA_EVAL \
+    $ENABLE_DETAILED_EVAL \
+    --same_data_eval_frequency $SAME_DATA_EVAL_FREQUENCY \
+    --detailed_eval_frequency $DETAILED_EVAL_FREQUENCY \
+    --max_eval_batches $MAX_EVAL_BATCHES \
     --model_size "$MODEL_SIZE" \
     --hidden_size $HIDDEN_SIZE \
     --num_layers $NUM_LAYERS \
     --num_heads $NUM_HEADS \
     --num_epochs $NUM_EPOCHS \
     --batch_size $BATCH_SIZE \
+    --eval_batch_size $EVAL_BATCH_SIZE \
     --learning_rate $LEARNING_RATE \
-    --lr_scheduler_type "$LR_SCHEDULER_TYPE" \
-    --lr_end_ratio $LR_END_RATIO \
-    --num_cycles $NUM_CYCLES \
-    --warmup_ratio $WARMUP_RATIO \
-    --weight_decay 0.01 \
+    --weight_decay $WEIGHT_DECAY \
     --warmup_steps $WARMUP_STEPS \
-    --gradient_accumulation_steps $GRADIENT_ACCUMULATION \
-    --fp16 \
-    --dataloader_num_workers 4 \
-    --use_contrastive_loss \
-    --contrastive_weight $CONTRASTIVE_WEIGHT \
-    --enhanced_loss \
-    --disable_evaluation \
-    --convergence_monitoring \
-    --enhanced_logging
+    --gradient_accumulation_steps $GRADIENT_ACCUMULATION_STEPS \
+    --lr_scheduler "$LR_SCHEDULER" \
+    --normalize_targets \
+    --prediction_type "velocity" \
+    $FP16 \
+    --dataloader_num_workers $DATALOADER_NUM_WORKERS \
+    --logging_steps $LOGGING_STEPS \
+    --save_steps $SAVE_STEPS \
+    $DETAILED_LOGGING \
+    --test_gradient_flow
 
 TRAINING_EXIT_CODE=$?
 TRAIN_END_TIME=$(date +%s)
@@ -425,8 +433,8 @@ echo "Duration: $TRAIN_DURATION seconds ($(($TRAIN_DURATION / 60)) minutes)"
 
 if [ $TRAINING_EXIT_CODE -eq 0 ]; then
     echo ""
-    echo "✅ SUCCESS! Enhanced training completed!"
-    echo "======================================"
+    echo "✅ SUCCESS! Enhanced BLIP3-o training completed!"
+    echo "=============================================="
     
     # Copy to persistent storage
     if [ -d "$OUTPUT_DIR" ]; then
@@ -444,13 +452,13 @@ if [ $TRAINING_EXIT_CODE -eq 0 ]; then
     echo ""
     echo "🎉 ENHANCED TRAINING SUCCESS!"
     echo "============================"
-    echo "✅ 256-token patch-level flow matching completed"
-    echo "✅ EVA-CLIP → CLIP patch translation trained"
-    echo "✅ Enhanced convergence optimization successful"
-    echo "✅ Advanced monitoring and progress tracking"
-    echo "✅ No evaluation interruptions or gradient issues"
-    echo "✅ BLIP3-o paper alignment achieved"
-    echo "✅ Enhanced model ready for inference and evaluation"
+    echo "✅ Training mode: $TRAINING_MODE"
+    echo "✅ Overfitting test completed with $MAX_TRAINING_SHARDS shard(s)"
+    echo "✅ Same-data evaluation performed"
+    echo "✅ Detailed cosine similarity analysis completed"
+    echo "✅ Pure flow matching loss (BLIP3-o paper aligned)"
+    echo "✅ Comprehensive evaluation plots and JSON reports generated"
+    echo "✅ Enhanced model ready for analysis"
     echo ""
     echo "📁 Enhanced model locations:"
     echo "   Primary: $OUTPUT_DIR"
@@ -458,12 +466,12 @@ if [ $TRAINING_EXIT_CODE -eq 0 ]; then
         echo "   Persistent: $PERSISTENT_DIR"
     fi
     echo ""
-    echo "🧪 Next steps for enhanced evaluation:"
-    echo "   1. Run separate recall evaluation: python eval_blip3o_patch_recall.py"
-    echo "   2. Test enhanced inference capabilities"
-    echo "   3. Compare with CLIP baseline performance"
-    echo "   4. Generate enhanced embeddings for downstream tasks"
-    echo "   5. Analyze convergence metrics and training progress"
+    echo "🧪 Next steps for enhanced analysis:"
+    echo "   1. Check evaluation results in output directory"
+    echo "   2. Analyze cosine similarity plots"
+    echo "   3. Review JSON evaluation reports"
+    echo "   4. Run additional evaluation: python eval_blip3o_patch_similarity.py"
+    echo "   5. Compare different training modes (cls_patch vs patch_only)"
     
 else
     echo ""
@@ -476,14 +484,14 @@ else
     echo "1. Check error log: ${SLURM_JOB_ID}.err"
     echo "2. Check training logs in: $OUTPUT_DIR"
     echo "3. Check GPU diagnostics output above"
-    echo "4. Check enhanced training logs"
+    echo "4. Check enhanced training error file: blip3o_enhanced_training_error.json"
     echo ""
     echo "💡 Enhanced solutions:"
     echo "  • GPU allocation: Check SLURM GPU request"
-    echo "  • Memory issues: Reduce batch size"
+    echo "  • Memory issues: Reduce batch size or use fewer shards"
     echo "  • Module loading: Check conda environment"
-    echo "  • Embeddings: Verify patch-level embeddings exist"
-    echo "  • Enhanced code: Ensure latest enhanced trainer files are used"
+    echo "  • Embeddings: Verify embeddings exist and are accessible"
+    echo "  • Enhanced code: Ensure all enhanced modules are working"
     echo "  • Dependencies: Check enhanced module imports"
 fi
 

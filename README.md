@@ -5,38 +5,39 @@
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Training](https://img.shields.io/badge/Training-Enhanced-green.svg)](docs/training.md)
 
-A **paper-aligned implementation** of BLIP3-o patch-level Diffusion Transformer (DiT) for image-to-text translation using flow matching. This project implements 256-token patch-level training with EVA-CLIP conditioning to generate CLIP embeddings optimized for image-to-text recall.
+An implementation* of BLIP3-o patch-level Diffusion Transformer (DiT) for image-to-text translation using flow matching. This project implements flexible training with support for both **CLS+patch (257 tokens)** and **patch-only (256 tokens)** modes, with detailed cosine similarity evaluation and overfitting verification.
 
-## 🎯 Key Features
 
-- **📐 256-Token Patch-Level Training**: Direct supervision on 16×16 patch grids
-- **🔄 Enhanced Flow Matching**: Rectified flow with velocity prediction + contrastive learning
-- **🧠 EVA-CLIP Conditioning**: 4096-dim feature conditioning with cross-attention
-- **📊 Image-to-Text Recall**: Optimized for Recall@1, Recall@5, Recall@10
-- **🚀 Enhanced Multi-GPU Support**: Distributed training with convergence optimization
-- **⚡ Pure Training Mode**: Evaluation-free training for smooth completion
-- **📈 Paper-Aligned Architecture**: Following BLIP3-o methodology with enhancements
 
 ## 🏗️ Architecture Overview
 
-```
-EVA-CLIP Patches [B, 256, 4096] 
-    ↓ (Cross-Attention Conditioning)
-Noisy CLIP Patches [B, 256, 1024] 
-    ↓ (Enhanced DiT Blocks + Flow Matching)
-Clean CLIP Patches [B, 256, 1024]
-    ↓ (Global Pooling + Projection)  
-CLIP Global Features [B, 768]
+```mermaid
+graph TD
+    A[Input Images] --> B[EVA-CLIP Encoder]
+    A --> C[CLIP ViT Encoder]
+    
+    B --> D[EVA Features<br/>[B, 257, 4096]]
+    C --> E[CLIP Features<br/>[B, 257, 1024]]
+    
+    D --> F[Cross-Attention<br/>Conditioning]
+    E --> G[Flow Matching<br/>Target]
+    
+    H[Noise<br/>[B, 257, 1024]] --> I[Linear Interpolation<br/>x_t = (1-α)x_0 + αx_1]
+    G --> I
+    
+    I --> J[BLIP3-o DiT Model<br/>12 Layers, 768 Hidden]
+    F --> J
+    
+    J --> K[Velocity Prediction<br/>[B, 257, 1024]]
+    
+    K --> L[Flow Matching Loss<br/>MSE(v_pred, v_target)]
+    G --> L
+    
+    style J fill:#e1f5fe
+    style L fill:#ffebee
+    style F fill:#f3e5f5
 ```
 
-### Enhanced Model Components
-
-- **BLIP3oPatchDiTModel**: Main diffusion transformer with 3D RoPE
-- **Enhanced Training Modes**: Pure training vs evaluation-enabled training
-- **RotaryPositionalEmbedding3D**: Spatial position encoding for patches
-- **BLIP3oDiTBlock**: Transformer block with cross-attention conditioning
-- **Enhanced Flow Matching Loss**: Flow matching + weighted contrastive learning
-- **Advanced Recall Evaluator**: Image-to-text recall with CLIP baseline comparison
 
 ## 🚀 Quick Start
 
@@ -55,183 +56,292 @@ conda activate eva_clip_env
 pip install torch torchvision transformers datasets
 pip install accelerate wandb tqdm pillow safetensors
 pip install webdataset opencv-python scikit-learn
+pip install matplotlib seaborn plotly pandas scipy
 ```
 
-### 2. Extract Embeddings
+### 2. Extract Embeddings with CLS+Patch Support
 
 ```bash
-# Extract patch-level embeddings (256 tokens per image)
+# Extract CLS+patch embeddings (257 tokens per image)
+python src/modules/extract_embeddings_g.py --include_cls
+
+# OR extract patch-only embeddings (256 tokens per image)
 python src/modules/extract_embeddings_g.py
 
 # Verify embeddings
-ls -la embeddings/chunked_256_tokens/
-cat embeddings/chunked_256_tokens/embeddings_manifest.json
+ls -la embeddings/
+cat embeddings/*/embeddings_manifest.json
 ```
 
-anced.job
+### 3. Training Options
 
+#### Option A: CLS+Patch Training (257 tokens)
+```bash
+# Train with CLS token + 16x16 patches
+python train_blip3o_enhanced.py \
+    --chunked_embeddings_dir "./embeddings" \
+    --output_dir "./checkpoints/cls_patch_training" \
+    --training_mode "cls_patch" \
+    --max_training_shards 1 \
+    --overfitting_test \
+    --enable_same_data_eval \
+    --enable_detailed_eval
+```
 
+#### Option B: Patch-Only Training (256 tokens)
+```bash
+# Train with 16x16 patches only
+python train_blip3o_enhanced.py \
+    --chunked_embeddings_dir "./embeddings" \
+    --output_dir "./checkpoints/patch_only_training" \
+    --training_mode "patch_only" \
+    --max_training_shards 1 \
+    --overfitting_test \
+    --enable_same_data_eval \
+    --enable_detailed_eval
+```
 
+#### Option C: Full Dataset Training
+```bash
+# Train on all available shards
+python train_blip3o_enhanced.py \
+    --chunked_embeddings_dir "./embeddings" \
+    --output_dir "./checkpoints/full_training" \
+    --training_mode "cls_patch" \
+    --num_epochs 5 \
+    --batch_size 8
+```
 
+### 4. Evaluation and Analysis
 
+```bash
+# Comprehensive cosine similarity evaluation
+python eval_blip3o_patch_similarity.py \
+    --model_path "./checkpoints/cls_patch_training" \
+    --chunked_embeddings_dir "./embeddings" \
+    --output_dir "./evaluation_results" \
+    --training_mode "auto" \
+    --num_samples 1000 \
+    --same_data_eval \
+    --save_plots \
+    --save_detailed_results
+```
 
+## 📊 Training Modes Comparison
 
-### Enhanced Training Features
-
-- **✅ Convergence Monitoring**: Real-time tracking of best metrics and patience
-- **✅ Cosine LR Scheduling**: Smooth learning rate decay for better convergence
-- **✅ Pure Training Mode**: No evaluation interruptions during training
-- **✅ Enhanced Loss Weighting**: Optimized contrastive loss weight (0.15)
-- **✅ Memory Optimization**: Efficient batch processing and caching
+| Feature | CLS+Patch Mode | Patch-Only Mode |
+|---------|----------------|------------------|
+| **Token Count** | 257 | 256 |
+| **Input Format** | [CLS] + 16×16 patches | 16×16 patches only |
+| **Token Layout** | [0]=CLS, [1:257]=patches | [0:256]=patches |
+| **Global Representation** | Explicit CLS token | Pooled from patches |
+| **Spatial Encoding** | 3D RoPE with CLS handling | Standard 3D RoPE |
+| **Memory Usage** | Slightly higher | Standard |
+| **Recall Performance** | May benefit from CLS | Relies on patch pooling |
 
 ## 🔧 Enhanced Configuration
 
-### Model Sizes (Enhanced)
+### Model Sizes
 
 ```python
-# Available enhanced model configurations
+# Available model configurations
 model_sizes = {
     "tiny": {"hidden_size": 512, "num_layers": 6, "num_heads": 8},
     "small": {"hidden_size": 768, "num_layers": 8, "num_heads": 12}, 
-    "base": {"hidden_size": 768, "num_layers": 12, "num_heads": 12},  # ← Used in our training
+    "base": {"hidden_size": 768, "num_layers": 12, "num_heads": 12},  # ← Recommended
     "large": {"hidden_size": 1024, "num_layers": 16, "num_heads": 16}
 }
 ```
 
+### Training Configuration
 
+```python
+# Enhanced training parameters
+training_config = {
+    "training_mode": "cls_patch",           # or "patch_only"
+    "max_training_shards": 1,               # For overfitting tests
+    "num_epochs": 10,
+    "batch_size": 4,
+    "learning_rate": 1e-4,
+    "lr_scheduler": "cosine",
+    "enable_same_data_eval": True,
+    "enable_detailed_eval": True,
+    "prediction_type": "velocity",          # BLIP3-o paper aligned
+    "normalize_targets": True
+}
+```
 
-
-## 📁 Project Structure (Current)
+## 📁 Project Structure
 
 ```
 eva-clip-flow-matching/eva-clip-v3/
 ├── src/modules/
 │   ├── models/
 │   │   ├── __init__.py
-│   │   └── blip3o_patch_dit.py              # Enhanced DiT model
+│   │   └── blip3o_patch_dit.py              # Flexible DiT model (256/257 tokens)
 │   ├── losses/
 │   │   ├── __init__.py
-│   │   └── blip3o_flow_matching_loss.py     # Enhanced flow matching loss
+│   │   └── blip3o_flow_matching_loss.py     # Pure flow matching loss
 │   ├── trainers/
 │   │   ├── __init__.py
-│   │   ├── blip3o_patch_trainer.py          # Standard trainer
-│   │   └── blip3o_patch_trainer_enhanced.py # Enhanced trainer ⭐
+│   │   └── blip3o_flexible_trainer.py       # Enhanced flexible trainer
 │   ├── datasets/
 │   │   ├── __init__.py
-│   │   └── blip3o_dataset.py                # Chunked dataset loader
+│   │   └── blip3o_dataset.py                # Flexible dataset (256/257 support)
 │   ├── evaluation/
 │   │   ├── __init__.py
-│   │   └── blip3o_recall_evaluator.py       # Enhanced recall evaluation
+│   │   └── blip3o_detailed_evaluator.py     # Comprehensive evaluator
 │   ├── config/
 │   │   ├── __init__.py
-│   │   └── blip3o_config.py                 # Model configuration
-│   └── utils/
-│       ├── __init__.py
-│       └── temp_manager.py                  # Directory management
+│   │   └── blip3o_config.py                 # Model configurations
+│   └── extract_embeddings_g.py             # CLS+patch embedding extraction
 ├── job_scripts/
-│   ├── train_global_blip3o.job              # Standard SLURM script
-│   └── train_blip3o_enhanced.job            # Enhanced SLURM script ⭐
-├── checkpoints/
-│   └── blip3o_patch_pure_13259292_20250723_063221/  # ⭐ Our trained model
-├── train_blip3o_patch_dit.py                # Standard training script
-├── train_blip3o_patch_enhanced.py           # Enhanced training script ⭐
-├── eval_blip3o_patch_recall.py              # Fixed evaluation script ⭐
-├── test_clip_dimension.py                   # Dimension testing utility
+│   ├── train_blip3o_enhanced.job            # Enhanced training job
+│   └── eval_blip3o_similarity.job           # Evaluation job
+├── train_blip3o_enhanced.py                 # Main training script
+├── eval_blip3o_patch_similarity.py          # Evaluation script
 └── README.md                                # This file
 ```
 
-#### Evaluation Dimension Errors
+## 🧪 Overfitting Verification Workflow
+
+### Step 1: Single Shard Training
 ```bash
-# Use fixed evaluation script
-python eval_blip3o_patch_recall.py --model_path <path> --coco_root <path>
-
-
+# Train on single shard to verify pipeline
+python train_blip3o_enhanced.py \
+    --training_mode "cls_patch" \
+    --max_training_shards 1 \
+    --overfitting_test \
+    --num_epochs 10
 ```
 
-### Performance Optimization (Enhanced)
-
-#### For H100 GPUs (40GB) - Our Setup
+### Step 2: Same-Data Evaluation
 ```bash
-python train_blip3o_patch_dit.py \
-    --chunked_embeddings_dir "$EMBEDDINGS_DIR" \
-    --output_dir "$OUTPUT_DIR" \
-    --model_size "base" \
-    --hidden_size 768 \
-    --num_layers 12 \
-    --num_heads 12 \
-    --num_epochs 6 \
-    --batch_size 24 \
-    --learning_rate 2e-4 \
-    --weight_decay 0.01 \
-    --warmup_steps 200 \
-    --gradient_accumulation_steps 4 \
-    --fp16 \
-    --dataloader_num_workers 4 \
-    --use_contrastive_loss \
-    --contrastive_weight 0.1 \
-    --enhanced_loss \
-    --disable_evaluation
+# Evaluate on same training data
+python eval_blip3o_patch_similarity.py \
+    --model_path "./checkpoints/overfitting_test" \
+    --same_data_eval \
+    --max_eval_shards 1
 ```
 
 
 
-## 📈 Current Status & Results
+## 📊 Evaluation Metrics
 
-### ✅ Training Status: COMPLETED
-- **Model**: Enhanced BLIP3-o Patch DiT
-- **Training**: 10 epochs, pure training mode
-- **Location**: `./checkpoints/blip3o_patch_pure_13259292_20250723_063221/`
-- **Features**: Convergence optimization, cosine scheduling, enhanced loss
+### Cosine Similarity Analysis
 
-### 🧪 Evaluation Status: READY
-- **Script**: Fixed `eval_blip3o_patch_recall.py`
-- **Baseline**: CLIP ViT-L/14 comparison ready
-- **Metrics**: Recall@1/5/10 evaluation prepared
-- **COCO**: Ready for 1000-sample evaluation
+```mermaid
+graph LR
+    A[Generated Patches<br/>[B, 257, 1024]] --> B[Per-Patch Similarity<br/>[B, 257]]
+    C[Target Patches<br/>[B, 257, 1024]] --> B
+    
+    B --> D[Per-Image Average<br/>[B]]
+    D --> E[Global Average<br/>Scalar]
+    
+    B --> F[Quality Thresholds<br/>>0.7, >0.8, >0.9]
+    D --> G[Distribution Analysis<br/>Mean, Std, Percentiles]
+    E --> H[Final Performance<br/>Score]
+    
+    style B fill:#e8f5e8
+    style E fill:#ffe8e8
+    style H fill:#e8e8ff
+```
 
-### 📊 Next Steps
+### Evaluation Outputs
 
-1. **Run Evaluation**: `sbatch eval_blip3o_enhanced.job`
-2. **Analyze Results**: Compare with CLIP baseline
-3. **Fine-tune**: If needed, adjust hyperparameters
-4. **Deploy**: Use for downstream tasks
-
-## 🚀 Getting Started Checklist
-
-- [ ] 1. **Environment Setup** (`conda activate eva_clip_env`)
-- [ ] 2. **Extract Embeddings** (`python src/modules/extract_embeddings_g.py`)
-- [x] 3. **Train Enhanced Model** ✅ **COMPLETED**
-- [ ] 4. **Run Evaluation** (`sbatch eval_blip3o_enhanced.job`)
-- [ ] 5. **Analyze Performance** (Compare with CLIP baseline)
-- [ ] 6. **Fine-tune** (Optional, based on results)
-
-## 📚 Paper Alignment (Enhanced)
-
-This implementation **exceeds** the BLIP3-o paper methodology with enhancements:
-
-### ✅ Core Architecture (Paper-Aligned)
-- **CLIP Feature Diffusion**: ✅ Direct patch-level supervision
-- **Flow Matching**: ✅ Rectified flow with velocity prediction  
-- **EVA-CLIP Conditioning**: ✅ 4096-dim cross-attention
-- **256-Token Patches**: ✅ 16×16 spatial grids
+1. **Per-Patch Analysis**: Individual cosine similarity for each patch
+2. **Per-Image Analysis**: Average similarity per image with statistics
+3. **Global Analysis**: Overall performance metrics and quality assessment
+4. **Visualization**: Distribution plots, heatmaps, and quality analysis
+5. **JSON Reports**: Detailed numerical results for further analysis
 
 
 
 
-<div align="center">
 
-**🚀 Enhanced BLIP3-o Training Complete - Ready for Evaluation!**
 
-[Quick Start](#-quick-start) • [View Training Results](#-current-status--results) • [Run Evaluation](#-evaluate-trained-model) • [Report Issues](../../issues)
 
-</div>
+
+## 🚀 SLURM Training (Snellius)
+
+### Quick Training
+```bash
+# Submit enhanced training job
+sbatch job_scripts/train_blip3o_enhanced.job
+```
+
+### Quick Evaluation
+```bash
+# Submit evaluation job (update paths in script)
+sbatch job_scripts/eval_blip3o_similarity.job
+```
+
+
+
+### Example 1: Pipeline Validation
+```bash
+# 1. Extract embeddings with CLS+patch
+python src/modules/extract_embeddings_g.py --include_cls --max_shards 1
+
+# 2. Train on single shard
+python train_blip3o_enhanced.py \
+    --training_mode "cls_patch" \
+    --max_training_shards 1 \
+    --overfitting_test
+
+# 3. Evaluate same data
+python eval_blip3o_patch_similarity.py \
+    --model_path "./checkpoints/latest" \
+    --same_data_eval \
+    --max_eval_shards 1
+```
+
+
+
+
+
+
+
+```bash
+# Test gradient flow
+python train_blip3o_enhanced.py --test_gradient_flow
+
+# Verify embeddings
+python -c "
+import json
+with open('./embeddings/embeddings_manifest.json') as f:
+    print(json.load(f))
+"
+
+# Check model architecture
+python -c "
+from src.modules.models.blip3o_patch_dit import create_blip3o_patch_dit_model
+model = create_blip3o_patch_dit_model()
+print(f'Parameters: {model.get_num_parameters():,}')
+"
+```
+
+
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+
+
+## 🔗 Related Work
+
+- [BLIP3-o Paper](https://arxiv.org/abs/your-paper-id)
+- [EVA-CLIP](https://github.com/baaivision/EVA/tree/master/EVA-CLIP)
+- [CLIP](https://github.com/openai/CLIP)
+- [Flow Matching](https://arxiv.org/abs/2210.02747)
 
 ---
 
-## 📊 Recent Updates
+<div align="center">
 
-### v1.0 - Initial Implementation
-- ✅ **Paper-Aligned Architecture**: BLIP3-o DiT implementation
-- ✅ **256-Token Patches**: Direct patch-level supervision
-- ✅ **Flow Matching**: Velocity prediction objective
-- ✅ **Multi-GPU Support**: Distributed training pipeline
+**🚀 Enhanced BLIP3-o: Comprehensive Patch-Level Training with Flexible Token Support**
+
+[Quick Start](#-quick-start) • [Training](#-training-options) • [Evaluation](#-evaluation-and-analysis) • [Results](#-performance-benchmarks)
+
+</div>

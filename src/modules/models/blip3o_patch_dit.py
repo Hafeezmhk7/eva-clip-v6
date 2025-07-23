@@ -157,7 +157,7 @@ class MultiHeadAttention(nn.Module):
         
         # Scaled dot-product attention
         scores = torch.matmul(q, k.transpose(-2, -1)) * self.scale
-        attn_weights = F.softmax(scores, dim=-1)
+        attn_weights = torch.nn.functional.softmax(scores, dim=-1)
         attn_weights = self.dropout(attn_weights)
         
         attn_output = torch.matmul(attn_weights, v)

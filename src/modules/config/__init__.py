@@ -1,6 +1,6 @@
 """
 Configuration module for BLIP3-o DiT - Patch-Level Training (Paper-Aligned)
-
+src/modules/config/__init__.py
 Contains configuration classes for:
 - Model architecture (BLIP3oDiTConfig)
 - Flow matching loss (FlowMatchingConfig)  

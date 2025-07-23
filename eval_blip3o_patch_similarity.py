@@ -1,643 +1,402 @@
 #!/usr/bin/env python3
 """
-Simplified BLIP3-o Patch-Level Cosine Similarity Evaluation Script
+BLIP3-o Patch-Level Cosine Similarity Evaluation Script
 eval_blip3o_patch_similarity.py
 
-Evaluates ONLY cosine similarity between predicted DiT patches and ground truth CLIP patches:
-1. 256 patch-level cosine similarities per image
-2. Average cosine similarity per image  
-3. Global average cosine similarity across all patches
-
-SIMPLIFIED - COSINE SIMILARITY ONLY
+Features:
+1. Comprehensive patch-level cosine similarity evaluation
+2. Support for both CLS+patch (257) and patch-only (256) modes
+3. Per-patch, per-image, and global cosine similarity analysis
+4. JSON reporting and visualization plots
+5. Same-data evaluation for overfitting verification
 """
 
 import os
 import sys
+import argparse
 import torch
-import torch.nn.functional as F
-from transformers import CLIPProcessor, CLIPModel, AutoModel, CLIPImageProcessor
-from PIL import Image
 import numpy as np
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union
-import logging
-from tqdm import tqdm
 import json
-import argparse
-import time
+import logging
+from datetime import datetime
+import traceback
 
-# Setup logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Add src to path
+sys.path.insert(0, str(Path(__file__).parent / "src"))
 
-# Add project root to path
-script_dir = Path(__file__).parent
-sys.path.insert(0, str(script_dir / "src"))
-
-def setup_paths():
-    """Setup import paths with enhanced error handling"""
-    try:
-        from src.modules.config.blip3o_config import BLIP3oDiTConfig
-        from src.modules.models.blip3o_patch_dit import BLIP3oPatchDiTModel, create_blip3o_patch_dit_model
-        logger.info("✅ BLIP3-o modules imported successfully")
-        return True
-    except ImportError as e:
-        logger.error(f"❌ Import error: {e}")
-        logger.error("💡 Make sure src/modules are properly set up")
-        return False
-
-class BLIP3oPatchSimilarityEvaluator:
-    """
-    Simplified evaluator for patch-level cosine similarity between DiT predictions and CLIP ground truth
-    COSINE SIMILARITY ONLY
-    """
-    
-    def __init__(self, device="auto"):
-        self.device = self._setup_device(device)
-        self.clip_processor = None
-        self.clip_model = None
-        self.eva_processor = None
-        self.eva_model = None
-        self.blip3o_model = None
-        self.model_info = {}
-        
-        logger.info("BLIP3-o patch similarity evaluator initialized (cosine similarity only)")
-    
-    def _setup_device(self, device_arg):
-        if device_arg == "auto":
-            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-            if torch.cuda.is_available():
-                logger.info(f"Using GPU: {torch.cuda.get_device_name()}")
-                logger.info(f"GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")
-            else:
-                logger.info("Using CPU")
-        else:
-            device = torch.device(device_arg)
-        return device
-    
-    def load_models(self):
-        """Load CLIP, EVA-CLIP, and BLIP3-o models"""
-        logger.info("Loading foundation models...")
-        
-        # Load CLIP ViT-L/14
-        logger.info("   Loading CLIP ViT-L/14...")
-        try:
-            self.clip_processor = CLIPProcessor.from_pretrained("openai/clip-vit-large-patch14")
-            self.clip_model = CLIPModel.from_pretrained("openai/clip-vit-large-patch14").to(self.device)
-            self.clip_model.eval()
-            logger.info("✅ CLIP model loaded successfully")
-        except Exception as e:
-            logger.error(f"❌ Failed to load CLIP model: {e}")
-            raise
-        
-        # Load EVA-CLIP-8B
-        logger.info("   Loading EVA-CLIP-8B...")
-        try:
-            self.eva_model = AutoModel.from_pretrained(
-                "BAAI/EVA-CLIP-8B", 
-                trust_remote_code=True
-            ).to(self.device)
-            self.eva_processor = CLIPImageProcessor.from_pretrained("openai/clip-vit-large-patch14")
-            self.eva_model.eval()
-            logger.info("✅ EVA-CLIP model loaded successfully")
-        except Exception as e:
-            logger.error(f"❌ Failed to load EVA-CLIP model: {e}")
-            raise
-        
-        logger.info("✅ All foundation models loaded successfully")
-    
-    def load_blip3o_model(self, model_path):
-        """Load the trained BLIP3-o patch-level model"""
-        logger.info(f"Loading BLIP3-o patch model from: {model_path}")
-        
-        model_path = Path(model_path)
-        
-        # Load config
-        config_files = [
-            model_path / "enhanced_training_config.json",
-            model_path / "config.json",
-            model_path / "blip3o_model_config.json"
+def setup_logging():
+    """Setup logging for evaluation"""
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.StreamHandler(sys.stdout),
         ]
-        
-        config_file = None
-        config_dict = None
-        
-        for cf in config_files:
-            if cf.exists():
-                config_file = cf
-                with open(config_file, 'r') as f:
-                    full_config = json.load(f)
-                
-                if cf.name == "enhanced_training_config.json":
-                    config_dict = full_config.get('model_config', {})
-                    self.model_info = {
-                        'enhanced': True,
-                        'training_mode': full_config.get('training_strategy', {}).get('mode', 'unknown'),
-                        'enhanced_features': full_config.get('enhanced_hyperparameters', {}),
-                        'architecture': full_config.get('architecture', 'unknown'),
-                    }
-                    logger.info("✅ Enhanced training config detected")
-                else:
-                    config_dict = full_config
-                    self.model_info = {'enhanced': False}
-                
-                break
-        
-        if not config_file:
-            raise FileNotFoundError(f"No config file found in {model_path}")
-        
-        logger.info(f"Using config: {config_file.name}")
-        
-        # Create model config
-        from src.modules.config.blip3o_config import BLIP3oDiTConfig
-        
-        try:
-            config = BLIP3oDiTConfig(**config_dict)
-        except Exception as e:
-            logger.warning(f"Direct config creation failed: {e}")
-            # Try with common defaults
-            config_dict.update({
-                'hidden_size': config_dict.get('hidden_size', 768),
-                'num_hidden_layers': config_dict.get('num_hidden_layers', 12),
-                'num_attention_heads': config_dict.get('num_attention_heads', 12),
-                'intermediate_size': config_dict.get('intermediate_size', 3072),
-            })
-            config = BLIP3oDiTConfig(**config_dict)
-        
-        # Create model
-        from src.modules.models.blip3o_patch_dit import create_blip3o_patch_dit_model
-        self.blip3o_model = create_blip3o_patch_dit_model(config)
-        
-        # Load weights
-        weight_files = [
-            model_path / "pytorch_model.bin",
-            model_path / "model.safetensors",
-            model_path / "pytorch_model.safetensors"
-        ]
-        
-        weight_file = None
-        for wf in weight_files:
-            if wf.exists():
-                weight_file = wf
-                break
-        
-        if not weight_file:
-            raise FileNotFoundError(f"No weight file found in {model_path}")
-        
-        logger.info(f"Loading weights from: {weight_file}")
-        
-        if weight_file.suffix == ".bin":
-            state_dict = torch.load(weight_file, map_location=self.device)
-        else:
-            try:
-                from safetensors.torch import load_file
-                state_dict = load_file(str(weight_file))
-            except ImportError:
-                logger.error("SafeTensors not installed, cannot load .safetensors file")
-                raise
-        
-        # Clean up state dict if needed
-        if any(key.startswith('module.') for key in state_dict.keys()):
-            state_dict = {key.replace('module.', ''): value for key, value in state_dict.items()}
-            logger.info("Removed DDP prefix from state dict")
-        
-        # Load state dict
-        missing_keys, unexpected_keys = self.blip3o_model.load_state_dict(state_dict, strict=False)
-        
-        if missing_keys:
-            logger.warning(f"Missing keys: {len(missing_keys)}")
-        if unexpected_keys:
-            logger.warning(f"Unexpected keys: {len(unexpected_keys)}")
-        
-        self.blip3o_model = self.blip3o_model.to(self.device)
-        self.blip3o_model.eval()
-        
-        # Log model info
-        param_count = sum(p.numel() for p in self.blip3o_model.parameters())
-        logger.info(f"✅ BLIP3-o model loaded successfully")
-        logger.info(f"   Parameters: {param_count:,}")
-        logger.info(f"   Enhanced: {self.model_info.get('enhanced', False)}")
-    
-    def extract_clip_patch_embeddings(self, images):
-        """Extract CLIP patch embeddings (256 patches, 1024-dim each) from IMAGES ONLY"""
-        logger.info(f"Extracting CLIP patch embeddings for {len(images)} images...")
-        
-        patch_embeddings = []
-        batch_size = 8
-        
-        with torch.no_grad():
-            for i in range(0, len(images), batch_size):
-                batch_images = images[i:i+batch_size]
-                
-                inputs = self.clip_processor(images=batch_images, return_tensors="pt")
-                inputs = {k: v.to(self.device) for k, v in inputs.items()}
-                
-                # Get vision model outputs with hidden states
-                vision_outputs = self.clip_model.vision_model(
-                    pixel_values=inputs['pixel_values'],
-                    output_hidden_states=True,
-                    return_dict=True
-                )
-                
-                # Get patch embeddings (remove CLS token)
-                patches = vision_outputs.last_hidden_state[:, 1:, :]  # [B, 256, 1024]
-                
-                # Validate dimensions
-                assert patches.shape[1] == 256, f"Expected 256 patches, got {patches.shape[1]}"
-                assert patches.shape[2] == 1024, f"Expected 1024-dim patches, got {patches.shape[2]}"
-                
-                patch_embeddings.append(patches.cpu())
-        
-        result = torch.cat(patch_embeddings, dim=0)
-        logger.info(f"CLIP patch embeddings shape: {result.shape}")
-        return result
-    
-    def extract_eva_embeddings(self, images):
-        """Extract EVA-CLIP embeddings for conditioning from IMAGES ONLY"""
-        logger.info(f"Extracting EVA-CLIP embeddings for {len(images)} images...")
-        
-        eva_embeddings = []
-        batch_size = 4
-        
-        with torch.no_grad():
-            for i in range(0, len(images), batch_size):
-                batch_images = images[i:i+batch_size]
-                
-                inputs = self.eva_processor(images=batch_images, return_tensors="pt")
-                pixel_values = inputs['pixel_values'].to(self.device)
-                
-                vision_outputs = self.eva_model.vision_model(
-                    pixel_values=pixel_values,
-                    output_hidden_states=True,
-                    return_dict=True
-                )
-                
-                # Get patch embeddings (remove CLS token)
-                patch_embeddings = vision_outputs.last_hidden_state[:, 1:, :]  # [B, 256, 4096]
-                eva_embeddings.append(patch_embeddings.cpu())
-        
-        return torch.cat(eva_embeddings, dim=0)
-    
-    def generate_blip3o_patches(self, eva_embeddings, num_inference_steps=50):
-        """Generate BLIP3-o patch embeddings"""
-        logger.info(f"Generating BLIP3-o patches for {eva_embeddings.shape[0]} images...")
-        
-        eva_embeddings = eva_embeddings.to(self.device)
-        generated_patches = []
-        batch_size = 2
-        
-        with torch.no_grad():
-            for i in range(0, eva_embeddings.shape[0], batch_size):
-                end_idx = min(i + batch_size, eva_embeddings.shape[0])
-                batch_eva = eva_embeddings[i:end_idx]
-                
-                try:
-                    # Generate CLIP patch embeddings
-                    generated = self.blip3o_model.generate(
-                        eva_features=batch_eva,
-                        num_inference_steps=num_inference_steps,
-                    )  # [B, 256, 1024]
-                    
-                    generated_patches.append(generated.cpu())
-                    
-                except Exception as e:
-                    logger.error(f"Error generating patches for batch {i//batch_size}: {e}")
-                    # Add zero patches for failed batch
-                    batch_size_actual = batch_eva.shape[0]
-                    zero_patches = torch.zeros(batch_size_actual, 256, 1024)
-                    generated_patches.append(zero_patches)
-        
-        result = torch.cat(generated_patches, dim=0)
-        logger.info(f"Generated patches shape: {result.shape}")
-        return result
-    
-    def compute_patch_cosine_similarity(self, predicted_patches, target_patches, normalize_embeddings=True):
-        """
-        Compute ONLY cosine similarity between patches
-        
-        Args:
-            predicted_patches: [N, 256, 1024] - Generated patches
-            target_patches: [N, 256, 1024] - Ground truth CLIP patches
-            normalize_embeddings: Whether to normalize embeddings to unit norm
-            
-        Returns:
-            Dict with cosine similarity metrics
-        """
-        logger.info(f"Computing COSINE SIMILARITY ONLY...")
-        logger.info(f"Predicted patches shape: {predicted_patches.shape}")
-        logger.info(f"Target patches shape: {target_patches.shape}")
-        logger.info(f"Normalization: {'ON' if normalize_embeddings else 'OFF'}")
-        
-        # Convert to torch tensors if they're numpy arrays
-        if isinstance(predicted_patches, np.ndarray):
-            predicted_patches = torch.from_numpy(predicted_patches)
-        if isinstance(target_patches, np.ndarray):
-            target_patches = torch.from_numpy(target_patches)
-        
-        # Cosine similarity - always normalize for this metric
-        pred_norm = F.normalize(predicted_patches, p=2, dim=-1)  # [N, 256, 1024]
-        target_norm = F.normalize(target_patches, p=2, dim=-1)   # [N, 256, 1024]
-        
-        # Element-wise cosine similarity for each patch
-        patch_similarities = torch.sum(pred_norm * target_norm, dim=-1)  # [N, 256]
-        
-        # Per-image average similarity
-        per_image_avg_similarity = torch.mean(patch_similarities, dim=1)  # [N]
-        
-        # Overall statistics (global average)
-        all_patch_similarities = patch_similarities.flatten()
-        global_avg_similarity = torch.mean(all_patch_similarities)
-        
-        results = {
-            # Core similarity metrics (what you requested)
-            'patch_similarities': patch_similarities.numpy(),  # [N, 256] - Individual patch similarities
-            'per_image_avg_similarity': per_image_avg_similarity.numpy(),  # [N] - Average per image
-            'global_avg_similarity': float(global_avg_similarity),  # Single value - Average of ALL patches
-            
-            # Basic statistics
-            'overall_mean_similarity': float(torch.mean(all_patch_similarities)),
-            'overall_std_similarity': float(torch.std(all_patch_similarities)),
-            'overall_min_similarity': float(torch.min(all_patch_similarities)),
-            'overall_max_similarity': float(torch.max(all_patch_similarities)),
-            'overall_median_similarity': float(torch.median(all_patch_similarities)),
-            
-            # Per-image statistics
-            'per_image_mean': float(torch.mean(per_image_avg_similarity)),
-            'per_image_std': float(torch.std(per_image_avg_similarity)),
-            'per_image_min': float(torch.min(per_image_avg_similarity)),
-            'per_image_max': float(torch.max(per_image_avg_similarity)),
-            'per_image_median': float(torch.median(per_image_avg_similarity)),
-            
-            # Dataset info
-            'num_images': predicted_patches.shape[0],
-            'num_patches_per_image': 256,
-            'total_patches': predicted_patches.shape[0] * 256,
-            'metric': 'cosine',
-            'normalized': True,  # Always true for cosine similarity
-        }
-        
-        return results
-    
-    def evaluate_on_dataset(
-        self, 
-        images, 
-        captions_per_image, 
-        num_inference_steps=50, 
-        output_dir=None, 
-        save_detailed=True, 
-        normalize_embeddings=True
-    ):
-        """
-        Main evaluation function for patch-level cosine similarity
-        SIMPLIFIED - COSINE SIMILARITY ONLY
-        """
-        logger.info(f"Starting patch-level COSINE SIMILARITY evaluation on {len(images)} images")
-        logger.info(f"Using IMAGES ONLY for similarity computation")
-        
-        # Extract EVA embeddings for conditioning
-        logger.info("Step 1: Extracting EVA-CLIP embeddings...")
-        eva_embeddings = self.extract_eva_embeddings(images)
-        
-        # Extract ground truth CLIP patches
-        logger.info("Step 2: Extracting ground truth CLIP patches...")
-        target_patches = self.extract_clip_patch_embeddings(images)
-        
-        # Generate BLIP3-o patches
-        logger.info("Step 3: Generating BLIP3-o patches...")
-        predicted_patches = self.generate_blip3o_patches(eva_embeddings, num_inference_steps)
-        
-        # Compute COSINE similarity only
-        logger.info("Step 4: Computing COSINE similarities...")
-        similarity_results = self.compute_patch_cosine_similarity(
-            predicted_patches, target_patches, normalize_embeddings
-        )
-        
-        # Add metadata
-        similarity_results.update({
-            'model_info': self.model_info,
-            'evaluation_config': {
-                'num_inference_steps': num_inference_steps,
-                'num_images': len(images),
-                'captions_provided': len([cap for caps in captions_per_image for cap in caps]),
-                'normalize_embeddings': normalize_embeddings,
-                'similarity_metric': 'cosine_only',
-                'uses_images_only': True,
-            },
-            'timestamp': time.time(),
-        })
-        
-        # Save detailed results
-        if output_dir and save_detailed:
-            output_path = Path(output_dir)
-            output_path.mkdir(parents=True, exist_ok=True)
-            
-            # Save main results
-            with open(output_path / 'patch_similarity_results.json', 'w') as f:
-                # Convert numpy arrays to lists for JSON serialization
-                json_results = similarity_results.copy()
-                json_results['patch_similarities'] = similarity_results['patch_similarities'].tolist()
-                json_results['per_image_avg_similarity'] = similarity_results['per_image_avg_similarity'].tolist()
-                json.dump(json_results, f, indent=2)
-            
-            # Save detailed per-image results
-            per_image_details = []
-            for i, (patches_sim, avg_sim) in enumerate(zip(
-                similarity_results['patch_similarities'], 
-                similarity_results['per_image_avg_similarity']
-            )):
-                per_image_details.append({
-                    'image_id': i,
-                    'metric': 'cosine',
-                    'average_similarity': float(avg_sim),
-                    'patch_similarities': patches_sim.tolist(),
-                    'max_patch_similarity': float(np.max(patches_sim)),
-                    'min_patch_similarity': float(np.min(patches_sim)),
-                    'std_patch_similarity': float(np.std(patches_sim)),
-                    'captions': captions_per_image[i] if i < len(captions_per_image) else [],
-                })
-            
-            with open(output_path / f'per_image_details_cosine.json', 'w') as f:
-                json.dump(per_image_details, f, indent=2)
-            
-            logger.info(f"Detailed results saved to: {output_path}")
-        
-        return similarity_results
+    )
+    return logging.getLogger(__name__)
 
-def load_coco_samples(coco_root, num_samples=1000):
-    """Load COCO validation samples"""
-    logger.info(f"Loading {num_samples} COCO samples...")
+def parse_arguments():
+    """Parse command line arguments"""
+    parser = argparse.ArgumentParser(
+        description="BLIP3-o Patch-Level Cosine Similarity Evaluation",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+    )
     
-    coco_root = Path(coco_root)
-    annotations_file = coco_root / "annotations" / "captions_val2017.json"
-    images_dir = coco_root / "images" / "val2017"
+    # Model and data paths
+    parser.add_argument("--model_path", type=str, required=True,
+                       help="Path to trained BLIP3-o model")
+    parser.add_argument("--chunked_embeddings_dir", type=str, required=True,
+                       help="Path to chunked embeddings directory")
+    parser.add_argument("--output_dir", type=str, required=True,
+                       help="Output directory for evaluation results")
     
-    if not annotations_file.exists():
-        raise FileNotFoundError(f"Annotations not found: {annotations_file}")
-    if not images_dir.exists():
-        raise FileNotFoundError(f"Images directory not found: {images_dir}")
+    # Evaluation configuration
+    parser.add_argument("--num_samples", type=int, default=1000,
+                       help="Number of samples to evaluate")
+    parser.add_argument("--batch_size", type=int, default=8,
+                       help="Evaluation batch size")
+    parser.add_argument("--num_inference_steps", type=int, default=50,
+                       help="Number of inference steps for generation")
+    parser.add_argument("--training_mode", type=str, default="auto",
+                       choices=["auto", "cls_patch", "patch_only"],
+                       help="Training mode (auto-detect from model if 'auto')")
     
-    with open(annotations_file, 'r') as f:
-        coco_data = json.load(f)
+    # Evaluation options
+    parser.add_argument("--same_data_eval", action="store_true", default=True,
+                       help="Use same training data for evaluation (overfitting test)")
+    parser.add_argument("--max_eval_shards", type=int, default=1,
+                       help="Maximum number of shards to use for evaluation")
+    parser.add_argument("--normalize_embeddings", action="store_true", default=True,
+                       help="Normalize embeddings before computing similarity")
     
-    # Create mappings
-    images_info = {img['id']: img for img in coco_data['images']}
-    image_captions = {}
+    # Output options
+    parser.add_argument("--save_plots", action="store_true", default=True,
+                       help="Save visualization plots")
+    parser.add_argument("--save_detailed_results", action="store_true", default=True,
+                       help="Save detailed per-image results")
     
-    for ann in coco_data['annotations']:
-        image_id = ann['image_id']
-        if image_id not in image_captions:
-            image_captions[image_id] = []
-        image_captions[image_id].append(ann['caption'])
+    # Hardware configuration
+    parser.add_argument("--device", type=str, default="auto",
+                       help="Device to use (auto, cpu, cuda)")
+    parser.add_argument("--torch_dtype", type=str, default="float32",
+                       choices=["float32", "float16"],
+                       help="Torch data type")
     
-    # Load samples
-    images = []
-    captions_per_image = []
-    image_ids = []
+    return parser.parse_args()
+
+def load_model_and_determine_mode(model_path, device, torch_dtype, training_mode, logger):
+    """Load model and determine training mode"""
+    from src.modules.models.blip3o_patch_dit import create_blip3o_patch_dit_model, BLIP3oDiTConfig
+    from src.modules.losses.blip3o_flow_matching_loss import create_blip3o_flow_matching_loss
     
-    loaded_count = 0
-    failed_count = 0
+    model_path = Path(model_path)
+    logger.info(f"📦 Loading model from: {model_path}")
     
-    for image_id, captions in image_captions.items():
-        if loaded_count >= num_samples:
+    # Load model configuration
+    config_files = [
+        model_path / "config.json",
+        model_path / "blip3o_model_config.json",
+        model_path / "enhanced_training_config.json"
+    ]
+    
+    config_data = None
+    for config_file in config_files:
+        if config_file.exists():
+            with open(config_file, 'r') as f:
+                config_data = json.load(f)
+            logger.info(f"✅ Loaded config from: {config_file}")
             break
-        
-        if image_id not in images_info:
-            continue
-        
-        image_info = images_info[image_id]
-        image_path = images_dir / image_info['file_name']
-        
-        if not image_path.exists():
-            failed_count += 1
-            continue
-        
-        try:
-            image = Image.open(image_path).convert('RGB')
-            images.append(image)
-            captions_per_image.append(captions[:5])  # Max 5 captions
-            image_ids.append(image_id)
-            loaded_count += 1
-            
-            if loaded_count % 100 == 0:
-                logger.info(f"Loaded {loaded_count}/{num_samples} images...")
-                
-        except Exception as e:
-            logger.warning(f"Error loading {image_path}: {e}")
-            failed_count += 1
-            continue
     
-    logger.info(f"Successfully loaded {len(images)} images")
-    if failed_count > 0:
-        logger.warning(f"Failed to load {failed_count} images")
+    if config_data is None:
+        raise FileNotFoundError(f"No config file found in {model_path}")
     
-    return images, captions_per_image, image_ids
+    # Create model config
+    config = BLIP3oDiTConfig(**config_data)
+    
+    # Determine training mode
+    if training_mode == "auto":
+        if hasattr(config, 'training_mode'):
+            training_mode = config.training_mode
+        elif hasattr(config, 'num_tokens'):
+            training_mode = "cls_patch" if config.num_tokens == 257 else "patch_only"
+        else:
+            training_mode = "cls_patch"  # Default
+        logger.info(f"🎯 Auto-detected training mode: {training_mode}")
+    
+    # Create model
+    model = create_blip3o_patch_dit_model(config=config)
+    
+    # Load weights
+    weight_files = [
+        model_path / "pytorch_model.bin",
+        model_path / "model.safetensors", 
+        model_path / "pytorch_model.safetensors"
+    ]
+    
+    weight_file = None
+    for wf in weight_files:
+        if wf.exists():
+            weight_file = wf
+            break
+    
+    if weight_file is None:
+        raise FileNotFoundError(f"No model weights found in {model_path}")
+    
+    logger.info(f"💾 Loading weights from: {weight_file}")
+    
+    # Load state dict
+    if weight_file.suffix == ".bin":
+        state_dict = torch.load(weight_file, map_location='cpu')
+    else:
+        from safetensors.torch import load_file
+        state_dict = load_file(str(weight_file))
+    
+    # Load weights into model
+    missing_keys, unexpected_keys = model.load_state_dict(state_dict, strict=False)
+    
+    if missing_keys:
+        logger.warning(f"Missing keys: {len(missing_keys)} keys")
+    if unexpected_keys:
+        logger.warning(f"Unexpected keys: {len(unexpected_keys)} keys")
+    
+    # Move to device and set dtype
+    dtype = torch.float16 if torch_dtype == "float16" else torch.float32
+    model = model.to(device=device, dtype=dtype)
+    model.eval()
+    
+    logger.info(f"✅ Model loaded successfully")
+    logger.info(f"   Training mode: {training_mode}")
+    logger.info(f"   Expected tokens: {config.num_tokens if hasattr(config, 'num_tokens') else '257 or 256'}")
+    logger.info(f"   Device: {device}")
+    logger.info(f"   Dtype: {dtype}")
+    
+    return model, config, training_mode
+
+def create_evaluation_dataloader(embeddings_dir, training_mode, max_shards, batch_size, logger):
+    """Create dataloader for evaluation"""
+    from src.modules.datasets.blip3o_dataset import create_flexible_dataloaders
+    
+    logger.info(f"📊 Creating evaluation dataloader")
+    logger.info(f"   Training mode: {training_mode}")
+    logger.info(f"   Max shards: {max_shards}")
+    logger.info(f"   Batch size: {batch_size}")
+    
+    # Create dataloaders
+    train_dataloader, eval_dataloader = create_flexible_dataloaders(
+        chunked_embeddings_dir=embeddings_dir,
+        batch_size=batch_size,
+        eval_batch_size=batch_size,
+        eval_split_ratio=0.0,  # Use all data for evaluation
+        normalize_embeddings=False,  # We'll handle normalization in evaluation
+        training_mode=training_mode,
+        max_shards=max_shards,
+        use_same_data_for_eval=True,  # Use same data
+        delete_after_use=False,
+        num_workers=0,  # Avoid multiprocessing issues
+        pin_memory=torch.cuda.is_available(),
+    )
+    
+    # Use train_dataloader for same-data evaluation
+    eval_dataloader = train_dataloader
+    
+    logger.info(f"✅ Evaluation dataloader created")
+    
+    return eval_dataloader
+
+def run_comprehensive_evaluation(model, dataloader, training_mode, args, logger):
+    """Run comprehensive patch-level cosine similarity evaluation"""
+    from src.modules.evaluation.blip3o_detailed_evaluator import create_detailed_evaluator
+    
+    logger.info("🔍 Starting comprehensive evaluation...")
+    
+    # Create detailed evaluator
+    evaluator = create_detailed_evaluator(
+        model=model,
+        training_mode=training_mode,
+        device=args.device,
+        num_inference_steps=args.num_inference_steps,
+        normalize_embeddings=args.normalize_embeddings,
+    )
+    
+    # Run detailed evaluation
+    results = evaluator.evaluate_detailed_cosine_similarity(
+        dataloader=dataloader,
+        max_batches=args.num_samples // args.batch_size,
+        save_dir=args.output_dir,
+        save_plots=args.save_plots,
+        plot_distribution=True,
+        plot_per_image=True,
+        plot_heatmap=True,
+        same_data_eval=args.same_data_eval,
+    )
+    
+    return results
 
 def main():
     """Main evaluation function"""
-    parser = argparse.ArgumentParser(description="Evaluate BLIP3-o Patch-Level Cosine Similarity (COSINE ONLY)")
-    parser.add_argument("--coco_root", type=str, required=True, help="COCO dataset root")
-    parser.add_argument("--model_path", type=str, required=True, help="BLIP3-o model path")
-    parser.add_argument("--num_samples", type=int, default=1000, help="Number of samples to evaluate")
-    parser.add_argument("--device", type=str, default="auto", help="Device (auto/cuda/cpu)")
-    parser.add_argument("--num_inference_steps", type=int, default=50, help="Number of inference steps")
-    parser.add_argument("--output_dir", type=str, default="./patch_similarity_results", 
-                       help="Output directory for results")
+    # Parse arguments
+    args = parse_arguments()
     
-    args = parser.parse_args()
+    # Setup logging
+    logger = setup_logging()
     
-    logger.info("🚀 Starting BLIP3-o Patch-Level Cosine Similarity Evaluation (COSINE ONLY)")
-    logger.info("=" * 70)
+    logger.info("🔍 BLIP3-o Patch-Level Cosine Similarity Evaluation")
+    logger.info("=" * 60)
+    logger.info("🎯 FEATURES:")
+    logger.info(f"  ✅ Model path: {args.model_path}")
+    logger.info(f"  ✅ Training mode: {args.training_mode}")
+    logger.info(f"  ✅ Same-data evaluation: {args.same_data_eval}")
+    logger.info(f"  ✅ Max eval shards: {args.max_eval_shards}")
+    logger.info(f"  ✅ Number of samples: {args.num_samples}")
+    logger.info(f"  ✅ Patch-level cosine similarity analysis")
+    logger.info(f"  ✅ Comprehensive visualization and JSON reporting")
+    logger.info("=" * 60)
     
-    # Setup imports
-    if not setup_paths():
-        return 1
-    
-    # Initialize evaluator
     try:
-        evaluator = BLIP3oPatchSimilarityEvaluator(device=args.device)
-    except Exception as e:
-        logger.error(f"Failed to initialize evaluator: {e}")
-        return 1
-    
-    # Load models
-    try:
-        logger.info("Loading models...")
-        evaluator.load_models()
-        evaluator.load_blip3o_model(args.model_path)
-    except Exception as e:
-        logger.error(f"Failed to load models: {e}")
-        return 1
-    
-    # Load COCO samples
-    try:
-        images, captions_per_image, image_ids = load_coco_samples(args.coco_root, args.num_samples)
-    except Exception as e:
-        logger.error(f"Failed to load COCO samples: {e}")
-        return 1
-    
-    # Run evaluation
-    try:
-        results = evaluator.evaluate_on_dataset(
-            images=images,
-            captions_per_image=captions_per_image,
-            num_inference_steps=args.num_inference_steps,
-            output_dir=args.output_dir,
-            save_detailed=True,
-            normalize_embeddings=True
+        # 1. Setup device
+        if args.device == "auto":
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        else:
+            device = torch.device(args.device)
+        
+        logger.info(f"🎮 Using device: {device}")
+        if torch.cuda.is_available():
+            logger.info(f"   GPU: {torch.cuda.get_device_name()}")
+        
+        # 2. Create output directory
+        output_dir = Path(args.output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        logger.info(f"📁 Output directory: {output_dir}")
+        
+        # 3. Load model and determine mode
+        model, config, training_mode = load_model_and_determine_mode(
+            args.model_path, device, args.torch_dtype, args.training_mode, logger
         )
         
-        # Print summary results
-        print(f"\n{'='*70}")
-        print("🎯 BLIP3-O PATCH-LEVEL COSINE SIMILARITY RESULTS (COSINE ONLY)")
-        print(f"{'='*70}")
+        # 4. Create evaluation dataloader
+        eval_dataloader = create_evaluation_dataloader(
+            args.chunked_embeddings_dir, training_mode, args.max_eval_shards, 
+            args.batch_size, logger
+        )
         
-        print(f"📊 Dataset Information:")
-        print(f"   Images evaluated: {results['num_images']:,}")
-        print(f"   Total patches: {results['total_patches']:,}")
-        print(f"   Patches per image: {results['num_patches_per_image']}")
-        print(f"   Uses images only: ✅")
+        # 5. Run comprehensive evaluation
+        logger.info("🚀 Starting evaluation...")
+        start_time = datetime.now()
         
-        print(f"\n🎯 COSINE SIMILARITY ANALYSIS:")
-        print(f"   Per-patch cosine similarity: {results['overall_mean_similarity']:.4f}")
-        print(f"   Std similarity:              {results['overall_std_similarity']:.4f}")
-        print(f"   Min similarity:              {results['overall_min_similarity']:.4f}")
-        print(f"   Max similarity:              {results['overall_max_similarity']:.4f}")
-        print(f"   Median similarity:           {results['overall_median_similarity']:.4f}")
+        results = run_comprehensive_evaluation(
+            model, eval_dataloader, training_mode, args, logger
+        )
         
-        print(f"\n🖼️  PER-IMAGE AVERAGE SIMILARITY:")
-        print(f"   Mean per-image avg:          {results['per_image_mean']:.4f}")
-        print(f"   Std per-image avg:           {results['per_image_std']:.4f}")
-        print(f"   Min per-image avg:           {results['per_image_min']:.4f}")
-        print(f"   Max per-image avg:           {results['per_image_max']:.4f}")
-        print(f"   Median per-image avg:        {results['per_image_median']:.4f}")
+        end_time = datetime.now()
+        evaluation_duration = (end_time - start_time).total_seconds()
         
-        print(f"\n🌐 GLOBAL AVERAGE COSINE SIMILARITY:")
-        print(f"   Global average (all patches): {results['global_avg_similarity']:.4f}")
-        print(f"   This is the average of ALL {results['total_patches']:,} patch similarities!")
+        # 6. Process and display results
+        logger.info("📊 EVALUATION RESULTS:")
+        logger.info("=" * 40)
         
-        print(f"\n💾 Results saved to: {args.output_dir}")
-        print(f"   📋 Main results: patch_similarity_results.json")
-        print(f"   🖼️  Per-image details: per_image_details_cosine.json")
+        if results:
+            # Key metrics
+            global_stats = results['global_patch_statistics']
+            image_stats = results['per_image_statistics']
+            quality = results['quality_assessment']
+            
+            logger.info(f"🎯 COSINE SIMILARITY ANALYSIS:")
+            logger.info(f"   Global patch mean: {global_stats['mean_cosine_similarity']:.4f}")
+            logger.info(f"   Per-image mean: {image_stats['mean_cosine_similarity']:.4f}")
+            logger.info(f"   Quality level: {quality['quality_level']}")
+            logger.info(f"   Quality message: {quality['quality_message']}")
+            
+            # Mode-specific results
+            if 'mode_specific_analysis' in results and results['mode_specific_analysis']:
+                mode_analysis = results['mode_specific_analysis']
+                if 'cls_token_stats' in mode_analysis:
+                    logger.info(f"   CLS token mean: {mode_analysis['cls_token_stats']['mean']:.4f}")
+                if 'patch_only_stats' in mode_analysis:
+                    logger.info(f"   Patch-only mean: {mode_analysis['patch_only_stats']['mean']:.4f}")
+            
+            # Quality thresholds
+            quality_metrics = results['quality_metrics']
+            logger.info(f"   High quality images (>0.7): {quality_metrics['high_quality_images_ratio']*100:.1f}%")
+            logger.info(f"   Very high quality images (>0.8): {quality_metrics['very_high_quality_images_ratio']*100:.1f}%")
+            logger.info(f"   Excellent quality images (>0.9): {quality_metrics['excellent_quality_images_ratio']*100:.1f}%")
+            
+            # Overfitting assessment
+            if args.same_data_eval:
+                overfitting_score = image_stats['mean_cosine_similarity']
+                if overfitting_score > 0.8:
+                    logger.info("🎉 EXCELLENT OVERFITTING: Model successfully learned the training data!")
+                elif overfitting_score > 0.6:
+                    logger.info("✅ GOOD OVERFITTING: Strong performance on training data")
+                elif overfitting_score > 0.4:
+                    logger.info("🔄 MODERATE OVERFITTING: Some learning detected")
+                else:
+                    logger.info("⚠️ LOW OVERFITTING: Model may need more training")
         
-        # Performance assessment
-        overall_quality = results['global_avg_similarity']
-        if overall_quality > 0.8:
-            print(f"\n🎉 EXCELLENT: Very high patch-level cosine similarity!")
-        elif overall_quality > 0.6:
-            print(f"\n✅ GOOD: Strong patch-level cosine similarity")
-        elif overall_quality > 0.4:
-            print(f"\n⚠️  FAIR: Moderate patch-level cosine similarity")
-        else:
-            print(f"\n❌ POOR: Low patch-level cosine similarity - model needs improvement")
+        # 7. Save evaluation summary
+        evaluation_summary = {
+            'evaluation_completed': True,
+            'timestamp': datetime.now().isoformat(),
+            'duration_seconds': evaluation_duration,
+            'model_path': str(args.model_path),
+            'embeddings_dir': args.chunked_embeddings_dir,
+            'training_mode': training_mode,
+            'evaluation_config': {
+                'num_samples': args.num_samples,
+                'batch_size': args.batch_size,
+                'num_inference_steps': args.num_inference_steps,
+                'same_data_eval': args.same_data_eval,
+                'max_eval_shards': args.max_eval_shards,
+                'normalize_embeddings': args.normalize_embeddings,
+            },
+            'results_summary': {
+                'global_mean_similarity': results['global_patch_statistics']['mean_cosine_similarity'] if results else 0,
+                'per_image_mean_similarity': results['per_image_statistics']['mean_cosine_similarity'] if results else 0,
+                'quality_level': results['quality_assessment']['quality_level'] if results else 'unknown',
+                'total_images': results['total_images'] if results else 0,
+                'total_patches': results['total_patches'] if results else 0,
+            },
+            'files_generated': {
+                'detailed_results': 'detailed_evaluation_*.json',
+                'summary_results': 'evaluation_summary_*.json',
+                'plots': 'various plot files if save_plots=True',
+            }
+        }
         
-        print(f"{'='*70}")
+        with open(output_dir / 'patch_similarity_evaluation_summary.json', 'w') as f:
+            json.dump(evaluation_summary, f, indent=2)
+        
+        logger.info("=" * 40)
+        logger.info("✅ EVALUATION COMPLETED SUCCESSFULLY!")
+        logger.info(f"📁 Results saved to: {output_dir}")
+        logger.info(f"⏱️ Evaluation time: {evaluation_duration:.1f} seconds")
+        
+        # 8. Print recommendations
+        if results and 'quality_assessment' in results:
+            recommendations = results['quality_assessment'].get('recommendations', [])
+            if recommendations:
+                logger.info("💡 RECOMMENDATIONS:")
+                for i, rec in enumerate(recommendations, 1):
+                    logger.info(f"   {i}. {rec}")
         
         return 0
         
     except Exception as e:
-        logger.error(f"Evaluation failed: {e}")
-        import traceback
+        logger.error(f"❌ Evaluation failed: {e}")
         traceback.print_exc()
+        
+        # Save error info
+        error_info = {
+            'error': str(e),
+            'traceback': traceback.format_exc(),
+            'evaluation_args': vars(args),
+            'timestamp': datetime.now().isoformat(),
+        }
+        
+        with open('patch_similarity_evaluation_error.json', 'w') as f:
+            json.dump(error_info, f, indent=2)
+        
+        logger.error("💾 Error info saved to patch_similarity_evaluation_error.json")
         return 1
 
 if __name__ == "__main__":

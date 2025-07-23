@@ -1,6 +1,6 @@
 """
 Model modules for BLIP3-o DiT - Patch-Level Training (Paper-Aligned)
-
+src/modules/models/__init__.py
 Contains:
 - BLIP3oPatchDiTModel: Patch-level DiT model (primary)
 - Model creation and loading utilities for 256-token patch training
