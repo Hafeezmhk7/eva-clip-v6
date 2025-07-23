@@ -2,7 +2,7 @@
 An implementation* of BLIP3-o patch-level Diffusion Transformer (DiT) for image-to-text translation using flow matching. This project implements flexible training with support for both **CLS+patch (257 tokens)** and **patch-only (256 tokens)** modes, with detailed cosine similarity evaluation and overfitting verification.
 ## 🏗️ Architecture Overview
 
-```mermaid''''
+```mermaid
 graph TD
     A[Input Images] --> B[EVA-CLIP Encoder]
     A --> C[CLIP ViT Encoder]
@@ -130,19 +130,6 @@ python eval_blip3o_patch_similarity.py \
 | **Spatial Encoding** | 3D RoPE with CLS handling | Standard 3D RoPE |
 
 
-## 🔧 Enhanced Configuration
-
-### Model Sizes
-
-```python
-# Available model configurations
-model_sizes = {
-    "tiny": {"hidden_size": 512, "num_layers": 6, "num_heads": 8},
-    "small": {"hidden_size": 768, "num_layers": 8, "num_heads": 12}, 
-    "base": {"hidden_size": 768, "num_layers": 12, "num_heads": 12},  # ← Recommended
-    "large": {"hidden_size": 1024, "num_layers": 16, "num_heads": 16}
-}
-```
 
 ### Training Configuration
 
@@ -217,34 +204,6 @@ python eval_blip3o_patch_similarity.py \
 
 
 
-
-
-### Evaluation Outputs
-
-1. **Per-Patch Analysis**: Individual cosine similarity for each patch
-2. **Per-Image Analysis**: Average similarity per image with statistics
-3. **Global Analysis**: Overall performance metrics and quality assessment
-4. **Visualization**: Distribution plots, heatmaps, and quality analysis
-5. **JSON Reports**: Detailed numerical results for further analysis
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
@@ -260,10 +219,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-<div align="center">
 
-**🚀 Enhanced BLIP3-o: Comprehensive Patch-Level Training with Flexible Token Support**
-
-[Quick Start](#-quick-start) • [Training](#-training-options) • [Evaluation](#-evaluation-and-analysis) • [Results](#-performance-benchmarks)
-
-</div>
