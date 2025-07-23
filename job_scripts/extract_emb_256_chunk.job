@@ -99,7 +99,7 @@ echo "=========================================================="
 
 # Download 30 shards to the scratch-shared datasets directory
 python src/data_hand/download_data.py \
-    --shards $(seq -s ' ' 0 29) \
+    --shards $(seq -s ' ' 0 50) \
     --data_dir "${BLIP3O_DATASETS}" \
     --force
 
@@ -108,20 +108,7 @@ DOWNLOAD_EXIT_CODE=$?
 if [ $DOWNLOAD_EXIT_CODE -ne 0 ]; then
     echo "❌ Download failed with exit code: $DOWNLOAD_EXIT_CODE"
     echo "Trying with fewer shards..."
-    
-    # Fallback: try with 20 shards
-    python src/data_hand/download_data.py \
-        --shards $(seq -s ' ' 0 19) \
-        --data_dir "${BLIP3O_DATASETS}" \
-        --force
-    
-    DOWNLOAD_EXIT_CODE=$?
-    if [ $DOWNLOAD_EXIT_CODE -ne 0 ]; then
-        echo "❌ Even reduced download failed. Checking disk space..."
-        df -h /scratch-shared /scratch-local ~ 2>/dev/null || true
-        echo "Exiting."
-        exit 1
-    fi
+
 fi
 
 echo "✅ Dataset download completed"

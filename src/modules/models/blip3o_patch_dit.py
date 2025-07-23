@@ -10,10 +10,11 @@ import math
 import numpy as np
 import logging
 from transformers import PreTrainedModel
+from transformers import PretrainedConfig
 
 logger = logging.getLogger(__name__)
 
-class BLIP3oDiTConfig:
+class BLIP3oDiTConfig(PretrainedConfig):
     """Configuration class for BLIP3-o DiT model"""
     def __init__(
         self,

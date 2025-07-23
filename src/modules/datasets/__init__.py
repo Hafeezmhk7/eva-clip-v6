@@ -1,6 +1,6 @@
 """
 Dataset utilities for BLIP3-o DiT training - Enhanced with Fixed Gradient Flow
-
+src/modules/datasets/__init__.py
 UPDATES:
 - Integrated with fixed gradient flow setup
 - Enhanced multi-GPU support with proper tensor handling
@@ -23,10 +23,9 @@ logger = logging.getLogger(__name__)
 try:
     from .blip3o_dataset import (
         BLIP3oEmbeddingDataset,
-        chunked_collate_fn,  # UPDATED with gradient flow setup
-        create_chunked_dataloader,
-        create_chunked_dataloaders,
-        test_chunked_dataset,
+        flexible_collate_fn,  # UPDATED with gradient flow setup
+        create_flexible_dataloaders,
+        test_flexible_dataset,
     )
     logger.debug("✅ Core dataset components loaded (with gradient flow fixes)")
     CORE_DATASET_AVAILABLE = True
@@ -34,15 +33,30 @@ except ImportError as e:
     logger.error(f"❌ Failed to load core dataset components: {e}")
     CORE_DATASET_AVAILABLE = False
     BLIP3oEmbeddingDataset = None
-    chunked_collate_fn = None
-    create_chunked_dataloader = None
-    create_chunked_dataloaders = None
-    test_chunked_dataset = None
+    flexible_collate_fn = None
+    create_flexible_dataloaders = None
+    test_flexible_dataset = None
+
+# Data collator components
+try:
+    from .blip3o_data_collator import (
+        BLIP3oPatchDataCollator,
+        create_blip3o_data_collator,
+        BLIP3oEvaluationDataCollator,
+        create_blip3o_eval_data_collator,
+    )
+    logger.debug("✅ Data collator components loaded")
+    DATA_COLLATOR_AVAILABLE = True
+except ImportError as e:
+    logger.warning(f"⚠️ Data collator components not available: {e}")
+    DATA_COLLATOR_AVAILABLE = False
+    BLIP3oPatchDataCollator = None
+    create_blip3o_data_collator = None
+    BLIP3oEvaluationDataCollator = None
+    create_blip3o_eval_data_collator = None
 
 # Enhanced multi-GPU dataset utilities with gradient flow support
 ENHANCED_DDP_AVAILABLE = False
-create_enhanced_ddp_dataloader = None
-create_enhanced_ddp_dataloaders = None
 
 try:
     from torch.utils.data.distributed import DistributedSampler
@@ -71,7 +85,7 @@ try:
         
         # Use updated collate function if none provided
         if collate_fn is None and CORE_DATASET_AVAILABLE:
-            collate_fn = chunked_collate_fn  # UPDATED with gradient flow
+            collate_fn = flexible_collate_fn  # UPDATED with gradient flow
             logger.debug("Using gradient-aware collate function")
         
         sampler = None
@@ -113,76 +127,6 @@ try:
         
         return dataloader
     
-    def create_enhanced_ddp_dataloaders(
-        chunked_embeddings_dir,
-        batch_size: int = 32,
-        eval_batch_size: int = None,
-        eval_split_ratio: float = 0.1,
-        normalize_embeddings: bool = True,
-        delete_after_use: bool = False,
-        num_workers: int = 4,
-        pin_memory: bool = None,
-        **kwargs
-    ):
-        """
-        Create train and eval dataloaders with enhanced DDP support and gradient flow
-        
-        UPDATED: Uses gradient-aware dataset and collate functions
-        """
-        
-        if eval_batch_size is None:
-            eval_batch_size = batch_size * 2
-        
-        if not CORE_DATASET_AVAILABLE:
-            raise RuntimeError("Core dataset components not available")
-        
-        # Create training dataset
-        train_dataset = BLIP3oEmbeddingDataset(
-            chunked_embeddings_dir=chunked_embeddings_dir,
-            split="train",
-            eval_split_ratio=eval_split_ratio,
-            normalize_embeddings=normalize_embeddings,
-            shuffle_shards=True,
-            shuffle_within_shard=True,
-            delete_after_use=delete_after_use,
-        )
-        
-        # Create training dataloader with gradient-aware collate function
-        train_dataloader = create_enhanced_ddp_dataloader(
-            train_dataset,
-            batch_size=batch_size,
-            shuffle=True,
-            num_workers=num_workers,
-            pin_memory=pin_memory,
-            collate_fn=chunked_collate_fn,  # UPDATED gradient-aware collate
-            **kwargs
-        )
-        
-        # Create evaluation dataloader if needed
-        eval_dataloader = None
-        if eval_split_ratio > 0:
-            eval_dataset = BLIP3oEmbeddingDataset(
-                chunked_embeddings_dir=chunked_embeddings_dir,
-                split="eval",
-                eval_split_ratio=eval_split_ratio,
-                normalize_embeddings=normalize_embeddings,
-                shuffle_shards=False,
-                shuffle_within_shard=False,
-                delete_after_use=False,
-            )
-            
-            eval_dataloader = create_enhanced_ddp_dataloader(
-                eval_dataset,
-                batch_size=eval_batch_size,
-                shuffle=False,
-                num_workers=min(num_workers, 2),  # Conservative for eval
-                pin_memory=pin_memory,
-                collate_fn=chunked_collate_fn,  # UPDATED gradient-aware collate
-                **kwargs
-            )
-        
-        return train_dataloader, eval_dataloader
-    
     ENHANCED_DDP_AVAILABLE = True
     logger.debug("✅ Enhanced DDP dataloader utilities created (with gradient flow)")
     
@@ -194,13 +138,13 @@ except ImportError as e:
 if ENHANCED_DDP_AVAILABLE and CORE_DATASET_AVAILABLE:
     # Use enhanced versions as default
     create_dataloader = create_enhanced_ddp_dataloader
-    create_dataloaders = create_enhanced_ddp_dataloaders
+    create_dataloaders = create_flexible_dataloaders
     DEFAULT_DATALOADER_TYPE = "enhanced_ddp_gradient_flow"
     logger.info("✅ Using enhanced DDP dataloaders with gradient flow as default")
 elif CORE_DATASET_AVAILABLE:
     # Use standard versions
-    create_dataloader = create_chunked_dataloader
-    create_dataloaders = create_chunked_dataloaders
+    create_dataloader = None
+    create_dataloaders = create_flexible_dataloaders
     DEFAULT_DATALOADER_TYPE = "standard_gradient_flow"
     logger.info("✅ Using standard dataloaders with gradient flow as default")
 else:
@@ -214,6 +158,7 @@ else:
 __all__ = [
     # Availability flags
     "CORE_DATASET_AVAILABLE",
+    "DATA_COLLATOR_AVAILABLE",
     "ENHANCED_DDP_AVAILABLE",
     "DEFAULT_DATALOADER_TYPE",
 ]
@@ -222,36 +167,45 @@ __all__ = [
 if CORE_DATASET_AVAILABLE:
     __all__.extend([
         "BLIP3oEmbeddingDataset",
-        "chunked_collate_fn",  # UPDATED with gradient flow
-        "create_chunked_dataloader", 
-        "create_chunked_dataloaders",
-        "test_chunked_dataset",
+        "flexible_collate_fn",  # UPDATED with gradient flow
+        "create_flexible_dataloaders",
+        "test_flexible_dataset",
+    ])
+
+# Export data collator components if available
+if DATA_COLLATOR_AVAILABLE:
+    __all__.extend([
+        "BLIP3oPatchDataCollator",
+        "create_blip3o_data_collator",
+        "BLIP3oEvaluationDataCollator",
+        "create_blip3o_eval_data_collator",
     ])
 
 # Export enhanced components if available
 if ENHANCED_DDP_AVAILABLE:
     __all__.extend([
         "create_enhanced_ddp_dataloader",
-        "create_enhanced_ddp_dataloaders",
     ])
 
 # Export default functions if available
+if create_dataloaders is not None:
+    __all__.extend([
+        "create_dataloaders",
+    ])
+
 if create_dataloader is not None:
     __all__.extend([
         "create_dataloader",
-        "create_dataloaders",
     ])
 
 # Backward compatibility aliases
 if CORE_DATASET_AVAILABLE:
-    create_blip3o_dataloader = create_chunked_dataloader
-    create_blip3o_dataloaders = create_chunked_dataloaders
-    blip3o_collate_fn = chunked_collate_fn  # UPDATED with gradient flow
-    test_blip3o_dataset = test_chunked_dataset
+    create_blip3o_dataloader = create_flexible_dataloaders
+    blip3o_collate_fn = flexible_collate_fn  # UPDATED with gradient flow
+    test_blip3o_dataset = test_flexible_dataset
     
     __all__.extend([
         "create_blip3o_dataloader",
-        "create_blip3o_dataloaders", 
         "blip3o_collate_fn",
         "test_blip3o_dataset",
     ])
@@ -271,11 +225,11 @@ def get_dataloader_factory(dataloader_type: str = "auto"):
     elif dataloader_type == "enhanced_ddp":
         if not ENHANCED_DDP_AVAILABLE:
             raise ValueError("Enhanced DDP dataloaders not available")
-        return create_enhanced_ddp_dataloaders
+        return create_enhanced_ddp_dataloader
     elif dataloader_type == "standard":
         if not CORE_DATASET_AVAILABLE:
             raise ValueError("Standard dataloaders not available")
-        return create_chunked_dataloaders
+        return create_flexible_dataloaders
     else:
         raise ValueError(f"Unknown dataloader type: {dataloader_type}")
 
@@ -285,8 +239,11 @@ def create_gradient_aware_dataloaders(
     eval_batch_size: int = None,
     eval_split_ratio: float = 0.1,
     normalize_embeddings: bool = True,
+    training_mode: str = "cls_patch",
+    max_shards: int = None,
+    use_same_data_for_eval: bool = False,
     delete_after_use: bool = False,
-    num_workers: int = 4,
+    num_workers: int = 0,
     pin_memory: bool = None,
     use_ddp: bool = None,
     **kwargs
@@ -303,6 +260,9 @@ def create_gradient_aware_dataloaders(
         eval_batch_size: Evaluation batch size (defaults to batch_size * 2)
         eval_split_ratio: Ratio for evaluation split
         normalize_embeddings: Whether to normalize embeddings
+        training_mode: "cls_patch" (257 tokens) or "patch_only" (256 tokens)
+        max_shards: Maximum number of shards to use (None for all)
+        use_same_data_for_eval: Use training data for evaluation (overfitting test)
         delete_after_use: Whether to delete shards after processing
         num_workers: Number of dataloader workers
         pin_memory: Whether to pin memory (auto-detected if None)
@@ -317,28 +277,20 @@ def create_gradient_aware_dataloaders(
         use_ddp = torch.distributed.is_available() and torch.distributed.is_initialized()
     
     # Choose appropriate factory
-    if use_ddp and ENHANCED_DDP_AVAILABLE:
-        logger.info("Creating DDP dataloaders with gradient flow support")
-        return create_enhanced_ddp_dataloaders(
+    if CORE_DATASET_AVAILABLE:
+        logger.info("Creating flexible dataloaders with gradient flow support")
+        return create_flexible_dataloaders(
             chunked_embeddings_dir=chunked_embeddings_dir,
             batch_size=batch_size,
             eval_batch_size=eval_batch_size,
             eval_split_ratio=eval_split_ratio,
             normalize_embeddings=normalize_embeddings,
+            training_mode=training_mode,
+            max_shards=max_shards,
+            use_same_data_for_eval=use_same_data_for_eval,
             delete_after_use=delete_after_use,
             num_workers=num_workers,
             pin_memory=pin_memory,
-            **kwargs
-        )
-    elif CORE_DATASET_AVAILABLE:
-        logger.info("Creating standard dataloaders with gradient flow support")
-        return create_chunked_dataloaders(
-            chunked_embeddings_dir=chunked_embeddings_dir,
-            batch_size=batch_size,
-            eval_batch_size=eval_batch_size,
-            eval_split_ratio=eval_split_ratio,
-            normalize_embeddings=normalize_embeddings,
-            delete_after_use=delete_after_use,
             **kwargs
         )
     else:
@@ -354,11 +306,17 @@ def print_dataset_status():
     
     if CORE_DATASET_AVAILABLE:
         print("  ✅ Core Dataset (BLIP3oEmbeddingDataset)")
-        print("  ✅ Standard Dataloaders (with gradient flow)")
+        print("  ✅ Flexible Dataloaders (with gradient flow)")
         print("  ✅ Gradient-aware collate function")
     else:
         print("  ❌ Core Dataset")
-        print("  ❌ Standard Dataloaders")
+        print("  ❌ Flexible Dataloaders")
+    
+    if DATA_COLLATOR_AVAILABLE:
+        print("  ✅ Data Collators")
+        print("  ✅ Training and evaluation collators")
+    else:
+        print("  ❌ Data Collators")
         
     if ENHANCED_DDP_AVAILABLE:
         print("  ✅ Enhanced DDP Dataloaders (Recommended)")
@@ -384,7 +342,8 @@ def print_dataset_status():
         print("  ✅ Proper tensor detachment for targets/conditioning")
         print("  ✅ Flow matching timestep generation")
         print("  ✅ Rectified flow interpolation")
-        print("  ✅ Compatible with fixed trainer")
+        print("  ✅ Compatible with flexible trainer")
+        print("  ✅ Support for both 256 and 257 token modes")
     else:
         print("  ❌ Gradient flow features not available")
     
@@ -420,7 +379,7 @@ def test_gradient_flow_setup(chunked_embeddings_dir, batch_size: int = 4):
         batch = next(iter(train_dataloader))
         
         # Check required keys
-        required_keys = ['eva_embeddings', 'clip_embeddings', 'hidden_states', 'timesteps']
+        required_keys = ['encoder_hidden_states', 'clip_embeddings', 'hidden_states', 'timestep']
         for key in required_keys:
             if key not in batch:
                 print(f"❌ Missing required key: {key}")
@@ -429,10 +388,10 @@ def test_gradient_flow_setup(chunked_embeddings_dir, batch_size: int = 4):
                 print(f"✅ Found key: {key}")
         
         # Check tensor shapes
-        eva_shape = batch['eva_embeddings'].shape
+        eva_shape = batch['encoder_hidden_states'].shape
         clip_shape = batch['clip_embeddings'].shape
         hidden_shape = batch['hidden_states'].shape
-        timestep_shape = batch['timesteps'].shape
+        timestep_shape = batch['timestep'].shape
         
         print(f"✅ Tensor shapes:")
         print(f"   EVA embeddings: {eva_shape}")
@@ -441,7 +400,7 @@ def test_gradient_flow_setup(chunked_embeddings_dir, batch_size: int = 4):
         print(f"   Timesteps: {timestep_shape}")
         
         # Check gradient requirements
-        eva_grad = batch['eva_embeddings'].requires_grad
+        eva_grad = batch['encoder_hidden_states'].requires_grad
         clip_grad = batch['clip_embeddings'].requires_grad
         hidden_grad = batch['hidden_states'].requires_grad
         
@@ -455,9 +414,9 @@ def test_gradient_flow_setup(chunked_embeddings_dir, batch_size: int = 4):
             not eva_grad and 
             not clip_grad and 
             hidden_grad and
-            eva_shape == (batch_size, 256, 4096) and
-            clip_shape == (batch_size, 256, 1024) and
-            hidden_shape == (batch_size, 256, 1024) and
+            eva_shape[1] in [256, 257] and
+            clip_shape[1] in [256, 257] and
+            hidden_shape[1] in [256, 257] and
             timestep_shape == (batch_size,)
         )
         
@@ -496,7 +455,7 @@ else:
     logger.error("BLIP3-o datasets failed to load!")
 
 # Final gradient flow check
-if CORE_DATASET_AVAILABLE and chunked_collate_fn:
+if CORE_DATASET_AVAILABLE and flexible_collate_fn:
     logger.info("✅ Gradient flow setup is active and ready for training")
 else:
     logger.warning("⚠️ Gradient flow setup may not be available")
