@@ -1,0 +1,23 @@
+{
+  "evaluation_info": {
+    "model_path": "./checkpoints/blip3o_patch_pure_13259292_20250723_063221",
+    "coco_root": "./data/coco",
+    "num_samples": 1000,
+    "num_inference_steps": 50,
+    "approach": "enhanced_patch_level_training",
+    "evaluation_metric": "image_to_text_recall",
+    "enhanced_model": false,
+    "model_info": {
+      "enhanced": false
+    },
+    "timestamp": 1753254912.0696592
+  },
+  "results": {
+    "clip_baseline": {
+      "error": "mat1 and mat2 shapes cannot be multiplied (5000x768 and 1024x768)"
+    },
+    "blip3o_patch": {
+      "error": "mat1 and mat2 shapes cannot be multiplied (5000x768 and 1024x768)"
+    }
+  }
+}

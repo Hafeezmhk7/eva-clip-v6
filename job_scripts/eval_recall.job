@@ -1,0 +1,438 @@
+#!/bin/bash
+#SBATCH --job-name=blip3o_recall_eval
+#SBATCH --partition=gpu_h100
+#SBATCH --nodes=1
+#SBATCH --gpus=1
+#SBATCH --cpus-per-gpu=18
+#SBATCH --time=2:00:00
+#SBATCH --mem=0
+#SBATCH --output=./slurm_out/blip3o_recall_%j.out
+#SBATCH --error=./slurm_out/blip3o_recall_%j.err
+
+# =============================================================================
+# BLIP3-o Enhanced Patch-Level Recall Evaluation Job
+# Tests both CLIP baseline and your trained enhanced BLIP3-o model on COCO
+# =============================================================================
+
+echo "🔍 BLIP3-o Enhanced Patch-Level Recall Evaluation"
+echo "================================================="
+
+# Setup environment
+module purge
+module load 2024
+module load Miniconda3/24.7.1-0
+module load CUDA/12.6.0
+
+source activate eva_clip_env
+
+# Updated Configuration for your trained model
+COCO_ROOT="./data/coco"
+BLIP3O_MODEL_PATH="./checkpoints/blip3o_patch_pure_13259292_20250723_063221"
+NUM_SAMPLES=1000
+DEVICE="cuda"
+K_VALUES="1 5 10"
+NUM_INFERENCE_STEPS=50
+
+# Setup temp directories for model cache
+export USER=$(whoami)
+export JOB_ID=${SLURM_JOB_ID}
+export JOB_TEMP="/scratch-local/${USER}.${JOB_ID}/blip3o_recall"
+
+export TORCH_HOME="${JOB_TEMP}/torch"
+export HF_HOME="${JOB_TEMP}/huggingface"
+export TRANSFORMERS_CACHE="${JOB_TEMP}/transformers"
+
+mkdir -p "${TORCH_HOME}" "${HF_HOME}" "${TRANSFORMERS_CACHE}"
+mkdir -p ./slurm_out ./results
+
+echo "Enhanced Evaluation Configuration:"
+echo "  COCO Root: $COCO_ROOT"
+echo "  BLIP3-o Model: $BLIP3O_MODEL_PATH"
+echo "  Model Type: Enhanced Patch-Level DiT"
+echo "  Training Mode: Pure training (enhanced)"
+echo "  Samples: $NUM_SAMPLES"
+echo "  K values: $K_VALUES"
+echo "  Inference steps: $NUM_INFERENCE_STEPS"
+echo "  Device: $DEVICE"
+echo "  Job ID: $JOB_ID"
+echo "  Node: $SLURMD_NODENAME"
+
+# Verify paths exist
+echo ""
+echo "🔍 Verifying paths..."
+echo "==================="
+
+if [ ! -d "$COCO_ROOT" ]; then
+    echo "❌ ERROR: COCO data not found at $COCO_ROOT"
+    exit 1
+fi
+
+if [ ! -f "$COCO_ROOT/annotations/captions_val2017.json" ]; then
+    echo "❌ ERROR: COCO annotations not found"
+    exit 1
+fi
+
+if [ ! -d "$COCO_ROOT/images/val2017" ]; then
+    echo "❌ ERROR: COCO images not found"
+    exit 1
+fi
+
+if [ ! -d "$BLIP3O_MODEL_PATH" ]; then
+    echo "❌ ERROR: BLIP3-o model not found at $BLIP3O_MODEL_PATH"
+    echo "   Available checkpoints:"
+    ls -la ./checkpoints/ 2>/dev/null || echo "   No checkpoints found"
+    exit 1
+fi
+
+# Check for enhanced model files
+ENHANCED_CONFIG_FILE=""
+if [ -f "$BLIP3O_MODEL_PATH/enhanced_training_config.json" ]; then
+    ENHANCED_CONFIG_FILE="enhanced_training_config.json"
+    echo "✅ Enhanced training config found"
+elif [ -f "$BLIP3O_MODEL_PATH/config.json" ]; then
+    ENHANCED_CONFIG_FILE="config.json"
+    echo "✅ Standard config found"
+elif [ -f "$BLIP3O_MODEL_PATH/blip3o_model_config.json" ]; then
+    ENHANCED_CONFIG_FILE="blip3o_model_config.json"
+    echo "✅ BLIP3-o config found"
+else
+    echo "❌ ERROR: No config file found in BLIP3-o model directory"
+    echo "   Model directory contents:"
+    ls -la "$BLIP3O_MODEL_PATH"
+    exit 1
+fi
+
+# Check for model weights
+WEIGHT_FILE=""
+if [ -f "$BLIP3O_MODEL_PATH/pytorch_model.bin" ]; then
+    WEIGHT_FILE="pytorch_model.bin"
+    echo "✅ PyTorch weights found"
+elif [ -f "$BLIP3O_MODEL_PATH/model.safetensors" ]; then
+    WEIGHT_FILE="model.safetensors"
+    echo "✅ SafeTensors weights found"
+elif [ -f "$BLIP3O_MODEL_PATH/pytorch_model.safetensors" ]; then
+    WEIGHT_FILE="pytorch_model.safetensors"
+    echo "✅ PyTorch SafeTensors weights found"
+else
+    echo "❌ ERROR: No model weights found in BLIP3-o model directory"
+    echo "   Model directory contents:"
+    ls -la "$BLIP3O_MODEL_PATH"
+    exit 1
+fi
+
+echo "✅ COCO data verified"
+echo "✅ Enhanced BLIP3-o model verified"
+
+# Show enhanced model info
+echo ""
+echo "📊 Enhanced Model Information:"
+echo "============================="
+echo "Model path: $BLIP3O_MODEL_PATH"
+echo "Config file: $ENHANCED_CONFIG_FILE"
+echo "Weight file: $WEIGHT_FILE"
+echo ""
+echo "Model contents:"
+ls -la "$BLIP3O_MODEL_PATH"
+
+# Show training info if available
+if [ -f "$BLIP3O_MODEL_PATH/enhanced_training_config.json" ]; then
+    echo ""
+    echo "Enhanced training summary:"
+    python3 -c "
+import json
+try:
+    with open('$BLIP3O_MODEL_PATH/enhanced_training_config.json') as f:
+        config = json.load(f)
+    
+    print(f\"  Training mode: {config.get('training_strategy', {}).get('mode', 'unknown')}\")
+    print(f\"  Architecture: {config.get('architecture', 'unknown')}\")
+    print(f\"  Enhanced: {config.get('enhanced_version', False)}\")
+    
+    # Enhanced hyperparameters
+    if 'enhanced_hyperparameters' in config:
+        hp = config['enhanced_hyperparameters']
+        print(f\"  Epochs trained: {hp.get('num_epochs', 'unknown')}\")
+        print(f\"  Learning rate: {hp.get('learning_rate', 'unknown')}\")
+        print(f\"  LR scheduler: {hp.get('lr_scheduler_type', 'unknown')}\")
+        print(f\"  Contrastive weight: {hp.get('contrastive_weight', 'unknown')}\")
+        print(f\"  Convergence optimized: {hp.get('optimized_for_convergence', False)}\")
+    
+    # Model config
+    if 'model_config' in config:
+        mc = config['model_config']
+        print(f\"  Model size: {mc.get('hidden_size', 'unknown')}D\")
+        print(f\"  Layers: {mc.get('num_hidden_layers', 'unknown')}\")
+        print(f\"  Heads: {mc.get('num_attention_heads', 'unknown')}\")
+        
+except Exception as e:
+    print(f\"  Could not parse config: {e}\")
+"
+elif [ -f "$BLIP3O_MODEL_PATH/training_summary.json" ]; then
+    echo ""
+    echo "Training summary:"
+    cat "$BLIP3O_MODEL_PATH/training_summary.json" | head -20
+fi
+
+# Verify evaluation script exists
+EVAL_SCRIPT="eval_blip3o_patch_recall.py"
+if [ ! -f "$EVAL_SCRIPT" ]; then
+    echo "❌ ERROR: Evaluation script not found: $EVAL_SCRIPT"
+    echo "   Make sure the script is in the current directory"
+    exit 1
+fi
+
+echo "✅ Evaluation script verified: $EVAL_SCRIPT"
+
+# Run enhanced recall evaluation
+echo ""
+echo "🚀 Starting Enhanced BLIP3-o Recall Evaluation..."
+echo "================================================"
+echo "This will test:"
+echo "  1. 🎯 CLIP ViT-L/14 baseline (verification)"
+echo "  2. 🤖 Your enhanced trained BLIP3-o patch model"
+echo ""
+echo "Expected enhanced performance:"
+echo "  • CLIP baseline R@1: ~58-60% (literature)"
+echo "  • Enhanced BLIP3-o R@1: Should match/exceed baseline"
+echo "  • Enhanced features: Better convergence & alignment"
+echo ""
+
+EVAL_START_TIME=$(date +%s)
+
+# Run the correct evaluation script with proper parameters
+python eval_blip3o_patch_recall.py \
+    --coco_root "$COCO_ROOT" \
+    --model_path "$BLIP3O_MODEL_PATH" \
+    --num_samples $NUM_SAMPLES \
+    --device $DEVICE \
+    --num_inference_steps $NUM_INFERENCE_STEPS \
+    --save_results "results/blip3o_enhanced_recall_evaluation_${JOB_ID}.json"
+
+EXIT_CODE=$?
+EVAL_END_TIME=$(date +%s)
+EVAL_DURATION=$((EVAL_END_TIME - EVAL_START_TIME))
+
+# Enhanced results summary
+echo ""
+echo "========================================================================"
+echo "📊 ENHANCED BLIP3-o RECALL EVALUATION RESULTS"
+echo "========================================================================"
+echo "Job ID: $JOB_ID"
+echo "Node: $SLURMD_NODENAME"
+echo "Model: Enhanced Patch-Level DiT"
+echo "Training: Pure training with convergence optimization"
+echo "Evaluation Duration: $EVAL_DURATION seconds"
+echo "Total Runtime: $SECONDS seconds"
+echo "Date: $(date)"
+
+if [ $EXIT_CODE -eq 0 ]; then
+    echo "Status: ✅ SUCCESS - ENHANCED EVALUATION COMPLETED"
+    
+    # Find and display results from JSON file
+    RESULTS_FILE="results/blip3o_enhanced_recall_evaluation_${JOB_ID}.json"
+    if [ -f "$RESULTS_FILE" ]; then
+        echo ""
+        echo "📊 ENHANCED RESULTS SUMMARY:"
+        echo "==========================="
+        
+        # Parse JSON results and display prominently
+        if command -v python3 &> /dev/null; then
+            python3 << EOF
+import json
+import sys
+
+try:
+    with open('$RESULTS_FILE', 'r') as f:
+        data = json.load(f)
+    
+    results = data.get('results', {})
+    eval_info = data.get('evaluation_info', {})
+    
+    print()
+    print("🎯 ENHANCED RECALL COMPARISON RESULTS:")
+    print("-" * 50)
+    
+    # Check if we have both methods
+    clip_results = results.get('clip_baseline', {})
+    blip3o_results = results.get('blip3o_patch', {})
+    
+    if 'error' not in clip_results and 'error' not in blip3o_results:
+        # Both methods successful
+        clip_r1 = clip_results.get('recall@1', 0) * 100
+        clip_r5 = clip_results.get('recall@5', 0) * 100
+        clip_r10 = clip_results.get('recall@10', 0) * 100
+        
+        blip3o_r1 = blip3o_results.get('recall@1', 0) * 100
+        blip3o_r5 = blip3o_results.get('recall@5', 0) * 100
+        blip3o_r10 = blip3o_results.get('recall@10', 0) * 100
+        
+        print(f"📋 CLIP BASELINE (ViT-L/14):")
+        print(f"   R@1:  {clip_r1:5.1f}% | R@5:  {clip_r5:5.1f}% | R@10: {clip_r10:5.1f}%")
+        print()
+        print(f"🤖 ENHANCED BLIP3-o MODEL:")
+        print(f"   R@1:  {blip3o_r1:5.1f}% | R@5:  {blip3o_r5:5.1f}% | R@10: {blip3o_r10:5.1f}%")
+        print()
+        
+        # Performance comparison
+        r1_diff = blip3o_r1 - clip_r1
+        r1_pct_change = (r1_diff / clip_r1) * 100 if clip_r1 > 0 else 0
+        
+        print(f"📈 ENHANCED PERFORMANCE ANALYSIS:")
+        print(f"   R@1 Difference: {r1_diff:+.1f}% ({r1_pct_change:+.1f}%)")
+        
+        if r1_diff >= 3:
+            print(f"   🎉 OUTSTANDING: Enhanced training highly successful!")
+            print(f"   🚀 Model significantly outperforms CLIP baseline")
+            print(f"   ✅ Enhanced convergence optimization worked perfectly")
+        elif r1_diff >= 1:
+            print(f"   🎉 EXCELLENT: Enhanced BLIP3-o outperforms CLIP!")
+            print(f"   ✅ Enhanced training features improved performance")
+            print(f"   🎯 Model successfully learned EVA→CLIP mapping")
+        elif r1_diff >= -1:
+            print(f"   ✅ GOOD: Enhanced BLIP3-o matches CLIP performance")
+            print(f"   🎯 Model preserves CLIP's retrieval capabilities")
+            print(f"   ✅ Enhanced training maintained quality")
+        elif r1_diff >= -3:
+            print(f"   ⚠️  ACCEPTABLE: Minor performance drop")
+            print(f"   💡 Enhanced features mostly successful")
+            print(f"   💡 Consider further fine-tuning")
+        else:
+            print(f"   ❌ CONCERNING: Significant performance drop")
+            print(f"   💡 Enhanced model needs architectural improvements")
+        
+        print()
+        
+        # Literature comparison
+        print(f"📚 Literature Comparison:")
+        print(f"   Expected CLIP ViT-L/14 R@1: ~58-60%")
+        print(f"   Your CLIP baseline R@1:     {clip_r1:.1f}%")
+        
+        if clip_r1 >= 58:
+            print(f"   ✅ EXCELLENT: Baseline matches literature!")
+        elif clip_r1 >= 55:
+            print(f"   ✅ GOOD: Close to literature values")
+        else:
+            print(f"   ⚠️  LOW: Below expected literature values")
+        
+        print()
+        
+        # Enhanced training assessment
+        print(f"🚀 ENHANCED TRAINING ASSESSMENT:")
+        print("-" * 40)
+        
+        if blip3o_r1 >= clip_r1 and clip_r1 >= 55:
+            print("🎉 ENHANCED TRAINING SUCCESS!")
+            print("   ✅ Enhanced BLIP3-o learned excellent CLIP embeddings")
+            print("   ✅ Convergence optimization effective")
+            print("   ✅ Pure training mode successful")
+            print("   ✅ Retrieval performance preserved or improved")
+            print("   🚀 Ready for deployment or further research")
+        elif blip3o_r1 >= clip_r1 - 2 and clip_r1 >= 55:
+            print("✅ ENHANCED TRAINING GOOD!")
+            print("   ✅ Enhanced BLIP3-o generates reasonable CLIP embeddings")
+            print("   ✅ Most enhanced features working well")
+            print("   💡 Minor improvements possible with fine-tuning")
+        else:
+            print("⚠️  ENHANCED TRAINING NEEDS IMPROVEMENT")
+            print("   💡 Consider enhanced hyperparameter tuning")
+            print("   💡 Check enhanced convergence metrics")
+            print("   💡 Verify enhanced loss components")
+    
+    else:
+        # Handle errors
+        if 'error' in clip_results:
+            print(f"❌ CLIP baseline failed: {clip_results['error']}")
+        if 'error' in blip3o_results:
+            print(f"❌ Enhanced BLIP3-o evaluation failed: {blip3o_results['error']}")
+    
+    print()
+    print(f"💾 Enhanced evaluation results saved to: $RESULTS_FILE")
+
+except Exception as e:
+    print(f"❌ Could not parse enhanced results file: {e}")
+    sys.exit(1)
+EOF
+        else
+            echo "⚠️  Python not available to parse results"
+            echo "   Results file: $RESULTS_FILE"
+        fi
+    else
+        echo "⚠️  No results file found"
+        echo "   Evaluation may have completed without saving results"
+        echo "   Check the output above for inline results"
+    fi
+    
+    echo ""
+    echo "✅ ENHANCED BLIP3-o RECALL EVALUATION COMPLETED SUCCESSFULLY"
+    
+else
+    echo "Status: ❌ FAILED"
+    echo ""
+    echo "❌ ENHANCED BLIP3-o RECALL EVALUATION FAILED WITH EXIT CODE: $EXIT_CODE"
+    echo ""
+    echo "🔍 Enhanced troubleshooting:"
+    echo "   1. Check if COCO data exists and is accessible"
+    echo "   2. Verify enhanced BLIP3-o model path and files"
+    echo "   3. Ensure GPU memory is sufficient"
+    echo "   4. Check Python environment and enhanced dependencies"
+    echo "   5. Verify enhanced model compatibility"
+    echo "   6. Look for error messages in the output above"
+    echo ""
+    echo "📂 Log files:"
+    echo "   Output: ./slurm_out/blip3o_recall_${JOB_ID}.out"
+    echo "   Error:  ./slurm_out/blip3o_recall_${JOB_ID}.err"
+    echo ""
+    echo "🔧 Enhanced quick checks:"
+    echo "   • COCO path: $COCO_ROOT"
+    echo "   • Enhanced BLIP3-o model: $BLIP3O_MODEL_PATH"
+    echo "   • Available space: $(df -h . | tail -1 | awk '{print $4}')"
+    echo "   • Enhanced config: $ENHANCED_CONFIG_FILE"
+    echo "   • Weight file: $WEIGHT_FILE"
+fi
+
+echo ""
+echo "========================================================================"
+echo "🏁 ENHANCED EVALUATION SUMMARY"
+echo "========================================================================"
+
+# Always show final status prominently
+if [ $EXIT_CODE -eq 0 ]; then
+    echo "🎉 SUCCESS: Check the enhanced recall results above!"
+    echo ""
+    echo "📋 What was tested:"
+    echo "   ✅ CLIP ViT-L/14 baseline (verification)"
+    echo "   ✅ Your enhanced trained BLIP3-o patch model"
+    echo ""
+    echo "🎯 Enhanced Questions Answered:"
+    echo "   • Does CLIP baseline match literature? (~58-60% expected)"
+    echo "   • Does enhanced BLIP3-o preserve/improve recall performance?"
+    echo "   • How well did enhanced convergence optimization work?"
+    echo "   • Are enhanced training features effective?"
+    echo ""
+    echo "📊 Enhanced Next Steps:"
+    echo "   • Review the enhanced performance comparison above"
+    echo "   • Check if enhanced results meet your requirements"
+    echo "   • Use insights to guide further enhanced development"
+    echo "   • Consider deployment if results are excellent"
+else
+    echo "❌ FAILURE: Check enhanced error messages above and in log files"
+    echo ""
+    echo "💡 Enhanced troubleshooting:"
+    echo "   • Enhanced BLIP3-o model path incorrect or files missing"
+    echo "   • Insufficient GPU memory for enhanced model"
+    echo "   • Missing enhanced dependencies or environment issues"
+    echo "   • Enhanced model compatibility problems"
+    echo "   • COCO dataset path or permissions problems"
+fi
+
+echo "========================================================================"
+
+# Cleanup temp cache
+if [ -d "${JOB_TEMP}" ]; then
+    echo "🧹 Cleaning up temporary cache..."
+    rm -rf "${JOB_TEMP}"
+fi
+
+echo "🏁 Enhanced evaluation job completed at $(date)"
+
+exit $EXIT_CODE
