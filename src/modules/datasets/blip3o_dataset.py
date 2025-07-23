@@ -497,12 +497,12 @@ def chunked_collate_fn(batch: List[Dict[str, Any]]) -> Dict[str, Any]:
     
     return {
         # Core embeddings
-        'eva_embeddings': eva_embeddings,        # [B, 256, 4096] - EVA conditioning (detached)
+        'encoder_hidden_states': eva_embeddings,        # [B, 256, 4096] - EVA conditioning (detached)
         'clip_embeddings': clip_embeddings,      # [B, 256, 1024] - Target CLIP patches (detached)
         
         # UPDATED: Flow matching inputs (compatible with fixed trainer)
         'hidden_states': hidden_states,          # [B, 256, 1024] - Noisy input for model (with gradients)
-        'timesteps': timesteps,                  # [B] - Flow matching timesteps
+        'timestep': timesteps,                  # [B] - Flow matching timesteps
         'noise': noise,                          # [B, 256, 1024] - Original noise
         'base_noise': base_noise,                # [B, 256, 1024] - Base noise with gradients
         

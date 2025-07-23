@@ -375,12 +375,15 @@ class BLIP3oPatchDiTModel(PreTrainedModel):
         """Check if gradient checkpointing is enabled."""
         return getattr(self, '_gradient_checkpointing', False)
     
-    def forward(self,
-                hidden_states: torch.Tensor,  # [B, 256, 1024] - Noisy CLIP patches
-                timestep: torch.Tensor,       # [B] - Timesteps
-                encoder_hidden_states: torch.Tensor,  # [B, 256, 4096] - EVA conditioning
-                attention_mask: Optional[torch.Tensor] = None,
-                return_dict: bool = True) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        timestep: torch.Tensor,  # Note: singular form
+        encoder_hidden_states: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        return_dict: bool = True,
+        **kwargs  # Add this to accept/ignore extra arguments
+    ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
         """
         FIXED forward pass with proper gradient flow preservation
         

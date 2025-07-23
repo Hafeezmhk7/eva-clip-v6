@@ -148,9 +148,9 @@ class BLIP3oPatchTrainer(Trainer):
                 model.train()
             
             # Extract inputs - these should come from the fixed data collator
-            eva_embeddings = inputs['eva_embeddings']      # [B, 256, 4096] - EVA conditioning (detached)
+            eva_embeddings = inputs['encoder_hidden_states']      # [B, 256, 4096] - EVA conditioning (detached)
             clip_embeddings = inputs['clip_embeddings']    # [B, 256, 1024] - Target CLIP patches (detached)
-            timesteps = inputs['timesteps']               # [B] - Flow matching timesteps
+            timesteps = inputs['timestep']               # [B] - Flow matching timesteps
             
             # Check if we have pre-computed noisy input
             if 'hidden_states' in inputs:
