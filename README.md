@@ -2,32 +2,31 @@
 An implementation* of BLIP3-o patch-level Diffusion Transformer (DiT) for image-to-text translation using flow matching. This project implements flexible training with support for both **CLS+patch (257 tokens)** and **patch-only (256 tokens)** modes, with detailed cosine similarity evaluation and overfitting verification.
 ## 🏗️ Architecture Overview
 
-```mermaid
 graph TD
     A[Input Images] --> B[EVA-CLIP Encoder]
     A --> C[CLIP ViT Encoder]
     
-    B --> D[EVA Features<br/>[B, 257, 4096]]
-    C --> E[CLIP Features<br/>[B, 257, 1024]]
+    B --> D["EVA Features\n[B, 257, 4096]"]
+    C --> E["CLIP Features\n[B, 257, 1024]"]
     
-    D --> F[Cross-Attention<br/>Conditioning]
-    E --> G[Flow Matching<br/>Target]
+    D --> F["Cross-Attention\nConditioning"]
+    E --> G["Flow Matching\nTarget"]
     
-    H[Noise<br/>[B, 257, 1024]] --> I[Linear Interpolation<br/>x_t = (1-α)x_0 + αx_1]
+    H["Noise\n[B, 257, 1024]"] --> I["Linear Interpolation\nx_t = (1-α)x_0 + αx_1"]
     G --> I
     
-    I --> J[BLIP3-o DiT Model<br/>12 Layers, 768 Hidden]
+    I --> J["BLIP3-o DiT Model\n12 Layers, 768 Hidden"]
     F --> J
     
-    J --> K[Velocity Prediction<br/>[B, 257, 1024]]
+    J --> K["Velocity Prediction\n[B, 257, 1024]"]
     
-    K --> L[Flow Matching Loss<br/>MSE(v_pred, v_target)]
+    K --> L["Flow Matching Loss\nMSE(v_pred, v_target)"]
     G --> L
     
     style J fill:#e1f5fe
     style L fill:#ffebee
     style F fill:#f3e5f5
-    ```
+
 
 
 ## 🚀 Quick Start
