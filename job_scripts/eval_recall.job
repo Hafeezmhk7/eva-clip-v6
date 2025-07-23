@@ -200,13 +200,13 @@ echo ""
 EVAL_START_TIME=$(date +%s)
 
 # Run the correct evaluation script with proper parameters
-python eval_blip3o_patch_recall.py \
+python eval_blip3o_patch_similarity.py \
     --coco_root "$COCO_ROOT" \
     --model_path "$BLIP3O_MODEL_PATH" \
     --num_samples $NUM_SAMPLES \
     --device $DEVICE \
     --num_inference_steps $NUM_INFERENCE_STEPS \
-    --save_results "results/blip3o_enhanced_recall_evaluation_${JOB_ID}.json"
+    
 
 EXIT_CODE=$?
 EVAL_END_TIME=$(date +%s)
