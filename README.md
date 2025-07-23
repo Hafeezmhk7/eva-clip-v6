@@ -51,6 +51,7 @@ cd eva-clip-flow-matching/eva-clip-v3
 # Create conda environment
 conda create -n eva_clip_env python=3.11 -y
 conda activate eva_clip_env
+run the requirement.txt file
 
 # Install dependencies
 pip install torch torchvision transformers datasets
