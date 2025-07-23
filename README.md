@@ -2,7 +2,7 @@
 An implementation* of BLIP3-o patch-level Diffusion Transformer (DiT) for image-to-text translation using flow matching. This project implements flexible training with support for both **CLS+patch (257 tokens)** and **patch-only (256 tokens)** modes, with detailed cosine similarity evaluation and overfitting verification.
 ## 🏗️ Architecture Overview
 
-```mermaid
+```mermaid''''
 graph TD
     A[Input Images] --> B[EVA-CLIP Encoder]
     A --> C[CLIP ViT Encoder]
@@ -234,39 +234,6 @@ python eval_blip3o_patch_similarity.py \
 
 
 
-## 🚀 SLURM Training (Snellius)
-
-### Quick Training
-```bash
-# Submit enhanced training job
-sbatch job_scripts/train_blip3o_enhanced.job
-```
-
-### Quick Evaluation
-```bash
-# Submit evaluation job (update paths in script)
-sbatch job_scripts/eval_blip3o_similarity.job
-```
-
-
-
-### Example 1: Pipeline Validation
-```bash
-# 1. Extract embeddings with CLS+patch
-python src/modules/extract_embeddings_g.py --include_cls --max_shards 1
-
-# 2. Train on single shard
-python train_blip3o_enhanced.py \
-    --training_mode "cls_patch" \
-    --max_training_shards 1 \
-    --overfitting_test
-
-# 3. Evaluate same data
-python eval_blip3o_patch_similarity.py \
-    --model_path "./checkpoints/latest" \
-    --same_data_eval \
-    --max_eval_shards 1
-```
 
 
 
@@ -274,24 +241,7 @@ python eval_blip3o_patch_similarity.py \
 
 
 
-```bash
-# Test gradient flow
-python train_blip3o_enhanced.py --test_gradient_flow
 
-# Verify embeddings
-python -c "
-import json
-with open('./embeddings/embeddings_manifest.json') as f:
-    print(json.load(f))
-"
-
-# Check model architecture
-python -c "
-from src.modules.models.blip3o_patch_dit import create_blip3o_patch_dit_model
-model = create_blip3o_patch_dit_model()
-print(f'Parameters: {model.get_num_parameters():,}')
-"
-```
 
 
 
