@@ -137,8 +137,7 @@ python eval_blip3o_patch_similarity.py \
 | **Token Layout** | [0]=CLS, [1:257]=patches | [0:256]=patches |
 | **Global Representation** | Explicit CLS token | Pooled from patches |
 | **Spatial Encoding** | 3D RoPE with CLS handling | Standard 3D RoPE |
-| **Memory Usage** | Slightly higher | Standard |
-| **Recall Performance** | May benefit from CLS | Relies on patch pooling |
+
 
 ## 🔧 Enhanced Configuration
 
