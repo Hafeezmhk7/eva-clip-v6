@@ -1,93 +1,166 @@
-# EVA-CLIP Flow Matching Project Requirements
-# Phase 1: Dataset Loading and Feature Extraction
-#
-# SETUP INSTRUCTIONS:
-# 1. Create virtual environment: python3 -m venv eva_clip_env
-# 2. Activate environment: source eva_clip_env/bin/activate  
-# 3. Install requirements: pip install -r requirements.txt
-# 4. Test setup: python -c "import torch; print('✅ Setup complete!')"
+Here's the updated README with a comprehensive overview of the BLIP3-o Enhanced Patch-Level DiT implementation:
 
-# Core PyTorch framework
-torch>=2.5.1
-torchvision>=0.20.1
-numpy>=1.26.0  # Updated for Python 3.12 compatibility
+```markdown
+# BLIP3-o Enhanced Patch-Level DiT: Image-to-Text Translation via Flow Matching
 
-# Hugging Face ecosystem for models and datasets
-transformers>=4.30.0
-datasets>=2.10.0
-huggingface_hub>=0.15.0
+## 🏗️ Architecture Overview
 
-# Data handling and processing
-webdataset>=0.2.0
-pillow>=9.0.0
-tqdm==4.65.0
+```mermaid
+graph TD
+    A[Input Images] --> B[EVA-CLIP Encoder]
+    A --> C[CLIP ViT Encoder]
+    
+    B --> D["EVA Features<br>(B, 257, 4096)"]
+    C --> E["CLIP Features<br>(B, 257, 1024)"]
+    
+    D --> F["Cross-Attention<br>Conditioning"]
+    E --> G["Flow Matching Target"]
+    
+    H["Noise<br>(B, 257, 1024)"] --> I["Linear Interpolation<br>xₜ = (1-α)x₀ + αx₁"]
+    G --> I
+    
+    I --> J["BLIP3-o DiT Model<br>12 Layers, 768 Hidden"]
+    F --> J
+    
+    J --> K["Velocity Prediction<br>(B, 257, 1024)"]
+    
+    K --> L["Flow Matching Loss<br>MSE(v_pred, v_target)"]
+    G --> L
+    
+    style J fill:#e1f5fe
+    style L fill:#ffebee
+    style F fill:#f3e5f5
+```
 
-# BLIP3-o DiT Training Requirements
-# Core deep learning dependencies
+### Core Components:
+1. **EVA-CLIP Encoder**: Extracts 4096-dimensional features (257 tokens per image)
+2. **CLIP ViT Encoder**: Extracts 1024-dimensional patch embeddings (257 tokens)
+3. **Linear Interpolation**: Creates noisy inputs for flow matching
+4. **DiT Model**: 12-layer transformer with:
+   - Rotary position embeddings
+   - Cross-attention conditioning
+   - Gradient checkpointing support
+5. **Flow Matching Loss**: Pure velocity prediction (BLIP3-o paper aligned)
 
-# PyTorch ecosystem
-torch>=2.0.0
-torchvision>=0.15.0
-torchaudio>=2.0.0
+## 📥 Embedding Extraction
 
-# HuggingFace ecosystem
-transformers>=4.35.0
-diffusers>=0.24.0
-accelerate>=0.24.0
-safetensors>=0.4.0
-datasets>=2.14.0
-tokenizers>=0.14.0
-huggingface-hub>=0.17.0
+### Extract CLS+Patch Embeddings (257 tokens):
+```bash
+python src/modules/extract_embeddings_g.py \
+    --output_dir "./embeddings/cls_patch_257" \
+    --training_mode "cls_patch" \
+    --batch_size 32
+```
 
-# Scientific computing
-numpy>=1.21.0
-scipy>=1.9.0
-scikit-learn>=1.1.0
+### Extract Patch-Only Embeddings (256 tokens):
+```bash
+python src/modules/extract_embeddings_g.py \
+    --output_dir "./embeddings/patch_only_256" \
+    --training_mode "patch_only" \
+    --batch_size 64
+```
 
-# Data processing
-pillow>=8.3.0
-opencv-python>=4.5.0
+## 🚀 Training Commands
 
-# Logging and monitoring
-wandb>=0.15.0
-tensorboard>=2.10.0
+### CLS+Patch Training (257 tokens):
+```bash
+python train_blip3o_enhanced.py \
+    --chunked_embeddings_dir "./embeddings/cls_patch_257" \
+    --output_dir "./checkpoints/cls_patch" \
+    --training_mode "cls_patch" \
+    --num_epochs 10 \
+    --batch_size 8 \
+    --learning_rate 1e-4 \
+    --gradient_accumulation_steps 2 \
+    --enable_detailed_eval
+```
 
-# Progress and utilities
-tqdm>=4.64.0
-rich>=12.0.0
-click>=8.0.0
+### Patch-Only Training (256 tokens):
+```bash
+python train_blip3o_enhanced.py \
+    --chunked_embeddings_dir "./embeddings/patch_only_256" \
+    --output_dir "./checkpoints/patch_only" \
+    --training_mode "patch_only" \
+    --num_epochs 10 \
+    --batch_size 16 \
+    --learning_rate 2e-4 \
+    --gradient_accumulation_steps 4 \
+    --enable_same_data_eval
+```
 
-# Visualization
-matplotlib>=3.5.0
-seaborn>=0.11.0
+### Overfitting Test (Single Shard):
+```bash
+python train_blip3o_enhanced.py \
+    --max_training_shards 1 \
+    --overfitting_test \
+    --same_data_eval_frequency 50
+```
 
-# File handling and serialization
-pickle5>=0.0.11; python_version < "3.8"
-joblib>=1.2.0
-pyarrow>=9.0.0
+## 📊 Evaluation & Analysis
 
-# Configuration management
-omegaconf>=2.3.0
+```bash
+python eval_blip3o_patch_similarity.py \
+    --model_path "./checkpoints/cls_patch" \
+    --embeddings_dir "./embeddings/cls_patch_257" \
+    --output_dir "./results" \
+    --num_samples 5000 \
+    --save_plots \
+    --compute_recall
+```
 
-# JSON improvements
-ujson>=5.4.0
+## ⚙️ Model Configuration
 
-# System monitoring
-psutil>=5.9.0
+### BLIP3oDiTConfig Parameters:
+```python
+config = {
+    "hidden_size": 768,           # Model dimension
+    "num_hidden_layers": 12,      # Transformer layers
+    "num_attention_heads": 12,    # Attention heads
+    "eva_embedding_size": 4096,   # EVA feature dimension
+    "clip_embedding_size": 1024,  # CLIP feature dimension
+    "num_tokens": 257,            # 256 or 257 tokens
+    "prediction_type": "velocity" # Flow matching target
+}
+```
 
-# Performance monitoring (GPU)
-py3nvml>=0.2.7
+### Flow Matching Loss:
+```python
+loss_fn = BLIP3oFlowMatchingLoss(
+    sigma_min=1e-4,               # Minimum noise level
+    sigma_max=1.0,                # Maximum noise level
+    normalize_targets=True,        # Normalize CLIP targets
+    prediction_type="velocity"     # Velocity prediction
+)
+```
 
-# Optional: Memory-efficient attention (uncomment if you have compatible CUDA)
-# xformers>=0.0.20
+## 📁 Project Structure
+```
+blip3o-enhanced/
+├── src/
+│   ├── models/
+│   │   └── blip3o_patch_dit.py           # DiT model implementation
+│   ├── losses/
+│   │   └── blip3o_flow_matching_loss.py  # Pure flow matching loss
+│   ├── datasets/
+│   │   └── blip3o_dataset.py             # Token-mode aware dataloader
+│   ├── trainers/
+│   │   └── blip3o_flexible_trainer.py    # Enhanced training loop
+│   └── extraction/
+│       └── extract_embeddings_g.py       # Embedding extraction
+├── scripts/
+│   ├── train_blip3o_enhanced.py          # Main training script
+│   └── eval_patch_similarity.py          # Evaluation script
+├── configs/
+│   └── blip3o_config.py                  # Model configurations
+└── README.md
+```
 
-# Development tools (optional)
-# jupyter>=1.0.0
-# ipywidgets>=7.7.0
-# black>=22.0.0
-# flake8>=4.0.0
-# pytest>=7.0.0
+## 📄 License
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-# Compatibility
-typing-extensions>=4.3.0
-pathlib2>=2.3.7; python_version < "3.4"
+## 🔗 Related Work
+- [BLIP3-o Paper](https://arxiv.org/abs/your-paper-id)
+- [EVA-CLIP](https://github.com/baaivision/EVA)
+- [Flow Matching](https://arxiv.org/abs/2210.02747)
+```
+
