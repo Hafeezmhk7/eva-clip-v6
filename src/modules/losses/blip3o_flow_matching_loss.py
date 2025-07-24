@@ -6,8 +6,9 @@ CHANGES:
 1. Removed ALL contrastive loss components
 2. Keep ONLY flow matching loss as in BLIP3-o paper
 3. Simplified implementation focused on velocity prediction
-4. Support for both 256 and 257 token modes
+4. Support for both 256 and 257 token modes (CLS+patch and patch-only)
 5. Detailed metrics for training monitoring
+6. Per-patch, per-image, and global similarity analysis
 """
 
 import torch
@@ -130,6 +131,72 @@ class BLIP3oFlowMatchingLoss(nn.Module):
         
         return velocity_target
 
+    def compute_detailed_similarities(
+        self,
+        predicted: torch.Tensor,        # [B, N, 1024] - Predicted velocity
+        target: torch.Tensor,           # [B, N, 1024] - Target embeddings
+        training_mode: str = "cls_patch"
+    ) -> Dict[str, torch.Tensor]:
+        """
+        Compute detailed per-patch, per-image, and global similarities
+        
+        Args:
+            predicted: Predicted velocity [B, N, 1024]
+            target: Target samples [B, N, 1024]
+            training_mode: "cls_patch" or "patch_only"
+            
+        Returns:
+            Dictionary with detailed similarity metrics
+        """
+        batch_size, num_tokens, dim = predicted.shape
+        
+        # Normalize for cosine similarity
+        pred_norm = F.normalize(predicted, p=2, dim=-1)
+        target_norm = F.normalize(target, p=2, dim=-1)
+        
+        # Per-patch cosine similarities [B, N]
+        per_patch_sim = F.cosine_similarity(pred_norm, target_norm, dim=-1)
+        
+        # Per-image average similarities [B]
+        per_image_avg_sim = per_patch_sim.mean(dim=1)
+        
+        # Global average similarity
+        global_avg_sim = per_image_avg_sim.mean()
+        
+        similarities = {
+            'per_patch_cosine': per_patch_sim,              # [B, N]
+            'per_image_avg_cosine': per_image_avg_sim,      # [B]
+            'global_avg_cosine': global_avg_sim,            # scalar
+            'per_patch_mean': per_patch_sim.mean(),         # scalar
+            'per_patch_std': per_patch_sim.std(),           # scalar
+            'per_image_std': per_image_avg_sim.std(),       # scalar
+        }
+        
+        # Mode-specific analysis
+        if training_mode == "cls_patch" and num_tokens == 257:
+            # Separate CLS and patch analysis
+            cls_sim = per_patch_sim[:, 0]  # [B] - CLS token similarities
+            patch_sim = per_patch_sim[:, 1:]  # [B, 256] - Patch similarities
+            
+            similarities.update({
+                'cls_cosine': cls_sim.mean(),                    # scalar
+                'cls_std': cls_sim.std(),                        # scalar
+                'patch_cosine': patch_sim.mean(),                # scalar
+                'patch_std': patch_sim.std(),                    # scalar
+                'cls_vs_patch_correlation': torch.corrcoef(torch.stack([
+                    cls_sim, patch_sim.mean(dim=1)
+                ]))[0, 1] if batch_size > 1 else torch.tensor(0.0),
+            })
+        else:
+            # Patch-only mode
+            similarities.update({
+                'cls_cosine': torch.tensor(0.0),  # Not applicable
+                'patch_cosine': per_patch_sim.mean(),
+                'patch_std': per_patch_sim.std(),
+            })
+        
+        return similarities
+
     def forward(
         self,
         model_output: torch.Tensor,       # [B, N, 1024] - Predicted velocity (N=256 or 257)
@@ -138,6 +205,7 @@ class BLIP3oFlowMatchingLoss(nn.Module):
         eva_conditioning: torch.Tensor,   # [B, N, 4096] - EVA features (for metrics)
         noise: Optional[torch.Tensor] = None,
         return_metrics: bool = False,
+        training_mode: str = "cls_patch",
     ) -> Tuple[torch.Tensor, Optional[Dict[str, float]]]:
         """
         Compute pure BLIP3-o flow matching loss (NO contrastive loss)
@@ -149,6 +217,7 @@ class BLIP3oFlowMatchingLoss(nn.Module):
             eva_conditioning: EVA features [B, N, 4096] (for metrics only)
             noise: Noise for flow matching
             return_metrics: Whether to return detailed metrics
+            training_mode: "cls_patch" or "patch_only"
             
         Returns:
             (loss, metrics) - Pure flow matching loss only
@@ -211,54 +280,26 @@ class BLIP3oFlowMatchingLoss(nn.Module):
         metrics = None
         if return_metrics:
             with torch.no_grad():
-                # Compute detailed metrics
+                # Compute detailed similarities
+                detailed_sims = self.compute_detailed_similarities(
+                    model_output, target_samples, training_mode
+                )
+                
+                # Compute prediction quality metrics
                 pred_norm = torch.norm(model_output, dim=-1).mean()
                 target_norm = torch.norm(velocity_target, dim=-1).mean()
                 
-                # Token-level quality metrics
-                token_cosine_sim = F.cosine_similarity(
-                    model_output.view(-1, 1024), 
-                    velocity_target.view(-1, 1024), 
-                    dim=-1
-                ).mean()
-                
-                # Mode-specific analysis
-                if num_tokens == 257:
-                    # CLS + patches mode: separate CLS and patch analysis
-                    pred_cls = model_output[:, 0, :]  # [B, 1024] - CLS token
-                    pred_patches = model_output[:, 1:, :]  # [B, 256, 1024] - patches
-                    target_cls = target_samples[:, 0, :]
-                    target_patches = target_samples[:, 1:, :]
-                    
-                    cls_cosine_sim = F.cosine_similarity(pred_cls, target_cls, dim=-1).mean()
-                    patch_cosine_sim = F.cosine_similarity(
-                        pred_patches.view(-1, 1024), 
-                        target_patches.view(-1, 1024), 
-                        dim=-1
-                    ).mean()
-                    
-                    # Global features from patch average
-                    pred_global = pred_patches.mean(dim=1)  # [B, 1024]
-                    target_global = target_patches.mean(dim=1)
-                    global_cosine_sim = F.cosine_similarity(pred_global, target_global, dim=-1).mean()
-                    
-                else:
-                    # Patch-only mode: standard global pooling
-                    pred_global = model_output.mean(dim=1)  # [B, 1024]
-                    target_global = target_samples.mean(dim=1)
-                    global_cosine_sim = F.cosine_similarity(pred_global, target_global, dim=-1).mean()
-                    cls_cosine_sim = 0.0  # Not applicable
-                    patch_cosine_sim = token_cosine_sim
-                
                 # Quality indicators
-                high_quality_tokens = (F.cosine_similarity(
-                    model_output.view(-1, 1024), 
-                    target_samples.view(-1, 1024), 
-                    dim=-1
-                ) > 0.7).float().mean()
+                high_quality_patches = (detailed_sims['per_patch_cosine'] > 0.7).float().mean()
+                very_high_quality_patches = (detailed_sims['per_patch_cosine'] > 0.8).float().mean()
+                excellent_quality_patches = (detailed_sims['per_patch_cosine'] > 0.9).float().mean()
+                
+                high_quality_images = (detailed_sims['per_image_avg_cosine'] > 0.7).float().mean()
+                very_high_quality_images = (detailed_sims['per_image_avg_cosine'] > 0.8).float().mean()
+                excellent_quality_images = (detailed_sims['per_image_avg_cosine'] > 0.9).float().mean()
                 
                 # Estimate recall performance (for overfitting monitoring)
-                estimated_recall = torch.clamp(global_cosine_sim * 60, 0, 60)
+                estimated_recall = torch.clamp(detailed_sims['global_avg_cosine'] * 60, 0, 60)
                 
                 metrics = {
                     # Loss components (ONLY flow matching)
@@ -266,28 +307,40 @@ class BLIP3oFlowMatchingLoss(nn.Module):
                     'total_loss': total_loss.item(),
                     'contrastive_loss': 0.0,  # Not used in pure BLIP3-o
                     
+                    # Detailed similarity metrics
+                    'per_patch_mean_cosine': detailed_sims['per_patch_mean'].item(),
+                    'per_patch_std_cosine': detailed_sims['per_patch_std'].item(),
+                    'per_image_mean_cosine': detailed_sims['per_image_avg_cosine'].mean().item(),
+                    'per_image_std_cosine': detailed_sims['per_image_std'].item(),
+                    'global_mean_cosine': detailed_sims['global_avg_cosine'].item(),
+                    
                     # Velocity prediction quality
                     'velocity_cosine_sim': cosine_sim.item(),
-                    'token_cosine_sim': token_cosine_sim.item(),
                     'prediction_norm': pred_norm.item(),
                     'target_norm': target_norm.item(),
                     
                     # Mode-specific metrics
                     'num_tokens': num_tokens,
                     'mode': 'cls_patch' if num_tokens == 257 else 'patch_only',
-                    'cls_cosine_sim': cls_cosine_sim if isinstance(cls_cosine_sim, float) else cls_cosine_sim.item(),
-                    'patch_cosine_sim': patch_cosine_sim.item(),
+                    'cls_cosine_sim': detailed_sims['cls_cosine'].item(),
+                    'patch_cosine_sim': detailed_sims['patch_cosine'].item(),
+                    'patch_std': detailed_sims['patch_std'].item(),
                     
-                    # Global coherence (important for recall)
-                    'global_cosine_sim': global_cosine_sim.item(),
-                    'high_quality_tokens': high_quality_tokens.item(),
+                    # Quality distribution
+                    'high_quality_patches_ratio': high_quality_patches.item(),
+                    'very_high_quality_patches_ratio': very_high_quality_patches.item(),
+                    'excellent_quality_patches_ratio': excellent_quality_patches.item(),
+                    'high_quality_images_ratio': high_quality_images.item(),
+                    'very_high_quality_images_ratio': very_high_quality_images.item(),
+                    'excellent_quality_images_ratio': excellent_quality_images.item(),
                     
                     # Performance indicators (for overfitting detection)
                     'estimated_recall_at_1': estimated_recall.item(),
                     'training_quality': (
-                        'excellent' if global_cosine_sim > 0.8 else
-                        'good' if global_cosine_sim > 0.6 else
-                        'fair' if global_cosine_sim > 0.4 else
+                        'excellent' if detailed_sims['global_avg_cosine'] > 0.8 else
+                        'very_good' if detailed_sims['global_avg_cosine'] > 0.7 else
+                        'good' if detailed_sims['global_avg_cosine'] > 0.6 else
+                        'fair' if detailed_sims['global_avg_cosine'] > 0.4 else
                         'needs_improvement'
                     ),
                     
@@ -311,6 +364,11 @@ class BLIP3oFlowMatchingLoss(nn.Module):
                     'contrastive_loss_used': False,
                     'blip3o_paper_compliant': True,
                 }
+                
+                # Add mode-specific correlations
+                if training_mode == "cls_patch" and num_tokens == 257:
+                    if 'cls_vs_patch_correlation' in detailed_sims:
+                        metrics['cls_vs_patch_correlation'] = detailed_sims['cls_vs_patch_correlation'].item()
         
         return total_loss, metrics
 

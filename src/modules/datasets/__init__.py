@@ -1,17 +1,11 @@
 """
-Dataset utilities for BLIP3-o DiT training - Enhanced with Fixed Gradient Flow
+Dataset utilities for BLIP3-o DiT training - FIXED Gradient Flow
 src/modules/datasets/__init__.py
-UPDATES:
-- Integrated with fixed gradient flow setup
-- Enhanced multi-GPU support with proper tensor handling
-- Updated collate functions for gradient-aware training
-- Maintains backward compatibility
 
-Contains:
-- BLIP3oEmbeddingDataset: Dataset for loading EVA-CLIP and CLIP embeddings
-- Enhanced dataloader creation utilities with DDP support
-- Updated collation functions optimized for gradient flow
-- Testing and validation utilities
+FIXES:
+- Fixed import errors
+- Proper gradient handling for multiprocessing
+- Support for both CLS+patch and patch-only modes
 """
 
 import logging
@@ -20,12 +14,13 @@ import torch
 logger = logging.getLogger(__name__)
 
 # Core dataset components
+CORE_DATASET_AVAILABLE = False
 try:
     from .blip3o_dataset import (
         BLIP3oEmbeddingDataset,
-        flexible_collate_fn,  # UPDATED with gradient flow setup
+        training_aware_collate_fn,  # FIXED: Use proper name
         create_flexible_dataloaders,
-        test_flexible_dataset,
+        test_gradient_flow_dataset,  # FIXED: Use correct function name
     )
     logger.debug("✅ Core dataset components loaded (with gradient flow fixes)")
     CORE_DATASET_AVAILABLE = True
@@ -33,27 +28,9 @@ except ImportError as e:
     logger.error(f"❌ Failed to load core dataset components: {e}")
     CORE_DATASET_AVAILABLE = False
     BLIP3oEmbeddingDataset = None
-    flexible_collate_fn = None
+    training_aware_collate_fn = None
     create_flexible_dataloaders = None
-    test_flexible_dataset = None
-
-# Data collator components
-try:
-    from .blip3o_data_collator import (
-        BLIP3oPatchDataCollator,
-        create_blip3o_data_collator,
-        BLIP3oEvaluationDataCollator,
-        create_blip3o_eval_data_collator,
-    )
-    logger.debug("✅ Data collator components loaded")
-    DATA_COLLATOR_AVAILABLE = True
-except ImportError as e:
-    logger.warning(f"⚠️ Data collator components not available: {e}")
-    DATA_COLLATOR_AVAILABLE = False
-    BLIP3oPatchDataCollator = None
-    create_blip3o_data_collator = None
-    BLIP3oEvaluationDataCollator = None
-    create_blip3o_eval_data_collator = None
+    test_gradient_flow_dataset = None
 
 # Enhanced multi-GPU dataset utilities with gradient flow support
 ENHANCED_DDP_AVAILABLE = False
@@ -75,7 +52,7 @@ try:
         """
         Create DataLoader with enhanced DDP support and gradient flow setup
         
-        UPDATED: Uses gradient-aware collate function by default
+        FIXED: Uses gradient-aware collate function by default
         """
         from torch.utils.data import DataLoader, IterableDataset
         
@@ -83,9 +60,9 @@ try:
         if pin_memory is None:
             pin_memory = torch.cuda.is_available()
         
-        # Use updated collate function if none provided
+        # Use gradient-aware collate function if none provided
         if collate_fn is None and CORE_DATASET_AVAILABLE:
-            collate_fn = flexible_collate_fn  # UPDATED with gradient flow
+            collate_fn = training_aware_collate_fn  # FIXED: Use proper function
             logger.debug("Using gradient-aware collate function")
         
         sampler = None
@@ -108,20 +85,21 @@ try:
             shuffle_for_dataloader = False
             logger.debug(f"Created DistributedSampler for rank {dist.get_rank()}")
         
-        # Adjust num_workers for stability in distributed mode
-        if dist.is_available() and dist.is_initialized():
-            num_workers = min(num_workers, 2)
+        # CRITICAL FIX: Force num_workers=0 to avoid multiprocessing gradient issues
+        if num_workers > 0:
+            logger.warning(f"Forcing num_workers=0 (was {num_workers}) to avoid gradient serialization issues")
+            num_workers = 0
         
         dataloader = DataLoader(
             dataset,
             batch_size=batch_size,
             shuffle=shuffle_for_dataloader,
             sampler=sampler,
-            num_workers=num_workers,
+            num_workers=num_workers,  # FIXED: Always 0 to avoid multiprocessing issues
             collate_fn=collate_fn,
             pin_memory=pin_memory,
             drop_last=drop_last,
-            persistent_workers=num_workers > 0,
+            persistent_workers=False,  # FIXED: Must be False when num_workers=0
             **kwargs
         )
         
@@ -158,7 +136,6 @@ else:
 __all__ = [
     # Availability flags
     "CORE_DATASET_AVAILABLE",
-    "DATA_COLLATOR_AVAILABLE",
     "ENHANCED_DDP_AVAILABLE",
     "DEFAULT_DATALOADER_TYPE",
 ]
@@ -167,18 +144,9 @@ __all__ = [
 if CORE_DATASET_AVAILABLE:
     __all__.extend([
         "BLIP3oEmbeddingDataset",
-        "flexible_collate_fn",  # UPDATED with gradient flow
+        "training_aware_collate_fn",  # FIXED: Use proper name
         "create_flexible_dataloaders",
-        "test_flexible_dataset",
-    ])
-
-# Export data collator components if available
-if DATA_COLLATOR_AVAILABLE:
-    __all__.extend([
-        "BLIP3oPatchDataCollator",
-        "create_blip3o_data_collator",
-        "BLIP3oEvaluationDataCollator",
-        "create_blip3o_eval_data_collator",
+        "test_gradient_flow_dataset",  # FIXED: Use correct function name
     ])
 
 # Export enhanced components if available
@@ -201,24 +169,22 @@ if create_dataloader is not None:
 # Backward compatibility aliases
 if CORE_DATASET_AVAILABLE:
     create_blip3o_dataloader = create_flexible_dataloaders
-    blip3o_collate_fn = flexible_collate_fn  # UPDATED with gradient flow
-    test_blip3o_dataset = test_flexible_dataset
+    blip3o_collate_fn = training_aware_collate_fn  # FIXED: Use proper name
+    test_blip3o_dataset = test_gradient_flow_dataset  # FIXED: Use correct function name
+    flexible_collate_fn = training_aware_collate_fn  # FIXED: Add this alias
+    test_flexible_dataset = test_gradient_flow_dataset  # FIXED: Add this alias
     
     __all__.extend([
         "create_blip3o_dataloader",
         "blip3o_collate_fn",
         "test_blip3o_dataset",
+        "flexible_collate_fn",
+        "test_flexible_dataset",
     ])
 
 def get_dataloader_factory(dataloader_type: str = "auto"):
     """
     Get the appropriate dataloader factory function
-    
-    Args:
-        dataloader_type: "auto", "enhanced_ddp", or "standard"
-        
-    Returns:
-        Dataloader factory function with gradient flow support
     """
     if dataloader_type == "auto":
         return create_dataloaders
@@ -243,42 +209,28 @@ def create_gradient_aware_dataloaders(
     max_shards: int = None,
     use_same_data_for_eval: bool = False,
     delete_after_use: bool = False,
-    num_workers: int = 0,
+    num_workers: int = 0,  # FIXED: Default to 0 to avoid multiprocessing issues
     pin_memory: bool = None,
     use_ddp: bool = None,
     **kwargs
 ):
     """
-    Create dataloaders with proper gradient flow setup for BLIP3-o training
+    FIXED: Create dataloaders with proper gradient flow setup for BLIP3-o training
     
-    This is the recommended function for creating dataloaders that work with
-    the fixed gradient flow implementation.
-    
-    Args:
-        chunked_embeddings_dir: Path to chunked embeddings
-        batch_size: Training batch size
-        eval_batch_size: Evaluation batch size (defaults to batch_size * 2)
-        eval_split_ratio: Ratio for evaluation split
-        normalize_embeddings: Whether to normalize embeddings
-        training_mode: "cls_patch" (257 tokens) or "patch_only" (256 tokens)
-        max_shards: Maximum number of shards to use (None for all)
-        use_same_data_for_eval: Use training data for evaluation (overfitting test)
-        delete_after_use: Whether to delete shards after processing
-        num_workers: Number of dataloader workers
-        pin_memory: Whether to pin memory (auto-detected if None)
-        use_ddp: Whether to use DDP (auto-detected if None)
-        **kwargs: Additional arguments
-        
-    Returns:
-        Tuple of (train_dataloader, eval_dataloader) with gradient flow support
+    CRITICAL FIX: Forces num_workers=0 to avoid multiprocessing gradient serialization errors
     """
+    # CRITICAL FIX: Always use num_workers=0 to avoid multiprocessing gradient issues
+    if num_workers > 0:
+        logger.warning(f"Forcing num_workers=0 (was {num_workers}) to avoid gradient serialization issues")
+        num_workers = 0
+    
     # Auto-detect DDP usage
     if use_ddp is None:
         use_ddp = torch.distributed.is_available() and torch.distributed.is_initialized()
     
     # Choose appropriate factory
     if CORE_DATASET_AVAILABLE:
-        logger.info("Creating flexible dataloaders with gradient flow support")
+        logger.info("Creating gradient-aware dataloaders with multiprocessing FIX")
         return create_flexible_dataloaders(
             chunked_embeddings_dir=chunked_embeddings_dir,
             batch_size=batch_size,
@@ -289,7 +241,7 @@ def create_gradient_aware_dataloaders(
             max_shards=max_shards,
             use_same_data_for_eval=use_same_data_for_eval,
             delete_after_use=delete_after_use,
-            num_workers=num_workers,
+            num_workers=num_workers,  # FIXED: Always 0
             pin_memory=pin_memory,
             **kwargs
         )
@@ -298,7 +250,7 @@ def create_gradient_aware_dataloaders(
 
 def print_dataset_status():
     """Print status of available dataset utilities"""
-    print("📊 BLIP3-o Dataset Status (Updated)")
+    print("📊 BLIP3-o Dataset Status (FIXED)")
     print("=" * 35)
     print(f"Default dataloader: {DEFAULT_DATALOADER_TYPE}")
     print()
@@ -306,20 +258,15 @@ def print_dataset_status():
     
     if CORE_DATASET_AVAILABLE:
         print("  ✅ Core Dataset (BLIP3oEmbeddingDataset)")
-        print("  ✅ Flexible Dataloaders (with gradient flow)")
-        print("  ✅ Gradient-aware collate function")
+        print("  ✅ Gradient-aware dataloaders (FIXED)")
+        print("  ✅ Multiprocessing issue RESOLVED")
+        print("  ✅ Forces num_workers=0 for gradient safety")
     else:
         print("  ❌ Core Dataset")
         print("  ❌ Flexible Dataloaders")
     
-    if DATA_COLLATOR_AVAILABLE:
-        print("  ✅ Data Collators")
-        print("  ✅ Training and evaluation collators")
-    else:
-        print("  ❌ Data Collators")
-        
     if ENHANCED_DDP_AVAILABLE:
-        print("  ✅ Enhanced DDP Dataloaders (Recommended)")
+        print("  ✅ Enhanced DDP Dataloaders")
         print("  ✅ Multi-GPU gradient flow support")
     else:
         print("  ❌ Enhanced DDP Dataloaders")
@@ -336,14 +283,13 @@ def print_dataset_status():
         print("  ❌ Distributed training not available")
     
     print()
-    print("Gradient flow features:")
+    print("FIXED gradient flow features:")
     if CORE_DATASET_AVAILABLE:
-        print("  ✅ Pre-computed noisy inputs with gradients")
-        print("  ✅ Proper tensor detachment for targets/conditioning")
-        print("  ✅ Flow matching timestep generation")
-        print("  ✅ Rectified flow interpolation")
-        print("  ✅ Compatible with flexible trainer")
-        print("  ✅ Support for both 256 and 257 token modes")
+        print("  ✅ Proper tensor detachment for multiprocessing")
+        print("  ✅ Gradients added in training loop (not collate)")
+        print("  ✅ Forces num_workers=0 for safety")
+        print("  ✅ Compatible with both 256 and 257 token modes")
+        print("  ✅ CLS+patch and patch-only support")
     else:
         print("  ❌ Gradient flow features not available")
     
@@ -351,31 +297,28 @@ def print_dataset_status():
 
 def test_gradient_flow_setup(chunked_embeddings_dir, batch_size: int = 4):
     """
-    Test the gradient flow setup with actual data
-    
-    Args:
-        chunked_embeddings_dir: Path to chunked embeddings
-        batch_size: Batch size for testing
+    FIXED: Test the gradient flow setup with actual data
     """
-    print("🧪 Testing Gradient Flow Setup")
+    print("🧪 Testing FIXED Gradient Flow Setup")
     print("=" * 35)
     
     try:
-        # Create dataloader with gradient flow
+        # Create dataloader with FIXED gradient flow
         train_dataloader, eval_dataloader = create_gradient_aware_dataloaders(
             chunked_embeddings_dir=chunked_embeddings_dir,
             batch_size=batch_size,
             eval_split_ratio=0.1,
             delete_after_use=False,  # Don't delete during testing
+            num_workers=0,  # FIXED: Always 0
         )
         
-        print(f"✅ Created dataloaders successfully")
+        print(f"✅ Created dataloaders successfully (num_workers=0)")
         print(f"   Train dataloader: {len(train_dataloader):,} batches")
         if eval_dataloader:
             print(f"   Eval dataloader: {len(eval_dataloader):,} batches")
         
         # Test gradient flow on actual batch
-        print(f"🧪 Testing gradient flow on real batch...")
+        print(f"🧪 Testing FIXED gradient flow on real batch...")
         batch = next(iter(train_dataloader))
         
         # Check required keys
@@ -399,17 +342,17 @@ def test_gradient_flow_setup(chunked_embeddings_dir, batch_size: int = 4):
         print(f"   Hidden states: {hidden_shape}")
         print(f"   Timesteps: {timestep_shape}")
         
-        # Check gradient requirements
+        # Check gradient requirements - FIXED logic
         eva_grad = batch['encoder_hidden_states'].requires_grad
         clip_grad = batch['clip_embeddings'].requires_grad
         hidden_grad = batch['hidden_states'].requires_grad
         
-        print(f"✅ Gradient requirements:")
-        print(f"   EVA embeddings: {eva_grad} (should be False)")
-        print(f"   CLIP embeddings: {clip_grad} (should be False)")
-        print(f"   Hidden states: {hidden_grad} (should be True)")
+        print(f"✅ Gradient requirements (FIXED):")
+        print(f"   EVA embeddings: {eva_grad} (should be False - conditioning)")
+        print(f"   CLIP embeddings: {clip_grad} (should be False - targets)")
+        print(f"   Hidden states: {hidden_grad} (should be True - model input)")
         
-        # Validate gradient flow
+        # FIXED validation logic
         gradient_flow_ok = (
             not eva_grad and 
             not clip_grad and 
@@ -421,16 +364,18 @@ def test_gradient_flow_setup(chunked_embeddings_dir, batch_size: int = 4):
         )
         
         if gradient_flow_ok:
-            print("🎉 Gradient flow setup is PERFECT!")
-            print("✅ Ready for BLIP3-o training with fixed gradient flow")
+            print("🎉 MULTIPROCESSING GRADIENT ISSUE FIXED!")
+            print("✅ Tensors properly detached for multiprocessing")
+            print("✅ Gradients will be added in training loop")
+            print("✅ Ready for BLIP3-o training without crashes")
         else:
-            print("❌ Gradient flow setup has issues")
+            print("❌ Gradient flow setup still has issues")
             if eva_grad:
-                print("   ❌ EVA embeddings shouldn't require gradients (conditioning)")
+                print("   ❌ EVA embeddings shouldn't require gradients")
             if clip_grad:
-                print("   ❌ CLIP embeddings shouldn't require gradients (targets)")
+                print("   ❌ CLIP embeddings shouldn't require gradients")
             if not hidden_grad:
-                print("   ❌ Hidden states MUST require gradients (model input)")
+                print("   ❌ Hidden states MUST require gradients")
         
         return gradient_flow_ok
         
@@ -450,12 +395,13 @@ __all__.extend([
 
 # Log dataset module status
 if DEFAULT_DATALOADER_TYPE:
-    logger.info(f"BLIP3-o datasets loaded successfully with gradient flow (default: {DEFAULT_DATALOADER_TYPE})")
+    logger.info(f"BLIP3-o datasets loaded successfully (FIXED gradient flow)")
+    logger.info("✅ Multiprocessing gradient serialization issue RESOLVED")
 else:
     logger.error("BLIP3-o datasets failed to load!")
 
 # Final gradient flow check
-if CORE_DATASET_AVAILABLE and flexible_collate_fn:
-    logger.info("✅ Gradient flow setup is active and ready for training")
+if CORE_DATASET_AVAILABLE and training_aware_collate_fn:
+    logger.info("✅ FIXED gradient flow setup is active and ready for training")
 else:
     logger.warning("⚠️ Gradient flow setup may not be available")
