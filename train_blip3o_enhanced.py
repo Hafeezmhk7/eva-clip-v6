@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-UPDATED: Enhanced BLIP3-o Training Script - Training Only (No Evaluation)
-train_blip3o_enhanced.py
+Clean BLIP3-o Training Script - Training Only (No Evaluation During Training)
+train_blip3o_clean.py
 
-CHANGES:
-1. Disabled all evaluation during training
-2. Only reports loss, learning rate, and training metrics
-3. Simplified for single shard training
-4. Post-training evaluation done separately
+FEATURES:
+- Clean, focused training without evaluation during training
+- Proper gradient flow and loss computation
+- Aligned with fixed model and loss implementations
+- Post-training evaluation done separately for cleaner separation
 """
 
 import os
@@ -21,7 +21,6 @@ import json
 from datetime import datetime
 import traceback
 import time
-import warnings
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
@@ -49,9 +48,9 @@ def setup_logging(local_rank=0, log_dir=None):
     return logging.getLogger(__name__)
 
 def parse_arguments():
-    """Parse command line arguments - Training only mode"""
+    """Parse command line arguments - Clean training mode"""
     parser = argparse.ArgumentParser(
-        description="BLIP3-o Training - No Evaluation During Training",
+        description="Clean BLIP3-o Training - No Evaluation During Training",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
     
@@ -74,12 +73,12 @@ def parse_arguments():
     parser.add_argument("--model_size", type=str, default="base",
                        choices=["tiny", "small", "base", "large"],
                        help="Model size configuration")
-    parser.add_argument("--hidden_size", type=int, default=768,
-                       help="Model hidden dimension")
-    parser.add_argument("--num_layers", type=int, default=12,
-                       help="Number of transformer layers")
-    parser.add_argument("--num_heads", type=int, default=12,
-                       help="Number of attention heads")
+    parser.add_argument("--hidden_size", type=int, default=None,
+                       help="Model hidden dimension (overrides model_size)")
+    parser.add_argument("--num_layers", type=int, default=None,
+                       help="Number of transformer layers (overrides model_size)")
+    parser.add_argument("--num_heads", type=int, default=None,
+                       help="Number of attention heads (overrides model_size)")
     
     # Training configuration
     parser.add_argument("--num_epochs", type=int, default=10,
@@ -98,7 +97,7 @@ def parse_arguments():
                        choices=["linear", "cosine", "constant"],
                        help="Learning rate scheduler")
     
-    # Loss configuration
+    # Loss configuration (BLIP3-o aligned)
     parser.add_argument("--normalize_targets", action="store_true", default=True,
                        help="Normalize target embeddings")
     parser.add_argument("--prediction_type", type=str, default="velocity",
@@ -113,8 +112,8 @@ def parse_arguments():
                        help="Use mixed precision training")
     parser.add_argument("--gradient_checkpointing", action="store_true", default=False,
                        help="Enable gradient checkpointing")
-    parser.add_argument("--dataloader_num_workers", type=int, default=2,
-                       help="Number of dataloader workers")
+    parser.add_argument("--dataloader_num_workers", type=int, default=0,
+                       help="Number of dataloader workers (0 to avoid multiprocessing issues)")
     
     # Logging and saving - NO EVALUATION
     parser.add_argument("--logging_steps", type=int, default=10,
@@ -146,7 +145,7 @@ def validate_training_setup(args, logger):
         logger.warning("Embeddings manifest not found, proceeding anyway")
         manifest = {}
     
-    # Validate mode
+    # Validate mode compatibility
     expected_tokens = 257 if args.training_mode == "cls_patch" else 256
     tokens_per_sample = manifest.get('tokens_per_sample', expected_tokens)
     
@@ -158,7 +157,7 @@ def validate_training_setup(args, logger):
     logger.info(f"   📊 Dataset: {manifest.get('total_shards', 0)} total shards")
     logger.info(f"   🎯 Training mode: {args.training_mode} ({expected_tokens} tokens)")
     logger.info(f"   📦 Training on shard: {args.shard_index}")
-    logger.info(f"   🚫 Evaluation during training: DISABLED")
+    logger.info(f"   🚫 Evaluation during training: DISABLED (clean separation)")
     
     return manifest
 
@@ -192,30 +191,32 @@ def setup_device_and_distributed():
     return device, is_distributed, is_main_process, local_rank, global_rank, world_size
 
 def create_model_safely(args, device, logger):
-    """Create model"""
-    logger.info("🏗️ Creating model...")
+    """Create BLIP3-o model with proper configuration"""
+    logger.info("🏗️ Creating BLIP3-o model...")
     
     try:
         from src.modules.models.blip3o_patch_dit import create_blip3o_patch_dit_model, BLIP3oDiTConfig
         
-        # Size configurations
+        # Model size configurations
         size_configs = {
-            "tiny": {"hidden_size": 384, "num_hidden_layers": 6, "num_attention_heads": 6},
-            "small": {"hidden_size": 512, "num_hidden_layers": 8, "num_attention_heads": 8}, 
-            "base": {"hidden_size": 768, "num_hidden_layers": 12, "num_attention_heads": 12},
-            "large": {"hidden_size": 1024, "num_hidden_layers": 16, "num_attention_heads": 16},
+            "tiny": {"hidden_size": 384, "num_hidden_layers": 6, "num_attention_heads": 6, "intermediate_size": 1536},
+            "small": {"hidden_size": 512, "num_hidden_layers": 8, "num_attention_heads": 8, "intermediate_size": 2048}, 
+            "base": {"hidden_size": 768, "num_hidden_layers": 12, "num_attention_heads": 12, "intermediate_size": 3072},
+            "large": {"hidden_size": 1024, "num_hidden_layers": 16, "num_attention_heads": 16, "intermediate_size": 4096},
         }
         
         base_config = size_configs.get(args.model_size, size_configs["base"])
         
+        # Use provided values or fall back to size config
         config = BLIP3oDiTConfig(
             hidden_size=args.hidden_size or base_config["hidden_size"],
             num_hidden_layers=args.num_layers or base_config["num_hidden_layers"], 
             num_attention_heads=args.num_heads or base_config["num_attention_heads"],
+            intermediate_size=base_config["intermediate_size"],
             training_mode=args.training_mode,
             num_tokens=257 if args.training_mode == "cls_patch" else 256,
-            max_position_embeddings=257,
-            use_gradient_checkpointing=False,
+            max_position_embeddings=257,  # Support both modes
+            use_gradient_checkpointing=False,  # Will be enabled later if requested
         )
         
         model = create_blip3o_patch_dit_model(config=config)
@@ -233,6 +234,9 @@ def create_model_safely(args, device, logger):
         logger.info(f"✅ BLIP3-o model created successfully")
         logger.info(f"   Parameters: {model.get_num_parameters():,}")
         logger.info(f"   Mode: {args.training_mode} ({config.num_tokens} tokens)")
+        logger.info(f"   Hidden size: {config.hidden_size}")
+        logger.info(f"   Layers: {config.num_hidden_layers}")
+        logger.info(f"   Heads: {config.num_attention_heads}")
         logger.info(f"   Device: {device}")
         
         return model, config
@@ -241,8 +245,47 @@ def create_model_safely(args, device, logger):
         logger.error(f"❌ Model creation failed: {e}")
         raise
 
+def create_training_args(args):
+    """Create training arguments using existing implementation"""
+    from src.modules.trainers.blip3o_training_only_trainer import create_training_only_args
+    
+    return create_training_only_args(
+        output_dir=args.output_dir,
+        num_train_epochs=args.num_epochs,
+        per_device_train_batch_size=args.batch_size,
+        learning_rate=args.learning_rate,
+        lr_scheduler_type=args.lr_scheduler,
+        weight_decay=args.weight_decay,
+        warmup_steps=args.warmup_steps,
+        gradient_accumulation_steps=args.gradient_accumulation_steps,
+        fp16=args.fp16 and torch.cuda.is_available(),
+        dataloader_num_workers=args.dataloader_num_workers,
+        logging_steps=args.logging_steps,
+        save_steps=args.save_steps,
+    )
+
+def create_trainer_with_existing_implementation(model, training_args, flow_matching_loss, train_dataloader, args, logger):
+    """Create trainer using existing BLIP3oTrainingOnlyTrainer implementation"""
+    from src.modules.trainers.blip3o_training_only_trainer import BLIP3oTrainingOnlyTrainer
+    
+    # Create trainer using your existing implementation
+    trainer = BLIP3oTrainingOnlyTrainer(
+        model=model,
+        args=training_args,
+        flow_matching_loss=flow_matching_loss,
+        train_dataset=None,  # We'll override dataloader
+        training_mode=args.training_mode,
+    )
+    
+    # Override dataloader to use our specific dataloader
+    trainer.get_train_dataloader = lambda: train_dataloader
+    
+    logger.info("✅ Using existing BLIP3oTrainingOnlyTrainer implementation")
+    
+    return trainer
+
 def main():
-    """Main training function - Training only, no evaluation"""
+    """Main training function - Clean training only"""
     args = parse_arguments()
     
     # Setup device and distributed training
@@ -253,13 +296,14 @@ def main():
     logger = setup_logging(local_rank, log_dir)
     
     if is_main_process:
-        print("🚀 BLIP3-o Training - No Evaluation Mode")
-        print("=" * 50)
+        print("🚀 Clean BLIP3-o Training - No Evaluation During Training")
+        print("=" * 60)
         print(f"  ✅ Training mode: {args.training_mode}")
         print(f"  ✅ Training on shard: {args.shard_index}")
         print(f"  🚫 Evaluation during training: DISABLED")
-        print(f"  📊 Will report: Loss, Learning Rate, Training Metrics")
-        print("=" * 50)
+        print(f"  📊 Will report: Loss, Learning Rate, Training Metrics Only")
+        print(f"  🔧 Post-training evaluation: Run separately for clean separation")
+        print("=" * 60)
     
     try:
         # 1. Validate setup
@@ -267,7 +311,6 @@ def main():
         
         # 2. Load modules
         from src.modules.losses.blip3o_flow_matching_loss import create_blip3o_flow_matching_loss
-        from src.modules.trainers.blip3o_training_only_trainer import BLIP3oTrainingOnlyTrainer, create_training_only_args
         from src.modules.datasets.blip3o_dataset import create_flexible_dataloaders
         
         # 3. Create model
@@ -296,6 +339,9 @@ def main():
         )
         
         logger.info("✅ Flow matching loss created")
+        logger.info(f"   Prediction type: {args.prediction_type}")
+        logger.info(f"   Flow type: {args.flow_type}")
+        logger.info(f"   Normalize targets: {args.normalize_targets}")
         
         # 6. Create dataloaders - ONLY training data
         logger.info("🔄 Creating training dataloader...")
@@ -305,9 +351,9 @@ def main():
             batch_size=args.batch_size,
             eval_batch_size=None,  # No evaluation
             eval_split_ratio=0.0,  # No evaluation split
-            normalize_embeddings=True,
+            normalize_embeddings=False,  # Loss function handles normalization
             training_mode=args.training_mode,
-            max_shards=1,  # Single shard
+            max_shards=1,  # Single shard training
             use_same_data_for_eval=False,  # No evaluation
             delete_after_use=False,
             num_workers=args.dataloader_num_workers,
@@ -316,54 +362,35 @@ def main():
         
         logger.info(f"✅ Training dataloader created for single shard")
         
-        # 7. Create training arguments - NO EVALUATION
-        training_args = create_training_only_args(
-            output_dir=args.output_dir,
-            num_train_epochs=args.num_epochs,
-            per_device_train_batch_size=args.batch_size,
-            learning_rate=args.learning_rate,
-            lr_scheduler_type=args.lr_scheduler,
-            weight_decay=args.weight_decay,
-            warmup_steps=args.warmup_steps,
-            gradient_accumulation_steps=args.gradient_accumulation_steps,
-            fp16=args.fp16 and device.type != "cpu",
-            dataloader_num_workers=args.dataloader_num_workers,
-            logging_steps=args.logging_steps,
-            save_steps=args.save_steps,
+        # 7. Create training arguments
+        training_args = create_training_args(args)
+        
+        # 8. Create trainer using existing BLIP3oTrainingOnlyTrainer
+        trainer = create_trainer_with_existing_implementation(
+            model, training_args, flow_matching_loss, train_dataloader, args, logger
         )
         
-        # 8. Create trainer - NO EVALUATION
-        trainer = BLIP3oTrainingOnlyTrainer(
-            model=model,
-            args=training_args,
-            flow_matching_loss=flow_matching_loss,
-            train_dataset=train_dataloader.dataset if hasattr(train_dataloader, 'dataset') else None,
-            training_mode=args.training_mode,
-        )
-        
-        # Override dataloader
-        trainer.get_train_dataloader = lambda: train_dataloader
-        
-        logger.info("✅ Training-only trainer created")
+        logger.info("✅ Trainer created using existing BLIP3oTrainingOnlyTrainer")
         logger.info(f"   Mode: {args.training_mode}")
-        logger.info(f"   Will report: Loss, Learning Rate, Training Metrics")
-        logger.info(f"   No evaluation during training")
+        logger.info(f"   No evaluation during training (clean separation)")
         
         # 9. Start training
-        logger.info("🚀 Starting training...")
+        logger.info("🚀 Starting clean training...")
         logger.info(f"   Training for {args.num_epochs} epochs")
         logger.info(f"   Logging every {args.logging_steps} steps")
         logger.info(f"   Saving every {args.save_steps} steps")
         
-        # Start training
+        start_time = time.time()
         train_result = trainer.train()
+        training_time = time.time() - start_time
         
         # 10. Save results
         if is_main_process:
             logger.info("💾 Saving model and results...")
             trainer.save_model()
             
-            # Save training info
+            # Save training info using existing trainer's statistics
+            training_stats = trainer.get_training_statistics()
             training_info = {
                 'training_completed': True,
                 'training_mode': args.training_mode,
@@ -371,24 +398,47 @@ def main():
                 'shard_index': args.shard_index,
                 'evaluation_during_training': False,
                 'total_epochs': args.num_epochs,
+                'total_steps': training_stats.get('total_steps', 0),
                 'learning_rate': args.learning_rate,
-                'final_loss': trainer.state.log_history[-1].get('train_loss', 'unknown') if trainer.state.log_history else 'unknown',
+                'training_time_seconds': training_time,
+                'loss_statistics': training_stats.get('loss_statistics', {}),
                 'timestamp': datetime.now().isoformat(),
+                'trainer_used': 'BLIP3oTrainingOnlyTrainer',
+                'model_config': {
+                    'hidden_size': config.hidden_size,
+                    'num_layers': config.num_hidden_layers,
+                    'num_heads': config.num_attention_heads,
+                    'num_tokens': config.num_tokens,
+                },
                 'next_steps': [
                     'Run evaluation script: python eval_blip3o_patch_similarity.py',
-                    f'Use model path: {args.output_dir}',
-                    f'Use embeddings: {args.chunked_embeddings_dir}',
-                    f'Use training mode: {args.training_mode}'
+                    f'--model_path {args.output_dir}',
+                    f'--chunked_embeddings_dir {args.chunked_embeddings_dir}',
+                    f'--training_mode {args.training_mode}',
+                    '--same_data_eval',
                 ]
             }
             
             with open(Path(args.output_dir) / 'training_info.json', 'w') as f:
                 json.dump(training_info, f, indent=2)
             
-            logger.info("✅ Training completed successfully!")
+            logger.info("✅ Clean training completed successfully!")
             logger.info(f"   Model saved to: {args.output_dir}")
             logger.info(f"   Training mode: {args.training_mode}")
+            logger.info(f"   Training time: {training_time:.1f} seconds")
+            final_loss = training_stats.get('loss_statistics', {}).get('current_loss', 'unknown')
+            logger.info(f"   Final loss: {final_loss}")
+            logger.info(f"   Trainer used: BLIP3oTrainingOnlyTrainer")
             logger.info(f"   Next step: Run evaluation script")
+            
+            print("\n🎯 NEXT STEPS:")
+            print("Run the evaluation script to test your trained model:")
+            print(f"python eval_blip3o_patch_similarity.py \\")
+            print(f"  --model_path {args.output_dir} \\")
+            print(f"  --chunked_embeddings_dir {args.chunked_embeddings_dir} \\")
+            print(f"  --training_mode {args.training_mode} \\")
+            print(f"  --same_data_eval \\")
+            print(f"  --output_dir {args.output_dir}/evaluation")
         
         # Cleanup
         if is_distributed:

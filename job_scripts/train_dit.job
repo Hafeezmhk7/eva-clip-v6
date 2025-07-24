@@ -1,11 +1,12 @@
 #!/bin/bash
 #SBATCH --job-name=blip3o_training
-#SBATCH --partition=gpu_h100
+#SBATCH --partition=gpu_a100
 #SBATCH --nodes=1
 #SBATCH --gpus=3
-#SBATCH --cpus-per-gpu=18
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-gpu=9
 #SBATCH --time=12:00:00
-#SBATCH --mem=0
+#SBATCH --mem=64GB
 #SBATCH --output=./slurm_out/blip3o_training_%j.out
 #SBATCH --error=./slurm_out/blip3o_training_%j.err
 
@@ -38,7 +39,7 @@ export CHECKPOINTS="${WORKSPACE}/checkpoints"
 
 # Configuration
 TRAINING_MODE="patch_only"  # patch_only or cls_patch
-EMBEDDINGS_DIR="/scratch-shared/scur2711/blip3o_workspace/embeddings/chunked_256_tokens"
+EMBEDDINGS_DIR="/scratch-shared/azadaianchuk1/blip3o_workspace/embeddings/patch_only_256_tokens"
 OUTPUT_DIR="${CHECKPOINTS}/training_only_${TRAINING_MODE}_${JOB_ID}_$(date +%Y%m%d_%H%M%S)"
 mkdir -p "${OUTPUT_DIR}"
 

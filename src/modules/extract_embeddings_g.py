@@ -534,7 +534,7 @@ def process_single_tar(
 def main():
     """Main extraction function with CLS+patch support."""
     parser = argparse.ArgumentParser(description="BLIP3-o Embedding Extraction with CLS+Patch support")
-    parser.add_argument("--include_cls", action="store_true", default=True,
+    parser.add_argument("--include_cls", action="store_true", default=False,
                        help="Include CLS token (257 tokens) or patches only (256 tokens)")
     parser.add_argument("--max_shards", type=int, default=None,
                        help="Maximum number of shards to process (for testing)")

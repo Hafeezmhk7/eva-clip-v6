@@ -1,12 +1,13 @@
+#!/usr/bin/env python3
 """
-FINAL FIXED: BLIP3-o Flow Matching Loss - Training & Evaluation Compatible
+FIXED: BLIP3-o Flow Matching Loss - Training & Evaluation Compatible
 src/modules/losses/blip3o_flow_matching_loss.py
 
 KEY FIXES:
-1. Handles both training (with gradients) and evaluation (without gradients) modes
-2. Fixed velocity target computation
-3. Proper BLIP3-o paper alignment
-4. Safe tensor operations for both modes
+1. Proper rectified flow implementation aligned with BLIP3-o paper
+2. Consistent normalization between training and evaluation
+3. Correct velocity target computation
+4. Safe tensor operations for both training and evaluation modes
 """
 
 import torch
@@ -21,7 +22,10 @@ logger = logging.getLogger(__name__)
 
 class BLIP3oFlowMatchingLoss(nn.Module):
     """
-    FINAL FIXED: Pure Flow Matching Loss for BLIP3-o (Training & Evaluation Compatible)
+    FIXED: Pure Flow Matching Loss for BLIP3-o (Training & Evaluation Compatible)
+    
+    Implements rectified flow matching as described in BLIP3-o paper with proper
+    velocity prediction and consistent normalization.
     """
     
     def __init__(
@@ -45,22 +49,23 @@ class BLIP3oFlowMatchingLoss(nn.Module):
         self.register_buffer('ema_cosine_sim', torch.tensor(0.0))
         self.ema_decay = 0.99
         
-        logger.info(f"✅ FINAL FIXED: BLIP3-o Flow Matching Loss (training & eval compatible)")
+        logger.info(f"✅ FIXED BLIP3-o Flow Matching Loss initialized")
         logger.info(f"   Flow type: {flow_type}")
         logger.info(f"   Prediction type: {prediction_type}")
+        logger.info(f"   Normalize targets: {normalize_targets}")
 
     def sample_timesteps(self, batch_size: int, device: torch.device) -> torch.Tensor:
-        """Sample random timesteps for flow matching"""
+        """Sample random timesteps for flow matching training"""
         return torch.rand(batch_size, device=device, dtype=torch.float32)
 
     def get_noise_schedule(self, t: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """Get noise schedule parameters for rectified flow matching"""
         if self.flow_type == "rectified":
-            # Rectified flow: simple linear interpolation
-            alpha_t = t  # Linear schedule
-            sigma_t = torch.zeros_like(t)  # No additional noise in rectified flow
+            # Rectified flow: simple linear interpolation from noise to data
+            alpha_t = t  # Linear schedule from 0 to 1
+            sigma_t = torch.zeros_like(t)  # No additional noise
         else:
-            # Standard flow matching with noise
+            # Standard flow matching with noise schedule
             alpha_t = t
             sigma_t = self.sigma_min + (self.sigma_max - self.sigma_min) * (1 - t)
         
@@ -73,12 +78,17 @@ class BLIP3oFlowMatchingLoss(nn.Module):
         t: torch.Tensor,    # Timesteps [B]
         noise: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-        """Interpolate between source and target (rectified flow)"""
+        """
+        FIXED: Interpolate between source and target using rectified flow
+        
+        For rectified flow: x_t = (1-t) * x_0 + t * x_1
+        This creates a straight path from noise to data
+        """
         # Ensure proper shapes for broadcasting
         t = t.view(-1, 1, 1)  # [B, 1, 1]
         
         if self.flow_type == "rectified":
-            # Rectified flow interpolation (BLIP3-o paper)
+            # BLIP3-o uses rectified flow: straight line interpolation
             x_t = (1 - t) * x_0 + t * x_1
         else:
             # Standard flow matching with noise
@@ -100,10 +110,15 @@ class BLIP3oFlowMatchingLoss(nn.Module):
         t: torch.Tensor,    # Timesteps [B]
         noise: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-        """Compute velocity target for rectified flow matching"""
+        """
+        FIXED: Compute velocity target for rectified flow matching
+        
+        For rectified flow, the velocity is constant: v = x_1 - x_0
+        This represents the direction from noise to data
+        """
         if self.prediction_type == "velocity":
             if self.flow_type == "rectified":
-                # Rectified flow velocity (constant)
+                # BLIP3-o rectified flow: constant velocity field
                 velocity_target = x_1 - x_0
             else:
                 # Standard flow matching velocity
@@ -122,8 +137,8 @@ class BLIP3oFlowMatchingLoss(nn.Module):
     def compute_detailed_similarities(
         self,
         predicted: torch.Tensor,        # [B, N, 1024] - Predicted velocity
-        target: torch.Tensor,           # [B, N, 1024] - Target embeddings
-        training_mode: str = "cls_patch"
+        target: torch.Tensor,           # [B, N, 1024] - Target velocity or embeddings
+        training_mode: str = "patch_only"
     ) -> Dict[str, torch.Tensor]:
         """Compute detailed per-patch, per-image, and global similarities"""
         batch_size, num_tokens, dim = predicted.shape
@@ -178,16 +193,21 @@ class BLIP3oFlowMatchingLoss(nn.Module):
         eva_conditioning: torch.Tensor,   # [B, N, 4096] - EVA features
         noise: Optional[torch.Tensor] = None,
         return_metrics: bool = False,
-        training_mode: str = "cls_patch",
+        training_mode: str = "patch_only",
     ) -> Tuple[torch.Tensor, Optional[Dict[str, float]]]:
         """
-        FINAL FIXED: Compute BLIP3-o flow matching loss (training & evaluation compatible)
+        FIXED: Compute BLIP3-o flow matching loss with proper rectified flow
+        
+        This implementation ensures:
+        1. Consistent velocity targets for rectified flow
+        2. Proper normalization handling
+        3. Compatible with both training and evaluation
         """
         batch_size = model_output.shape[0]
         num_tokens = model_output.shape[1]
         device = model_output.device
         
-        # FIXED: Detect if we're in training or evaluation mode
+        # Detect if we're in training or evaluation mode
         is_training = model_output.requires_grad
         
         # Input validation
@@ -196,74 +216,86 @@ class BLIP3oFlowMatchingLoss(nn.Module):
         assert num_tokens in [256, 257], f"Expected 256 or 257 tokens, got {num_tokens}"
         assert model_output.shape[2] == 1024, f"Expected 1024-dim, got {model_output.shape[2]}"
         
-        # Normalize targets if requested
+        # FIXED: Normalize targets consistently
         if self.normalize_targets:
             target_samples = F.normalize(target_samples.detach(), p=2, dim=-1)
         else:
             target_samples = target_samples.detach()
         
-        # Create source distribution (x_0) with proper scaling
-        if self.flow_type == "rectified":
-            x_0 = torch.randn_like(target_samples, device=device, dtype=target_samples.dtype)
-        else:
-            x_0 = torch.randn_like(target_samples, device=device, dtype=target_samples.dtype) * 0.1
+        # FIXED: Create source distribution (noise) with proper scaling
+        x_0 = torch.randn_like(target_samples, device=device, dtype=target_samples.dtype)
         
-        # Compute velocity target
+        # FIXED: Compute velocity target using rectified flow
         velocity_target = self.compute_velocity_target(x_0, target_samples, timesteps, noise)
         
-        # Flow matching loss with proper scaling
-        if self.flow_type == "rectified":
-            # Rectified flow uses simple MSE loss
-            flow_matching_loss = F.mse_loss(model_output, velocity_target, reduction='mean')
-        else:
-            # Standard flow matching might use weighted loss
-            weights = torch.ones_like(timesteps)
-            flow_matching_loss = F.mse_loss(model_output, velocity_target, reduction='none')
-            flow_matching_loss = (flow_matching_loss * weights.view(-1, 1, 1)).mean()
+        # FIXED: Flow matching loss - simple MSE for rectified flow
+        flow_matching_loss = F.mse_loss(model_output, velocity_target, reduction='mean')
         
-        # FIXED: Only check loss gradients during training
+        # Verify loss has gradients during training
         if is_training and not flow_matching_loss.requires_grad:
             raise RuntimeError("Flow matching loss doesn't require gradients during training!")
         
-        # Total loss is ONLY the flow matching loss (BLIP3-o paper)
+        # Total loss is pure flow matching loss (BLIP3-o paper)
         total_loss = flow_matching_loss
         
-        # Update EMA metrics (always safe to do with detached tensors)
+        # Update EMA metrics safely
         with torch.no_grad():
             self.ema_loss = self.ema_decay * self.ema_loss + (1 - self.ema_decay) * total_loss.item()
             
-            # Compute cosine similarity for monitoring (detach for safety)
+            # Velocity cosine similarity for monitoring
             pred_flat = model_output.detach().view(batch_size, -1)
             target_flat = velocity_target.detach().view(batch_size, -1)
             cosine_sim = F.cosine_similarity(pred_flat, target_flat, dim=-1).mean()
             self.ema_cosine_sim = self.ema_decay * self.ema_cosine_sim + (1 - self.ema_decay) * cosine_sim.item()
         
-        # Prepare metrics
+        # Prepare detailed metrics
         metrics = None
         if return_metrics:
             with torch.no_grad():
-                # Compute detailed similarities (detach for safety)
+                # Compute detailed similarities
                 detailed_sims = self.compute_detailed_similarities(
-                    model_output.detach(), target_samples.detach(), training_mode
+                    model_output.detach(), velocity_target.detach(), training_mode
                 )
                 
-                # Prediction quality metrics (detach for safety)
+                # Prediction quality metrics
                 pred_norm = torch.norm(model_output.detach(), dim=-1).mean()
                 target_norm = torch.norm(velocity_target.detach(), dim=-1).mean()
                 
-                # Quality indicators
+                # Quality indicators for patches and images
                 high_quality_patches = (detailed_sims['per_patch_cosine'] > 0.7).float().mean()
                 very_high_quality_patches = (detailed_sims['per_patch_cosine'] > 0.8).float().mean()
                 
                 high_quality_images = (detailed_sims['per_image_avg_cosine'] > 0.7).float().mean()
                 very_high_quality_images = (detailed_sims['per_image_avg_cosine'] > 0.8).float().mean()
                 
+                # FIXED: For evaluation, also compute final embedding similarity
+                # This helps bridge the gap between training metrics and evaluation metrics
+                eval_similarity = None
+                if not is_training:
+                    # During evaluation, we can also compute the final embedding similarity
+                    # by applying the generated velocity to see where it would lead
+                    try:
+                        # Simulate one step of flow matching to see final embeddings
+                        dt = 1.0 / 50  # Assume 50 steps like in generation
+                        final_embeddings = x_0 + model_output.detach()  # Simple one-step for approximation
+                        if self.normalize_targets:
+                            final_embeddings = F.normalize(final_embeddings, p=2, dim=-1)
+                        
+                        final_sim = F.cosine_similarity(
+                            final_embeddings.view(batch_size, -1),
+                            target_samples.view(batch_size, -1),
+                            dim=-1
+                        ).mean()
+                        eval_similarity = final_sim.item()
+                    except:
+                        eval_similarity = None
+                
                 metrics = {
                     # Loss components
                     'flow_matching_loss': flow_matching_loss.item(),
                     'total_loss': total_loss.item(),
                     
-                    # Velocity prediction quality
+                    # Velocity prediction quality (training metric)
                     'velocity_cosine_sim': cosine_sim.item(),
                     'prediction_norm': pred_norm.item(),
                     'target_norm': target_norm.item(),
@@ -300,10 +332,14 @@ class BLIP3oFlowMatchingLoss(nn.Module):
                     'ema_loss': self.ema_loss.item(),
                     'ema_cosine_sim': self.ema_cosine_sim.item(),
                     
-                    # Flow type info
+                    # FIXED: Add evaluation similarity if available
+                    'eval_final_embedding_similarity': eval_similarity,
+                    
+                    # Model info
                     'flow_type': self.flow_type,
                     'prediction_type': self.prediction_type,
                     'is_training': is_training,
+                    'normalize_targets': self.normalize_targets,
                     'paper_aligned': True,
                     'blip3o_compliant': True,
                 }
@@ -319,6 +355,15 @@ def create_blip3o_flow_matching_loss(
 ) -> BLIP3oFlowMatchingLoss:
     """
     Factory function for creating BLIP3-o flow matching loss
+    
+    Args:
+        prediction_type: "velocity" for BLIP3-o (recommended)
+        normalize_targets: True for consistent normalization
+        flow_type: "rectified" for BLIP3-o paper alignment
+        **kwargs: Additional loss configuration
+    
+    Returns:
+        BLIP3oFlowMatchingLoss instance
     """
     return BLIP3oFlowMatchingLoss(
         prediction_type=prediction_type,
