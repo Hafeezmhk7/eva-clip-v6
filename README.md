@@ -1,7 +1,7 @@
 # BLIP3-o Enhanced Patch-Level DiT: Image-to-Text Translation via Flow Matching
 An implementation* of BLIP3-o patch-level Diffusion Transformer (DiT) for image-to-text translation using flow matching. This project implements flexible training with support for both **CLS+patch (257 tokens)** and **patch-only (256 tokens)** modes, with detailed cosine similarity evaluation and overfitting verification.
 ## 🏗️ Architecture Overview
-
+```mermaid
 graph TD
     A[Input Images] --> B[EVA-CLIP Encoder]
     A --> C[CLIP ViT Encoder]
