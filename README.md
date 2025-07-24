@@ -51,14 +51,8 @@ pip install matplotlib seaborn plotly pandas scipy
 
 ```bash
 # Extract CLS+patch embeddings (257 tokens per image)
-python src/modules/extract_embeddings_g.py --include_cls
-
-# OR extract patch-only embeddings (256 tokens per image)
 python src/modules/extract_embeddings_g.py
 
-# Verify embeddings
-ls -la embeddings/
-cat embeddings/*/embeddings_manifest.json
 ```
 
 ### 3. Training Options
