@@ -1,56 +1,12 @@
 {
-  "error": "You have set `args.eval_strategy` to IntervalStrategy.STEPS but you didn't pass an `eval_dataset` to `Trainer`. Either set `args.eval_strategy` to `no` or pass an `eval_dataset`. ",
-  "traceback": "Traceback (most recent call last):\n  File \"/gpfs/home1/scur2711/eva-clip-flow-matching/eva-clip-v3/train_blip3o_enhanced.py\", line 610, in main\n    trainer = BLIP3oFlexibleTrainer(\n        model=model,\n    ...<8 lines>...\n        detailed_logging=args.detailed_logging,\n    )\n  File \"/gpfs/home1/scur2711/eva-clip-flow-matching/eva-clip-v3/src/modules/trainers/blip3o_flexible_trainer.py\", line 64, in __init__\n    super().__init__(\n    ~~~~~~~~~~~~~~~~^\n        model=model,\n        ^^^^^^^^^^^^\n    ...<10 lines>...\n        **kwargs\n        ^^^^^^^^\n    )\n    ^\n  File \"/home/scur2711/.conda/envs/eva_clip_env/lib/python3.13/site-packages/transformers/utils/deprecation.py\", line 172, in wrapped_func\n    return func(*args, **kwargs)\n  File \"/home/scur2711/.conda/envs/eva_clip_env/lib/python3.13/site-packages/transformers/trainer.py\", line 447, in __init__\n    raise ValueError(\n        f\"You have set `args.eval_strategy` to {args.eval_strategy} but you didn't pass an `eval_dataset` to `Trainer`. Either set `args.eval_strategy` to `no` or pass an `eval_dataset`. \"\n    )\nValueError: You have set `args.eval_strategy` to IntervalStrategy.STEPS but you didn't pass an `eval_dataset` to `Trainer`. Either set `args.eval_strategy` to `no` or pass an `eval_dataset`. \n",
+  "error": "'dict' object has no attribute 'metrics'",
   "training_mode": "patch_only",
-  "training_args": {
-    "chunked_embeddings_dir": "/scratch-shared/scur2711/blip3o_workspace/embeddings/chunked_256_tokens",
-    "output_dir": "/scratch-shared/scur2711/blip3o_workspace/checkpoints/blip3o_patch_only_13278311_20250724_115837",
-    "training_mode": "patch_only",
-    "max_training_shards": 1,
-    "overfitting_test": true,
-    "enable_same_data_eval": true,
-    "same_data_eval_frequency": 50,
-    "enable_detailed_eval": true,
-    "detailed_eval_frequency": 200,
-    "max_eval_batches": 20,
-    "model_size": "base",
-    "hidden_size": 768,
-    "num_layers": 12,
-    "num_heads": 12,
-    "num_epochs": 10,
-    "batch_size": 4,
-    "eval_batch_size": 2,
-    "learning_rate": 0.0001,
-    "weight_decay": 0.01,
-    "warmup_steps": 50,
-    "gradient_accumulation_steps": 2,
-    "lr_scheduler": "cosine",
-    "normalize_targets": true,
-    "prediction_type": "velocity",
-    "fp16": true,
-    "gradient_checkpointing": false,
-    "dataloader_num_workers": 2,
-    "logging_steps": 5,
-    "save_steps": 100,
-    "detailed_logging": true,
-    "debug": false,
-    "test_gradient_flow": true,
-    "cpu_fallback": false,
-    "safe_mode": false
-  },
-  "environment": {
-    "CUDA_VISIBLE_DEVICES": "0,1,2",
-    "WORLD_SIZE": null,
-    "LOCAL_RANK": null,
-    "CUDA_AVAILABLE": true,
-    "CUDA_DEVICE_COUNT": 3
-  },
-  "fixes_available": [
-    "Try --gradient_checkpointing=False",
-    "Try --cpu_fallback",
-    "Try --safe_mode",
-    "Reduce --batch_size",
-    "Use smaller --model_size"
+  "fixes_suggested": [
+    "Check that embeddings directory exists",
+    "Verify GPU memory availability",
+    "Try --batch_size 2 for lower memory usage",
+    "Try --learning_rate 1e-5 for more stability",
+    "Use --gradient_checkpointing for memory savings"
   ],
-  "timestamp": "2025-07-24T11:58:54.983733"
+  "timestamp": "2025-07-24T16:38:02.475606"
 }

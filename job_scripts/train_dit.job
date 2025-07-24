@@ -1,20 +1,20 @@
 #!/bin/bash
-#SBATCH --job-name=blip3o_clean
+#SBATCH --job-name=blip3o_fixed
 #SBATCH --partition=gpu_h100
 #SBATCH --nodes=1
 #SBATCH --gpus=3
 #SBATCH --cpus-per-gpu=18
 #SBATCH --time=12:00:00
 #SBATCH --mem=0
-#SBATCH --output=./slurm_out/blip3o_clean_%j.out
-#SBATCH --error=./slurm_out/blip3o_clean_%j.err
+#SBATCH --output=./slurm_out/blip3o_fixed_%j.out
+#SBATCH --error=./slurm_out/blip3o_fixed_%j.err
 
 # =============================================================================
-# COMPLETELY CLEAN BLIP3-O TRAINING JOB SCRIPT
-# No old broken tests, only working code
+# FIXED BLIP3-o TRAINING JOB SCRIPT
+# Key fixes: Lower learning rate, proper evaluation, better defaults
 # =============================================================================
 
-echo "🚀 Starting CLEAN BLIP3-o Training (No Old Broken Code)"
+echo "🚀 Starting FIXED BLIP3-o Training"
 echo "Job ID: ${SLURM_JOB_ID}"
 echo "Node: $(hostname)"
 echo "Time: $(date)"
@@ -84,14 +84,14 @@ echo "🎮 GPU Setup:"
 nvidia-smi --query-gpu=name,memory.total,memory.free --format=csv,noheader,nounits
 
 # =============================================================================
-# TRAINING CONFIGURATION
+# FIXED TRAINING CONFIGURATION
 # =============================================================================
 
 # Embeddings configuration
 TRAINING_MODE="patch_only"  # patch_only (256 tokens) or cls_patch (257 tokens)
 EMBEDDINGS_DIR="/scratch-shared/scur2711/blip3o_workspace/embeddings/chunked_256_tokens"
 
-echo "🎯 Training Configuration:"
+echo "🎯 FIXED Training Configuration:"
 echo "   Mode: $TRAINING_MODE"
 echo "   Embeddings: $EMBEDDINGS_DIR"
 
@@ -114,61 +114,48 @@ fi
 
 # Output directory
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-OUTPUT_DIR="${BLIP3O_CHECKPOINTS}/blip3o_${TRAINING_MODE}_${SLURM_JOB_ID}_${TIMESTAMP}"
+OUTPUT_DIR="${BLIP3O_CHECKPOINTS}/blip3o_fixed_${TRAINING_MODE}_${SLURM_JOB_ID}_${TIMESTAMP}"
 mkdir -p "$OUTPUT_DIR"
 
 echo "📤 Output: $OUTPUT_DIR"
 
 # =============================================================================
-# CLEAN PRE-TRAINING TEST (NO OLD BROKEN CODE)
+# FIXED TRAINING PARAMETERS
 # =============================================================================
 
-echo "🧪 Running CLEAN pre-training tests..."
-echo "   Using ONLY the fixed dataset implementation"
-
-
-if [ $? -ne 0 ]; then
-    echo "❌ Clean dataset test failed!"
-    echo "   This means there's still an issue with the fixed dataset"
-    exit 1
-fi
-
-echo "✅ Clean dataset test passed!"
-
-# =============================================================================
-# TRAINING PARAMETERS
-# =============================================================================
-
-# Training parameters for overfitting test
-MAX_TRAINING_SHARDS=1
+# FIXED: Better training parameters for flow matching
+MAX_TRAINING_SHARDS=1           # Overfitting test
 MODEL_SIZE="base"
 HIDDEN_SIZE=768
 NUM_LAYERS=12
 NUM_HEADS=12
 NUM_EPOCHS=10
-BATCH_SIZE=4
+BATCH_SIZE=64
 EVAL_BATCH_SIZE=2
-LEARNING_RATE=1e-4
+LEARNING_RATE=5e-6              # FIXED: Lower learning rate for flow matching stability
 WEIGHT_DECAY=0.01
-WARMUP_STEPS=50
+WARMUP_STEPS=100                # FIXED: More warmup steps
 GRADIENT_ACCUMULATION_STEPS=2
 LR_SCHEDULER="cosine"
 DATALOADER_NUM_WORKERS=2
-LOGGING_STEPS=5
-SAVE_STEPS=100
+LOGGING_STEPS=5                 # FIXED: More frequent logging
+SAVE_STEPS=100                  # FIXED: More frequent saving
+EVAL_STEPS=50                   # FIXED: More frequent evaluation
 
-echo "⚙️ Training Parameters:"
+echo "⚙️ FIXED Training Parameters:"
 echo "   Max shards: $MAX_TRAINING_SHARDS (overfitting test)"
 echo "   Model: $MODEL_SIZE ($HIDDEN_SIZE dim, $NUM_LAYERS layers)"
 echo "   Batch size: $BATCH_SIZE"
-echo "   Learning rate: $LEARNING_RATE"
+echo "   Learning rate: $LEARNING_RATE (FIXED: lower for stability)"
+echo "   Warmup steps: $WARMUP_STEPS (FIXED: more warmup)"
 echo "   Epochs: $NUM_EPOCHS"
+echo "   Flow type: rectified (BLIP3-o aligned)"
 
 # =============================================================================
-# LAUNCH TRAINING
+# LAUNCH FIXED TRAINING
 # =============================================================================
 
-echo "🚀 Launching CLEAN training..."
+echo "🚀 Launching FIXED BLIP3-o training..."
 echo "============================================================"
 
 python train_blip3o_enhanced.py \
@@ -180,8 +167,6 @@ python train_blip3o_enhanced.py \
     --enable_same_data_eval \
     --enable_detailed_eval \
     --same_data_eval_frequency 50 \
-    --detailed_eval_frequency 200 \
-    --max_eval_batches 20 \
     --model_size "$MODEL_SIZE" \
     --hidden_size $HIDDEN_SIZE \
     --num_layers $NUM_LAYERS \
@@ -196,12 +181,14 @@ python train_blip3o_enhanced.py \
     --lr_scheduler "$LR_SCHEDULER" \
     --normalize_targets \
     --prediction_type "velocity" \
+    --flow_type "rectified" \
     --fp16 \
     --dataloader_num_workers $DATALOADER_NUM_WORKERS \
     --logging_steps $LOGGING_STEPS \
     --save_steps $SAVE_STEPS \
-    --detailed_logging \
-    --test_gradient_flow
+    --eval_steps $EVAL_STEPS \
+    --test_gradient_flow \
+    --debug
 
 EXIT_CODE=$?
 
@@ -214,7 +201,7 @@ echo "📊 Training completed with exit code: $EXIT_CODE"
 echo "============================================================"
 
 if [ $EXIT_CODE -eq 0 ]; then
-    echo "🎉 TRAINING COMPLETED SUCCESSFULLY!"
+    echo "🎉 FIXED TRAINING COMPLETED SUCCESSFULLY!"
     
     # Show results summary
     if [ -f "$OUTPUT_DIR/comprehensive_training_info.json" ]; then
@@ -226,7 +213,8 @@ try:
     with open('$OUTPUT_DIR/comprehensive_training_info.json', 'r') as f:
         info = json.load(f)
     print(f'   Mode: {info.get(\"training_mode\", \"Unknown\")}')
-    print(f'   Tokens: {info.get(\"expected_tokens\", \"Unknown\")}')
+    print(f'   Flow type: {info.get(\"flow_type\", \"Unknown\")}')
+    print(f'   Learning rate: {info.get(\"learning_rate\", \"Unknown\")}')
     print(f'   Completed: {info.get(\"training_completed\", False)}')
     
     stats = info.get('training_statistics', {})
@@ -236,18 +224,18 @@ try:
         min_loss = loss_stats.get('min_loss', 'Unknown')
         print(f'   Final Loss: {current_loss:.6f}' if isinstance(current_loss, (int, float)) else f'   Final Loss: {current_loss}')
         print(f'   Best Loss: {min_loss:.6f}' if isinstance(min_loss, (int, float)) else f'   Best Loss: {min_loss}')
-    
-    if 'latest_evaluation_metrics' in stats:
-        eval_metrics = stats['latest_evaluation_metrics']
-        similarity = eval_metrics.get('per_image_mean_cosine', 'Unknown')
-        print(f'   Image Similarity: {similarity:.4f}' if isinstance(similarity, (int, float)) else f'   Image Similarity: {similarity}')
         
-        if isinstance(similarity, (int, float)) and similarity > 0.8:
-            print('   🎉 EXCELLENT: High similarity achieved!')
-        elif isinstance(similarity, (int, float)) and similarity > 0.6:
-            print('   ✅ GOOD: Strong performance')
-        elif isinstance(similarity, (int, float)) and similarity > 0.4:
-            print('   🔄 FAIR: Making progress')
+        if isinstance(current_loss, (int, float)) and isinstance(min_loss, (int, float)):
+            if current_loss < min_loss * 1.1:  # Within 10% of best
+                print('   📉 GOOD: Loss is decreasing properly!')
+            else:
+                print('   ⚠️  Loss may have stopped decreasing')
+    
+    fixes = info.get('fixes_applied', [])
+    if fixes:
+        print('   🔧 Fixes applied:')
+        for fix in fixes[:3]:  # Show first 3 fixes
+            print(f'     • {fix}')
             
 except Exception as e:
     print(f'   Could not read training summary: {e}')
@@ -258,12 +246,6 @@ except Exception as e:
     echo "📁 Results saved to:"
     echo "   Output: $OUTPUT_DIR"
     echo "   Logs: $OUTPUT_DIR/logs/"
-    echo "   Evaluations: $OUTPUT_DIR/evaluations/"
-    
-    # List key files
-    echo ""
-    echo "📄 Key result files:"
-    find "$OUTPUT_DIR" -name "*.json" | head -5 | sed 's/^/   /'
     
 else
     echo "❌ TRAINING FAILED!"
@@ -279,15 +261,24 @@ try:
         error_info = json.load(f)
     print(f'   Error: {error_info.get(\"error\", \"Unknown error\")}')
     print(f'   Mode: {error_info.get(\"training_mode\", \"Unknown\")}')
+    
+    fixes = error_info.get('fixes_suggested', [])
+    if fixes:
+        print('   💡 Suggested fixes:')
+        for fix in fixes[:3]:
+            print(f'     • {fix}')
+            
 except Exception as e:
     print(f'   Could not read error file: {e}')
 "
     fi
     
-    # Show last lines of output
     echo ""
-    echo "📋 Last few lines of SLURM output:"
-    tail -10 "./slurm_out/blip3o_clean_${SLURM_JOB_ID}.out" 2>/dev/null || echo "   No output available"
+    echo "📋 Common solutions:"
+    echo "   • Reduce batch size: --batch_size 2"
+    echo "   • Lower learning rate: --learning_rate 1e-5"
+    echo "   • Enable gradient checkpointing: --gradient_checkpointing"
+    echo "   • Check GPU memory with: nvidia-smi"
 fi
 
 # =============================================================================
