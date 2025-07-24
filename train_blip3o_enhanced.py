@@ -362,6 +362,11 @@ def test_gradient_flow_safely(model, dataloader, flow_matching_loss, device, log
     try:
         model.train()
         batch = next(iter(dataloader))
+
+        # CORRECT CHECK: Hidden states should NOT have gradients here
+        if batch['hidden_states'].requires_grad:
+            logger.error("❌ hidden_states should NOT require gradients at dataloader stage!")
+            return False
         
         # Move to device safely
         eva_embeddings = batch['encoder_hidden_states'].to(device)
@@ -601,13 +606,27 @@ def main():
             eval_steps=args.same_data_eval_frequency if args.enable_same_data_eval else None,
         )
         
-        # 11. Create enhanced trainer
+        # # 11. Create enhanced trainer
+        # trainer = BLIP3oFlexibleTrainer(
+        #     model=model,
+        #     args=training_args,
+        #     flow_matching_loss=flow_matching_loss,
+        #     train_dataset=None,  # We override the dataloader
+        #     eval_dataset=None,
+        #     training_mode=args.training_mode,
+        #     max_training_shards=args.max_training_shards,
+        #     enable_same_data_eval=args.enable_same_data_eval,
+        #     eval_frequency=args.same_data_eval_frequency,
+        #     detailed_logging=args.detailed_logging,
+        # )
+
+        # Replace trainer creation with:
         trainer = BLIP3oFlexibleTrainer(
             model=model,
             args=training_args,
             flow_matching_loss=flow_matching_loss,
-            train_dataset=None,  # We override the dataloader
-            eval_dataset=None,
+            train_dataset=train_dataloader.dataset if train_dataloader else None,
+            eval_dataset=eval_dataloader.dataset if eval_dataloader else None,
             training_mode=args.training_mode,
             max_training_shards=args.max_training_shards,
             enable_same_data_eval=args.enable_same_data_eval,

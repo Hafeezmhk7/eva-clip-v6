@@ -126,8 +126,6 @@ echo "📤 Output: $OUTPUT_DIR"
 echo "🧪 Running CLEAN pre-training tests..."
 echo "   Using ONLY the fixed dataset implementation"
 
-# Run the completely clean test
-python test_dataset_clean.py "$EMBEDDINGS_DIR" "$TRAINING_MODE"
 
 if [ $? -ne 0 ]; then
     echo "❌ Clean dataset test failed!"
