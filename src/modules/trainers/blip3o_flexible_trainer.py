@@ -3,16 +3,18 @@ FINAL FIXED: Enhanced BLIP3-o Trainer - Training & Evaluation Compatible
 src/modules/trainers/blip3o_flexible_trainer.py
 
 KEY FIXES:
-1. Proper evaluation loop that handles gradient-free evaluation
-2. Fixed metric_for_best_model configuration
-3. Better learning rate defaults
-4. Compatible with both training and evaluation modes
+1. FIXED evaluation_loop to return proper EvalLoopOutput object
+2. Proper evaluation loop that handles gradient-free evaluation
+3. Fixed metric_for_best_model configuration
+4. Better learning rate defaults
+5. Compatible with both training and evaluation modes
 """
 
 import torch
 import torch.nn.functional as F
 import torch.distributed as dist
 from transformers import Trainer, TrainingArguments
+from transformers.trainer_utils import EvalLoopOutput
 from typing import Dict, Any, Optional, Union, Tuple, List
 import logging
 import numpy as np
@@ -196,9 +198,9 @@ class BLIP3oFlexibleTrainer(Trainer):
         prediction_loss_only: Optional[bool] = None,
         ignore_keys: Optional[List[str]] = None,
         metric_key_prefix: str = "eval",
-    ):
+    ) -> EvalLoopOutput:
         """
-        FINAL FIXED: Custom evaluation loop that handles gradient-free evaluation properly
+        CRITICAL FIX: Custom evaluation loop that returns proper EvalLoopOutput
         """
         model = self._wrap_model(self.model, training=False, dataloader=dataloader)
         model.eval()
@@ -212,6 +214,8 @@ class BLIP3oFlexibleTrainer(Trainer):
         
         all_losses = []
         all_metrics = []
+        all_predictions = None  # We don't need predictions for evaluation
+        all_label_ids = None    # We don't have traditional labels
         
         for step, inputs in enumerate(dataloader):
             # Move inputs to device
@@ -256,6 +260,8 @@ class BLIP3oFlexibleTrainer(Trainer):
                 
                 all_losses.append(loss.item())
                 if metrics:
+                    # Add step info to metrics
+                    metrics['eval_step'] = step
                     all_metrics.append(metrics)
         
         # Compute average metrics
@@ -271,8 +277,8 @@ class BLIP3oFlexibleTrainer(Trainer):
         # Add detailed metrics if available
         if all_metrics:
             for key in all_metrics[0].keys():
-                if isinstance(all_metrics[0][key], (int, float)):
-                    values = [m[key] for m in all_metrics if key in m]
+                if isinstance(all_metrics[0][key], (int, float)) and key != 'eval_step':
+                    values = [m[key] for m in all_metrics if key in m and isinstance(m[key], (int, float))]
                     if values:  # Only add if we have values
                         eval_metrics[f"{metric_key_prefix}_{key}"] = np.mean(values)
         
@@ -281,7 +287,35 @@ class BLIP3oFlexibleTrainer(Trainer):
             if isinstance(value, (int, float)):
                 logger.info(f"  {key} = {value:.6f}" if key.endswith('_loss') else f"  {key} = {value}")
         
-        return eval_metrics
+        # Store evaluation results for analysis
+        if self.is_main_process:
+            eval_result = {
+                'step': self.training_step_count,
+                'metrics': eval_metrics,
+                'detailed_metrics': all_metrics[-3:] if all_metrics else [],  # Keep last 3 for analysis
+                'timestamp': time.time(),
+            }
+            self.eval_history.append(eval_result)
+            
+            # Log overfitting progress
+            if 'eval_global_mean_cosine' in eval_metrics:
+                global_cos = eval_metrics['eval_global_mean_cosine']
+                if global_cos > 0.8:
+                    logger.info("🎉 EXCELLENT OVERFITTING: Model successfully learning training data!")
+                elif global_cos > 0.6:
+                    logger.info("✅ GOOD OVERFITTING: Strong same-data performance")
+                elif global_cos > 0.4:
+                    logger.info("🔄 MODERATE OVERFITTING: Some learning detected")
+                else:
+                    logger.info("⚠️ LOW OVERFITTING: Model needs more training")
+        
+        # CRITICAL FIX: Return EvalLoopOutput object instead of dict
+        return EvalLoopOutput(
+            predictions=all_predictions,
+            label_ids=all_label_ids,
+            metrics=eval_metrics,
+            num_samples=num_samples,
+        )
 
     def _log_detailed_progress(
         self,
@@ -290,7 +324,7 @@ class BLIP3oFlexibleTrainer(Trainer):
         velocity_pred: torch.Tensor,
         target_samples: torch.Tensor
     ):
-        """Log detailed training progress"""
+        """Log detailed training progress with overfitting indicators"""
         if not self.is_main_process:
             return
         
@@ -306,6 +340,7 @@ class BLIP3oFlexibleTrainer(Trainer):
         progress_msg = f"Step {self.training_step_count}: Loss={loss_value:.4f}, {mode_info}"
         
         if metrics:
+            # Key metrics for overfitting tracking
             if 'velocity_cosine_sim' in metrics:
                 progress_msg += f", VelCos={metrics['velocity_cosine_sim']:.3f}"
             if 'global_mean_cosine' in metrics:
@@ -319,25 +354,43 @@ class BLIP3oFlexibleTrainer(Trainer):
         
         logger.info(progress_msg)
         
-        # Quality assessment
-        if metrics:
+        # Overfitting quality assessment for same-data training
+        if metrics and self.enable_same_data_eval:
             global_cos = metrics.get('global_mean_cosine', metrics.get('per_image_mean_cosine', 0))
-            if global_cos > 0.8:
-                logger.info("🎉 EXCELLENT: Very strong alignment achieved!")
+            
+            # Expected overfitting progress on same data
+            if global_cos > 0.9:
+                logger.info("🚀 EXCEPTIONAL: Near-perfect overfitting achieved!")
+            elif global_cos > 0.8:
+                logger.info("🎉 EXCELLENT: Very strong overfitting - training pipeline works!")
+            elif global_cos > 0.7:
+                logger.info("✅ VERY GOOD: Strong overfitting progress")
             elif global_cos > 0.6:
-                logger.info("✅ GOOD: Strong training progress detected")
+                logger.info("👍 GOOD: Solid overfitting progress")
             elif global_cos > 0.4:
-                logger.info("🔄 FAIR: Making steady progress")
+                logger.info("🔄 FAIR: Moderate learning detected")
             elif global_cos > 0.2:
-                logger.info("📈 EARLY: Training is progressing")
+                logger.info("📈 EARLY: Training is starting to work")
+            else:
+                logger.info("⚠️ SLOW: Very early training progress")
+            
+            # High quality patch distribution
+            if 'high_quality_images_ratio' in metrics:
+                high_qual_ratio = metrics['high_quality_images_ratio']
+                if high_qual_ratio > 0.8:
+                    logger.info(f"🎯 Most patches high quality: {high_qual_ratio*100:.1f}%")
+                elif high_qual_ratio > 0.5:
+                    logger.info(f"📊 Many patches improving: {high_qual_ratio*100:.1f}%")
 
     def get_training_statistics(self) -> Dict[str, Any]:
-        """Get comprehensive training statistics"""
+        """Get comprehensive training statistics including overfitting analysis"""
         stats = {
             'training_mode': self.training_mode,
             'expected_tokens': self.expected_tokens,
             'total_steps': self.training_step_count,
             'loss_history_length': len(self.loss_history),
+            'eval_history_length': len(self.eval_history),
+            'overfitting_analysis': {}
         }
         
         if self.loss_history:
@@ -346,14 +399,73 @@ class BLIP3oFlexibleTrainer(Trainer):
                 'min_loss': min(self.loss_history),
                 'max_loss': max(self.loss_history),
                 'avg_loss': sum(self.loss_history) / len(self.loss_history),
+                'loss_trend': 'decreasing' if len(self.loss_history) > 10 and self.loss_history[-1] < self.loss_history[-11] else 'stable'
             }
         
         if self.metric_history:
             latest_metrics = self.metric_history[-1]
             stats['latest_training_metrics'] = latest_metrics
+            
+            # Overfitting analysis for same-data training
+            if self.enable_same_data_eval:
+                global_cos_history = [m.get('global_mean_cosine', 0) for m in self.metric_history[-10:]]
+                if global_cos_history:
+                    current_cos = global_cos_history[-1]
+                    avg_recent_cos = sum(global_cos_history) / len(global_cos_history)
+                    
+                    stats['overfitting_analysis'] = {
+                        'current_cosine_similarity': current_cos,
+                        'recent_average_cosine': avg_recent_cos,
+                        'overfitting_status': (
+                            'excellent' if current_cos > 0.8 else
+                            'very_good' if current_cos > 0.7 else
+                            'good' if current_cos > 0.6 else
+                            'moderate' if current_cos > 0.4 else
+                            'early'
+                        ),
+                        'expected_overfitting': self.enable_same_data_eval,
+                        'cosine_trend': 'improving' if len(global_cos_history) > 5 and global_cos_history[-1] > global_cos_history[-6] else 'stable'
+                    }
+        
+        if self.eval_history:
+            latest_eval = self.eval_history[-1]
+            stats['latest_evaluation'] = {
+                'eval_loss': latest_eval['metrics'].get('eval_loss', 'unknown'),
+                'eval_global_cosine': latest_eval['metrics'].get('eval_global_mean_cosine', 'unknown'),
+                'eval_timestamp': latest_eval['timestamp']
+            }
         
         return stats
 
+    def log_overfitting_summary(self):
+        """Log a summary of overfitting progress (useful for same-data training)"""
+        if not self.is_main_process or not self.enable_same_data_eval:
+            return
+        
+        stats = self.get_training_statistics()
+        overfitting = stats.get('overfitting_analysis', {})
+        
+        if overfitting:
+            logger.info("=" * 60)
+            logger.info("📊 OVERFITTING PROGRESS SUMMARY")
+            logger.info("=" * 60)
+            logger.info(f"🎯 Training Mode: {self.training_mode} ({self.expected_tokens} tokens)")
+            logger.info(f"📈 Current Cosine Similarity: {overfitting.get('current_cosine_similarity', 0):.4f}")
+            logger.info(f"📊 Recent Average: {overfitting.get('recent_average_cosine', 0):.4f}")
+            logger.info(f"🏆 Overfitting Status: {overfitting.get('overfitting_status', 'unknown').upper()}")
+            logger.info(f"📉 Trend: {overfitting.get('cosine_trend', 'unknown').upper()}")
+            
+            current_cos = overfitting.get('current_cosine_similarity', 0)
+            if current_cos > 0.8:
+                logger.info("🎉 SUCCESS: Excellent overfitting indicates working training pipeline!")
+            elif current_cos > 0.6:
+                logger.info("✅ GOOD: Strong overfitting progress - pipeline is learning!")
+            elif current_cos > 0.4:
+                logger.info("🔄 PROGRESS: Moderate overfitting - training is working")
+            else:
+                logger.info("⚠️ EARLY: Low overfitting - needs more training or debugging")
+            
+            logger.info("=" * 60)
 
 def create_blip3o_flexible_training_args(
     output_dir: str,
