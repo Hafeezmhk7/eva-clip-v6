@@ -1,20 +1,20 @@
 #!/bin/bash
-#SBATCH --job-name=blip3o_fixed
+#SBATCH --job-name=blip3o_training
 #SBATCH --partition=gpu_h100
 #SBATCH --nodes=1
 #SBATCH --gpus=3
 #SBATCH --cpus-per-gpu=18
 #SBATCH --time=12:00:00
 #SBATCH --mem=0
-#SBATCH --output=./slurm_out/blip3o_fixed_%j.out
-#SBATCH --error=./slurm_out/blip3o_fixed_%j.err
+#SBATCH --output=./slurm_out/blip3o_training_%j.out
+#SBATCH --error=./slurm_out/blip3o_training_%j.err
 
 # =============================================================================
-# FIXED BLIP3-o TRAINING JOB SCRIPT
-# Key fixes: Lower learning rate, proper evaluation, better defaults
+# BLIP3-o TRAINING-ONLY JOB SCRIPT
+# Training only (no evaluation)
 # =============================================================================
 
-echo "🚀 Starting FIXED BLIP3-o Training"
+echo "🚀 Starting BLIP3-o Training-Only Job"
 echo "Job ID: ${SLURM_JOB_ID}"
 echo "Node: $(hostname)"
 echo "Time: $(date)"
@@ -22,282 +22,69 @@ echo "============================================================"
 
 cd $SLURM_SUBMIT_DIR
 
-# =============================================================================
-# ENVIRONMENT SETUP
-# =============================================================================
-
+# Setup environment
 module purge
 module load 2024
 module load Miniconda3/24.7.1-0
 module load CUDA/12.6.0
 source activate eva_clip_env
 
-echo "✅ Environment loaded"
+# Workspace setup
+export USER=$(whoami)
+export JOB_ID=${SLURM_JOB_ID}
+export WORKSPACE="/scratch-shared/${USER}/blip3o_workspace"
+export EMBEDDINGS_DIR="${WORKSPACE}/embeddings"
+export CHECKPOINTS="${WORKSPACE}/checkpoints"
 
-# =============================================================================
-# WORKSPACE SETUP
-# =============================================================================
-
-export BLIP3O_USER=$(whoami)
-export BLIP3O_JOB_ID=${SLURM_JOB_ID}
-export BLIP3O_WORKSPACE="/scratch-shared/${BLIP3O_USER}/blip3o_workspace"
-export BLIP3O_EMBEDDINGS="${BLIP3O_WORKSPACE}/embeddings"
-export BLIP3O_CHECKPOINTS="${BLIP3O_WORKSPACE}/checkpoints"
-
-# Job temp directory
-if [ ! -z "$TMPDIR" ]; then
-    export BLIP3O_JOB_TEMP="$TMPDIR/blip3o_job_${BLIP3O_JOB_ID}"
-else
-    export BLIP3O_JOB_TEMP="/tmp/blip3o_job_${BLIP3O_USER}_${BLIP3O_JOB_ID}"
-fi
-
-# Create directories
-mkdir -p "${BLIP3O_WORKSPACE}"/{embeddings,checkpoints,logs}
-mkdir -p "${BLIP3O_JOB_TEMP}"/cache
-mkdir -p "./slurm_out"
-
-# Model cache
-export TORCH_HOME="${BLIP3O_JOB_TEMP}/cache/torch"
-export HF_HOME="${BLIP3O_JOB_TEMP}/cache/huggingface"
-export TRANSFORMERS_CACHE="${BLIP3O_JOB_TEMP}/cache/transformers"
-
-mkdir -p "$TORCH_HOME" "$HF_HOME" "$TRANSFORMERS_CACHE"
-
-echo "🗂️ Workspace setup complete"
-echo "   Persistent: $BLIP3O_WORKSPACE"
-echo "   Job temp: $BLIP3O_JOB_TEMP"
-
-# =============================================================================
-# GPU SETUP
-# =============================================================================
-
-export NCCL_IB_DISABLE=0
-export NCCL_NET_GDR_LEVEL=3
-export NCCL_P2P_LEVEL=NVL
-export NCCL_ASYNC_ERROR_HANDLING=1
-export NCCL_DEBUG=WARN
-export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512,expandable_segments:True
-export OMP_NUM_THREADS=1
-export TOKENIZERS_PARALLELISM=false
-
-echo "🎮 GPU Setup:"
-nvidia-smi --query-gpu=name,memory.total,memory.free --format=csv,noheader,nounits
-
-# =============================================================================
-# FIXED TRAINING CONFIGURATION
-# =============================================================================
-
-# Embeddings configuration
-TRAINING_MODE="patch_only"  # patch_only (256 tokens) or cls_patch (257 tokens)
+# Configuration
+TRAINING_MODE="patch_only"  # patch_only or cls_patch
 EMBEDDINGS_DIR="/scratch-shared/scur2711/blip3o_workspace/embeddings/chunked_256_tokens"
+OUTPUT_DIR="${CHECKPOINTS}/training_only_${TRAINING_MODE}_${JOB_ID}_$(date +%Y%m%d_%H%M%S)"
+mkdir -p "${OUTPUT_DIR}"
 
-echo "🎯 FIXED Training Configuration:"
-echo "   Mode: $TRAINING_MODE"
-echo "   Embeddings: $EMBEDDINGS_DIR"
-
-# Check embeddings exist
-if [ ! -d "$EMBEDDINGS_DIR" ]; then
-    echo "❌ Embeddings directory not found: $EMBEDDINGS_DIR"
-    echo "Available directories:"
-    ls -la "$BLIP3O_EMBEDDINGS/" 2>/dev/null || echo "No embeddings directory found"
-    exit 1
-fi
-
-# Count shard files
-SHARD_COUNT=$(find "$EMBEDDINGS_DIR" -name "*.pkl" | wc -l)
-echo "📦 Found $SHARD_COUNT shard files"
-
-if [ $SHARD_COUNT -eq 0 ]; then
-    echo "❌ No .pkl files found in $EMBEDDINGS_DIR"
-    exit 1
-fi
-
-# Output directory
-TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-OUTPUT_DIR="${BLIP3O_CHECKPOINTS}/blip3o_fixed_${TRAINING_MODE}_${SLURM_JOB_ID}_${TIMESTAMP}"
-mkdir -p "$OUTPUT_DIR"
-
-echo "📤 Output: $OUTPUT_DIR"
-
-# =============================================================================
-# FIXED TRAINING PARAMETERS
-# =============================================================================
-
-# FIXED: Better training parameters for flow matching
-MAX_TRAINING_SHARDS=1           # Overfitting test
+# Training parameters
 MODEL_SIZE="base"
-HIDDEN_SIZE=768
-NUM_LAYERS=12
-NUM_HEADS=12
 NUM_EPOCHS=10
 BATCH_SIZE=64
-EVAL_BATCH_SIZE=2
-LEARNING_RATE=5e-6              # FIXED: Lower learning rate for flow matching stability
-WEIGHT_DECAY=0.01
-WARMUP_STEPS=100                # FIXED: More warmup steps
+LEARNING_RATE=5e-5
 GRADIENT_ACCUMULATION_STEPS=2
-LR_SCHEDULER="cosine"
-DATALOADER_NUM_WORKERS=2
-LOGGING_STEPS=5                 # FIXED: More frequent logging
-SAVE_STEPS=100                  # FIXED: More frequent saving
-EVAL_STEPS=50                   # FIXED: More frequent evaluation
+LOGGING_STEPS=5
+SAVE_STEPS=100
+SHARD_INDEX=0
 
-echo "⚙️ FIXED Training Parameters:"
-echo "   Max shards: $MAX_TRAINING_SHARDS (overfitting test)"
-echo "   Model: $MODEL_SIZE ($HIDDEN_SIZE dim, $NUM_LAYERS layers)"
+echo "⚙️ Training Configuration:"
+echo "   Mode: $TRAINING_MODE"
+echo "   Embeddings: $EMBEDDINGS_DIR"
+echo "   Output: $OUTPUT_DIR"
+echo "   Model: $MODEL_SIZE"
 echo "   Batch size: $BATCH_SIZE"
-echo "   Learning rate: $LEARNING_RATE (FIXED: lower for stability)"
-echo "   Warmup steps: $WARMUP_STEPS (FIXED: more warmup)"
+echo "   Learning rate: $LEARNING_RATE"
 echo "   Epochs: $NUM_EPOCHS"
-echo "   Flow type: rectified (BLIP3-o aligned)"
 
-# =============================================================================
-# LAUNCH FIXED TRAINING
-# =============================================================================
-
-echo "🚀 Launching FIXED BLIP3-o training..."
-echo "============================================================"
-
+# Launch training
+echo "🚀 Starting Training-Only Process..."
 python train_blip3o_enhanced.py \
     --chunked_embeddings_dir "$EMBEDDINGS_DIR" \
     --output_dir "$OUTPUT_DIR" \
     --training_mode "$TRAINING_MODE" \
-    --max_training_shards $MAX_TRAINING_SHARDS \
-    --overfitting_test \
-    --enable_same_data_eval \
-    --enable_detailed_eval \
-    --same_data_eval_frequency 50 \
+    --shard_index $SHARD_INDEX \
     --model_size "$MODEL_SIZE" \
-    --hidden_size $HIDDEN_SIZE \
-    --num_layers $NUM_LAYERS \
-    --num_heads $NUM_HEADS \
     --num_epochs $NUM_EPOCHS \
     --batch_size $BATCH_SIZE \
-    --eval_batch_size $EVAL_BATCH_SIZE \
     --learning_rate $LEARNING_RATE \
-    --weight_decay $WEIGHT_DECAY \
-    --warmup_steps $WARMUP_STEPS \
     --gradient_accumulation_steps $GRADIENT_ACCUMULATION_STEPS \
-    --lr_scheduler "$LR_SCHEDULER" \
-    --normalize_targets \
-    --prediction_type "velocity" \
-    --flow_type "rectified" \
-    --fp16 \
-    --dataloader_num_workers $DATALOADER_NUM_WORKERS \
     --logging_steps $LOGGING_STEPS \
     --save_steps $SAVE_STEPS \
-    --eval_steps $EVAL_STEPS \
-    --test_gradient_flow \
-    --debug
+    --fp16
 
-EXIT_CODE=$?
-
-# =============================================================================
-# RESULTS ANALYSIS
-# =============================================================================
-
-echo ""
-echo "📊 Training completed with exit code: $EXIT_CODE"
-echo "============================================================"
-
-if [ $EXIT_CODE -eq 0 ]; then
-    echo "🎉 FIXED TRAINING COMPLETED SUCCESSFULLY!"
-    
-    # Show results summary
-    if [ -f "$OUTPUT_DIR/comprehensive_training_info.json" ]; then
-        echo ""
-        echo "📋 Training Summary:"
-        python -c "
-import json
-try:
-    with open('$OUTPUT_DIR/comprehensive_training_info.json', 'r') as f:
-        info = json.load(f)
-    print(f'   Mode: {info.get(\"training_mode\", \"Unknown\")}')
-    print(f'   Flow type: {info.get(\"flow_type\", \"Unknown\")}')
-    print(f'   Learning rate: {info.get(\"learning_rate\", \"Unknown\")}')
-    print(f'   Completed: {info.get(\"training_completed\", False)}')
-    
-    stats = info.get('training_statistics', {})
-    if 'loss_statistics' in stats:
-        loss_stats = stats['loss_statistics']
-        current_loss = loss_stats.get('current_loss', 'Unknown')
-        min_loss = loss_stats.get('min_loss', 'Unknown')
-        print(f'   Final Loss: {current_loss:.6f}' if isinstance(current_loss, (int, float)) else f'   Final Loss: {current_loss}')
-        print(f'   Best Loss: {min_loss:.6f}' if isinstance(min_loss, (int, float)) else f'   Best Loss: {min_loss}')
-        
-        if isinstance(current_loss, (int, float)) and isinstance(min_loss, (int, float)):
-            if current_loss < min_loss * 1.1:  # Within 10% of best
-                print('   📉 GOOD: Loss is decreasing properly!')
-            else:
-                print('   ⚠️  Loss may have stopped decreasing')
-    
-    fixes = info.get('fixes_applied', [])
-    if fixes:
-        print('   🔧 Fixes applied:')
-        for fix in fixes[:3]:  # Show first 3 fixes
-            print(f'     • {fix}')
-            
-except Exception as e:
-    print(f'   Could not read training summary: {e}')
-"
-    fi
-    
-    echo ""
-    echo "📁 Results saved to:"
-    echo "   Output: $OUTPUT_DIR"
-    echo "   Logs: $OUTPUT_DIR/logs/"
-    
+# Handle completion
+if [ $? -eq 0 ]; then
+    echo "✅ Training completed successfully!"
+    echo "   Model saved to: $OUTPUT_DIR"
 else
-    echo "❌ TRAINING FAILED!"
-    echo ""
-    
-    # Show error info if available
-    if [ -f "blip3o_enhanced_training_error.json" ]; then
-        echo "📋 Error Information:"
-        python -c "
-import json
-try:
-    with open('blip3o_enhanced_training_error.json', 'r') as f:
-        error_info = json.load(f)
-    print(f'   Error: {error_info.get(\"error\", \"Unknown error\")}')
-    print(f'   Mode: {error_info.get(\"training_mode\", \"Unknown\")}')
-    
-    fixes = error_info.get('fixes_suggested', [])
-    if fixes:
-        print('   💡 Suggested fixes:')
-        for fix in fixes[:3]:
-            print(f'     • {fix}')
-            
-except Exception as e:
-    print(f'   Could not read error file: {e}')
-"
-    fi
-    
-    echo ""
-    echo "📋 Common solutions:"
-    echo "   • Reduce batch size: --batch_size 2"
-    echo "   • Lower learning rate: --learning_rate 1e-5"
-    echo "   • Enable gradient checkpointing: --gradient_checkpointing"
-    echo "   • Check GPU memory with: nvidia-smi"
+    echo "❌ Training failed!"
+    exit 1
 fi
 
-# =============================================================================
-# CLEANUP
-# =============================================================================
-
-echo ""
-echo "🧹 Cleaning up temporary files..."
-
-if [ -d "${BLIP3O_JOB_TEMP}/cache" ]; then
-    echo "   Removing job cache..."
-    rm -rf "${BLIP3O_JOB_TEMP}/cache"
-fi
-
-echo "   Preserving results in: $OUTPUT_DIR"
-
-echo ""
 echo "🏁 Job completed at $(date)"
-echo "💾 Runtime: $SECONDS seconds"
-echo "============================================================"
-
-exit $EXIT_CODE
+exit 0

@@ -2,17 +2,20 @@
 Training utilities for BLIP3-o DiT - Enhanced Flexible Training
 src/modules/trainers/__init__.py
 Contains:
-- BLIP3oFlexibleTrainer: Enhanced trainer with CLS+Patch support
+- BLIP3oFlexibleTrainer: Trainer with evaluation support
+- BLIP3oTrainingOnlyTrainer: Trainer without evaluation
 - Training argument creation utilities
-- Paper-aligned training pipeline
 """
 
 import logging
+from functools import partial
 
 logger = logging.getLogger(__name__)
 
-# Import flexible trainer
+# Import trainers
 FLEXIBLE_TRAINER_AVAILABLE = False
+TRAINING_ONLY_TRAINER_AVAILABLE = False
+
 try:
     from .blip3o_flexible_trainer import (
         BLIP3oFlexibleTrainer,
@@ -22,101 +25,101 @@ try:
     FLEXIBLE_TRAINER_AVAILABLE = True
 except ImportError as e:
     logger.error(f"❌ Failed to load flexible BLIP3-o trainer: {e}")
-    FLEXIBLE_TRAINER_AVAILABLE = False
+
+try:
+    from .blip3o_training_only_trainer import (
+        BLIP3oTrainingOnlyTrainer,
+        create_training_only_args,
+    )
+    logger.debug("✅ BLIP3-o training-only trainer loaded")
+    TRAINING_ONLY_TRAINER_AVAILABLE = True
+except ImportError as e:
+    logger.error(f"❌ Failed to load training-only trainer: {e}")
 
 # Set defaults based on availability
-if FLEXIBLE_TRAINER_AVAILABLE:
-    BLIP3oTrainer = BLIP3oFlexibleTrainer
-    create_training_args = create_blip3o_flexible_training_args
+if FLEXIBLE_TRAINER_AVAILABLE and TRAINING_ONLY_TRAINER_AVAILABLE:
+    DEFAULT_TRAINER = "both"
+    logger.info("✅ Both trainers available")
+elif FLEXIBLE_TRAINER_AVAILABLE:
     DEFAULT_TRAINER = "flexible"
     logger.info("✅ Using flexible trainer as default")
+elif TRAINING_ONLY_TRAINER_AVAILABLE:
+    DEFAULT_TRAINER = "training_only"
+    logger.info("✅ Using training-only trainer as default")
 else:
-    BLIP3oTrainer = None
-    create_training_args = None
     DEFAULT_TRAINER = None
     logger.error("❌ No BLIP3-o trainers available")
 
 __all__ = [
     # Availability flags
     "FLEXIBLE_TRAINER_AVAILABLE",
+    "TRAINING_ONLY_TRAINER_AVAILABLE",
     "DEFAULT_TRAINER",
 ]
 
-# Export flexible trainer components if available
+# Export flexible trainer if available
 if FLEXIBLE_TRAINER_AVAILABLE:
     __all__.extend([
         "BLIP3oFlexibleTrainer",
         "create_blip3o_flexible_training_args",
     ])
 
-# Export default interface if available
-if BLIP3oTrainer is not None:
+# Export training-only trainer if available
+if TRAINING_ONLY_TRAINER_AVAILABLE:
     __all__.extend([
-        "BLIP3oTrainer",
-        "create_training_args",
+        "BLIP3oTrainingOnlyTrainer",
+        "create_training_only_args",
     ])
 
 def get_trainer_class(trainer_type: str = "auto"):
-    """
-    Get the appropriate trainer class
-    
-    Args:
-        trainer_type: "auto" or "flexible"
-        
-    Returns:
-        Trainer class
-    """
+    """Get trainer class based on type"""
     if trainer_type == "auto":
-        if BLIP3oTrainer is None:
-            raise ValueError("No trainer class available")
-        return BLIP3oTrainer
-        
+        if DEFAULT_TRAINER == "flexible":
+            return BLIP3oFlexibleTrainer
+        elif DEFAULT_TRAINER == "training_only":
+            return BLIP3oTrainingOnlyTrainer
+        else:
+            raise ValueError("No default trainer available")
+    
     elif trainer_type == "flexible":
         if not FLEXIBLE_TRAINER_AVAILABLE:
             raise ValueError("Flexible trainer not available")
         return BLIP3oFlexibleTrainer
-        
+    
+    elif trainer_type == "training_only":
+        if not TRAINING_ONLY_TRAINER_AVAILABLE:
+            raise ValueError("Training-only trainer not available")
+        return BLIP3oTrainingOnlyTrainer
+    
     else:
         raise ValueError(f"Unknown trainer type: {trainer_type}")
 
 def get_training_args_factory(trainer_type: str = "auto"):
-    """
-    Get the appropriate training args factory
-    
-    Args:
-        trainer_type: "auto" or "flexible"
-        
-    Returns:
-        Training args factory function
-    """
+    """Get training args factory based on type"""
     if trainer_type == "auto":
-        if create_training_args is None:
-            raise ValueError("No training args factory available")
-        return create_training_args
-        
+        if DEFAULT_TRAINER == "flexible":
+            return create_blip3o_flexible_training_args
+        elif DEFAULT_TRAINER == "training_only":
+            return create_training_only_args
+        else:
+            raise ValueError("No default args factory available")
+    
     elif trainer_type == "flexible":
         if not FLEXIBLE_TRAINER_AVAILABLE:
             raise ValueError("Flexible trainer not available")
         return create_blip3o_flexible_training_args
-        
+    
+    elif trainer_type == "training_only":
+        if not TRAINING_ONLY_TRAINER_AVAILABLE:
+            raise ValueError("Training-only trainer not available")
+        return create_training_only_args
+    
     else:
         raise ValueError(f"Unknown trainer type: {trainer_type}")
 
 def create_trainer(model, flow_matching_loss, trainer_type="auto", **kwargs):
-    """
-    Create a BLIP3-o trainer instance
-    
-    Args:
-        model: BLIP3-o model
-        flow_matching_loss: Flow matching loss function
-        trainer_type: "auto" or "flexible"
-        **kwargs: Additional trainer arguments
-        
-    Returns:
-        Trainer instance
-    """
+    """Create trainer instance"""
     trainer_class = get_trainer_class(trainer_type)
-    
     return trainer_class(
         model=model,
         flow_matching_loss=flow_matching_loss,
@@ -124,79 +127,39 @@ def create_trainer(model, flow_matching_loss, trainer_type="auto", **kwargs):
     )
 
 def print_trainer_status():
-    """
-    Print status of available trainers
-    """
+    """Print status of available trainers"""
     print("🏋️ BLIP3-o Trainers Status")
     print("=" * 40)
     print(f"Default trainer: {DEFAULT_TRAINER}")
-    print()
-    print("Available trainers:")
     
+    print("\nAvailable trainers:")
     if FLEXIBLE_TRAINER_AVAILABLE:
         print("  ✅ Flexible BLIP3-o Trainer")
-        print("    - Both 256 (patch-only) and 257 (CLS+patch) token modes")
-        print("    - Flexible shard selection for training")
-        print("    - Same-data evaluation (overfitting tests)")
-        print("    - Pure flow matching loss (BLIP3-o paper aligned)")
-        print("    - Detailed training metrics and progress tracking")
-        print("    - Multi-GPU distributed training")
-        print("    - Enhanced logging and evaluation")
+        print("    - Supports evaluation during training")
+        print("    - Both 256/257 token modes")
     else:
         print("  ❌ Flexible BLIP3-o Trainer")
     
-    if not FLEXIBLE_TRAINER_AVAILABLE:
-        print("  ⚠️  No trainers available!")
-        print("  💡 Make sure trainer files are properly implemented")
+    if TRAINING_ONLY_TRAINER_AVAILABLE:
+        print("  ✅ Training-Only BLIP3-o Trainer")
+        print("    - Training only (no evaluation)")
+        print("    - Reports loss, learning rate, training metrics")
+    else:
+        print("  ❌ Training-Only BLIP3-o Trainer")
     
-    print()
-    print("Training features:")
+    print("\nTraining features:")
     print("  📊 Objective: Patch-level flow matching")
-    print("  📐 Input: EVA-CLIP patches [B, N, 4096] (N=256 or 257)")
-    print("  🎯 Output: CLIP patches [B, N, 1024] (N=256 or 257)")
-    print("  📊 Evaluation: Image-to-text recall")
+    print("  📐 Input: EVA-CLIP patches [B, N, 4096]")
+    print("  🎯 Output: CLIP patches [B, N, 1024]")
     print("  🔄 Loss: Pure flow matching (BLIP3-o paper)")
-    print("  💾 Memory: Optimized for multi-GPU")
-    print("  🧪 Testing: Same-data evaluation for overfitting")
-    
     print("=" * 40)
 
-def get_recommended_trainer():
-    """
-    Get the recommended trainer based on availability
-    
-    Returns:
-        Recommended trainer class and type
-    """
-    if FLEXIBLE_TRAINER_AVAILABLE:
-        return BLIP3oFlexibleTrainer, "flexible"
-    else:
-        raise ValueError("No trainers available")
-
-# Add utility functions to exports
-__all__.extend([
-    "get_trainer_class",
-    "get_training_args_factory",
-    "create_trainer",
-    "print_trainer_status",
-    "get_recommended_trainer",
-])
-
 # Enhanced status logging
-trainer_status = []
-if FLEXIBLE_TRAINER_AVAILABLE:
-    trainer_status.append("flexible")
-
-if trainer_status:
-    logger.info(f"BLIP3-o trainers loaded successfully: {', '.join(trainer_status)}")
+if FLEXIBLE_TRAINER_AVAILABLE or TRAINING_ONLY_TRAINER_AVAILABLE:
+    logger.info("BLIP3-o trainers loaded successfully")
     if DEFAULT_TRAINER:
         logger.info(f"Default trainer: {DEFAULT_TRAINER}")
 else:
     logger.warning("No BLIP3-o trainers available")
 
-# Ensure flexible trainer is available
-if not FLEXIBLE_TRAINER_AVAILABLE:
-    logger.error("❌ BLIP3-o flexible trainer is required but not available!")
-    raise ImportError("BLIP3-o flexible trainer is required for this project")
-
-logger.info("BLIP3-o flexible trainer loaded successfully - Enhanced features available")
+logger.info("BLIP3-o trainer initialization complete")

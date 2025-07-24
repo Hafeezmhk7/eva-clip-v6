@@ -9,8 +9,12 @@ __version__ = "1.0.0"
 # Import key components for easier access
 from .models.blip3o_patch_dit import BLIP3oPatchDiTModel, create_blip3o_patch_dit_model
 from .losses.blip3o_flow_matching_loss import BLIP3oFlowMatchingLoss, create_blip3o_flow_matching_loss
-from .trainers.blip3o_flexible_trainer import BLIP3oFlexibleTrainer, create_blip3o_flexible_training_args
-from .evaluation.blip3o_detailed_evaluator import BLIP3oDetailedEvaluator, create_detailed_evaluator
+from .trainers import (
+    BLIP3oFlexibleTrainer, 
+    create_blip3o_flexible_training_args,
+    BLIP3oTrainingOnlyTrainer,
+    create_training_only_args
+)
 
 # Log initialization
 import logging

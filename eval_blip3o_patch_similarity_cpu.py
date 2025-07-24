@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-FIXED: BLIP3-o Patch-Level Cosine Similarity Evaluation Script
+CPU-OPTIMIZED: BLIP3-o Patch-Level Cosine Similarity Evaluation Script
 eval_blip3o_patch_similarity.py
 
-FIXES APPLIED:
-1. Fixed config key handling (num_tokens vs expected_tokens)
-2. Better CUDA environment setup
-3. Comprehensive cosine similarity calculation
-4. Proper error handling and device setup
-5. Enhanced evaluation with detailed metrics
+OPTIMIZATIONS FOR CPU:
+1. CPU-first device selection
+2. Optimized batch processing for CPU memory
+3. Efficient tensor operations for CPU
+4. Reduced memory footprint
+5. Better progress tracking for slower CPU evaluation
 
 Features:
 1. Comprehensive patch-level cosine similarity evaluation
@@ -29,11 +29,15 @@ import json
 import logging
 from datetime import datetime
 import traceback
+import gc
 
-# FIXED: Handle CUDA environment issues
-os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID'
-if 'CUDA_VISIBLE_DEVICES' not in os.environ:
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+# CPU-OPTIMIZED: Set optimal CPU settings
+torch.set_num_threads(max(1, os.cpu_count() // 2))  # Use half available CPUs
+os.environ['OMP_NUM_THREADS'] = str(max(1, os.cpu_count() // 2))
+os.environ['MKL_NUM_THREADS'] = str(max(1, os.cpu_count() // 2))
+
+# Disable CUDA to force CPU usage
+os.environ['CUDA_VISIBLE_DEVICES'] = ''
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
@@ -50,9 +54,9 @@ def setup_logging():
     return logging.getLogger(__name__)
 
 def parse_arguments():
-    """Parse command line arguments"""
+    """Parse command line arguments with CPU-optimized defaults"""
     parser = argparse.ArgumentParser(
-        description="FIXED: BLIP3-o Patch-Level Cosine Similarity Evaluation",
+        description="CPU-OPTIMIZED: BLIP3-o Patch-Level Cosine Similarity Evaluation",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
     
@@ -64,13 +68,13 @@ def parse_arguments():
     parser.add_argument("--output_dir", type=str, required=True,
                        help="Output directory for evaluation results")
     
-    # Evaluation configuration
-    parser.add_argument("--num_samples", type=int, default=1000,
-                       help="Number of samples to evaluate")
-    parser.add_argument("--batch_size", type=int, default=8,
-                       help="Evaluation batch size")
-    parser.add_argument("--num_inference_steps", type=int, default=50,
-                       help="Number of inference steps for generation")
+    # CPU-OPTIMIZED: Smaller defaults for CPU
+    parser.add_argument("--num_samples", type=int, default=500,
+                       help="Number of samples to evaluate (reduced for CPU)")
+    parser.add_argument("--batch_size", type=int, default=4,
+                       help="Evaluation batch size (reduced for CPU)")
+    parser.add_argument("--num_inference_steps", type=int, default=25,
+                       help="Number of inference steps (reduced for CPU)")
     parser.add_argument("--training_mode", type=str, default="auto",
                        choices=["auto", "cls_patch", "patch_only"],
                        help="Training mode (auto-detect from model if 'auto')")
@@ -84,56 +88,58 @@ def parse_arguments():
                        help="Normalize embeddings before computing similarity")
     
     # Output options
-    parser.add_argument("--save_plots", action="store_true", default=True,
-                       help="Save visualization plots")
+    parser.add_argument("--save_plots", action="store_true", default=False,
+                       help="Save visualization plots (disabled for CPU)")
     parser.add_argument("--save_detailed_results", action="store_true", default=True,
                        help="Save detailed per-image results")
     
-    # Hardware configuration
-    parser.add_argument("--device", type=str, default="auto",
-                       help="Device to use (auto, cpu, cuda)")
+    # CPU-specific options
+    parser.add_argument("--cpu_threads", type=int, default=None,
+                       help="Number of CPU threads to use (auto-detect if None)")
+    parser.add_argument("--memory_efficient", action="store_true", default=True,
+                       help="Use memory-efficient processing")
+    parser.add_argument("--progress_frequency", type=int, default=5,
+                       help="How often to log progress (every N batches)")
+    
+    # Hardware configuration (CPU-focused)
+    parser.add_argument("--device", type=str, default="cpu",
+                       choices=["cpu", "auto"],
+                       help="Device to use (CPU recommended)")
     parser.add_argument("--torch_dtype", type=str, default="float32",
                        choices=["float32", "float16"],
-                       help="Torch data type")
+                       help="Torch data type (float32 recommended for CPU)")
     
     return parser.parse_args()
 
-def setup_device_safely(device_arg: str, logger):
-    """FIXED: Setup device with better CUDA handling"""
-    if device_arg == "auto":
-        try:
-            if torch.cuda.is_available():
-                # Test CUDA availability
-                torch.cuda.device_count()
-                device = torch.device("cuda:0")
-                logger.info(f"Using GPU: {torch.cuda.get_device_name(0)}")
-            else:
-                device = torch.device("cpu")
-                logger.info("CUDA not available, using CPU")
-        except Exception as e:
-            logger.warning(f"CUDA setup failed: {e}, falling back to CPU")
-            device = torch.device("cpu")
+def setup_cpu_optimizations(args, logger):
+    """Setup CPU-specific optimizations"""
+    # Set CPU threads
+    if args.cpu_threads:
+        torch.set_num_threads(args.cpu_threads)
+        os.environ['OMP_NUM_THREADS'] = str(args.cpu_threads)
+        os.environ['MKL_NUM_THREADS'] = str(args.cpu_threads)
+        logger.info(f"Set CPU threads to: {args.cpu_threads}")
     else:
-        try:
-            device = torch.device(device_arg)
-            if device.type == "cuda":
-                # Test that the device works
-                torch.cuda.set_device(device)
-                torch.cuda.device_count()
-            logger.info(f"Using specified device: {device}")
-        except Exception as e:
-            logger.warning(f"Specified device {device_arg} failed: {e}, using CPU")
-            device = torch.device("cpu")
+        available_cpus = os.cpu_count()
+        optimal_threads = max(1, available_cpus // 2)
+        torch.set_num_threads(optimal_threads)
+        logger.info(f"Auto-detected CPU threads: {optimal_threads}/{available_cpus}")
+    
+    # Force CPU device
+    device = torch.device("cpu")
+    logger.info("💻 Using CPU for evaluation (GPU disabled)")
+    logger.info(f"🔧 CPU optimization enabled")
+    logger.info(f"🔧 Memory efficient processing: {args.memory_efficient}")
     
     return device
 
 def load_model_and_determine_mode(model_path, device, torch_dtype, training_mode, logger):
-    """FIXED: Load model and determine training mode with proper config handling"""
+    """CPU-OPTIMIZED: Load model with CPU-specific settings"""
     from src.modules.models.blip3o_patch_dit import create_blip3o_patch_dit_model, BLIP3oDiTConfig
-    from src.modules.losses.blip3o_flow_matching_loss import create_blip3o_flow_matching_loss
     
     model_path = Path(model_path)
     logger.info(f"📦 Loading model from: {model_path}")
+    logger.info(f"💻 Loading on CPU (optimized for CPU evaluation)")
     
     # Load model configuration
     config_files = [
@@ -153,7 +159,7 @@ def load_model_and_determine_mode(model_path, device, torch_dtype, training_mode
     if config_data is None:
         raise FileNotFoundError(f"No config file found in {model_path}")
     
-    # FIXED: Handle different config key names properly
+    # Handle different config key names properly
     if 'num_tokens' in config_data:
         expected_tokens = config_data['num_tokens']
     elif 'expected_tokens' in config_data:
@@ -161,7 +167,6 @@ def load_model_and_determine_mode(model_path, device, torch_dtype, training_mode
     else:
         # Infer from training_mode if not in config
         if training_mode == "auto":
-            # Try to infer from other config keys
             if 'training_mode' in config_data:
                 inferred_mode = config_data['training_mode']
                 expected_tokens = 257 if inferred_mode == "cls_patch" else 256
@@ -173,9 +178,11 @@ def load_model_and_determine_mode(model_path, device, torch_dtype, training_mode
         logger.warning(f"No token count in config, inferring: {expected_tokens}")
     
     # Create model config
-    # Ensure we have the num_tokens field
     if 'num_tokens' not in config_data:
         config_data['num_tokens'] = expected_tokens
+    
+    # CPU-OPTIMIZED: Disable gradient checkpointing for CPU
+    config_data['use_gradient_checkpointing'] = False
     
     config = BLIP3oDiTConfig(**config_data)
     
@@ -210,7 +217,7 @@ def load_model_and_determine_mode(model_path, device, torch_dtype, training_mode
     
     logger.info(f"💾 Loading weights from: {weight_file}")
     
-    # Load state dict
+    # Load state dict with CPU map_location
     if weight_file.suffix == ".bin":
         state_dict = torch.load(weight_file, map_location='cpu')
     else:
@@ -225,29 +232,34 @@ def load_model_and_determine_mode(model_path, device, torch_dtype, training_mode
     if unexpected_keys:
         logger.warning(f"Unexpected keys: {len(unexpected_keys)} keys")
     
-    # Move to device and set dtype
-    dtype = torch.float16 if torch_dtype == "float16" else torch.float32
+    # Move to CPU and set dtype
+    dtype = torch.float32  # Always use float32 on CPU for better performance
     model = model.to(device=device, dtype=dtype)
     model.eval()
     
-    logger.info(f"✅ Model loaded successfully")
+    # CPU-OPTIMIZED: Disable gradient computation globally
+    for param in model.parameters():
+        param.requires_grad = False
+    
+    logger.info(f"✅ Model loaded successfully on CPU")
     logger.info(f"   Training mode: {training_mode}")
     logger.info(f"   Expected tokens: {expected_tokens}")
     logger.info(f"   Device: {device}")
     logger.info(f"   Dtype: {dtype}")
+    logger.info(f"   Parameters: {sum(p.numel() for p in model.parameters()):,}")
     
     return model, config, training_mode
 
 def create_evaluation_dataloader(embeddings_dir, training_mode, max_shards, batch_size, logger):
-    """Create dataloader for evaluation"""
+    """CPU-OPTIMIZED: Create dataloader with CPU-friendly settings"""
     from src.modules.datasets.blip3o_dataset import create_flexible_dataloaders
     
-    logger.info(f"📊 Creating evaluation dataloader")
+    logger.info(f"📊 Creating CPU-optimized evaluation dataloader")
     logger.info(f"   Training mode: {training_mode}")
     logger.info(f"   Max shards: {max_shards}")
-    logger.info(f"   Batch size: {batch_size}")
+    logger.info(f"   Batch size: {batch_size} (optimized for CPU)")
     
-    # Create dataloaders
+    # CPU-OPTIMIZED: Use minimal workers and no pinning
     train_dataloader, eval_dataloader = create_flexible_dataloaders(
         chunked_embeddings_dir=embeddings_dir,
         batch_size=batch_size,
@@ -258,39 +270,26 @@ def create_evaluation_dataloader(embeddings_dir, training_mode, max_shards, batc
         max_shards=max_shards,
         use_same_data_for_eval=True,  # Use same data
         delete_after_use=False,
-        num_workers=0,  # Avoid multiprocessing issues in evaluation
-        pin_memory=False,  # Disable to avoid CUDA issues
+        num_workers=0,  # CPU-OPTIMIZED: No multiprocessing
+        pin_memory=False,  # CPU-OPTIMIZED: No pinning
     )
     
     # Use train_dataloader for same-data evaluation
     eval_dataloader = train_dataloader
     
-    logger.info(f"✅ Evaluation dataloader created")
+    logger.info(f"✅ CPU-optimized evaluation dataloader created")
     
     return eval_dataloader
 
 def compute_comprehensive_cosine_similarity(
-    predicted_embeddings: torch.Tensor,  # [B, N, 1024] - Generated CLIP embeddings
-    target_embeddings: torch.Tensor,     # [B, N, 1024] - Ground truth CLIP embeddings
+    predicted_embeddings: torch.Tensor,
+    target_embeddings: torch.Tensor,
     training_mode: str = "cls_patch",
     normalize: bool = True,
     return_detailed: bool = True
 ) -> dict:
     """
-    Compute comprehensive cosine similarity evaluation exactly as requested:
-    1. Cosine similarity for each patch
-    2. Average over all patches to get cosine similarity for each image  
-    3. Average over all samples to get overall cosine similarity
-    
-    Args:
-        predicted_embeddings: Model generated embeddings [B, N, 1024]
-        target_embeddings: Target ground truth embeddings [B, N, 1024]
-        training_mode: "cls_patch" (257 tokens) or "patch_only" (256 tokens)
-        normalize: Whether to normalize embeddings before computing similarity
-        return_detailed: Whether to return detailed per-patch and per-image results
-        
-    Returns:
-        Dictionary with similarity metrics
+    CPU-OPTIMIZED: Compute comprehensive cosine similarity with memory efficiency
     """
     batch_size, num_tokens, embed_dim = predicted_embeddings.shape
     
@@ -300,25 +299,53 @@ def compute_comprehensive_cosine_similarity(
     assert num_tokens in [256, 257], f"Expected 256 or 257 tokens, got {num_tokens}"
     assert embed_dim == 1024, f"Expected 1024-dim embeddings, got {embed_dim}"
     
-    # Normalize embeddings if requested (recommended for cosine similarity)
-    if normalize:
-        predicted_norm = F.normalize(predicted_embeddings, p=2, dim=-1)  # [B, N, 1024]
-        target_norm = F.normalize(target_embeddings, p=2, dim=-1)       # [B, N, 1024]
+    # CPU-OPTIMIZED: Process in smaller chunks if batch is large
+    if batch_size > 16:
+        # Process in chunks to save memory
+        chunk_size = 8
+        all_per_patch_similarities = []
+        
+        for i in range(0, batch_size, chunk_size):
+            end_idx = min(i + chunk_size, batch_size)
+            pred_chunk = predicted_embeddings[i:end_idx]
+            target_chunk = target_embeddings[i:end_idx]
+            
+            # Normalize if requested
+            if normalize:
+                pred_norm = F.normalize(pred_chunk, p=2, dim=-1)
+                target_norm = F.normalize(target_chunk, p=2, dim=-1)
+            else:
+                pred_norm = pred_chunk
+                target_norm = target_chunk
+            
+            # Compute similarities for this chunk
+            chunk_similarities = F.cosine_similarity(pred_norm, target_norm, dim=-1)
+            all_per_patch_similarities.append(chunk_similarities)
+            
+            # Clean up memory
+            del pred_chunk, target_chunk, pred_norm, target_norm, chunk_similarities
+            if i % (chunk_size * 4) == 0:
+                gc.collect()
+        
+        # Concatenate results
+        per_patch_similarities = torch.cat(all_per_patch_similarities, dim=0)
+        del all_per_patch_similarities
+        gc.collect()
+    
     else:
-        predicted_norm = predicted_embeddings
-        target_norm = target_embeddings
+        # Process normally for small batches
+        if normalize:
+            predicted_norm = F.normalize(predicted_embeddings, p=2, dim=-1)
+            target_norm = F.normalize(target_embeddings, p=2, dim=-1)
+        else:
+            predicted_norm = predicted_embeddings
+            target_norm = target_embeddings
+        
+        per_patch_similarities = F.cosine_similarity(predicted_norm, target_norm, dim=-1)
     
-    # STEP 1: Compute cosine similarity for each patch
-    # F.cosine_similarity computes similarity along the last dimension (embed_dim)
-    per_patch_similarities = F.cosine_similarity(
-        predicted_norm, target_norm, dim=-1
-    )  # [B, N] - Cosine similarity for each patch in each image
-    
-    # STEP 2: Average over all patches to get cosine similarity for each image
-    per_image_similarities = per_patch_similarities.mean(dim=1)  # [B] - Average similarity per image
-    
-    # STEP 3: Average over all samples to get overall cosine similarity
-    overall_similarity = per_image_similarities.mean().item()  # Scalar - Overall average
+    # Compute per-image and overall similarities
+    per_image_similarities = per_patch_similarities.mean(dim=1)
+    overall_similarity = per_image_similarities.mean().item()
     
     # Prepare results
     results = {
@@ -363,9 +390,8 @@ def compute_comprehensive_cosine_similarity(
         
         # Mode-specific analysis
         if training_mode == "cls_patch" and num_tokens == 257:
-            # Separate CLS token (index 0) from patches (indices 1-256)
-            cls_similarities = per_patch_similarities[:, 0]  # [B] - CLS token similarities
-            patch_similarities = per_patch_similarities[:, 1:]  # [B, 256] - Patch similarities
+            cls_similarities = per_patch_similarities[:, 0]
+            patch_similarities = per_patch_similarities[:, 1:]
             
             results.update({
                 'cls_token_mean_similarity': cls_similarities.mean().item(),
@@ -375,76 +401,76 @@ def compute_comprehensive_cosine_similarity(
                 'cls_vs_patches_difference': (cls_similarities.mean() - patch_similarities.mean()).item(),
             })
         else:
-            # All tokens are patches
             results.update({
-                'cls_token_mean_similarity': 0.0,  # No CLS token
+                'cls_token_mean_similarity': 0.0,
                 'patches_only_mean_similarity': per_patch_similarities.mean().item(),
                 'patches_only_std_similarity': per_patch_similarities.std().item(),
                 'cls_vs_patches_difference': 0.0,
             })
     
+    # Clean up memory
+    del per_patch_similarities, per_image_similarities
+    gc.collect()
+    
     return results
 
-def evaluate_model_on_single_shard(
+def evaluate_model_on_single_shard_cpu(
     model,
     dataloader,
-    device: str,
     training_mode: str = "cls_patch",
-    num_inference_steps: int = 50,
+    num_inference_steps: int = 25,
     max_batches: int = None,
+    memory_efficient: bool = True,
+    progress_frequency: int = 5,
     logger = None
 ) -> dict:
     """
-    Evaluate model on a single shard with comprehensive cosine similarity analysis
-    
-    Args:
-        model: Trained BLIP3-o model
-        dataloader: DataLoader for the shard
-        device: Device to run evaluation on
-        training_mode: Training mode ("cls_patch" or "patch_only")
-        num_inference_steps: Steps for generation
-        max_batches: Maximum batches to evaluate (None for all)
-        logger: Logger instance
-        
-    Returns:
-        Comprehensive evaluation metrics
+    CPU-OPTIMIZED: Evaluate model with memory-efficient processing
     """
     model.eval()
     
     all_per_patch_similarities = []
     all_per_image_similarities = []
     batch_count = 0
+    total_images = 0
     
     if logger:
-        logger.info(f"🔍 Starting evaluation on single shard...")
+        logger.info(f"🔍 Starting CPU-optimized evaluation...")
         logger.info(f"   Training mode: {training_mode}")
-        logger.info(f"   Device: {device}")
+        logger.info(f"   Inference steps: {num_inference_steps}")
         logger.info(f"   Max batches: {max_batches or 'All'}")
+        logger.info(f"   Memory efficient: {memory_efficient}")
     
     with torch.no_grad():
         for batch_idx, batch in enumerate(dataloader):
             if max_batches and batch_idx >= max_batches:
                 break
-                
-            # Move batch to device
-            eva_embeddings = batch['encoder_hidden_states'].to(device)
-            target_clip = batch['clip_embeddings'].to(device)
             
-            batch_size, num_tokens, _ = eva_embeddings.shape
-            
-            # Generate embeddings using the model
             try:
-                # Generate using the model's generation method
+                # Move batch to CPU (should already be on CPU)
+                eva_embeddings = batch['encoder_hidden_states']
+                target_clip = batch['clip_embeddings']
+                
+                # Ensure on CPU
+                if eva_embeddings.device.type != 'cpu':
+                    eva_embeddings = eva_embeddings.cpu()
+                if target_clip.device.type != 'cpu':
+                    target_clip = target_clip.cpu()
+                
+                batch_size, num_tokens, _ = eva_embeddings.shape
+                total_images += batch_size
+                
+                # CPU-OPTIMIZED: Generate embeddings with reduced steps
                 if hasattr(model, 'generate'):
                     generated_clip = model.generate(
                         eva_features=eva_embeddings,
                         num_inference_steps=num_inference_steps,
                     )
                 else:
-                    # Fallback to forward pass if no generate method
-                    timesteps = torch.zeros(batch_size, device=device)
+                    # Fallback to forward pass
+                    timesteps = torch.zeros(batch_size)
                     outputs = model(
-                        hidden_states=target_clip,  # Use targets as initial state
+                        hidden_states=target_clip,
                         timestep=timesteps,
                         encoder_hidden_states=eva_embeddings,
                         return_dict=True
@@ -453,34 +479,62 @@ def evaluate_model_on_single_shard(
                 
                 # Ensure same shape
                 if generated_clip.shape != target_clip.shape:
-                    if logger:
+                    if logger and batch_idx == 0:  # Only log once
                         logger.warning(f"Shape mismatch: generated {generated_clip.shape} vs target {target_clip.shape}")
                     continue
                 
-                # Compute cosine similarities for this batch
-                batch_results = compute_comprehensive_cosine_similarity(
-                    predicted_embeddings=generated_clip,
-                    target_embeddings=target_clip,
-                    training_mode=training_mode,
-                    normalize=True,
-                    return_detailed=True
-                )
-                
-                # Collect per-patch and per-image similarities for global aggregation
-                with torch.no_grad():
+                # Compute similarities efficiently
+                if memory_efficient and batch_size > 8:
+                    # Process in smaller chunks
+                    chunk_size = 4
+                    batch_per_patch_sims = []
+                    
+                    for i in range(0, batch_size, chunk_size):
+                        end_idx = min(i + chunk_size, batch_size)
+                        
+                        pred_norm = F.normalize(generated_clip[i:end_idx], p=2, dim=-1)
+                        target_norm = F.normalize(target_clip[i:end_idx], p=2, dim=-1)
+                        chunk_sim = F.cosine_similarity(pred_norm, target_norm, dim=-1)
+                        
+                        batch_per_patch_sims.append(chunk_sim)
+                        
+                        # Clean memory
+                        del pred_norm, target_norm, chunk_sim
+                    
+                    batch_per_patch_sim = torch.cat(batch_per_patch_sims, dim=0)
+                    del batch_per_patch_sims
+                    
+                else:
+                    # Process entire batch
                     pred_norm = F.normalize(generated_clip, p=2, dim=-1)
                     target_norm = F.normalize(target_clip, p=2, dim=-1)
-                    per_patch_sim = F.cosine_similarity(pred_norm, target_norm, dim=-1)  # [B, N]
-                    per_image_sim = per_patch_sim.mean(dim=1)  # [B]
-                    
-                    all_per_patch_similarities.append(per_patch_sim.cpu())
-                    all_per_image_similarities.append(per_image_sim.cpu())
+                    batch_per_patch_sim = F.cosine_similarity(pred_norm, target_norm, dim=-1)
+                    del pred_norm, target_norm
+                
+                # Compute per-image similarities
+                batch_per_image_sim = batch_per_patch_sim.mean(dim=1)
+                
+                # Store results
+                all_per_patch_similarities.append(batch_per_patch_sim.cpu())
+                all_per_image_similarities.append(batch_per_image_sim.cpu())
                 
                 batch_count += 1
                 
-                if logger and batch_idx % 10 == 0:
-                    logger.info(f"   Batch {batch_idx}: Overall similarity = {batch_results['overall_cosine_similarity']:.4f}")
-                    
+                # Progress logging
+                if logger and batch_idx % progress_frequency == 0:
+                    current_overall_sim = batch_per_image_sim.mean().item()
+                    logger.info(f"   Batch {batch_idx}/{len(dataloader)}: "
+                              f"Images={total_images}, "
+                              f"Batch similarity={current_overall_sim:.4f}")
+                
+                # Clean up memory
+                del eva_embeddings, target_clip, generated_clip
+                del batch_per_patch_sim, batch_per_image_sim
+                
+                # Periodic garbage collection
+                if batch_idx % 10 == 0:
+                    gc.collect()
+                
             except Exception as e:
                 if logger:
                     logger.warning(f"   Batch {batch_idx} failed: {e}")
@@ -490,8 +544,13 @@ def evaluate_model_on_single_shard(
         raise RuntimeError("No batches were successfully evaluated")
     
     # Aggregate all results
-    all_per_patch = torch.cat(all_per_patch_similarities, dim=0)  # [Total_Images, N]
-    all_per_image = torch.cat(all_per_image_similarities, dim=0)  # [Total_Images]
+    logger.info(f"📊 Aggregating results from {batch_count} batches...")
+    all_per_patch = torch.cat(all_per_patch_similarities, dim=0)
+    all_per_image = torch.cat(all_per_image_similarities, dim=0)
+    
+    # Clean up intermediate results
+    del all_per_patch_similarities, all_per_image_similarities
+    gc.collect()
     
     # Final comprehensive results
     final_results = {
@@ -523,8 +582,8 @@ def evaluate_model_on_single_shard(
     
     # Mode-specific analysis
     if training_mode == "cls_patch" and all_per_patch.shape[1] == 257:
-        cls_similarities = all_per_patch[:, 0]  # [Total_Images] - CLS token similarities
-        patch_similarities = all_per_patch[:, 1:]  # [Total_Images, 256] - Patch similarities
+        cls_similarities = all_per_patch[:, 0]
+        patch_similarities = all_per_patch[:, 1:]
         
         final_results.update({
             'cls_token_mean_similarity': cls_similarities.mean().item(),
@@ -535,85 +594,81 @@ def evaluate_model_on_single_shard(
         })
     
     if logger:
-        logger.info(f"✅ Evaluation completed on {batch_count} batches")
+        logger.info(f"✅ CPU evaluation completed!")
+        logger.info(f"   Batches processed: {batch_count}")
+        logger.info(f"   Images evaluated: {final_results['num_images_evaluated']:,}")
         logger.info(f"   Overall cosine similarity: {final_results['overall_cosine_similarity']:.4f}")
         logger.info(f"   Per-image mean: {final_results['per_image_mean_similarity']:.4f}")
         logger.info(f"   Per-patch mean: {final_results['per_patch_mean_similarity']:.4f}")
         logger.info(f"   High quality images (>0.7): {final_results['high_quality_images_ratio']*100:.1f}%")
     
+    # Clean up final tensors
+    del all_per_patch, all_per_image
+    gc.collect()
+    
     return final_results
 
-def run_comprehensive_evaluation(model, dataloader, training_mode, args, logger):
-    """Run comprehensive patch-level cosine similarity evaluation"""
-    logger.info("🔍 Starting comprehensive evaluation...")
-    
-    # Run detailed evaluation
-    results = evaluate_model_on_single_shard(
-        model=model,
-        dataloader=dataloader,
-        device=str(args.device) if hasattr(args, 'device') else 'cuda',
-        training_mode=training_mode,
-        num_inference_steps=args.num_inference_steps,
-        max_batches=args.num_samples // args.batch_size if args.num_samples else None,
-        logger=logger
-    )
-    
-    return results
-
 def main():
-    """FIXED: Main evaluation function"""
+    """CPU-OPTIMIZED: Main evaluation function"""
     # Parse arguments
     args = parse_arguments()
     
     # Setup logging
     logger = setup_logging()
     
-    logger.info("🔍 FIXED: BLIP3-o Patch-Level Cosine Similarity Evaluation")
-    logger.info("=" * 60)
-    logger.info("🎯 FEATURES:")
+    logger.info("💻 CPU-OPTIMIZED: BLIP3-o Patch-Level Cosine Similarity Evaluation")
+    logger.info("=" * 70)
+    logger.info("🎯 CPU OPTIMIZATIONS:")
     logger.info(f"  ✅ Model path: {args.model_path}")
     logger.info(f"  ✅ Training mode: {args.training_mode}")
-    logger.info(f"  ✅ Same-data evaluation: {args.same_data_eval}")
-    logger.info(f"  ✅ Max eval shards: {args.max_eval_shards}")
-    logger.info(f"  ✅ Number of samples: {args.num_samples}")
-    logger.info(f"  ✅ FIXED: Config key handling and CUDA setup")
-    logger.info("=" * 60)
+    logger.info(f"  ✅ Batch size: {args.batch_size} (CPU-optimized)")
+    logger.info(f"  ✅ Inference steps: {args.num_inference_steps} (reduced for CPU)")
+    logger.info(f"  ✅ Memory efficient: {args.memory_efficient}")
+    logger.info(f"  ✅ CPU threads: {args.cpu_threads or 'Auto'}")
+    logger.info(f"  ✅ CUDA disabled, CPU-only evaluation")
+    logger.info("=" * 70)
     
     try:
-        # 1. Setup device safely
-        device = setup_device_safely(args.device, logger)
-        args.device = device  # Store for later use
+        # 1. Setup CPU optimizations
+        device = setup_cpu_optimizations(args, logger)
         
         # 2. Create output directory
         output_dir = Path(args.output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
         logger.info(f"📁 Output directory: {output_dir}")
         
-        # 3. FIXED: Load model with proper config handling
+        # 3. Load model with CPU optimizations
         model, config, training_mode = load_model_and_determine_mode(
             args.model_path, device, args.torch_dtype, args.training_mode, logger
         )
         
-        # 4. Create evaluation dataloader
+        # 4. Create CPU-optimized dataloader
         eval_dataloader = create_evaluation_dataloader(
             args.chunked_embeddings_dir, training_mode, args.max_eval_shards, 
             args.batch_size, logger
         )
         
-        # 5. Run comprehensive evaluation
-        logger.info("🚀 Starting comprehensive evaluation...")
+        # 5. Run CPU-optimized evaluation
+        logger.info("🚀 Starting CPU-optimized evaluation...")
         start_time = datetime.now()
         
-        results = run_comprehensive_evaluation(
-            model, eval_dataloader, training_mode, args, logger
+        results = evaluate_model_on_single_shard_cpu(
+            model=model,
+            dataloader=eval_dataloader,
+            training_mode=training_mode,
+            num_inference_steps=args.num_inference_steps,
+            max_batches=args.num_samples // args.batch_size if args.num_samples else None,
+            memory_efficient=args.memory_efficient,
+            progress_frequency=args.progress_frequency,
+            logger=logger
         )
         
         end_time = datetime.now()
         evaluation_duration = (end_time - start_time).total_seconds()
         
-        # 6. Process and display results
-        logger.info("📊 EVALUATION RESULTS:")
-        logger.info("=" * 40)
+        # 6. Display results
+        logger.info("📊 CPU EVALUATION RESULTS:")
+        logger.info("=" * 50)
         logger.info(f"🎯 COSINE SIMILARITY ANALYSIS:")
         logger.info(f"   Overall cosine similarity: {results['overall_cosine_similarity']:.4f}")
         logger.info(f"   Per-image mean similarity: {results['per_image_mean_similarity']:.4f}")
@@ -628,6 +683,7 @@ def main():
         logger.info(f"   Images evaluated: {results['num_images_evaluated']:,}")
         logger.info(f"   Total patches evaluated: {results['total_patches_evaluated']:,}")
         logger.info(f"   Patches per image: {results['patches_per_image']}")
+        logger.info(f"   CPU evaluation time: {evaluation_duration:.1f} seconds")
         
         # Mode-specific results
         if 'cls_token_mean_similarity' in results and training_mode == "cls_patch":
@@ -636,7 +692,7 @@ def main():
             logger.info(f"   Patches similarity: {results['patches_only_mean_similarity']:.4f}")
             logger.info(f"   CLS vs Patches difference: {results['cls_vs_patches_difference']:.4f}")
         
-        # Overfitting assessment for same-data evaluation
+        # Overfitting assessment
         if args.same_data_eval:
             overall_sim = results['overall_cosine_similarity']
             if overall_sim > 0.9:
@@ -650,22 +706,22 @@ def main():
             else:
                 logger.info("⚠️ LOW OVERFITTING: Model needs more training")
         
-        # 7. Save evaluation summary
+        # 7. Save results
         evaluation_summary = {
             'evaluation_completed': True,
+            'cpu_optimized': True,
             'timestamp': datetime.now().isoformat(),
             'duration_seconds': evaluation_duration,
             'model_path': str(args.model_path),
             'embeddings_dir': args.chunked_embeddings_dir,
             'training_mode': training_mode,
-            'evaluation_config': {
-                'num_samples': args.num_samples,
+            'cpu_configuration': {
+                'cpu_threads': torch.get_num_threads(),
+                'memory_efficient': args.memory_efficient,
                 'batch_size': args.batch_size,
-                'num_inference_steps': args.num_inference_steps,
-                'same_data_eval': args.same_data_eval,
-                'max_eval_shards': args.max_eval_shards,
-                'normalize_embeddings': args.normalize_embeddings,
+                'inference_steps': args.num_inference_steps,
             },
+            'evaluation_config': vars(args),
             'results_summary': {
                 'overall_cosine_similarity': results['overall_cosine_similarity'],
                 'per_image_mean_similarity': results['per_image_mean_similarity'],
@@ -674,35 +730,23 @@ def main():
                 'total_patches': results['total_patches_evaluated'],
             },
             'detailed_results': results,
-            'files_generated': {
-                'summary_file': 'comprehensive_cosine_similarity_results.json',
-            }
         }
         
         # Save detailed results
-        results_file = output_dir / 'comprehensive_cosine_similarity_results.json'
+        results_file = output_dir / 'cpu_cosine_similarity_results.json'
         with open(results_file, 'w') as f:
             json.dump(evaluation_summary, f, indent=2)
         
-        logger.info("=" * 40)
-        logger.info("✅ EVALUATION COMPLETED SUCCESSFULLY!")
+        logger.info("=" * 50)
+        logger.info("✅ CPU EVALUATION COMPLETED SUCCESSFULLY!")
         logger.info(f"📁 Results saved to: {results_file}")
-        logger.info(f"⏱️ Evaluation time: {evaluation_duration:.1f} seconds")
-        
-        # 8. Print final summary
-        logger.info("📋 FINAL SUMMARY:")
-        logger.info(f"   ✅ Successfully evaluated {results['num_images_evaluated']:,} images")
-        logger.info(f"   ✅ Overall cosine similarity: {results['overall_cosine_similarity']:.4f}")
-        logger.info(f"   ✅ Training mode: {training_mode} ({results['patches_per_image']} tokens)")
-        logger.info(f"   ✅ Quality assessment: {results['high_quality_images_ratio']*100:.1f}% high quality images")
+        logger.info(f"⏱️ Total evaluation time: {evaluation_duration:.1f} seconds")
+        logger.info(f"💻 CPU evaluation was successful!")
         
         return 0
         
     except Exception as e:
-        logger.error(f"❌ Evaluation failed: {e}")
-        if args.training_mode == "auto":
-            logger.error("💡 Try specifying --training_mode explicitly (cls_patch or patch_only)")
-        logger.error("💡 Check that model path and embeddings directory are correct")
+        logger.error(f"❌ CPU evaluation failed: {e}")
         traceback.print_exc()
         
         # Save error info
@@ -711,18 +755,13 @@ def main():
             'traceback': traceback.format_exc(),
             'evaluation_args': vars(args),
             'timestamp': datetime.now().isoformat(),
-            'fixes_applied': [
-                'Fixed config key handling (num_tokens vs expected_tokens)',
-                'Better CUDA environment setup',
-                'Comprehensive cosine similarity calculation',
-                'Proper error handling and device setup'
-            ]
+            'cpu_optimized': True,
         }
         
-        with open('evaluation_error_fixed.json', 'w') as f:
+        with open('cpu_evaluation_error.json', 'w') as f:
             json.dump(error_info, f, indent=2)
         
-        logger.error("💾 Error info saved to evaluation_error_fixed.json")
+        logger.error("💾 Error info saved to cpu_evaluation_error.json")
         return 1
 
 if __name__ == "__main__":

@@ -1,446 +1,82 @@
 #!/bin/bash
-#SBATCH --job-name=blip3o_similarity_eval
-#SBATCH --partition=gpu_h100
+#SBATCH --job-name=blip3o_eval
+#SBATCH --partition=gpu_a100
 #SBATCH --nodes=1
 #SBATCH --gpus=1
 #SBATCH --cpus-per-gpu=18
 #SBATCH --time=3:00:00
 #SBATCH --mem=0
-#SBATCH --output=./slurm_out/blip3o_similarity_%j.out
-#SBATCH --error=./slurm_out/blip3o_similarity_%j.err
+#SBATCH --output=./slurm_out/blip3o_eval_%j.out
+#SBATCH --error=./slurm_out/blip3o_eval_%j.err
 
 # =============================================================================
-# Enhanced BLIP3-o Patch-Level Cosine Similarity Evaluation Job
-# Comprehensive evaluation with per-patch, per-image, and global analysis
+# BLIP3-o POST-TRAINING EVALUATION JOB
 # =============================================================================
 
-echo "🔍 Enhanced BLIP3-o Patch-Level Cosine Similarity Evaluation"
-echo "============================================================="
-echo "🎯 ENHANCED EVALUATION FEATURES:"
-echo "  ✅ Per-patch cosine similarity analysis"
-echo "  ✅ Per-image average cosine similarity"
-echo "  ✅ Global average cosine similarity"
-echo "  ✅ Support for both CLS+patch (257) and patch-only (256) modes"
-echo "  ✅ Same-data evaluation (overfitting verification)"
-echo "  ✅ Comprehensive JSON reporting"
-echo "  ✅ Advanced visualization plots"
-echo "  ✅ BLIP3-o paper aligned evaluation"
-echo "============================================================="
+echo "🔍 Starting BLIP3-o Post-Training Evaluation"
+echo "Job ID: ${SLURM_JOB_ID}"
+echo "Node: $(hostname)"
+echo "Time: $(date)"
+echo "============================================================"
+
+cd $SLURM_SUBMIT_DIR
 
 # Setup environment
 module purge
 module load 2024
 module load Miniconda3/24.7.1-0
 module load CUDA/12.6.0
-
 source activate eva_clip_env
 
-# Configuration - MODIFY THESE PATHS FOR YOUR SETUP
-TRAINED_MODEL_PATH="./checkpoints/blip3o_enhanced_JOBID_TIMESTAMP"  # Set to your trained model
-EMBEDDINGS_DIR="./embeddings"                                        # Set to your embeddings directory
-OUTPUT_DIR="./evaluation_results_$(date +%Y%m%d_%H%M%S)"
-TRAINING_MODE="auto"                                                  # auto, cls_patch, or patch_only
+# Configuration
+MODEL_PATH="/scratch-shared/scur2711/blip3o_workspace/checkpoints/blip3o_fixed_patch_only_13283695_20250724_165821"  # Update with actual path
+EMBEDDINGS_DIR="/scratch-shared/scur2711/blip3o_workspace/embeddings/chunked_256_tokens"
+OUTPUT_DIR="./eval_results_$(date +%Y%m%d_%H%M%S)"
+TRAINING_MODE="auto"
 NUM_SAMPLES=1000
 BATCH_SIZE=8
 NUM_INFERENCE_STEPS=50
-MAX_EVAL_SHARDS=1
+SHARD_INDEX=0
 
-# Setup temp directories for model cache
-export USER=$(whoami)
-export JOB_ID=${SLURM_JOB_ID}
-export JOB_TEMP="/scratch-local/${USER}.${JOB_ID}/blip3o_eval"
+mkdir -p "${OUTPUT_DIR}"
 
-export TORCH_HOME="${JOB_TEMP}/torch"
-export HF_HOME="${JOB_TEMP}/huggingface"
-export TRANSFORMERS_CACHE="${JOB_TEMP}/transformers"
+echo "⚙️ Evaluation Configuration:"
+echo "   Model Path: $MODEL_PATH"
+echo "   Embeddings: $EMBEDDINGS_DIR"
+echo "   Output: $OUTPUT_DIR"
+echo "   Samples: $NUM_SAMPLES"
+echo "   Batch Size: $BATCH_SIZE"
+echo "   Inference Steps: $NUM_INFERENCE_STEPS"
 
-mkdir -p "${TORCH_HOME}" "${HF_HOME}" "${TRANSFORMERS_CACHE}"
-mkdir -p ./slurm_out ./results "${OUTPUT_DIR}"
-
-echo "Enhanced Evaluation Configuration:"
-echo "  Model Path: $TRAINED_MODEL_PATH"
-echo "  Embeddings: $EMBEDDINGS_DIR"
-echo "  Training Mode: $TRAINING_MODE"
-echo "  Samples: $NUM_SAMPLES"
-echo "  Batch Size: $BATCH_SIZE"
-echo "  Inference Steps: $NUM_INFERENCE_STEPS"
-echo "  Max Eval Shards: $MAX_EVAL_SHARDS"
-echo "  Output Dir: $OUTPUT_DIR"
-echo "  Job ID: $JOB_ID"
-echo "  Node: $SLURMD_NODENAME"
-
-# Verify paths exist
-echo ""
-echo "🔍 Verifying paths..."
-echo "==================="
-
-# Find trained model (if using placeholder path)
-if [[ "$TRAINED_MODEL_PATH" == *"JOBID"* ]] || [ ! -d "$TRAINED_MODEL_PATH" ]; then
-    echo "🔍 Searching for trained model..."
-    
-    # Look for recent checkpoints
-    SEARCH_PATHS=(
-        "./checkpoints/blip3o_enhanced_*"
-        "./checkpoints/blip3o_*"
-        "./checkpoints/*"
-    )
-    
-    FOUND_MODEL=""
-    for pattern in "${SEARCH_PATHS[@]}"; do
-        for path in $pattern; do
-            if [ -d "$path" ] && [ -f "$path/pytorch_model.bin" -o -f "$path/model.safetensors" ]; then
-                FOUND_MODEL="$path"
-                break 2
-            fi
-        done
-    done
-    
-    if [ -n "$FOUND_MODEL" ]; then
-        TRAINED_MODEL_PATH="$FOUND_MODEL"
-        echo "✅ Found trained model: $TRAINED_MODEL_PATH"
-    else
-        echo "❌ ERROR: No trained model found"
-        echo "   Please set TRAINED_MODEL_PATH to your trained model directory"
-        echo "   Available checkpoints:"
-        ls -la ./checkpoints/ 2>/dev/null || echo "   No checkpoints found"
-        exit 1
-    fi
-fi
-
-# Find embeddings directory
-if [ ! -d "$EMBEDDINGS_DIR" ] || [ ! -f "$EMBEDDINGS_DIR/embeddings_manifest.json" ]; then
-    echo "🔍 Searching for embeddings..."
-    
-    EMBEDDINGS_SEARCH_PATHS=(
-        "./embeddings"
-        "./embeddings/chunked_256_tokens"
-        "./embeddings/chunked_257_tokens"
-        "/scratch-shared/$(whoami)/blip3o_workspace/embeddings"
-    )
-    
-    FOUND_EMBEDDINGS=""
-    for path in "${EMBEDDINGS_SEARCH_PATHS[@]}"; do
-        if [ -d "$path" ] && [ -f "$path/embeddings_manifest.json" ]; then
-            FOUND_EMBEDDINGS="$path"
-            break
-        fi
-    done
-    
-    if [ -n "$FOUND_EMBEDDINGS" ]; then
-        EMBEDDINGS_DIR="$FOUND_EMBEDDINGS"
-        echo "✅ Found embeddings: $EMBEDDINGS_DIR"
-    else
-        echo "❌ ERROR: No embeddings found"
-        echo "   Please set EMBEDDINGS_DIR to your embeddings directory"
-        echo "   Searched paths:"
-        for path in "${EMBEDDINGS_SEARCH_PATHS[@]}"; do
-            echo "     $path"
-        done
-        exit 1
-    fi
-fi
-
-# Verify required files
-if [ ! -d "$TRAINED_MODEL_PATH" ]; then
-    echo "❌ ERROR: Model path not found: $TRAINED_MODEL_PATH"
-    exit 1
-fi
-
-if [ ! -f "$EMBEDDINGS_DIR/embeddings_manifest.json" ]; then
-    echo "❌ ERROR: Embeddings manifest not found: $EMBEDDINGS_DIR/embeddings_manifest.json"
-    exit 1
-fi
-
-# Check for model files
-MODEL_FILES=("pytorch_model.bin" "model.safetensors" "pytorch_model.safetensors")
-MODEL_FILE_FOUND=false
-for file in "${MODEL_FILES[@]}"; do
-    if [ -f "$TRAINED_MODEL_PATH/$file" ]; then
-        MODEL_FILE_FOUND=true
-        echo "✅ Found model weights: $file"
-        break
-    fi
-done
-
-if [ "$MODEL_FILE_FOUND" = false ]; then
-    echo "❌ ERROR: No model weights found in $TRAINED_MODEL_PATH"
-    echo "   Looking for: ${MODEL_FILES[@]}"
-    echo "   Available files:"
-    ls -la "$TRAINED_MODEL_PATH"
-    exit 1
-fi
-
-# Check for config files
-CONFIG_FILES=("config.json" "blip3o_model_config.json" "enhanced_training_config.json")
-CONFIG_FILE_FOUND=false
-for file in "${CONFIG_FILES[@]}"; do
-    if [ -f "$TRAINED_MODEL_PATH/$file" ]; then
-        CONFIG_FILE_FOUND=true
-        echo "✅ Found model config: $file"
-        break
-    fi
-done
-
-if [ "$CONFIG_FILE_FOUND" = false ]; then
-    echo "❌ ERROR: No model config found in $TRAINED_MODEL_PATH"
-    echo "   Looking for: ${CONFIG_FILES[@]}"
-    exit 1
-fi
-
-echo "✅ All paths and files verified"
-
-# Show model and embeddings info
-echo ""
-echo "📊 Model and Data Information:"
-echo "============================"
-echo "Model path: $TRAINED_MODEL_PATH"
-
-# Show embeddings info
-echo "Embeddings info:"
-python -c "
-import json
-try:
-    with open('$EMBEDDINGS_DIR/embeddings_manifest.json', 'r') as f:
-        manifest = json.load(f)
-    print(f'  Total shards: {manifest.get(\"total_shards\", \"unknown\")}')
-    print(f'  Total samples: {manifest.get(\"total_samples\", \"unknown\"):,}')
-    print(f'  Extraction mode: {manifest.get(\"extraction_mode\", \"unknown\")}')
-    print(f'  Tokens per sample: {manifest.get(\"tokens_per_sample\", \"unknown\")}')
-except Exception as e:
-    print(f'  Error reading manifest: {e}')
-"
-
-# Verify evaluation script exists
-EVAL_SCRIPT="eval_blip3o_patch_similarity.py"
-if [ ! -f "$EVAL_SCRIPT" ]; then
-    echo "❌ ERROR: Evaluation script not found: $EVAL_SCRIPT"
-    echo "   Make sure the script is in the current directory"
-    exit 1
-fi
-
-echo "✅ Evaluation script verified: $EVAL_SCRIPT"
-
-# Run enhanced cosine similarity evaluation
-echo ""
-echo "🚀 Starting Enhanced BLIP3-o Patch-Level Evaluation..."
-echo "===================================================="
-echo "This will perform comprehensive evaluation:"
-echo "  1. 🎯 Per-patch cosine similarity (for each of 256/257 patches)"
-echo "  2. 📊 Per-image cosine similarity (average of all patches per image)"
-echo "  3. 🌐 Global cosine similarity (average across all images)"
-echo "  4. 📈 Quality distribution analysis"
-echo "  5. 🎨 Advanced visualization plots"
-echo "  6. 📋 Comprehensive JSON reporting"
-echo ""
-echo "Expected outputs:"
-echo "  • Per-patch similarities: Individual cosine similarity for each patch"
-echo "  • Per-image averages: Mean cosine similarity for each image"
-echo "  • Global statistics: Overall performance metrics"
-echo "  • Visualization plots: Distribution plots, heatmaps, quality analysis"
-echo "  • JSON reports: Detailed numerical results for further analysis"
-echo ""
-
-EVAL_START_TIME=$(date +%s)
-
-# Run the enhanced evaluation script
+# Launch evaluation
+echo "🔍 Starting Comprehensive Evaluation..."
 python eval_blip3o_patch_similarity.py \
-    --model_path "$TRAINED_MODEL_PATH" \
+    --model_path "$MODEL_PATH" \
     --chunked_embeddings_dir "$EMBEDDINGS_DIR" \
     --output_dir "$OUTPUT_DIR" \
     --training_mode "$TRAINING_MODE" \
+    --shard_index $SHARD_INDEX \
     --num_samples $NUM_SAMPLES \
     --batch_size $BATCH_SIZE \
     --num_inference_steps $NUM_INFERENCE_STEPS \
-    --max_eval_shards $MAX_EVAL_SHARDS \
-    --same_data_eval \
     --normalize_embeddings \
     --save_plots \
-    --save_detailed_results \
-    --device auto \
-    --torch_dtype float32
+    --save_detailed_results
 
-EXIT_CODE=$?
-EVAL_END_TIME=$(date +%s)
-EVAL_DURATION=$((EVAL_END_TIME - EVAL_START_TIME))
-
-# Results summary
-echo ""
-echo "========================================================================"
-echo "📊 ENHANCED BLIP3-O PATCH-LEVEL EVALUATION RESULTS"
-echo "========================================================================"
-echo "Job ID: $JOB_ID"
-echo "Node: $SLURMD_NODENAME"
-echo "Model: Enhanced BLIP3-o Patch-Level DiT"
-echo "Evaluation Type: Comprehensive Cosine Similarity Analysis"
-echo "Evaluation Duration: $EVAL_DURATION seconds"
-echo "Total Runtime: $SECONDS seconds"
-echo "Date: $(date)"
-
-if [ $EXIT_CODE -eq 0 ]; then
-    echo "Status: ✅ SUCCESS - ENHANCED EVALUATION COMPLETED"
+# Handle results
+if [ $? -eq 0 ]; then
+    echo "✅ Evaluation completed successfully!"
+    echo "   Results saved to: $OUTPUT_DIR"
     
-    # Find and display results from JSON files
-    RESULTS_FILES=("$OUTPUT_DIR"/*evaluation*.json)
-    SUMMARY_FILES=("$OUTPUT_DIR"/*summary*.json)
-    
-    echo ""
-    echo "📊 ENHANCED EVALUATION RESULTS SUMMARY:"
-    echo "======================================"
-    
-    # Parse and display summary results
-    if [ ${#SUMMARY_FILES[@]} -gt 0 ] && [ -f "${SUMMARY_FILES[0]}" ]; then
-        echo "📋 Summary Results:"
-        python -c "
-import json
-import sys
-
-try:
-    with open('${SUMMARY_FILES[0]}', 'r') as f:
-        data = json.load(f)
-    
-    if 'results_summary' in data:
-        results = data['results_summary']
-        print()
-        print(f'🎯 COSINE SIMILARITY RESULTS:')
-        print(f'   Global mean similarity:    {results.get(\"global_mean_similarity\", 0):.4f}')
-        print(f'   Per-image mean similarity: {results.get(\"per_image_mean_similarity\", 0):.4f}')
-        print(f'   Quality level:             {results.get(\"quality_level\", \"unknown\")}')
-        print(f'   Total images evaluated:    {results.get(\"total_images\", 0):,}')
-        print(f'   Total patches evaluated:   {results.get(\"total_patches\", 0):,}')
-        print()
-        
-        # Performance assessment
-        per_image_sim = results.get('per_image_mean_similarity', 0)
-        if per_image_sim > 0.8:
-            print(f'🎉 EXCELLENT: Outstanding patch-level alignment!')
-            print(f'🚀 Model shows excellent overfitting on training data')
-        elif per_image_sim > 0.6:
-            print(f'✅ VERY GOOD: Strong patch-level performance')
-            print(f'🎯 Model successfully learned patch-level mapping')
-        elif per_image_sim > 0.4:
-            print(f'🔄 GOOD: Solid patch-level learning detected')
-            print(f'💡 Model shows promise but can be improved')
-        else:
-            print(f'⚠️  NEEDS IMPROVEMENT: Low patch-level similarity')
-            print(f'💡 Consider longer training or hyperparameter tuning')
-    
-    print()
-    print(f'💾 Detailed results saved to: $OUTPUT_DIR')
-    
-    if 'files_generated' in data:
-        files = data['files_generated']
-        print(f'📁 Generated files:')
-        for key, value in files.items():
-            print(f'   {key}: {value}')
-
-except Exception as e:
-    print(f'❌ Could not parse evaluation summary: {e}')
-    sys.exit(1)
-"
-    else
-        echo "⚠️  No summary file found, but evaluation completed"
+    # Show summary
+    if [ -f "$OUTPUT_DIR/patch_similarity_evaluation_*.json" ]; then
+        echo "📊 Evaluation Summary:"
+        grep -E '"overall_similarity"|"global_patch_statistics"' "$OUTPUT_DIR"/patch_similarity_evaluation_*.json
     fi
-    
-    # Show output directory contents
-    echo ""
-    echo "📁 Generated Files:"
-    echo "=================="
-    ls -la "$OUTPUT_DIR" | head -20
-    
-    if [ $(ls -1 "$OUTPUT_DIR" | wc -l) -gt 20 ]; then
-        echo "... and $(($(ls -1 "$OUTPUT_DIR" | wc -l) - 20)) more files"
-    fi
-    
-    echo ""
-    echo "✅ ENHANCED EVALUATION COMPLETED SUCCESSFULLY"
-    echo ""
-    echo "📋 What was evaluated:"
-    echo "   ✅ Per-patch cosine similarity for each patch in each image"
-    echo "   ✅ Per-image average cosine similarity (mean of all patches)"
-    echo "   ✅ Global average cosine similarity (mean across all images)"
-    echo "   ✅ Quality distribution analysis and thresholds"
-    echo "   ✅ Advanced visualization plots and heatmaps"
-    echo "   ✅ Comprehensive JSON reporting for further analysis"
-    echo ""
-    echo "🎯 Key Metrics Computed:"
-    echo "   • Individual patch similarities (256 or 257 per image)"
-    echo "   • Per-image averages (single score per image)"
-    echo "   • Global statistics (overall performance)"
-    echo "   • Quality distributions (high/very high/excellent thresholds)"
-    echo "   • Mode-specific analysis (CLS vs patch performance)"
-    echo ""
-    echo "📊 Next Steps:"
-    echo "   • Review the comprehensive results in: $OUTPUT_DIR"
-    echo "   • Analyze the visualization plots"
-    echo "   • Use JSON data for further statistical analysis"
-    echo "   • Compare results across different training modes"
-    echo "   • Use insights to improve training pipeline"
-    
 else
-    echo "Status: ❌ FAILED"
-    echo ""
-    echo "❌ ENHANCED EVALUATION FAILED WITH EXIT CODE: $EXIT_CODE"
-    echo ""
-    echo "🔍 Troubleshooting:"
-    echo "   1. Check if model path is correct and accessible"
-    echo "   2. Verify embeddings directory and manifest file"
-    echo "   3. Ensure GPU memory is sufficient"
-    echo "   4. Check Python environment and dependencies"
-    echo "   5. Verify model and embeddings compatibility"
-    echo "   6. Look for error messages in the output above"
-    echo ""
-    echo "📂 Log files:"
-    echo "   Output: ./slurm_out/blip3o_similarity_${JOB_ID}.out"
-    echo "   Error:  ./slurm_out/blip3o_similarity_${JOB_ID}.err"
-    echo ""
-    echo "🔧 Quick checks:"
-    echo "   • Model path: $TRAINED_MODEL_PATH"
-    echo "   • Embeddings: $EMBEDDINGS_DIR"
-    echo "   • Available space: $(df -h . | tail -1 | awk '{print $4}')"
-    echo "   • Training mode: $TRAINING_MODE"
+    echo "❌ Evaluation failed!"
+    exit 1
 fi
 
-echo ""
-echo "========================================================================"
-echo "🏁 ENHANCED EVALUATION SUMMARY"
-echo "========================================================================"
-
-# Always show final status prominently
-if [ $EXIT_CODE -eq 0 ]; then
-    echo "🎉 SUCCESS: Check the comprehensive evaluation results above!"
-    echo ""
-    echo "📋 What was accomplished:"
-    echo "   ✅ Comprehensive patch-level cosine similarity analysis"
-    echo "   ✅ Per-patch, per-image, and global similarity computation"
-    echo "   ✅ Advanced visualization plots and quality analysis"
-    echo "   ✅ Detailed JSON reporting for further analysis"
-    echo "   ✅ BLIP3-o paper aligned evaluation methodology"
-    echo ""
-    echo "🎯 Key Deliverables:"
-    echo "   • Comprehensive similarity metrics at multiple granularities"
-    echo "   • Quality distribution analysis with thresholds"
-    echo "   • Advanced visualization plots for interpretation"
-    echo "   • JSON data files for statistical analysis"
-    echo "   • Mode-specific performance insights"
-else
-    echo "❌ FAILURE: Check error messages above and in log files"
-    echo ""
-    echo "💡 Troubleshooting:"
-    echo "   • Verify model path: $TRAINED_MODEL_PATH"
-    echo "   • Check embeddings: $EMBEDDINGS_DIR"
-    echo "   • Ensure sufficient GPU memory"
-    echo "   • Verify model-embeddings compatibility"
-    echo "   • Check evaluation script and dependencies"
-fi
-
-echo "========================================================================"
-
-# Cleanup temp cache
-if [ -d "${JOB_TEMP}" ]; then
-    echo "🧹 Cleaning up temporary cache..."
-    rm -rf "${JOB_TEMP}"
-fi
-
-echo "🏁 Enhanced evaluation job completed at $(date)"
-
-exit $EXIT_CODE
+echo "🏁 Job completed at $(date)"
+exit 0
