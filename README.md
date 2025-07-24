@@ -26,7 +26,7 @@ graph TD
     style J fill:#e1f5fe
     style L fill:#ffebee
     style F fill:#f3e5f5
-
+```
 
 ### 1. Installation
 
