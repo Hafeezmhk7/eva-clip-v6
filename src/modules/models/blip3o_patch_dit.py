@@ -1,6 +1,11 @@
 """
+FIXED: BLIP3-o Patch-Level DiT Model with Proper Gradient Checkpointing Support
 src/modules/models/blip3o_patch_dit.py
-FIXED: BLIP3-o Patch-Level DiT Model with Gradient Checkpointing Support
+
+FIXES:
+1. Proper transformers-compatible gradient checkpointing
+2. Correct PreTrainedModel inheritance
+3. Fixed gradient checkpointing enable/disable methods
 """
 
 import torch
@@ -181,7 +186,6 @@ class BLIP3oDiTBlock(nn.Module):
     def __init__(self, config: BLIP3oDiTConfig):
         super().__init__()
         self.hidden_size = config.hidden_size
-        self.use_gradient_checkpointing = config.use_gradient_checkpointing
         
         # Normalization layers (BLIP3-o style)
         self.norm1 = nn.LayerNorm(config.hidden_size, eps=1e-6)
@@ -228,35 +232,32 @@ class BLIP3oDiTBlock(nn.Module):
         return hidden_states + ffn_output
 
     def forward(self, hidden_states: torch.Tensor, encoder_hidden_states: torch.Tensor) -> torch.Tensor:
-        if self.use_gradient_checkpointing and self.training:
-            # Use gradient checkpointing for memory efficiency
-            hidden_states = checkpoint(self._self_attention_block, hidden_states, use_reentrant=False)
-            hidden_states = checkpoint(self._cross_attention_block, hidden_states, encoder_hidden_states, use_reentrant=False)
-            hidden_states = checkpoint(self._ffn_block, hidden_states, use_reentrant=False)
-        else:
-            # Normal forward pass
-            hidden_states = self._self_attention_block(hidden_states)
-            hidden_states = self._cross_attention_block(hidden_states, encoder_hidden_states)
-            hidden_states = self._ffn_block(hidden_states)
-        
+        # Apply all sub-blocks
+        hidden_states = self._self_attention_block(hidden_states)
+        hidden_states = self._cross_attention_block(hidden_states, encoder_hidden_states)
+        hidden_states = self._ffn_block(hidden_states)
         return hidden_states
 
 class BLIP3oPatchDiTModel(PreTrainedModel):
     """
-    FIXED: BLIP3-o Patch-Level DiT Model with Gradient Checkpointing Support
+    FIXED: BLIP3-o Patch-Level DiT Model with Proper Gradient Checkpointing Support
     
     Supports both:
     - 256 tokens (patch only mode)
     - 257 tokens (CLS + patch mode)
+    - Proper transformers-compatible gradient checkpointing
     """
     
     config_class = BLIP3oDiTConfig
-    supports_gradient_checkpointing = True
+    supports_gradient_checkpointing = True  # CRITICAL: Tell transformers we support it
+    _supports_gradient_checkpointing = True  # Alternative attribute name
     
     def __init__(self, config: BLIP3oDiTConfig):
         super().__init__(config)
         self.config = config
-        self.gradient_checkpointing = config.use_gradient_checkpointing
+        
+        # FIXED: Initialize gradient checkpointing state properly
+        self.gradient_checkpointing = False  # Start disabled
         
         # Input projection from CLIP to hidden size
         self.input_proj = nn.Linear(config.clip_embedding_size, config.hidden_size, bias=True)
@@ -267,7 +268,7 @@ class BLIP3oPatchDiTModel(PreTrainedModel):
         # Positional embeddings
         self.pos_embed = nn.Parameter(torch.zeros(1, config.max_position_embeddings, config.hidden_size))
         
-        # DiT blocks with gradient checkpointing support
+        # DiT blocks
         self.blocks = nn.ModuleList([
             BLIP3oDiTBlock(config) for _ in range(config.num_hidden_layers)
         ])
@@ -282,10 +283,10 @@ class BLIP3oPatchDiTModel(PreTrainedModel):
         nn.init.zeros_(self.output_proj.weight)
         nn.init.zeros_(self.output_proj.bias)
         
-        logger.info(f"✅ FIXED BLIP3-o model initialized with gradient checkpointing support")
+        logger.info(f"✅ FIXED BLIP3-o model initialized with transformers-compatible gradient checkpointing")
         logger.info(f"   Training mode: {config.training_mode}")
         logger.info(f"   Token count: {config.num_tokens}")
-        logger.info(f"   Gradient checkpointing: {self.gradient_checkpointing}")
+        logger.info(f"   Supports gradient checkpointing: {self.supports_gradient_checkpointing}")
 
     def _init_weights(self, module):
         if isinstance(module, nn.Linear):
@@ -296,19 +297,44 @@ class BLIP3oPatchDiTModel(PreTrainedModel):
             nn.init.zeros_(module.bias)
             nn.init.ones_(module.weight)
 
-    def gradient_checkpointing_enable(self):
-        """FIXED: Enable gradient checkpointing for memory efficiency"""
+    def _set_gradient_checkpointing(self, module, value=False):
+        """FIXED: Required method for transformers gradient checkpointing compatibility"""
+        if isinstance(module, BLIP3oDiTBlock):
+            # We don't need to do anything here since we handle checkpointing in forward
+            pass
+
+    def gradient_checkpointing_enable(self, gradient_checkpointing_kwargs=None):
+        """FIXED: Enable gradient checkpointing (transformers-compatible)"""
+        if not self.supports_gradient_checkpointing:
+            raise ValueError(f"{self.__class__.__name__} does not support gradient checkpointing.")
+        
         self.gradient_checkpointing = True
-        for block in self.blocks:
-            block.use_gradient_checkpointing = True
-        logger.info("✅ Gradient checkpointing enabled")
+        
+        # Apply to all modules that support it
+        self.apply(partial(self._set_gradient_checkpointing, value=True))
+        
+        logger.info("✅ Gradient checkpointing enabled (transformers-compatible)")
 
     def gradient_checkpointing_disable(self):
-        """FIXED: Disable gradient checkpointing"""
+        """FIXED: Disable gradient checkpointing (transformers-compatible)"""
         self.gradient_checkpointing = False
-        for block in self.blocks:
-            block.use_gradient_checkpointing = False
+        
+        # Disable for all modules
+        self.apply(partial(self._set_gradient_checkpointing, value=False))
+        
         logger.info("Gradient checkpointing disabled")
+
+    def _gradient_checkpointing_func(self, module, *args, **kwargs):
+        """Helper function for gradient checkpointing"""
+        def create_custom_forward(module):
+            def custom_forward(*inputs):
+                return module(*inputs)
+            return custom_forward
+        
+        if self.gradient_checkpointing and self.training:
+            return checkpoint(create_custom_forward(module), *args, use_reentrant=False)
+        else:
+            return module(*args, **kwargs)
 
     def forward(
         self,
@@ -341,7 +367,12 @@ class BLIP3oPatchDiTModel(PreTrainedModel):
         
         # Pass through DiT blocks with gradient checkpointing support
         for block in self.blocks:
-            x = block(x, encoder_hidden_states)
+            if self.gradient_checkpointing and self.training:
+                # Use gradient checkpointing
+                x = self._gradient_checkpointing_func(block, x, encoder_hidden_states)
+            else:
+                # Normal forward pass
+                x = block(x, encoder_hidden_states)
         
         # Output projection
         x = self.output_norm(x)
@@ -400,6 +431,10 @@ class BLIP3oPatchDiTModel(PreTrainedModel):
         return sum(p.numel() for p in self.parameters() if p.requires_grad)
 
 
+# CRITICAL: Import required for _set_gradient_checkpointing method
+from functools import partial
+
+
 def create_blip3o_patch_dit_model(
     config: Optional[BLIP3oDiTConfig] = None,
     training_mode: str = "cls_patch",
@@ -410,7 +445,7 @@ def create_blip3o_patch_dit_model(
     **kwargs
 ) -> BLIP3oPatchDiTModel:
     """
-    FIXED: Create BLIP3-o patch DiT model with gradient checkpointing support
+    FIXED: Create BLIP3-o patch DiT model with proper gradient checkpointing support
     """
     if config is None:
         num_tokens = 257 if training_mode == "cls_patch" else 256
@@ -424,4 +459,14 @@ def create_blip3o_patch_dit_model(
             **kwargs
         )
     
-    return BLIP3oPatchDiTModel(config)
+    model = BLIP3oPatchDiTModel(config)
+    
+    # Enable gradient checkpointing if requested
+    if use_gradient_checkpointing:
+        try:
+            model.gradient_checkpointing_enable()
+            logger.info("✅ Gradient checkpointing enabled during model creation")
+        except Exception as e:
+            logger.warning(f"⚠️ Could not enable gradient checkpointing during creation: {e}")
+    
+    return model

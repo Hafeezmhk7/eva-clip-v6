@@ -252,6 +252,9 @@ def setup_device_safely(local_rank, cpu_fallback, logger):
         else:
             raise
 
+# QUICK FIX: Replace the gradient checkpointing section in your train_blip3o_enhanced.py
+# Find this section around line 400-410 and replace it with this safer version:
+
 def create_model_safely(args, device, is_cpu, logger):
     """Create model with proper error handling and gradient checkpointing"""
     logger.info("🏗️ Creating model...")
@@ -278,28 +281,40 @@ def create_model_safely(args, device, is_cpu, logger):
             training_mode=args.training_mode,
             num_tokens=257 if args.training_mode == "cls_patch" else 256,
             max_position_embeddings=257,
-            use_gradient_checkpointing=args.gradient_checkpointing and not is_cpu,  # Disable on CPU
+            use_gradient_checkpointing=False,  # We'll enable it after creation
         )
         
         model = create_blip3o_patch_dit_model(config=config)
         model = model.to(device)
         
-        # FIXED: Proper gradient checkpointing handling
+        # FIXED: Safe gradient checkpointing handling
         if args.gradient_checkpointing and not is_cpu:
             try:
-                if hasattr(model, 'gradient_checkpointing_enable'):
+                # Check if model supports gradient checkpointing
+                if hasattr(model, 'supports_gradient_checkpointing') and model.supports_gradient_checkpointing:
                     model.gradient_checkpointing_enable()
-                    logger.info("✅ Gradient checkpointing enabled")
+                    logger.info("✅ Gradient checkpointing enabled successfully")
+                elif hasattr(model, 'gradient_checkpointing_enable'):
+                    # Try anyway - some models support it without the flag
+                    model.gradient_checkpointing_enable()
+                    logger.info("✅ Gradient checkpointing enabled (no support flag)")
                 else:
-                    logger.warning("⚠️ Model doesn't support gradient_checkpointing_enable")
+                    logger.warning("⚠️ Model doesn't support gradient checkpointing - continuing without it")
+                    logger.warning("   Consider using a smaller model or reducing batch size for memory savings")
+            except ValueError as e:
+                logger.warning(f"⚠️ Gradient checkpointing not supported: {e}")
+                logger.warning("   Continuing without gradient checkpointing")
             except Exception as e:
                 logger.warning(f"⚠️ Gradient checkpointing failed: {e}")
                 logger.warning("   Continuing without gradient checkpointing")
+        elif args.gradient_checkpointing and is_cpu:
+            logger.info("ℹ️ Gradient checkpointing disabled on CPU (not needed)")
         
         param_count = model.get_num_parameters()
         logger.info(f"   Parameters: {param_count:,}")
         logger.info(f"   Mode: {args.training_mode} ({config.num_tokens} tokens)")
         logger.info(f"   Device: {device}")
+        logger.info(f"   Gradient checkpointing: {getattr(model, 'gradient_checkpointing', False)}")
         
         return model, config
         
@@ -326,6 +341,19 @@ def create_model_safely(args, device, is_cpu, logger):
                 raise
         else:
             raise
+
+
+# ALTERNATIVE: If you want to completely disable gradient checkpointing for now,
+# add this flag to your training command:
+# --gradient_checkpointing=False
+
+# OR modify your training arguments to not use gradient checkpointing:
+# In your terminal, add this flag:
+# --no-gradient_checkpointing
+
+# OR set the default to False in the argument parser by changing this line:
+# parser.add_argument("--gradient_checkpointing", action="store_true", default=False,  # Changed to False
+#                    help="Enable gradient checkpointing (if supported)")
 
 def test_gradient_flow_safely(model, dataloader, flow_matching_loss, device, logger):
     """Test gradient flow with better error handling"""
