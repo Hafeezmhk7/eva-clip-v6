@@ -1,7 +1,14 @@
 #!/usr/bin/env python3
 """
-FIXED: BLIP3-o Training Script with Proper Scaling and Loss Function
-Addresses the scale mismatch and normalization issues
+UPDATED: BLIP3-o Training Script with Unified Trainer and All Fixes
+train_blip3o_enhanced.py
+
+FEATURES:
+- Uses new unified trainer (replaces both flexible and training-only)
+- All scaling fixes applied (velocity_scale, output_scale)
+- Can do training-only OR training+evaluation
+- Comprehensive monitoring and metrics
+- Overfitting test support
 """
 
 import os
@@ -24,9 +31,9 @@ def setup_logging(local_rank=0, log_dir=None):
     if log_dir:
         log_dir = Path(log_dir)
         log_dir.mkdir(parents=True, exist_ok=True)
-        log_file = log_dir / f'blip3o_training_fixed_rank_{local_rank}.log'
+        log_file = log_dir / f'blip3o_unified_training_rank_{local_rank}.log'
     else:
-        log_file = f'blip3o_training_fixed_rank_{local_rank}.log'
+        log_file = f'blip3o_unified_training_rank_{local_rank}.log'
     
     log_level = logging.INFO if local_rank == 0 else logging.WARNING
     
@@ -42,9 +49,9 @@ def setup_logging(local_rank=0, log_dir=None):
     return logging.getLogger(__name__)
 
 def parse_arguments():
-    """Parse command line arguments"""
+    """Parse command line arguments with all new options"""
     parser = argparse.ArgumentParser(
-        description="FIXED BLIP3-o Training with Proper Scaling",
+        description="UPDATED BLIP3-o Training with Unified Trainer and All Fixes",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
     
@@ -58,6 +65,12 @@ def parse_arguments():
     parser.add_argument("--training_mode", type=str, default="patch_only",
                        choices=["cls_patch", "patch_only"],
                        help="Training mode: cls_patch (257 tokens) or patch_only (256 tokens)")
+    
+    # NEW: Evaluation control
+    parser.add_argument("--enable_evaluation", action="store_true", default=False,
+                       help="Enable evaluation during training (slower but more info)")
+    parser.add_argument("--enable_same_data_eval", action="store_true", default=False,
+                       help="Use same training data for evaluation (overfitting test)")
     
     # Model configuration
     parser.add_argument("--model_size", type=str, default="base",
@@ -73,16 +86,16 @@ def parse_arguments():
                        help="Learning rate")
     parser.add_argument("--weight_decay", type=float, default=0.01,
                        help="Weight decay")
-    parser.add_argument("--warmup_steps", type=int, default=500,
+    parser.add_argument("--warmup_steps", type=int, default=200,
                        help="Number of warmup steps")
     parser.add_argument("--gradient_accumulation_steps", type=int, default=2,
                        help="Gradient accumulation steps")
     
-    # FIXED: Scaling parameters
+    # CRITICAL: Scaling parameters (the main fixes)
     parser.add_argument("--velocity_scale", type=float, default=0.1,
-                       help="Velocity scaling factor for flow matching")
+                       help="CRITICAL: Velocity scaling factor for flow matching loss")
     parser.add_argument("--output_scale", type=float, default=0.1,
-                       help="Output scaling factor for model")
+                       help="CRITICAL: Output scaling factor for model")
     parser.add_argument("--target_norm_scale", type=float, default=1.0,
                        help="Target normalization scaling factor")
     
@@ -97,6 +110,13 @@ def parse_arguments():
                        help="Logging frequency")
     parser.add_argument("--save_steps", type=int, default=200,
                        help="Model saving frequency")
+    parser.add_argument("--eval_steps", type=int, default=50,
+                       help="Evaluation frequency (if evaluation enabled)")
+    
+    # Training type presets
+    parser.add_argument("--training_type", type=str, default="custom",
+                       choices=["custom", "overfitting", "production", "debug"],
+                       help="Preset training configurations")
     
     # Debugging
     parser.add_argument("--debug", action="store_true",
@@ -104,8 +124,48 @@ def parse_arguments():
     
     return parser.parse_args()
 
+def apply_training_type_presets(args):
+    """Apply preset configurations based on training type"""
+    if args.training_type == "overfitting":
+        # Optimize for overfitting tests
+        args.enable_evaluation = True
+        args.enable_same_data_eval = True
+        args.num_epochs = 15
+        args.batch_size = 16
+        args.learning_rate = 5e-5
+        args.weight_decay = 0.0  # No regularization
+        args.eval_steps = 25
+        args.logging_steps = 5
+        logger.info("🎯 Applied overfitting preset configuration")
+        
+    elif args.training_type == "production":
+        # Optimize for production training
+        args.enable_evaluation = False  # Usually disabled for production
+        args.num_epochs = 10
+        args.batch_size = 32
+        args.learning_rate = 1e-4
+        args.weight_decay = 0.01
+        args.gradient_accumulation_steps = 2
+        args.gradient_checkpointing = True
+        args.save_steps = 500
+        logger.info("🚀 Applied production preset configuration")
+        
+    elif args.training_type == "debug":
+        # Optimize for debugging
+        args.model_size = "tiny"
+        args.num_epochs = 3
+        args.batch_size = 4
+        args.learning_rate = 1e-4
+        args.weight_decay = 0.0
+        args.warmup_steps = 10
+        args.gradient_accumulation_steps = 1
+        args.logging_steps = 1
+        args.save_steps = 10
+        args.fp16 = False
+        logger.info("🐛 Applied debug preset configuration")
+
 def validate_training_setup(args, logger):
-    """Validate training setup"""
+    """Validate training setup and scaling parameters"""
     logger.info("🔍 Validating training setup...")
     
     # Check embeddings directory
@@ -120,18 +180,25 @@ def validate_training_setup(args, logger):
     
     logger.info(f"Found {len(shard_files)} shard files")
     
-    # Check manifest
-    manifest_path = embeddings_path / "embeddings_manifest.json" 
-    manifest = {}
-    if manifest_path.exists():
-        with open(manifest_path, 'r') as f:
-            manifest = json.load(f)
-        logger.info(f"Loaded manifest: {manifest.get('total_shards', 0)} shards, {manifest.get('total_samples', 0):,} samples")
-    else:
-        logger.warning("Embeddings manifest not found, proceeding anyway")
+    # Validate scaling parameters (CRITICAL)
+    if args.velocity_scale <= 0 or args.velocity_scale > 1.0:
+        logger.warning(f"⚠️ Unusual velocity_scale: {args.velocity_scale} (expected 0.01-0.5)")
+    
+    if args.output_scale <= 0 or args.output_scale > 1.0:
+        logger.warning(f"⚠️ Unusual output_scale: {args.output_scale} (expected 0.01-0.5)")
+    
+    # Check for recommended combinations
+    if args.enable_same_data_eval and not args.enable_evaluation:
+        logger.warning("⚠️ same_data_eval enabled but evaluation disabled - enabling evaluation")
+        args.enable_evaluation = True
     
     logger.info("✅ Training setup validated")
-    return manifest, shard_files
+    logger.info(f"🔧 SCALING FIXES:")
+    logger.info(f"   Velocity scale: {args.velocity_scale}")
+    logger.info(f"   Output scale: {args.output_scale}")
+    logger.info(f"   Target norm scale: {args.target_norm_scale}")
+    
+    return shard_files
 
 def setup_device_and_distributed():
     """Setup device and distributed training"""
@@ -163,11 +230,12 @@ def setup_device_and_distributed():
     return device, is_distributed, is_main_process, local_rank, global_rank, world_size
 
 def create_model_and_config(args, device, logger):
-    """Create BLIP3-o model with proper configuration"""
-    logger.info("🏗️ Creating FIXED BLIP3-o model...")
+    """Create BLIP3-o model with proper configuration and scaling"""
+    logger.info("🏗️ Creating BLIP3-o model with UNIFIED fixes...")
     
     try:
-        from src.modules.models.blip3o_patch_dit import create_blip3o_patch_dit_model, BLIP3oDiTConfig
+        # Import the FIXED models with scaling support
+        from src.modules.models import create_fixed_model, BLIP3oDiTConfig
         
         # Model size configurations
         size_configs = {
@@ -179,73 +247,60 @@ def create_model_and_config(args, device, logger):
         
         base_config = size_configs.get(args.model_size, size_configs["base"])
         
-        # Create configuration with FIXED scaling
-        config = BLIP3oDiTConfig(
-            hidden_size=base_config["hidden_size"],
-            num_hidden_layers=base_config["num_hidden_layers"], 
-            num_attention_heads=base_config["num_attention_heads"],
-            intermediate_size=base_config["intermediate_size"],
+        # Create model with FIXED scaling
+        model = create_fixed_model(
             training_mode=args.training_mode,
-            num_tokens=257 if args.training_mode == "cls_patch" else 256,
-            max_position_embeddings=257,
-            use_gradient_checkpointing=False,
-            output_scale=args.output_scale,  # FIXED: Add output scaling
-        )
-        
-        # Create model with proper scaling
-        model = create_blip3o_patch_dit_model(
-            config=config,
-            output_scale=args.output_scale,
+            output_scale=args.output_scale,  # CRITICAL: Apply output scaling
+            use_gradient_checkpointing=args.gradient_checkpointing,
+            **base_config
         )
         model = model.to(device)
         
-        # Enable gradient checkpointing if requested
-        if args.gradient_checkpointing and device.type != "cpu":
-            try:
-                if hasattr(model, 'gradient_checkpointing_enable'):
-                    model.gradient_checkpointing_enable()
-                    logger.info("✅ Gradient checkpointing enabled")
-            except Exception as e:
-                logger.warning(f"⚠️ Gradient checkpointing failed: {e}")
+        # Get the config for logging
+        config = model.config
         
-        logger.info(f"✅ FIXED BLIP3-o model created successfully")
+        logger.info(f"✅ UNIFIED BLIP3-o model created successfully")
         logger.info(f"   Parameters: {model.get_num_parameters():,}")
         logger.info(f"   Mode: {args.training_mode} ({config.num_tokens} tokens)")
         logger.info(f"   Hidden size: {config.hidden_size}")
-        logger.info(f"   Output scale: {config.output_scale}")
+        logger.info(f"   🔧 Output scale: {config.output_scale} (APPLIED)")
         logger.info(f"   Device: {device}")
         
         return model, config
         
     except Exception as e:
         logger.error(f"❌ Model creation failed: {e}")
+        logger.error("Make sure you have updated the models __init__.py file")
         raise
 
 def create_loss_function(args, logger):
-    """Create FIXED flow matching loss function"""
-    logger.info("🔧 Creating FIXED flow matching loss...")
+    """Create FIXED flow matching loss function with scaling"""
+    logger.info("🔧 Creating FIXED flow matching loss with scaling...")
     
     try:
-        from src.modules.losses.blip3o_flow_matching_loss import create_blip3o_flow_matching_loss
+        # Import the FIXED loss with scaling support
+        from src.modules.losses import get_fixed_loss_function
         
-        flow_matching_loss = create_blip3o_flow_matching_loss(
+        flow_matching_loss = get_fixed_loss_function(
+            velocity_scale=args.velocity_scale,      # CRITICAL: Apply velocity scaling
+            target_norm_scale=args.target_norm_scale,
+            adaptive_scaling=True,
             prediction_type="velocity",
             normalize_targets=True,
             flow_type="rectified",
-            velocity_scale=args.velocity_scale,      # FIXED: Configurable velocity scaling
-            target_norm_scale=args.target_norm_scale, # FIXED: Configurable target scaling
         )
         
-        logger.info("✅ FIXED BLIP3-o Flow Matching Loss initialized")
-        logger.info(f"   Flow type: rectified")
-        logger.info(f"   Prediction type: velocity")
-        logger.info(f"   Velocity scale: {args.velocity_scale}")
-        logger.info(f"   Target norm scale: {args.target_norm_scale}")
+        logger.info("✅ UNIFIED BLIP3-o Flow Matching Loss initialized")
+        logger.info(f"   🔧 Velocity scale: {args.velocity_scale} (APPLIED)")
+        logger.info(f"   🔧 Target norm scale: {args.target_norm_scale}")
+        logger.info(f"   ✅ Adaptive scaling: enabled")
+        logger.info(f"   ✅ Flow type: rectified")
         
         return flow_matching_loss
         
     except Exception as e:
         logger.error(f"❌ Loss creation failed: {e}")
+        logger.error("Make sure you have updated the losses __init__.py file")
         raise
 
 def create_dataloader(args, logger):
@@ -253,18 +308,18 @@ def create_dataloader(args, logger):
     logger.info("🔄 Creating training dataloader...")
     
     try:
-        from src.modules.datasets.blip3o_dataset import create_flexible_dataloaders
+        from src.modules.datasets import create_flexible_dataloaders
         
         # Create dataloaders
-        train_dataloader, _ = create_flexible_dataloaders(
+        train_dataloader, eval_dataloader = create_flexible_dataloaders(
             chunked_embeddings_dir=args.chunked_embeddings_dir,
             batch_size=args.batch_size,
-            eval_batch_size=None,
-            eval_split_ratio=0.0,
+            eval_batch_size=args.batch_size if args.enable_evaluation else None,
+            eval_split_ratio=0.0 if args.enable_same_data_eval else 0.1,
             normalize_embeddings=False,  # Loss function handles normalization
             training_mode=args.training_mode,
             max_shards=1,  # Single shard for overfitting test
-            use_same_data_for_eval=False,
+            use_same_data_for_eval=args.enable_same_data_eval,
             delete_after_use=False,
             num_workers=0,  # Avoid multiprocessing issues
             pin_memory=torch.cuda.is_available(),
@@ -272,57 +327,86 @@ def create_dataloader(args, logger):
         
         logger.info(f"✅ Training dataloader created")
         logger.info(f"   Training batches: {len(train_dataloader):,}")
+        if args.enable_evaluation and eval_dataloader:
+            logger.info(f"   Evaluation batches: {len(eval_dataloader):,}")
         
-        return train_dataloader
+        return train_dataloader, eval_dataloader
         
     except Exception as e:
         logger.error(f"❌ Dataloader creation failed: {e}")
         raise
 
 def create_training_args(args):
-    """Create training arguments"""
-    from src.modules.trainers.blip3o_training_only_trainer import create_training_only_args
-    
-    return create_training_only_args(
-        output_dir=args.output_dir,
-        num_train_epochs=args.num_epochs,
-        per_device_train_batch_size=args.batch_size,
-        learning_rate=args.learning_rate,
-        lr_scheduler_type="cosine",
-        weight_decay=args.weight_decay,
-        warmup_steps=args.warmup_steps,
-        gradient_accumulation_steps=args.gradient_accumulation_steps,
-        fp16=args.fp16 and torch.cuda.is_available(),
-        dataloader_num_workers=0,
-        logging_steps=args.logging_steps,
-        save_steps=args.save_steps,
-    )
+    """Create training arguments using UNIFIED trainer"""
+    try:
+        from src.modules.trainers import create_unified_training_args
+        
+        return create_unified_training_args(
+            output_dir=args.output_dir,
+            enable_evaluation=args.enable_evaluation,  # NEW: Control evaluation
+            num_train_epochs=args.num_epochs,
+            per_device_train_batch_size=args.batch_size,
+            per_device_eval_batch_size=args.batch_size if args.enable_evaluation else None,
+            learning_rate=args.learning_rate,
+            lr_scheduler_type="cosine",
+            weight_decay=args.weight_decay,
+            warmup_steps=args.warmup_steps,
+            gradient_accumulation_steps=args.gradient_accumulation_steps,
+            fp16=args.fp16 and torch.cuda.is_available(),
+            dataloader_num_workers=0,
+            logging_steps=args.logging_steps,
+            save_steps=args.save_steps,
+            eval_steps=args.eval_steps if args.enable_evaluation else None,
+        )
+    except Exception as e:
+        logger.error(f"❌ Training args creation failed: {e}")
+        logger.error("Make sure you have updated the trainers __init__.py file")
+        raise
 
-def create_trainer(model, training_args, flow_matching_loss, train_dataloader, args, logger):
-    """Create FIXED trainer"""
-    from src.modules.trainers.blip3o_training_only_trainer import BLIP3oTrainingOnlyTrainer
-    
-    # Create trainer
-    trainer = BLIP3oTrainingOnlyTrainer(
-        model=model,
-        args=training_args,
-        flow_matching_loss=flow_matching_loss,
-        train_dataset=None,
-        training_mode=args.training_mode,
-    )
-    
-    # Override dataloader
-    trainer.get_train_dataloader = lambda: train_dataloader
-    
-    logger.info("✅ FIXED BLIP3oTrainingOnlyTrainer created")
-    logger.info(f"   Mode: {args.training_mode}")
-    logger.info(f"   Velocity scale: {args.velocity_scale}")
-    logger.info(f"   Output scale: {args.output_scale}")
-    
-    return trainer
+def create_trainer(model, training_args, flow_matching_loss, train_dataloader, eval_dataloader, args, logger):
+    """Create UNIFIED trainer"""
+    try:
+        from src.modules.trainers import BLIP3oUnifiedTrainer
+        
+        # Create unified trainer
+        trainer = BLIP3oUnifiedTrainer(
+            model=model,
+            args=training_args,
+            flow_matching_loss=flow_matching_loss,
+            train_dataset=None,  # We'll override dataloader
+            eval_dataset=None if not args.enable_evaluation else eval_dataloader.dataset if eval_dataloader else None,
+            
+            # BLIP3-o specific parameters
+            training_mode=args.training_mode,
+            enable_evaluation=args.enable_evaluation,
+            enable_same_data_eval=args.enable_same_data_eval,
+            detailed_logging=True,
+            
+            # Scaling parameters for monitoring
+            expected_velocity_scale=args.velocity_scale,
+            expected_output_scale=args.output_scale,
+        )
+        
+        # Override dataloaders
+        trainer.get_train_dataloader = lambda: train_dataloader
+        if args.enable_evaluation and eval_dataloader:
+            trainer.get_eval_dataloader = lambda: eval_dataloader
+        
+        logger.info("✅ UNIFIED BLIP3oTrainer created")
+        logger.info(f"   Mode: {args.training_mode}")
+        logger.info(f"   Evaluation: {'enabled' if args.enable_evaluation else 'disabled'}")
+        logger.info(f"   Same data eval: {args.enable_same_data_eval}")
+        logger.info(f"   🔧 Scaling monitoring enabled")
+        
+        return trainer
+        
+    except Exception as e:
+        logger.error(f"❌ Trainer creation failed: {e}")
+        logger.error("Make sure you have created the unified trainer file")
+        raise
 
 def main():
-    """Main training function"""
+    """Main training function with UNIFIED trainer and all fixes"""
     args = parse_arguments()
     
     # Setup device and distributed training
@@ -333,26 +417,33 @@ def main():
     logger = setup_logging(local_rank, log_dir)
     
     if is_main_process:
-        print("🚀 FIXED BLIP3-o Training with Proper Scaling")
+        print("🚀 UPDATED BLIP3-o Training with UNIFIED Trainer and ALL FIXES")
         print(f"Job ID: {os.environ.get('SLURM_JOB_ID', 'local')}")
         print(f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        print("=" * 60)
-        print("🔧 FIXES APPLIED:")
-        print("  ✅ Velocity scaling to address norm mismatch")
+        print("=" * 70)
+        print("🔧 ALL FIXES APPLIED:")
+        print("  ✅ Unified trainer (replaces flexible + training-only)")
+        print("  ✅ Velocity scaling to fix norm mismatch")
         print("  ✅ Output scaling in DiT model")
         print("  ✅ Adaptive scaling in loss function")
-        print("  ✅ Proper normalization handling")
-        print("  ✅ Improved generation timestep schedule")
-        print("=" * 60)
+        print("  ✅ Proper rectified flow implementation")
+        print("  ✅ Fixed generation timestep schedule")
+        print("  ✅ Consistent normalization handling")
+        print("=" * 70)
+        
+        # Apply training type presets
+        apply_training_type_presets(args)
+        
+        print(f"  ✅ Training type: {args.training_type}")
         print(f"  ✅ Training mode: {args.training_mode}")
+        print(f"  ✅ Evaluation: {'enabled' if args.enable_evaluation else 'disabled'}")
         print(f"  ✅ Velocity scale: {args.velocity_scale}")
         print(f"  ✅ Output scale: {args.output_scale}")
-        print(f"  ✅ Target norm scale: {args.target_norm_scale}")
-        print("=" * 60)
+        print("=" * 70)
     
     try:
         # 1. Validate setup
-        manifest, shard_files = validate_training_setup(args, logger)
+        shard_files = validate_training_setup(args, logger)
         
         # 2. Create FIXED model
         model, config = create_model_and_config(args, device, logger)
@@ -375,23 +466,23 @@ def main():
         # 4. Create FIXED loss function
         flow_matching_loss = create_loss_function(args, logger)
         
-        # 5. Create dataloader
-        train_dataloader = create_dataloader(args, logger)
+        # 5. Create dataloaders
+        train_dataloader, eval_dataloader = create_dataloader(args, logger)
         
         # 6. Create training arguments
         training_args = create_training_args(args)
         
-        # 7. Create FIXED trainer
-        trainer = create_trainer(model, training_args, flow_matching_loss, train_dataloader, args, logger)
+        # 7. Create UNIFIED trainer
+        trainer = create_trainer(model, training_args, flow_matching_loss, train_dataloader, eval_dataloader, args, logger)
         
         # 8. Start training
-        logger.info("🚀 Starting FIXED Training Process...")
+        logger.info("🚀 Starting UNIFIED Training Process with ALL FIXES...")
         logger.info(f"   Training for {args.num_epochs} epochs")
         logger.info(f"   Expected improvements:")
-        logger.info(f"     • Better norm alignment (velocity_scale={args.velocity_scale})")
-        logger.info(f"     • Proper output scaling (output_scale={args.output_scale})")
-        logger.info(f"     • Adaptive loss scaling")
-        logger.info(f"     • Should see cosine similarity > 0.1 quickly")
+        logger.info(f"     📈 Cosine similarity: ~0.01 → >0.3 (30x improvement)")
+        logger.info(f"     📊 Prediction/target norm alignment")
+        logger.info(f"     📉 Smooth loss decrease")
+        logger.info(f"     🎯 Much better evaluation results")
         
         start_time = time.time()
         train_result = trainer.train()
@@ -399,13 +490,14 @@ def main():
         
         # 9. Save results
         if is_main_process:
-            logger.info("💾 Saving FIXED model and results...")
+            logger.info("💾 Saving UNIFIED model and results...")
             trainer.save_model()
             
-            # Save training info with fixes
+            # Save training info with all fixes
             training_stats = trainer.get_training_statistics()
             training_info = {
                 'training_completed': True,
+                'trainer_type': 'BLIP3oUnifiedTrainer',
                 'training_mode': args.training_mode,
                 'expected_tokens': config.num_tokens,
                 'total_epochs': args.num_epochs,
@@ -414,17 +506,29 @@ def main():
                 'loss_statistics': training_stats.get('loss_statistics', {}),
                 'timestamp': datetime.now().isoformat(),
                 
-                # FIXED parameters
-                'fixes_applied': {
+                # ALL FIXES applied
+                'all_fixes_applied': {
+                    'unified_trainer': True,
                     'velocity_scale': args.velocity_scale,
                     'output_scale': args.output_scale,
                     'target_norm_scale': args.target_norm_scale,
                     'adaptive_scaling': True,
                     'proper_normalization': True,
                     'improved_generation': True,
+                    'rectified_flow': True,
                 },
-                'trainer_used': 'BLIP3oTrainingOnlyTrainer (FIXED)',
-                'fixed_version': True,
+                
+                'evaluation_info': {
+                    'enabled_during_training': args.enable_evaluation,
+                    'same_data_eval': args.enable_same_data_eval,
+                    'evaluation_frequency': args.eval_steps if args.enable_evaluation else None,
+                },
+                
+                'scaling_monitoring': {
+                    'norm_mismatch_warnings': training_stats.get('norm_mismatch_warnings', 0),
+                    'scaling_issues_detected': training_stats.get('scaling_issues_detected', []),
+                },
+                
                 'model_config': {
                     'hidden_size': config.hidden_size,
                     'num_layers': config.num_hidden_layers,
@@ -432,36 +536,40 @@ def main():
                     'num_tokens': config.num_tokens,
                     'output_scale': config.output_scale,
                 },
-                'expected_improvements': [
-                    'Prediction norms should match target norms better',
-                    'Cosine similarity should improve significantly',
-                    'Loss should decrease more effectively',
-                    'Evaluation should show much higher similarities',
-                ]
             }
             
-            with open(Path(args.output_dir) / 'training_info_fixed.json', 'w') as f:
+            with open(Path(args.output_dir) / 'training_info_unified.json', 'w') as f:
                 json.dump(training_info, f, indent=2)
             
-            logger.info("✅ FIXED Training completed successfully!")
+            logger.info("✅ UNIFIED Training completed successfully!")
             logger.info(f"   Model saved to: {args.output_dir}")
             logger.info(f"   Training mode: {args.training_mode}")
             logger.info(f"   Training time: {training_time:.1f} seconds")
             final_loss = training_stats.get('loss_statistics', {}).get('current_loss', 'unknown')
             logger.info(f"   Final loss: {final_loss}")
-            logger.info(f"   Fixes applied: velocity_scale={args.velocity_scale}, output_scale={args.output_scale}")
+            logger.info(f"   Trainer: BLIP3oUnifiedTrainer (ALL FIXES)")
             
-            print("\n✅ FIXED Training completed successfully!")
+            # Check for scaling issues
+            norm_warnings = training_stats.get('norm_mismatch_warnings', 0)
+            scaling_issues = training_stats.get('scaling_issues_detected', [])
+            
+            if norm_warnings == 0 and not scaling_issues:
+                logger.info("🎉 No scaling issues detected - fixes working perfectly!")
+            else:
+                logger.warning(f"⚠️ Some scaling issues detected: {norm_warnings} warnings, {len(scaling_issues)} issues")
+            
+            print("\n✅ UNIFIED Training completed successfully!")
             print(f"   Model saved to: {args.output_dir}")
             print(f"   Training mode: {args.training_mode} ({config.num_tokens} tokens)")
             print(f"   Final loss: {final_loss}")
             print(f"   Training time: {training_time:.1f} seconds")
-            print(f"   Fixes applied: ✅ Scaling, ✅ Normalization, ✅ Generation")
+            print(f"   Trainer: BLIP3oUnifiedTrainer with ALL FIXES")
             
             print("\n🎯 Next steps:")
-            print("1. Run the FIXED evaluation script to test improvements")
-            print("2. Expect much higher cosine similarities (>0.3)")
-            print("3. Check that prediction norms now match target norms")
+            print("1. Run evaluation to test the dramatic improvements")
+            print("2. Expect cosine similarity >0.3 (vs 0.01 before)")
+            print("3. Check that prediction norms now align with target norms")
+            print("4. Verify all scaling fixes are working properly")
         
         # Cleanup
         if is_distributed:
@@ -471,9 +579,17 @@ def main():
         
     except Exception as e:
         if is_main_process:
-            logger.error(f"❌ FIXED Training failed: {e}")
+            logger.error(f"❌ UNIFIED Training failed: {e}")
             if args.debug:
                 traceback.print_exc()
+            
+            # Check for common import errors
+            if "No module named" in str(e):
+                logger.error("💡 Import error detected - check these files:")
+                logger.error("   • src/modules/trainers/__init__.py (remove flexible trainer import)")
+                logger.error("   • src/modules/trainers/blip3o_unified_trainer.py (create this file)")
+                logger.error("   • src/modules/losses/__init__.py (add new functions)")
+                logger.error("   • src/modules/models/__init__.py (add scaling support)")
         
         if is_distributed and dist.is_initialized():
             dist.destroy_process_group()
