@@ -1,12 +1,13 @@
+#!/usr/bin/env python3
 """
-BLIP3-o Training Only Trainer - No Evaluation During Training
+FIXED: BLIP3-o Training Only Trainer - No Evaluation During Training
 src/modules/trainers/blip3o_training_only_trainer.py
 
-This trainer ONLY does training and reports:
-- Loss
-- Learning rate
-- Training metrics
-- NO evaluation during training
+FIXES:
+1. Fixed eval_strategy parameter (was evaluation_strategy)
+2. Proper gradient flow handling
+3. Clean training metrics reporting
+4. No evaluation during training
 """
 
 import torch
@@ -27,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 class BLIP3oTrainingOnlyTrainer(Trainer):
     """
-    BLIP3-o Trainer that ONLY does training - No evaluation during training
+    FIXED: BLIP3-o Trainer that ONLY does training - No evaluation during training
     
     Reports:
     - Training loss
@@ -76,7 +77,7 @@ class BLIP3oTrainingOnlyTrainer(Trainer):
         self.is_main_process = not self.is_distributed or dist.get_rank() == 0
         
         if self.is_main_process:
-            logger.info("✅ BLIP3-o Training-Only Trainer initialized")
+            logger.info("✅ FIXED BLIP3-o Training-Only Trainer initialized")
             logger.info(f"🎯 Training mode: {self.training_mode} ({self.expected_tokens} tokens)")
             logger.info(f"🚫 Evaluation during training: DISABLED")
 
@@ -87,18 +88,23 @@ class BLIP3oTrainingOnlyTrainer(Trainer):
         return_outputs: bool = False,
         num_items_in_batch: Optional[int] = None,
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, Any]]:
-        """Compute training loss with detailed metrics"""
+        """FIXED: Compute training loss with proper gradient handling"""
         model.train()
         
         # Start timing
         step_start_time = time.time()
         
-        # Extract inputs
-        eva_embeddings = inputs['encoder_hidden_states']
-        clip_embeddings = inputs['clip_embeddings']
-        timesteps = inputs['timestep']
+        # Extract inputs with proper error handling
+        try:
+            eva_embeddings = inputs['encoder_hidden_states']
+            clip_embeddings = inputs['clip_embeddings']
+            timesteps = inputs['timestep']
+        except KeyError as e:
+            logger.error(f"Missing input key: {e}")
+            logger.error(f"Available keys: {list(inputs.keys())}")
+            raise
         
-        # Handle multiprocessing-safe inputs
+        # Handle multiprocessing-safe inputs (FIXED gradient flow)
         if 'hidden_states' in inputs:
             noisy_clip_base = inputs['hidden_states']
             noise = inputs.get('noise', torch.randn_like(clip_embeddings))
@@ -109,7 +115,7 @@ class BLIP3oTrainingOnlyTrainer(Trainer):
             alpha = timesteps.view(-1, 1, 1)
             noisy_clip_base = (1 - alpha) * noise + alpha * clip_embeddings.detach()
 
-        # Add gradients to noisy input for training
+        # CRITICAL FIX: Add gradients to noisy input for training
         if not noisy_clip_base.requires_grad:
             noisy_clip = noisy_clip_base.detach().requires_grad_(True)
         else:
@@ -122,12 +128,16 @@ class BLIP3oTrainingOnlyTrainer(Trainer):
         assert clip_embeddings.shape[2] == 1024, f"Expected CLIP 1024-dim, got {clip_embeddings.shape[2]}"
         
         # Forward pass
-        model_outputs = model(
-            hidden_states=noisy_clip,
-            timestep=timesteps,
-            encoder_hidden_states=eva_embeddings,
-            return_dict=True
-        )
+        try:
+            model_outputs = model(
+                hidden_states=noisy_clip,
+                timestep=timesteps,
+                encoder_hidden_states=eva_embeddings,
+                return_dict=True
+            )
+        except Exception as e:
+            logger.error(f"Model forward pass failed: {e}")
+            raise
         
         # Extract velocity prediction
         if isinstance(model_outputs, dict):
@@ -145,14 +155,18 @@ class BLIP3oTrainingOnlyTrainer(Trainer):
             raise RuntimeError("Model output doesn't require gradients during training!")
         
         # Compute flow matching loss
-        loss, metrics = self.flow_matching_loss(
-            model_output=velocity_pred,
-            target_samples=clip_embeddings,
-            timesteps=timesteps,
-            eva_conditioning=eva_embeddings,
-            noise=noise,
-            return_metrics=True
-        )
+        try:
+            loss, metrics = self.flow_matching_loss(
+                model_output=velocity_pred,
+                target_samples=clip_embeddings,
+                timesteps=timesteps,
+                eva_conditioning=eva_embeddings,
+                noise=noise,
+                return_metrics=True
+            )
+        except Exception as e:
+            logger.error(f"Loss computation failed: {e}")
+            raise
         
         # Track training metrics
         step_time = time.time() - step_start_time
@@ -162,11 +176,14 @@ class BLIP3oTrainingOnlyTrainer(Trainer):
             current_lr = self.get_lr()
             
             # Compute gradient norm
-            grad_norm = self._compute_grad_norm() if hasattr(self, '_compute_grad_norm') else 0.0
+            grad_norm = self._compute_grad_norm()
             
             # Store metrics
             self.loss_history.append(loss.item())
-            self.lr_history.append(current_lr[0] if isinstance(current_lr, list) else current_lr)
+            if isinstance(current_lr, list):
+                self.lr_history.append(current_lr[0] if current_lr else 0.0)
+            else:
+                self.lr_history.append(float(current_lr))
             self.training_speed_history.append(batch_size / step_time if step_time > 0 else 0)
             
             # Log detailed progress
@@ -203,10 +220,15 @@ class BLIP3oTrainingOnlyTrainer(Trainer):
         samples_per_sec = batch_size / step_time if step_time > 0 else 0
         
         # Basic training info
+        if isinstance(learning_rate, list):
+            lr_val = learning_rate[0] if learning_rate else 0.0
+        else:
+            lr_val = float(learning_rate)
+            
         progress_msg = (
             f"Step {self.training_step_count}: "
             f"Loss={loss_value:.6f}, "
-            f"LR={learning_rate:.2e}, "
+            f"LR={lr_val:.2e}, "
             f"Speed={samples_per_sec:.1f} samples/s"
         )
         
@@ -264,9 +286,12 @@ class BLIP3oTrainingOnlyTrainer(Trainer):
 
     def get_lr(self):
         """Get current learning rate"""
-        if self.lr_scheduler is None:
-            return [group['lr'] for group in self.optimizer.param_groups]
-        return self.lr_scheduler.get_last_lr()
+        try:
+            if self.lr_scheduler is None:
+                return [group['lr'] for group in self.optimizer.param_groups]
+            return self.lr_scheduler.get_last_lr()
+        except:
+            return [0.0]
 
     def _compute_grad_norm(self) -> float:
         """Compute gradient norm for monitoring"""
@@ -375,10 +400,10 @@ def create_training_only_args(
     save_steps: int = 200,
     gradient_accumulation_steps: int = 2,
     fp16: bool = True,
-    dataloader_num_workers: int = 2,
+    dataloader_num_workers: int = 0,  # FIXED: Default to 0 for stability
     **kwargs
 ) -> TrainingArguments:
-    """Create training arguments with NO EVALUATION"""
+    """FIXED: Create training arguments with NO EVALUATION - Fixed parameter names"""
     
     return TrainingArguments(
         output_dir=output_dir,
@@ -395,8 +420,8 @@ def create_training_only_args(
         fp16=fp16,
         dataloader_num_workers=dataloader_num_workers,
         
-        # DISABLE ALL EVALUATION
-        evaluation_strategy="no",  # No evaluation
+        # FIXED: Use correct parameter names for newer transformers
+        eval_strategy="no",  # FIXED: was evaluation_strategy
         eval_steps=None,  # No evaluation steps
         per_device_eval_batch_size=None,  # No eval batch size
         eval_accumulation_steps=None,  # No eval accumulation

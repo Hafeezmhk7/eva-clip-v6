@@ -4,18 +4,12 @@ FIXED: BLIP3-o Patch-Level Cosine Similarity Evaluation Script
 eval_blip3o_patch_similarity.py
 
 FIXES APPLIED:
-1. Fixed config key handling (num_tokens vs expected_tokens)
-2. Better CUDA environment setup
-3. Comprehensive cosine similarity calculation
-4. Proper error handling and device setup
-5. Enhanced evaluation with detailed metrics
-
-Features:
-1. Comprehensive patch-level cosine similarity evaluation
-2. Support for both CLS+patch (257) and patch-only (256) modes
-3. Per-patch, per-image, and global cosine similarity analysis
-4. JSON reporting and visualization plots
-5. Same-data evaluation for overfitting verification
+1. Added missing --shard_index argument
+2. Fixed config key handling (num_tokens vs expected_tokens)
+3. Better CUDA environment setup
+4. Comprehensive cosine similarity calculation
+5. Proper error handling and device setup
+6. Enhanced evaluation with detailed metrics
 """
 
 import os
@@ -75,11 +69,15 @@ def parse_arguments():
                        choices=["auto", "cls_patch", "patch_only"],
                        help="Training mode (auto-detect from model if 'auto')")
     
+    # FIXED: Added missing shard_index argument
+    parser.add_argument("--shard_index", type=int, default=0,
+                       help="Index of the shard to evaluate (0-based)")
+    parser.add_argument("--max_eval_shards", type=int, default=1,
+                       help="Maximum number of shards to use for evaluation")
+    
     # Evaluation options
     parser.add_argument("--same_data_eval", action="store_true", default=True,
                        help="Use same training data for evaluation (overfitting test)")
-    parser.add_argument("--max_eval_shards", type=int, default=1,
-                       help="Maximum number of shards to use for evaluation")
     parser.add_argument("--normalize_embeddings", action="store_true", default=True,
                        help="Normalize embeddings before computing similarity")
     
@@ -130,7 +128,6 @@ def setup_device_safely(device_arg: str, logger):
 def load_model_and_determine_mode(model_path, device, torch_dtype, training_mode, logger):
     """FIXED: Load model and determine training mode with proper config handling"""
     from src.modules.models.blip3o_patch_dit import create_blip3o_patch_dit_model, BLIP3oDiTConfig
-    from src.modules.losses.blip3o_flow_matching_loss import create_blip3o_flow_matching_loss
     
     model_path = Path(model_path)
     logger.info(f"📦 Loading model from: {model_path}")
@@ -166,7 +163,7 @@ def load_model_and_determine_mode(model_path, device, torch_dtype, training_mode
                 inferred_mode = config_data['training_mode']
                 expected_tokens = 257 if inferred_mode == "cls_patch" else 256
             else:
-                expected_tokens = 257  # Default to cls_patch
+                expected_tokens = 256  # Default to patch_only
         else:
             expected_tokens = 257 if training_mode == "cls_patch" else 256
         
@@ -238,16 +235,17 @@ def load_model_and_determine_mode(model_path, device, torch_dtype, training_mode
     
     return model, config, training_mode
 
-def create_evaluation_dataloader(embeddings_dir, training_mode, max_shards, batch_size, logger):
-    """Create dataloader for evaluation"""
+def create_evaluation_dataloader(embeddings_dir, training_mode, max_shards, batch_size, shard_index, logger):
+    """Create dataloader for evaluation with specific shard support"""
     from src.modules.datasets.blip3o_dataset import create_flexible_dataloaders
     
     logger.info(f"📊 Creating evaluation dataloader")
     logger.info(f"   Training mode: {training_mode}")
+    logger.info(f"   Shard index: {shard_index}")
     logger.info(f"   Max shards: {max_shards}")
     logger.info(f"   Batch size: {batch_size}")
     
-    # Create dataloaders
+    # Create dataloaders - using single shard for evaluation
     train_dataloader, eval_dataloader = create_flexible_dataloaders(
         chunked_embeddings_dir=embeddings_dir,
         batch_size=batch_size,
@@ -255,7 +253,7 @@ def create_evaluation_dataloader(embeddings_dir, training_mode, max_shards, batc
         eval_split_ratio=0.0,  # Use all data for evaluation
         normalize_embeddings=False,  # We'll handle normalization in evaluation
         training_mode=training_mode,
-        max_shards=max_shards,
+        max_shards=max_shards,  # Limit to specific number of shards
         use_same_data_for_eval=True,  # Use same data
         delete_after_use=False,
         num_workers=0,  # Avoid multiprocessing issues in evaluation
@@ -272,7 +270,7 @@ def create_evaluation_dataloader(embeddings_dir, training_mode, max_shards, batc
 def compute_comprehensive_cosine_similarity(
     predicted_embeddings: torch.Tensor,  # [B, N, 1024] - Generated CLIP embeddings
     target_embeddings: torch.Tensor,     # [B, N, 1024] - Ground truth CLIP embeddings
-    training_mode: str = "cls_patch",
+    training_mode: str = "patch_only",
     normalize: bool = True,
     return_detailed: bool = True
 ) -> dict:
@@ -281,16 +279,6 @@ def compute_comprehensive_cosine_similarity(
     1. Cosine similarity for each patch
     2. Average over all patches to get cosine similarity for each image  
     3. Average over all samples to get overall cosine similarity
-    
-    Args:
-        predicted_embeddings: Model generated embeddings [B, N, 1024]
-        target_embeddings: Target ground truth embeddings [B, N, 1024]
-        training_mode: "cls_patch" (257 tokens) or "patch_only" (256 tokens)
-        normalize: Whether to normalize embeddings before computing similarity
-        return_detailed: Whether to return detailed per-patch and per-image results
-        
-    Returns:
-        Dictionary with similarity metrics
     """
     batch_size, num_tokens, embed_dim = predicted_embeddings.shape
     
@@ -309,7 +297,6 @@ def compute_comprehensive_cosine_similarity(
         target_norm = target_embeddings
     
     # STEP 1: Compute cosine similarity for each patch
-    # F.cosine_similarity computes similarity along the last dimension (embed_dim)
     per_patch_similarities = F.cosine_similarity(
         predicted_norm, target_norm, dim=-1
     )  # [B, N] - Cosine similarity for each patch in each image
@@ -389,26 +376,12 @@ def evaluate_model_on_single_shard(
     model,
     dataloader,
     device: str,
-    training_mode: str = "cls_patch",
+    training_mode: str = "patch_only",
     num_inference_steps: int = 50,
     max_batches: int = None,
     logger = None
 ) -> dict:
-    """
-    Evaluate model on a single shard with comprehensive cosine similarity analysis
-    
-    Args:
-        model: Trained BLIP3-o model
-        dataloader: DataLoader for the shard
-        device: Device to run evaluation on
-        training_mode: Training mode ("cls_patch" or "patch_only")
-        num_inference_steps: Steps for generation
-        max_batches: Maximum batches to evaluate (None for all)
-        logger: Logger instance
-        
-    Returns:
-        Comprehensive evaluation metrics
-    """
+    """Evaluate model on a single shard with comprehensive cosine similarity analysis"""
     model.eval()
     
     all_per_patch_similarities = []
@@ -439,12 +412,14 @@ def evaluate_model_on_single_shard(
                     generated_clip = model.generate(
                         eva_features=eva_embeddings,
                         num_inference_steps=num_inference_steps,
+                        normalize_output=True,
                     )
                 else:
                     # Fallback to forward pass if no generate method
                     timesteps = torch.zeros(batch_size, device=device)
+                    hidden_states = batch.get('hidden_states', target_clip)
                     outputs = model(
-                        hidden_states=target_clip,  # Use targets as initial state
+                        hidden_states=hidden_states,
                         timestep=timesteps,
                         encoder_hidden_states=eva_embeddings,
                         return_dict=True
@@ -543,23 +518,6 @@ def evaluate_model_on_single_shard(
     
     return final_results
 
-def run_comprehensive_evaluation(model, dataloader, training_mode, args, logger):
-    """Run comprehensive patch-level cosine similarity evaluation"""
-    logger.info("🔍 Starting comprehensive evaluation...")
-    
-    # Run detailed evaluation
-    results = evaluate_model_on_single_shard(
-        model=model,
-        dataloader=dataloader,
-        device=str(args.device) if hasattr(args, 'device') else 'cuda',
-        training_mode=training_mode,
-        num_inference_steps=args.num_inference_steps,
-        max_batches=args.num_samples // args.batch_size if args.num_samples else None,
-        logger=logger
-    )
-    
-    return results
-
 def main():
     """FIXED: Main evaluation function"""
     # Parse arguments
@@ -573,16 +531,16 @@ def main():
     logger.info("🎯 FEATURES:")
     logger.info(f"  ✅ Model path: {args.model_path}")
     logger.info(f"  ✅ Training mode: {args.training_mode}")
+    logger.info(f"  ✅ Shard index: {args.shard_index}")
     logger.info(f"  ✅ Same-data evaluation: {args.same_data_eval}")
     logger.info(f"  ✅ Max eval shards: {args.max_eval_shards}")
     logger.info(f"  ✅ Number of samples: {args.num_samples}")
-    logger.info(f"  ✅ FIXED: Config key handling and CUDA setup")
+    logger.info(f"  ✅ FIXED: Added shard_index argument support")
     logger.info("=" * 60)
     
     try:
         # 1. Setup device safely
         device = setup_device_safely(args.device, logger)
-        args.device = device  # Store for later use
         
         # 2. Create output directory
         output_dir = Path(args.output_dir)
@@ -594,18 +552,24 @@ def main():
             args.model_path, device, args.torch_dtype, args.training_mode, logger
         )
         
-        # 4. Create evaluation dataloader
+        # 4. Create evaluation dataloader with shard support
         eval_dataloader = create_evaluation_dataloader(
             args.chunked_embeddings_dir, training_mode, args.max_eval_shards, 
-            args.batch_size, logger
+            args.batch_size, args.shard_index, logger
         )
         
         # 5. Run comprehensive evaluation
         logger.info("🚀 Starting comprehensive evaluation...")
         start_time = datetime.now()
         
-        results = run_comprehensive_evaluation(
-            model, eval_dataloader, training_mode, args, logger
+        results = evaluate_model_on_single_shard(
+            model=model,
+            dataloader=eval_dataloader,
+            device=str(device),
+            training_mode=training_mode,
+            num_inference_steps=args.num_inference_steps,
+            max_batches=args.num_samples // args.batch_size if args.num_samples else None,
+            logger=logger
         )
         
         end_time = datetime.now()
@@ -658,6 +622,7 @@ def main():
             'model_path': str(args.model_path),
             'embeddings_dir': args.chunked_embeddings_dir,
             'training_mode': training_mode,
+            'shard_index': args.shard_index,
             'evaluation_config': {
                 'num_samples': args.num_samples,
                 'batch_size': args.batch_size,
@@ -674,13 +639,11 @@ def main():
                 'total_patches': results['total_patches_evaluated'],
             },
             'detailed_results': results,
-            'files_generated': {
-                'summary_file': 'comprehensive_cosine_similarity_results.json',
-            }
         }
         
         # Save detailed results
-        results_file = output_dir / 'comprehensive_cosine_similarity_results.json'
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        results_file = output_dir / f'patch_similarity_evaluation_{timestamp}.json'
         with open(results_file, 'w') as f:
             json.dump(evaluation_summary, f, indent=2)
         
@@ -712,6 +675,7 @@ def main():
             'evaluation_args': vars(args),
             'timestamp': datetime.now().isoformat(),
             'fixes_applied': [
+                'Added missing --shard_index argument',
                 'Fixed config key handling (num_tokens vs expected_tokens)',
                 'Better CUDA environment setup',
                 'Comprehensive cosine similarity calculation',

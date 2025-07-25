@@ -5,7 +5,7 @@
 #SBATCH --gpus=1
 #SBATCH --cpus-per-gpu=18
 #SBATCH --time=3:00:00
-#SBATCH --mem=0
+#SBATCH --mem=64GB
 #SBATCH --output=./slurm_out/blip3o_eval_%j.out
 #SBATCH --error=./slurm_out/blip3o_eval_%j.err
 
@@ -29,12 +29,12 @@ module load CUDA/12.6.0
 source activate eva_clip_env
 
 # Configuration
-MODEL_PATH="/scratch-shared/scur2711/blip3o_workspace/checkpoints/blip3o_fixed_patch_only_13283695_20250724_165821"  # Update with actual path
-EMBEDDINGS_DIR="/scratch-shared/scur2711/blip3o_workspace/embeddings/chunked_256_tokens"
+MODEL_PATH="/scratch-shared/azadaianchuk1/blip3o_workspace/checkpoints/training_fixed_patch_only_13287960_20250725_012333"  # Update with actual path
+EMBEDDINGS_DIR="/scratch-shared/azadaianchuk1/blip3o_workspace/embeddings/patch_only_256_tokens"
 OUTPUT_DIR="./eval_results_$(date +%Y%m%d_%H%M%S)"
 TRAINING_MODE="auto"
 NUM_SAMPLES=1000
-BATCH_SIZE=8
+BATCH_SIZE=256
 NUM_INFERENCE_STEPS=50
 SHARD_INDEX=0
 

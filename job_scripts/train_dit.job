@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=blip3o_training
+#SBATCH --job-name=blip3o_training_fixed
 #SBATCH --partition=gpu_a100
 #SBATCH --nodes=1
 #SBATCH --gpus=3
@@ -7,15 +7,15 @@
 #SBATCH --cpus-per-gpu=9
 #SBATCH --time=12:00:00
 #SBATCH --mem=64GB
-#SBATCH --output=./slurm_out/blip3o_training_%j.out
-#SBATCH --error=./slurm_out/blip3o_training_%j.err
+#SBATCH --output=./slurm_out/blip3o_training_fixed_%j.out
+#SBATCH --error=./slurm_out/blip3o_training_fixed_%j.err
 
 # =============================================================================
-# BLIP3-o TRAINING-ONLY JOB SCRIPT
-# Training only (no evaluation)
+# FIXED BLIP3-o TRAINING JOB SCRIPT
+# Training only (no evaluation) with fixed TrainingArguments
 # =============================================================================
 
-echo "🚀 Starting BLIP3-o Training-Only Job"
+echo "🚀 Starting FIXED BLIP3-o Training Job"
 echo "Job ID: ${SLURM_JOB_ID}"
 echo "Node: $(hostname)"
 echo "Time: $(date)"
@@ -37,13 +37,13 @@ export WORKSPACE="/scratch-shared/${USER}/blip3o_workspace"
 export EMBEDDINGS_DIR="${WORKSPACE}/embeddings"
 export CHECKPOINTS="${WORKSPACE}/checkpoints"
 
-# Configuration
+# Configuration - FIXED for single shard training
 TRAINING_MODE="patch_only"  # patch_only or cls_patch
 EMBEDDINGS_DIR="/scratch-shared/azadaianchuk1/blip3o_workspace/embeddings/patch_only_256_tokens"
-OUTPUT_DIR="${CHECKPOINTS}/training_only_${TRAINING_MODE}_${JOB_ID}_$(date +%Y%m%d_%H%M%S)"
+OUTPUT_DIR="${CHECKPOINTS}/training_fixed_${TRAINING_MODE}_${JOB_ID}_$(date +%Y%m%d_%H%M%S)"
 mkdir -p "${OUTPUT_DIR}"
 
-# Training parameters
+# Training parameters - FIXED
 MODEL_SIZE="base"
 NUM_EPOCHS=10
 BATCH_SIZE=64
@@ -53,7 +53,7 @@ LOGGING_STEPS=5
 SAVE_STEPS=100
 SHARD_INDEX=0
 
-echo "⚙️ Training Configuration:"
+echo "⚙️ FIXED Training Configuration:"
 echo "   Mode: $TRAINING_MODE"
 echo "   Embeddings: $EMBEDDINGS_DIR"
 echo "   Output: $OUTPUT_DIR"
@@ -61,9 +61,31 @@ echo "   Model: $MODEL_SIZE"
 echo "   Batch size: $BATCH_SIZE"
 echo "   Learning rate: $LEARNING_RATE"
 echo "   Epochs: $NUM_EPOCHS"
+echo "   Shard index: $SHARD_INDEX"
 
-# Launch training
-echo "🚀 Starting Training-Only Process..."
+# Verify embeddings directory exists
+if [ ! -d "$EMBEDDINGS_DIR" ]; then
+    echo "❌ Embeddings directory not found: $EMBEDDINGS_DIR"
+    echo "Available directories in workspace:"
+    ls -la "$WORKSPACE/embeddings/" || echo "No embeddings directory found"
+    exit 1
+fi
+
+# Check for shard files
+echo "🔍 Checking for shard files..."
+SHARD_FILES=$(find "$EMBEDDINGS_DIR" -name "embeddings_shard_*.pkl" | head -5)
+if [ -z "$SHARD_FILES" ]; then
+    echo "❌ No shard files found in $EMBEDDINGS_DIR"
+    echo "Directory contents:"
+    ls -la "$EMBEDDINGS_DIR"
+    exit 1
+else
+    echo "✅ Found shard files:"
+    echo "$SHARD_FILES"
+fi
+
+# Launch training with FIXED script
+echo "🚀 Starting FIXED Training Process..."
 python train_blip3o_enhanced.py \
     --chunked_embeddings_dir "$EMBEDDINGS_DIR" \
     --output_dir "$OUTPUT_DIR" \
@@ -78,14 +100,86 @@ python train_blip3o_enhanced.py \
     --save_steps $SAVE_STEPS \
     --fp16
 
-# Handle completion
-if [ $? -eq 0 ]; then
-    echo "✅ Training completed successfully!"
+# Check training result
+TRAINING_EXIT_CODE=$?
+
+if [ $TRAINING_EXIT_CODE -eq 0 ]; then
+    echo "✅ FIXED Training completed successfully!"
     echo "   Model saved to: $OUTPUT_DIR"
+    echo "   Training mode: $TRAINING_MODE"
+    echo ""
+    echo "📊 Training Summary:"
+    if [ -f "$OUTPUT_DIR/training_info.json" ]; then
+        echo "Training info saved to: $OUTPUT_DIR/training_info.json"
+        # Show some key info
+        python -c "
+import json
+try:
+    with open('$OUTPUT_DIR/training_info.json', 'r') as f:
+        info = json.load(f)
+    print(f\"   Training mode: {info.get('training_mode', 'unknown')}\")
+    print(f\"   Epochs completed: {info.get('total_epochs', 'unknown')}\")
+    print(f\"   Total steps: {info.get('total_steps', 'unknown')}\")
+    loss_stats = info.get('loss_statistics', {})
+    if loss_stats:
+        print(f\"   Final loss: {loss_stats.get('current_loss', 'unknown')}\")
+        print(f\"   Loss trend: {loss_stats.get('loss_trend', 'unknown')}\")
+except Exception as e:
+    print(f\"   Could not read training info: {e}\")
+"
+    fi
+    
+    echo ""
+    echo "🎯 Next Steps:"
+    echo "1. Check the training logs in $OUTPUT_DIR/logs/"
+    echo "2. Inspect the saved model in $OUTPUT_DIR/"
+    echo "3. Run evaluation script if needed:"
+    echo "   python eval_blip3o_patch_similarity.py \\"
+    echo "     --model_path $OUTPUT_DIR \\"
+    echo "     --chunked_embeddings_dir $EMBEDDINGS_DIR \\"
+    echo "     --training_mode $TRAINING_MODE"
+    
 else
-    echo "❌ Training failed!"
-    exit 1
+    echo "❌ FIXED Training failed with exit code: $TRAINING_EXIT_CODE"
+    echo "Check the error logs above for details"
+    
+    # Show some diagnostic info
+    echo ""
+    echo "🔍 Diagnostic Information:"
+    echo "Working directory: $(pwd)"
+    echo "Python path:"
+    python -c "import sys; print('\n'.join(sys.path))"
+    echo ""
+    echo "Available modules:"
+    python -c "
+try:
+    import src.modules.models.blip3o_patch_dit
+    print('✅ Model module available')
+except Exception as e:
+    print(f'❌ Model module: {e}')
+
+try:
+    import src.modules.losses.blip3o_flow_matching_loss
+    print('✅ Loss module available')
+except Exception as e:
+    print(f'❌ Loss module: {e}')
+
+try:
+    import src.modules.trainers.blip3o_training_only_trainer
+    print('✅ Trainer module available')
+except Exception as e:
+    print(f'❌ Trainer module: {e}')
+
+try:
+    import src.modules.datasets.blip3o_dataset
+    print('✅ Dataset module available')
+except Exception as e:
+    print(f'❌ Dataset module: {e}')
+"
 fi
 
+echo ""
 echo "🏁 Job completed at $(date)"
-exit 0
+echo "Exit code: $TRAINING_EXIT_CODE"
+
+exit $TRAINING_EXIT_CODE

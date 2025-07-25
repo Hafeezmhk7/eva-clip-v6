@@ -8,6 +8,7 @@ KEY FIXES:
 2. Consistent normalization between training and evaluation
 3. Correct velocity target computation
 4. Safe tensor operations for both training and evaluation modes
+5. Fixed gradient flow issues
 """
 
 import torch
@@ -202,6 +203,7 @@ class BLIP3oFlowMatchingLoss(nn.Module):
         1. Consistent velocity targets for rectified flow
         2. Proper normalization handling
         3. Compatible with both training and evaluation
+        4. Fixed gradient flow issues
         """
         batch_size = model_output.shape[0]
         num_tokens = model_output.shape[1]
@@ -229,9 +231,15 @@ class BLIP3oFlowMatchingLoss(nn.Module):
         velocity_target = self.compute_velocity_target(x_0, target_samples, timesteps, noise)
         
         # FIXED: Flow matching loss - simple MSE for rectified flow
-        flow_matching_loss = F.mse_loss(model_output, velocity_target, reduction='mean')
+        # Ensure both tensors have the same gradient requirements
+        if is_training:
+            # During training, both should have gradients or be properly detached
+            flow_matching_loss = F.mse_loss(model_output, velocity_target.detach(), reduction='mean')
+        else:
+            # During evaluation, neither should have gradients
+            flow_matching_loss = F.mse_loss(model_output.detach(), velocity_target.detach(), reduction='mean')
         
-        # Verify loss has gradients during training
+        # Verify loss computation is valid
         if is_training and not flow_matching_loss.requires_grad:
             raise RuntimeError("Flow matching loss doesn't require gradients during training!")
         
@@ -269,15 +277,11 @@ class BLIP3oFlowMatchingLoss(nn.Module):
                 very_high_quality_images = (detailed_sims['per_image_avg_cosine'] > 0.8).float().mean()
                 
                 # FIXED: For evaluation, also compute final embedding similarity
-                # This helps bridge the gap between training metrics and evaluation metrics
                 eval_similarity = None
                 if not is_training:
-                    # During evaluation, we can also compute the final embedding similarity
-                    # by applying the generated velocity to see where it would lead
                     try:
-                        # Simulate one step of flow matching to see final embeddings
-                        dt = 1.0 / 50  # Assume 50 steps like in generation
-                        final_embeddings = x_0 + model_output.detach()  # Simple one-step for approximation
+                        # Simulate final embeddings by applying velocity
+                        final_embeddings = x_0 + model_output.detach()  # Simple step
                         if self.normalize_targets:
                             final_embeddings = F.normalize(final_embeddings, p=2, dim=-1)
                         
@@ -342,6 +346,7 @@ class BLIP3oFlowMatchingLoss(nn.Module):
                     'normalize_targets': self.normalize_targets,
                     'paper_aligned': True,
                     'blip3o_compliant': True,
+                    'fixed_version': True,
                 }
         
         return total_loss, metrics
