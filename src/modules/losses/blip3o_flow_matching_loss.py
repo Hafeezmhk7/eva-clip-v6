@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
 """
-COMPLETE BLIP3-o Flow Matching Loss - FIXED VERSION
+COMPLETELY FIXED: BLIP3-o Flow Matching Loss with Both Velocity and Embedding Tracking
 src/modules/losses/blip3o_flow_matching_loss.py
-
-Fixed buffer assignment issues for torch tensors
 """
 
 import torch
@@ -18,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 class BLIP3oFlowMatchingLoss(nn.Module):
     """
-    COMPLETE FIXED: BLIP3-o Flow Matching Loss with proper tensor buffer handling
+    FIXED: BLIP3-o Flow Matching Loss that tracks BOTH velocity and embedding similarity
     """
     
     def __init__(
@@ -30,8 +28,10 @@ class BLIP3oFlowMatchingLoss(nn.Module):
         flow_type: str = "rectified",
         velocity_scale: float = 0.1,
         target_norm_scale: float = 1.0,
-        adaptive_scaling: bool = True,
+        adaptive_scaling: bool = False,  # Disabled by default for stability
         ema_decay: float = 0.99,
+        track_embeddings: bool = True,  # NEW: Track embedding similarity
+        embedding_test_steps: int = 10,  # NEW: Steps for quick embedding test
     ):
         super().__init__()
         
@@ -44,10 +44,13 @@ class BLIP3oFlowMatchingLoss(nn.Module):
         self.target_norm_scale = target_norm_scale
         self.adaptive_scaling = adaptive_scaling
         self.ema_decay = ema_decay
+        self.track_embeddings = track_embeddings
+        self.embedding_test_steps = embedding_test_steps
         
-        # EMA tracking for metrics and adaptive scaling
+        # EMA tracking for metrics
         self.register_buffer('ema_loss', torch.tensor(0.0))
-        self.register_buffer('ema_cosine_sim', torch.tensor(0.0))
+        self.register_buffer('ema_velocity_cosine', torch.tensor(0.0))
+        self.register_buffer('ema_embedding_cosine', torch.tensor(0.0))  # NEW
         self.register_buffer('ema_target_norm', torch.tensor(1.0))
         self.register_buffer('ema_pred_norm', torch.tensor(1.0))
         
@@ -56,24 +59,26 @@ class BLIP3oFlowMatchingLoss(nn.Module):
         self.register_buffer('scale_update_count', torch.tensor(0.0))
         
         # Training progress tracking
-        self.register_buffer('best_cosine_sim', torch.tensor(0.0))
+        self.register_buffer('best_velocity_sim', torch.tensor(0.0))
+        self.register_buffer('best_embedding_sim', torch.tensor(0.0))  # NEW
         self.register_buffer('steps_since_improvement', torch.tensor(0.0))
+        
+        # Step counter for embedding testing
+        self.step_count = 0
         
         logger.info(f"✅ FIXED BLIP3-o Flow Matching Loss initialized")
         logger.info(f"   Velocity scale: {velocity_scale}")
-        logger.info(f"   Adaptive scaling: {adaptive_scaling}")
+        logger.info(f"   Track embeddings: {track_embeddings}")
+        logger.info(f"   Embedding test steps: {embedding_test_steps}")
 
     def update_adaptive_scaling(self, pred_norm: float, target_norm: float, current_cosine: float):
-        """
-        FIXED: Update adaptive scaling factor with proper scalar handling
-        """
+        """Update adaptive scaling factor"""
         if not self.adaptive_scaling:
             return
             
         with torch.no_grad():
             device = self.adaptive_scale.device
             
-            # Ensure inputs are scalar floats
             if torch.is_tensor(pred_norm):
                 pred_norm = pred_norm.item()
             if torch.is_tensor(target_norm):
@@ -81,24 +86,19 @@ class BLIP3oFlowMatchingLoss(nn.Module):
             if torch.is_tensor(current_cosine):
                 current_cosine = current_cosine.item()
             
-            # Convert inputs to tensors on correct device
             pred_norm_tensor = torch.tensor(pred_norm, device=device, dtype=torch.float32)
             target_norm_tensor = torch.tensor(target_norm, device=device, dtype=torch.float32)
             current_cosine_tensor = torch.tensor(current_cosine, device=device, dtype=torch.float32)
             
-            # Compute ratio of target to prediction norms
             if pred_norm > 1e-8:
                 norm_ratio = target_norm_tensor / pred_norm_tensor
-                # Clamp to reasonable range
                 norm_ratio = torch.clamp(norm_ratio, 0.1, 10.0)
                 
-                # Update adaptive scale with EMA
                 self.adaptive_scale = self.ema_decay * self.adaptive_scale + (1 - self.ema_decay) * norm_ratio
                 self.scale_update_count += 1
                 
-                # Track training progress - FIXED: proper tensor assignment
-                if current_cosine_tensor > self.best_cosine_sim:
-                    self.best_cosine_sim.copy_(current_cosine_tensor)
+                if current_cosine_tensor > self.best_velocity_sim:
+                    self.best_velocity_sim.copy_(current_cosine_tensor)
                     self.steps_since_improvement.zero_()
                 else:
                     self.steps_since_improvement += 1
@@ -112,9 +112,10 @@ class BLIP3oFlowMatchingLoss(nn.Module):
         noise: Optional[torch.Tensor] = None,
         return_metrics: bool = False,
         training_mode: str = "patch_only",
+        model_ref: Optional[nn.Module] = None,  # NEW: Model reference for embedding testing
     ) -> Tuple[torch.Tensor, Optional[Dict[str, float]]]:
         """
-        SIMPLE WORKING: Flow matching loss with patch-wise cosine similarity
+        FIXED: Flow matching loss with BOTH velocity and embedding similarity tracking
         """
         batch_size = model_output.shape[0]
         num_tokens = model_output.shape[1]
@@ -135,33 +136,34 @@ class BLIP3oFlowMatchingLoss(nn.Module):
         else:
             target_samples_normalized = target_samples.detach()
         
-        # Create source distribution (noise) with matching scale
+        # Create source distribution (noise)
         if noise is None:
-            x_0 = torch.randn_like(target_samples_normalized, device=device) * 0.1
+            x_0 = torch.randn_like(target_samples_normalized, device=device)
         else:
-            x_0 = noise * 0.1
+            x_0 = noise
         
         # Compute velocity target using rectified flow
         if self.prediction_type == "velocity":
             if self.flow_type == "rectified":
-                velocity_target = (target_samples_normalized - x_0) * self.velocity_scale
+                # For rectified flow: velocity = (target - source)
+                velocity_target = target_samples_normalized - x_0
             else:
                 t_expanded = timesteps.view(-1, 1, 1)
-                velocity_target = (target_samples_normalized - (1 - t_expanded) * x_0) * self.velocity_scale
+                velocity_target = target_samples_normalized - (1 - t_expanded) * x_0
         else:
-            velocity_target = noise * self.velocity_scale if noise is not None else torch.randn_like(target_samples_normalized) * self.velocity_scale
+            velocity_target = noise if noise is not None else torch.randn_like(target_samples_normalized)
         
-        # Apply adaptive scaling to model output if enabled (currently disabled)
+        # Apply velocity scaling to targets (make them smaller for stability)
+        velocity_target_scaled = velocity_target * self.velocity_scale
+        
+        # Apply adaptive scaling to model output if enabled
         if is_training and self.adaptive_scaling:
             scaled_model_output = model_output * self.adaptive_scale
         else:
             scaled_model_output = model_output
         
-        # Flow matching loss
-        if is_training:
-            flow_matching_loss = F.mse_loss(scaled_model_output, velocity_target.detach(), reduction='mean')
-        else:
-            flow_matching_loss = F.mse_loss(scaled_model_output.detach(), velocity_target.detach(), reduction='mean')
+        # Flow matching loss (both velocity and target are scaled consistently)
+        flow_matching_loss = F.mse_loss(scaled_model_output, velocity_target_scaled.detach(), reduction='mean')
         
         # Verify loss computation is valid
         if is_training and not flow_matching_loss.requires_grad:
@@ -175,38 +177,60 @@ class BLIP3oFlowMatchingLoss(nn.Module):
             with torch.no_grad():
                 # Compute scalar norms for tracking
                 pred_norm = torch.norm(scaled_model_output.detach(), dim=-1).mean().item()
-                target_norm = torch.norm(velocity_target.detach(), dim=-1).mean().item()
+                target_norm = torch.norm(velocity_target_scaled.detach(), dim=-1).mean().item()
                 
-                # PATCH-WISE cosine similarity computation (matches evaluation methodology)
-                pred_patches = scaled_model_output.detach()  # [B, N, 1024]
-                target_patches = velocity_target.detach()    # [B, N, 1024]
+                # VELOCITY SIMILARITY (what we're training on)
+                pred_norm_tensor = F.normalize(scaled_model_output.detach(), p=2, dim=-1)
+                target_norm_tensor = F.normalize(velocity_target_scaled.detach(), p=2, dim=-1)
                 
-                # Normalize for cosine similarity computation
-                pred_norm_tensor = F.normalize(pred_patches, p=2, dim=-1)
-                target_norm_tensor = F.normalize(target_patches, p=2, dim=-1)
+                per_patch_velocity_cosine = F.cosine_similarity(pred_norm_tensor, target_norm_tensor, dim=-1)
+                per_image_velocity_cosine = per_patch_velocity_cosine.mean(dim=1)
+                velocity_cosine_sim = per_image_velocity_cosine.mean().item()
                 
-                # Per-patch cosine similarities [B, N]
-                per_patch_cosine = F.cosine_similarity(pred_norm_tensor, target_norm_tensor, dim=-1)
-                
-                # Per-image average similarities [B]
-                per_image_cosine = per_patch_cosine.mean(dim=1)
-                
-                # Overall batch cosine similarity
-                patch_wise_cosine_sim = per_image_cosine.mean().item()
-                
-                # Quality metrics (same as evaluation)
-                high_quality_patches = (per_patch_cosine > 0.7).float().mean().item()
-                very_high_quality_patches = (per_patch_cosine > 0.8).float().mean().item()
-                high_quality_images = (per_image_cosine > 0.7).float().mean().item()
-                very_high_quality_images = (per_image_cosine > 0.8).float().mean().item()
+                # EMBEDDING SIMILARITY (what we actually care about)
+                embedding_cosine_sim = 0.0
+                if self.track_embeddings and model_ref is not None and is_training:
+                    # Every few steps, test actual embedding generation
+                    self.step_count += 1
+                    if self.step_count % 10 == 0:  # Test every 10 steps
+                        try:
+                            model_ref.eval()
+                            embedding_test_result = model_ref.quick_generate_test(
+                                eva_features=eva_conditioning,
+                                target_embeddings=target_samples,
+                                velocity_scale=self.velocity_scale,
+                                num_steps=self.embedding_test_steps
+                            )
+                            embedding_cosine_sim = embedding_test_result['embedding_similarity']
+                            model_ref.train()  # Return to training mode
+                        except Exception as e:
+                            logger.debug(f"Embedding test failed: {e}")
+                            embedding_cosine_sim = 0.0
+                    else:
+                        embedding_cosine_sim = self.ema_embedding_cosine.item()
                 
                 # Update EMA metrics
                 self.ema_loss = self.ema_decay * self.ema_loss + (1 - self.ema_decay) * total_loss.item()
                 self.ema_pred_norm = self.ema_decay * self.ema_pred_norm + (1 - self.ema_decay) * pred_norm
                 self.ema_target_norm = self.ema_decay * self.ema_target_norm + (1 - self.ema_decay) * target_norm
-                self.ema_cosine_sim = self.ema_decay * self.ema_cosine_sim + (1 - self.ema_decay) * patch_wise_cosine_sim
+                self.ema_velocity_cosine = self.ema_decay * self.ema_velocity_cosine + (1 - self.ema_decay) * velocity_cosine_sim
                 
-                # Create metrics dictionary
+                if embedding_cosine_sim > 0:
+                    self.ema_embedding_cosine = self.ema_decay * self.ema_embedding_cosine + (1 - self.ema_decay) * embedding_cosine_sim
+                
+                # Track best similarities
+                if velocity_cosine_sim > self.best_velocity_sim.item():
+                    self.best_velocity_sim = torch.tensor(velocity_cosine_sim, device=device)
+                
+                if embedding_cosine_sim > self.best_embedding_sim.item():
+                    self.best_embedding_sim = torch.tensor(embedding_cosine_sim, device=device)
+                
+                # Quality metrics for velocity predictions
+                high_quality_velocity_patches = (per_patch_velocity_cosine > 0.7).float().mean().item()
+                very_high_quality_velocity_patches = (per_patch_velocity_cosine > 0.8).float().mean().item()
+                high_quality_velocity_images = (per_image_velocity_cosine > 0.7).float().mean().item()
+                
+                # Create comprehensive metrics dictionary
                 metrics = {
                     # Core loss components
                     'flow_matching_loss': flow_matching_loss.item(),
@@ -218,24 +242,25 @@ class BLIP3oFlowMatchingLoss(nn.Module):
                     'norm_ratio': target_norm / max(pred_norm, 1e-8),
                     'adaptive_scale': self.adaptive_scale.item(),
                     
-                    # PATCH-WISE cosine similarity (matches evaluation methodology)
-                    'patch_wise_cosine_sim': patch_wise_cosine_sim,
-                    'per_patch_mean_cosine': per_patch_cosine.mean().item(),
-                    'per_patch_std_cosine': per_patch_cosine.std().item(),
-                    'per_image_mean_cosine': per_image_cosine.mean().item(),
-                    'per_image_std_cosine': per_image_cosine.std().item(),
+                    # VELOCITY SIMILARITY (training metric)
+                    'velocity_cosine_sim': velocity_cosine_sim,
+                    'velocity_per_patch_mean': per_patch_velocity_cosine.mean().item(),
+                    'velocity_per_patch_std': per_patch_velocity_cosine.std().item(),
+                    'velocity_per_image_mean': per_image_velocity_cosine.mean().item(),
+                    'velocity_high_quality_patches': high_quality_velocity_patches,
+                    'velocity_very_high_quality_patches': very_high_quality_velocity_patches,
+                    'velocity_high_quality_images': high_quality_velocity_images,
                     
-                    # Quality distribution (same as evaluation)
-                    'high_quality_patches_ratio': high_quality_patches,
-                    'very_high_quality_patches_ratio': very_high_quality_patches,
-                    'high_quality_images_ratio': high_quality_images,
-                    'very_high_quality_images_ratio': very_high_quality_images,
+                    # EMBEDDING SIMILARITY (evaluation metric)
+                    'embedding_cosine_sim': embedding_cosine_sim,
+                    'embedding_test_steps': self.embedding_test_steps,
+                    'embedding_test_frequency': 10,
                     
-                    # Min/max for detailed analysis
-                    'min_patch_cosine': per_patch_cosine.min().item(),
-                    'max_patch_cosine': per_patch_cosine.max().item(),
-                    'min_image_cosine': per_image_cosine.min().item(),
-                    'max_image_cosine': per_image_cosine.max().item(),
+                    # EMA tracking
+                    'ema_velocity_cosine': self.ema_velocity_cosine.item(),
+                    'ema_embedding_cosine': self.ema_embedding_cosine.item(),
+                    'best_velocity_sim': self.best_velocity_sim.item(),
+                    'best_embedding_sim': self.best_embedding_sim.item(),
                     
                     # Model configuration info
                     'flow_type': self.flow_type,
@@ -244,8 +269,11 @@ class BLIP3oFlowMatchingLoss(nn.Module):
                     'is_training': is_training,
                     'num_tokens': num_tokens,
                     'mode': training_mode,
-                    'patches_per_image': num_tokens,
-                    'total_patches_in_batch': batch_size * num_tokens,
+                    'step_count': self.step_count,
+                    
+                    # Status flags
+                    'tracking_embeddings': self.track_embeddings,
+                    'embedding_test_available': model_ref is not None,
                 }
         
         return total_loss, metrics
@@ -259,7 +287,10 @@ class BLIP3oFlowMatchingLoss(nn.Module):
             'velocity_scale': self.velocity_scale,
             'target_norm_scale': self.target_norm_scale,
             'scale_update_count': self.scale_update_count.item(),
-            'best_cosine_sim': self.best_cosine_sim.item(),
+            'best_velocity_sim': self.best_velocity_sim.item(),
+            'best_embedding_sim': self.best_embedding_sim.item(),
+            'ema_velocity_cosine': self.ema_velocity_cosine.item(),
+            'ema_embedding_cosine': self.ema_embedding_cosine.item(),
             'steps_since_improvement': self.steps_since_improvement.item(),
         }
 
@@ -270,12 +301,14 @@ def create_blip3o_flow_matching_loss(
     flow_type: str = "rectified",
     velocity_scale: float = 0.1,
     target_norm_scale: float = 1.0,
-    adaptive_scaling: bool = True,
+    adaptive_scaling: bool = False,
     ema_decay: float = 0.99,
+    track_embeddings: bool = True,
+    embedding_test_steps: int = 10,
     **kwargs
 ) -> BLIP3oFlowMatchingLoss:
     """
-    FIXED: Factory function with proper scaling parameters
+    Factory function for FIXED flow matching loss with embedding tracking
     """
     return BLIP3oFlowMatchingLoss(
         prediction_type=prediction_type,
@@ -285,5 +318,7 @@ def create_blip3o_flow_matching_loss(
         target_norm_scale=target_norm_scale,
         adaptive_scaling=adaptive_scaling,
         ema_decay=ema_decay,
+        track_embeddings=track_embeddings,
+        embedding_test_steps=embedding_test_steps,
         **kwargs
     )
