@@ -1,5 +1,5 @@
 """
-BLIP3-o Losses Module - Simplified
+BLIP3-o Losses Module
 src/modules/losses/__init__.py
 """
 

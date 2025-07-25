@@ -1,12 +1,10 @@
 """
-BLIP3-o Configuration - Updated for Patch-Level Training
+BLIP3-o Configuration - Aligned with BLIP3-o Paper
 src/modules/config/blip3o_config.py
 
 Configuration classes for BLIP3-o patch-level DiT model following the paper architecture.
 """
 
-from transformers import PretrainedConfig
-from typing import Dict, Any, Optional
 from transformers import PretrainedConfig
 from typing import Dict, Any, Optional
 from dataclasses import dataclass
@@ -18,7 +16,7 @@ class BLIP3oDiTConfig(PretrainedConfig):
     
     This configuration follows the BLIP3-o paper architecture with:
     - Patch-level training on 256 CLIP tokens (1024-dim)
-    - EVA-CLIP conditioning (256 tokens, 4096-dim)
+    - EVA-CLIP conditioning (256 tokens, 4096-dim)  
     - Flow matching training objective
     - Image-to-text recall evaluation
     """
@@ -36,7 +34,7 @@ class BLIP3oDiTConfig(PretrainedConfig):
         # Input/output dimensions (BLIP3-o specific)
         eva_embedding_size: int = 4096,  # EVA-CLIP dimension
         clip_embedding_size: int = 1024,  # CLIP patch dimension
-        num_patches: int = 256,  # 16x16 = 256 patches
+        num_tokens: int = 256,  # 16x16 = 256 patches (or 257 with CLS)
         
         # Training configuration
         max_position_embeddings: int = 256,  # 16x16 patches
@@ -44,12 +42,10 @@ class BLIP3oDiTConfig(PretrainedConfig):
         
         # Flow matching parameters
         prediction_type: str = "velocity",
-        sigma_min: float = 1e-4,
-        sigma_max: float = 1.0,
         
         # Training optimizations
         use_gradient_checkpointing: bool = False,
-        use_fp16: bool = True,
+        training_mode: str = "patch_only",
         
         **kwargs,
     ):
@@ -64,7 +60,7 @@ class BLIP3oDiTConfig(PretrainedConfig):
         # Input/output dimensions
         self.eva_embedding_size = eva_embedding_size
         self.clip_embedding_size = clip_embedding_size
-        self.num_patches = num_patches
+        self.num_tokens = num_tokens
         
         # Training configuration
         self.max_position_embeddings = max_position_embeddings
@@ -72,12 +68,10 @@ class BLIP3oDiTConfig(PretrainedConfig):
         
         # Flow matching
         self.prediction_type = prediction_type
-        self.sigma_min = sigma_min
-        self.sigma_max = sigma_max
         
         # Training optimizations
         self.use_gradient_checkpointing = use_gradient_checkpointing
-        self.use_fp16 = use_fp16
+        self.training_mode = training_mode
         
         # Validate configuration
         self._validate_config()
@@ -91,28 +85,21 @@ class BLIP3oDiTConfig(PretrainedConfig):
                 f"num_attention_heads ({self.num_attention_heads})"
             )
         
-        # Check number of patches
-        if self.num_patches != self.max_position_embeddings:
-            raise ValueError(
-                f"num_patches ({self.num_patches}) must equal "
-                f"max_position_embeddings ({self.max_position_embeddings})"
-            )
+        # Check number of tokens
+        if self.num_tokens not in [256, 257]:
+            raise ValueError(f"num_tokens must be 256 or 257, got {self.num_tokens}")
         
         # Check prediction type
         if self.prediction_type not in ["velocity", "epsilon"]:
             raise ValueError(f"prediction_type must be 'velocity' or 'epsilon', got {self.prediction_type}")
-        
-        # Check patch count (should be 256 for 16x16)
-        if self.num_patches != 256:
-            raise ValueError(f"Expected 256 patches (16x16), got {self.num_patches}")
     
     def get_head_dim(self):
         """Get attention head dimension."""
         return self.hidden_size // self.num_attention_heads
     
-    def get_num_patches(self):
-        """Get number of patches."""
-        return self.num_patches
+    def get_num_tokens(self):
+        """Get number of tokens."""
+        return self.num_tokens
     
     def to_dict(self):
         """Convert config to dictionary."""
@@ -120,15 +107,17 @@ class BLIP3oDiTConfig(PretrainedConfig):
         return output
 
 
-def get_blip3o_patch_config(
+def get_blip3o_config(
     model_size: str = "base",
+    training_mode: str = "patch_only",
     **kwargs
 ) -> BLIP3oDiTConfig:
     """
-    Get predefined BLIP3-o patch-level configuration.
+    Get predefined BLIP3-o configuration.
     
     Args:
-        model_size: Model size - "tiny", "small", "base", "large", "xl"
+        model_size: Model size - "tiny", "small", "base", "large"
+        training_mode: "patch_only" (256 tokens) or "cls_patch" (257 tokens)
         **kwargs: Additional configuration overrides
         
     Returns:
@@ -160,12 +149,6 @@ def get_blip3o_patch_config(
             "num_attention_heads": 16,
             "intermediate_size": 4096,
         },
-        "xl": {
-            "hidden_size": 1152,
-            "num_hidden_layers": 18,
-            "num_attention_heads": 18,
-            "intermediate_size": 4608,
-        },
     }
     
     if model_size not in configs:
@@ -174,248 +157,192 @@ def get_blip3o_patch_config(
     # Get base config
     config_dict = configs[model_size].copy()
     
-    # Apply overrides
-    config_dict.update(kwargs)
-    
-    return BLIP3oDiTConfig(**config_dict)
-
-
-def get_default_blip3o_config(**kwargs) -> BLIP3oDiTConfig:
-    """Get default BLIP3-o configuration optimized for patch-level training."""
-    return get_blip3o_patch_config(
-        model_size="base",
-        prediction_type="velocity",
-        **kwargs
-    )
-
-
-def get_memory_optimized_config(
-    num_gpus: int = 1,
-    gpu_memory_gb: float = 40.0,
-    **kwargs
-) -> BLIP3oDiTConfig:
-    """
-    Get memory-optimized BLIP3-o configuration
-    
-    Args:
-        num_gpus: Number of GPUs
-        gpu_memory_gb: Memory per GPU in GB
-        **kwargs: Additional overrides
-        
-    Returns:
-        Memory-optimized configuration
-    """
-    # Choose model size based on available memory
-    if gpu_memory_gb >= 40 and num_gpus >= 4:
-        model_size = "large"
-    elif gpu_memory_gb >= 24 and num_gpus >= 2:
-        model_size = "base"
-    elif gpu_memory_gb >= 16:
-        model_size = "small"
-    else:
-        model_size = "tiny"
-    
-    return get_blip3o_patch_config(
-        model_size=model_size,
-        use_gradient_checkpointing=True,
-        use_fp16=True,
-        **kwargs
-    )
-
-
-def get_recall_optimized_config(
-    model_size: str = "base",
-    **kwargs
-) -> BLIP3oDiTConfig:
-    """
-    Get BLIP3-o configuration optimized for image-to-text recall
-    
-    Args:
-        model_size: Model size
-        **kwargs: Additional overrides
-        
-    Returns:
-        Configuration optimized for recall performance
-    """
-    return get_blip3o_patch_config(
-        model_size=model_size,
-        prediction_type="velocity",  # Better for recall
-        dropout_prob=0.05,  # Lower dropout for better recall
-        **kwargs
-    )
-
-
-def create_config_from_pretrained(
-    model_path: str,
-    **kwargs
-) -> BLIP3oDiTConfig:
-    """
-    Create configuration from pretrained model
-    
-    Args:
-        model_path: Path to pretrained model
-        **kwargs: Configuration overrides
-        
-    Returns:
-        BLIP3oDiTConfig instance
-    """
-    import json
-    from pathlib import Path
-    
-    config_path = Path(model_path) / "config.json"
-    
-    if not config_path.exists():
-        # Fallback to default config
-        print(f"⚠️ Config file not found at {config_path}, using default")
-        return get_default_blip3o_config(**kwargs)
-    
-    # Load config
-    with open(config_path, 'r') as f:
-        config_dict = json.load(f)
+    # Set token count based on training mode
+    config_dict["num_tokens"] = 257 if training_mode == "cls_patch" else 256
+    config_dict["max_position_embeddings"] = max(config_dict["num_tokens"], 257)
+    config_dict["training_mode"] = training_mode
     
     # Apply overrides
     config_dict.update(kwargs)
     
     return BLIP3oDiTConfig(**config_dict)
 
-
-def validate_training_config(config: BLIP3oDiTConfig) -> Dict[str, Any]:
-    """
-    Validate configuration for patch-level training and return recommendations
-    
-    Args:
-        config: BLIP3-o configuration
-        
-    Returns:
-        Dictionary with validation results and recommendations
-    """
-    results = {
-        "valid": True,
-        "warnings": [],
-        "recommendations": [],
-        "optimizations": []
-    }
-    
-    # Check head dimension for efficiency
-    head_dim = config.get_head_dim()
-    if head_dim % 8 != 0:
-        results["warnings"].append(f"Head dimension {head_dim} not optimal for GPU efficiency")
-        results["recommendations"].append("Consider adjusting hidden_size for head_dim divisible by 8")
-    
-    # Check model size for memory
-    param_estimate = (
-        config.hidden_size * config.hidden_size * config.num_hidden_layers * 12 +  # Attention layers
-        config.hidden_size * config.intermediate_size * config.num_hidden_layers * 2 +  # FFN layers
-        config.eva_embedding_size * config.hidden_size +  # EVA projection
-        config.hidden_size * config.clip_embedding_size  # Output projection
-    ) / 1e6  # Convert to millions
-    
-    if param_estimate > 1000:  # > 1B parameters
-        results["warnings"].append(f"Large model (~{param_estimate:.0f}M parameters)")
-        results["recommendations"].append("Consider using gradient checkpointing and fp16")
-        results["optimizations"].append("Enable use_gradient_checkpointing=True")
-    
-    # Check patch configuration
-    if config.num_patches != 256:
-        results["warnings"].append(f"Non-standard patch count: {config.num_patches} (expected 256)")
-        results["recommendations"].append("Use 256 patches (16x16) for optimal BLIP3-o performance")
-    
-    # Check dimensions for BLIP3-o compatibility
-    if config.eva_embedding_size != 4096:
-        results["warnings"].append(f"Non-standard EVA dimension: {config.eva_embedding_size} (expected 4096)")
-    
-    if config.clip_embedding_size != 1024:
-        results["warnings"].append(f"Non-standard CLIP dimension: {config.clip_embedding_size} (expected 1024)")
-    
-    return results
-
-
-# Export commonly used configurations
-TINY_CONFIG = get_blip3o_patch_config("tiny")
-SMALL_CONFIG = get_blip3o_patch_config("small") 
-BASE_CONFIG = get_blip3o_patch_config("base")
-LARGE_CONFIG = get_blip3o_patch_config("large")
-
-# Specialized configurations
-RECALL_OPTIMIZED_CONFIG = get_recall_optimized_config("base")
-MEMORY_OPTIMIZED_CONFIG = get_memory_optimized_config()
-
-# Add these classes to the END of your src/modules/config/blip3o_config.py file:
-
-from dataclasses import dataclass
 
 @dataclass
 class FlowMatchingConfig:
     """Configuration for flow matching training"""
-    sigma_min: float = 1e-4
-    sigma_max: float = 1.0
     prediction_type: str = "velocity"
-    use_contrastive_loss: bool = True
-    contrastive_weight: float = 0.1
-    temperature: float = 0.07
     normalize_targets: bool = True
+    flow_type: str = "rectified"
+    
+    # Removed problematic scaling parameters
+    clip_norm_max: float = 10.0  # Gradient clipping only
 
 
 @dataclass  
 class TrainingConfig:
     """Configuration for training parameters"""
-    num_epochs: int = 6
-    batch_size: int = 8
-    eval_batch_size: int = 4
+    num_epochs: int = 10
+    batch_size: int = 32
+    eval_batch_size: int = 32
     learning_rate: float = 1e-4
     weight_decay: float = 0.01
     warmup_steps: int = 100
-    gradient_accumulation_steps: int = 4
+    gradient_accumulation_steps: int = 2
     fp16: bool = True
-    dataloader_num_workers: int = 4
+    dataloader_num_workers: int = 0
+    
+    # Evaluation parameters
+    eval_every_n_steps: int = 100
+    eval_num_samples: int = 1000
+    eval_inference_steps: int = 50
 
 
-def get_default_flow_matching_config(**kwargs) -> FlowMatchingConfig:
-    """Get default flow matching configuration"""
-    return FlowMatchingConfig(**kwargs)
+@dataclass
+class EvaluationConfig:
+    """Configuration for evaluation parameters"""
+    eval_every_n_steps: int = 100
+    eval_num_samples: int = 1000
+    eval_batch_size: int = 16
+    eval_inference_steps: int = 50
+    normalize_embeddings: bool = True
+    
+    # Similarity thresholds
+    high_quality_threshold: float = 0.7
+    very_high_quality_threshold: float = 0.8
+    excellent_quality_threshold: float = 0.9
 
 
-def get_enhanced_flow_matching_config(**kwargs) -> FlowMatchingConfig:
-    """Get enhanced flow matching configuration with contrastive loss"""
-    defaults = {
-        'use_contrastive_loss': True,
-        'contrastive_weight': 0.1,
-        'temperature': 0.07,
-    }
-    defaults.update(kwargs)
-    return FlowMatchingConfig(**defaults)
+def get_default_configs() -> tuple:
+    """Get default configurations for all components"""
+    model_config = get_blip3o_config("base", "patch_only")
+    flow_config = FlowMatchingConfig()
+    training_config = TrainingConfig()
+    eval_config = EvaluationConfig()
+    
+    return model_config, flow_config, training_config, eval_config
 
 
-def get_default_training_config(**kwargs) -> TrainingConfig:
-    """Get default training configuration"""
-    return TrainingConfig(**kwargs)
+def create_config_from_args(args) -> tuple:
+    """Create configurations from command line arguments"""
+    model_config = get_blip3o_config(
+        model_size=getattr(args, 'model_size', 'base'),
+        training_mode=getattr(args, 'training_mode', 'patch_only'),
+        use_gradient_checkpointing=getattr(args, 'gradient_checkpointing', False),
+    )
+    
+    flow_config = FlowMatchingConfig(
+        prediction_type="velocity",
+        normalize_targets=True,
+        flow_type="rectified",
+    )
+    
+    training_config = TrainingConfig(
+        num_epochs=getattr(args, 'num_epochs', 10),
+        batch_size=getattr(args, 'batch_size', 32),
+        learning_rate=getattr(args, 'learning_rate', 1e-4),
+        gradient_accumulation_steps=getattr(args, 'gradient_accumulation_steps', 2),
+        fp16=getattr(args, 'fp16', True),
+    )
+    
+    eval_config = EvaluationConfig(
+        eval_every_n_steps=getattr(args, 'eval_every_n_steps', 100),
+        eval_num_samples=getattr(args, 'eval_num_samples', 1000),
+        eval_inference_steps=getattr(args, 'eval_inference_steps', 50),
+    )
+    
+    return model_config, flow_config, training_config, eval_config
 
 
-def validate_config_compatibility(model_config: BLIP3oDiTConfig, flow_config: FlowMatchingConfig) -> bool:
-    """Validate that model and flow configs are compatible"""
+def validate_config_compatibility(
+    model_config: BLIP3oDiTConfig, 
+    flow_config: FlowMatchingConfig,
+    training_config: TrainingConfig
+) -> bool:
+    """Validate that all configs are compatible"""
+    
+    # Check flow matching compatibility
     if flow_config.prediction_type not in ["velocity", "epsilon"]:
         raise ValueError(f"Unsupported prediction type: {flow_config.prediction_type}")
+    
+    # Check model and training compatibility
+    if model_config.num_tokens not in [256, 257]:
+        raise ValueError(f"Invalid token count: {model_config.num_tokens}")
+    
+    # Check batch size compatibility
+    if training_config.batch_size < 1:
+        raise ValueError(f"Invalid batch size: {training_config.batch_size}")
+    
     return True
 
 
-def print_config_summary(model_config: BLIP3oDiTConfig, flow_config: FlowMatchingConfig = None):
-    """Print configuration summary"""
+def print_config_summary(
+    model_config: BLIP3oDiTConfig,
+    flow_config: FlowMatchingConfig,
+    training_config: TrainingConfig,
+    eval_config: EvaluationConfig
+):
+    """Print comprehensive configuration summary"""
     print("📋 BLIP3-o Configuration Summary")
-    print("=" * 40)
-    print(f"Model: {model_config.hidden_size}D, {model_config.num_hidden_layers}L, {model_config.num_attention_heads}H")
-    print(f"Patches: {model_config.num_patches} (16×16)")
-    print(f"EVA input: {model_config.eva_embedding_size}D")
-    print(f"CLIP output: {model_config.clip_embedding_size}D")
+    print("=" * 50)
     
-    if flow_config:
-        print(f"\nFlow Matching:")
-        print(f"  Prediction: {flow_config.prediction_type}")
-        print(f"  Contrastive: {flow_config.use_contrastive_loss}")
-        if flow_config.use_contrastive_loss:
-            print(f"  Weight: {flow_config.contrastive_weight}")
-    print("=" * 40)
+    print(f"🏗️ Model Configuration:")
+    print(f"   Architecture: {model_config.hidden_size}D, {model_config.num_hidden_layers}L, {model_config.num_attention_heads}H")
+    print(f"   Tokens: {model_config.num_tokens} ({model_config.training_mode})")
+    print(f"   EVA input: {model_config.eva_embedding_size}D")
+    print(f"   CLIP output: {model_config.clip_embedding_size}D")
+    print(f"   Parameters: ~{estimate_parameters(model_config)/1e6:.1f}M")
+    
+    print(f"\n🌊 Flow Matching Configuration:")
+    print(f"   Prediction type: {flow_config.prediction_type}")
+    print(f"   Flow type: {flow_config.flow_type}")
+    print(f"   Normalize targets: {flow_config.normalize_targets}")
+    
+    print(f"\n🏃 Training Configuration:")
+    print(f"   Epochs: {training_config.num_epochs}")
+    print(f"   Batch size: {training_config.batch_size}")
+    print(f"   Learning rate: {training_config.learning_rate}")
+    print(f"   Gradient accumulation: {training_config.gradient_accumulation_steps}")
+    print(f"   Mixed precision: {training_config.fp16}")
+    
+    print(f"\n📊 Evaluation Configuration:")
+    print(f"   Eval every: {eval_config.eval_every_n_steps} steps")
+    print(f"   Eval samples: {eval_config.eval_num_samples}")
+    print(f"   Inference steps: {eval_config.eval_inference_steps}")
+    print(f"   Normalize embeddings: {eval_config.normalize_embeddings}")
+    
+    print("=" * 50)
 
 
-# Add these to the end after the existing predefined configs
-DEFAULT_FLOW_MATCHING_CONFIG = get_default_flow_matching_config()
-DEFAULT_TRAINING_CONFIG = get_default_training_config()
+def estimate_parameters(config: BLIP3oDiTConfig) -> int:
+    """Estimate number of parameters"""
+    # Rough parameter estimation
+    embed_params = config.clip_embedding_size * config.hidden_size + config.eva_embedding_size * config.hidden_size
+    
+    # Transformer layers
+    layer_params = config.num_hidden_layers * (
+        # Self-attention
+        3 * config.hidden_size * config.hidden_size +  # Q, K, V projections
+        config.hidden_size * config.hidden_size +       # Output projection
+        # Cross-attention  
+        config.hidden_size * config.hidden_size +       # Q projection
+        2 * config.hidden_size * config.hidden_size +   # K, V projections
+        config.hidden_size * config.hidden_size +       # Output projection
+        # FFN
+        config.hidden_size * config.intermediate_size +   # Up projection
+        config.intermediate_size * config.hidden_size +   # Down projection
+        # LayerNorms and other
+        config.hidden_size * 6                          # Various norms and projections
+    )
+    
+    output_params = config.hidden_size * config.clip_embedding_size
+    total_params = embed_params + layer_params + output_params
+    
+    return total_params
+
+
+# Export commonly used configurations
+DEFAULT_MODEL_CONFIG = get_blip3o_config("base", "patch_only")
+DEFAULT_FLOW_CONFIG = FlowMatchingConfig()
+DEFAULT_TRAINING_CONFIG = TrainingConfig()
+DEFAULT_EVAL_CONFIG = EvaluationConfig()

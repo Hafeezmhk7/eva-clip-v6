@@ -1,5 +1,5 @@
 """
-BLIP3-o Models Module - Simplified
+BLIP3-o Models Module
 src/modules/models/__init__.py
 """
 

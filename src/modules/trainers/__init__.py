@@ -1,5 +1,5 @@
 """
-BLIP3-o Trainers Module - Simplified
+BLIP3-o Trainers Module
 src/modules/trainers/__init__.py
 """
 
@@ -11,9 +11,12 @@ logger = logging.getLogger(__name__)
 TRAINER_AVAILABLE = False
 
 try:
-    from .blip3o_trainer import BLIP3oTrainer, create_training_args
+    from .blip3o_trainer import (
+        BLIP3oTrainer,
+        create_training_args,
+    )
     TRAINER_AVAILABLE = True
-    logger.info("✅ BLIP3o trainer loaded successfully")
+    logger.info("✅ BLIP3-o trainer loaded successfully")
 except ImportError as e:
     logger.error(f"❌ Failed to import trainer: {e}")
     BLIP3oTrainer = None

@@ -1,12 +1,13 @@
+#!/usr/bin/env python3
 """
-FIXED: BLIP3-o Dataset with Multiprocessing-Safe Gradient Handling
+FIXED: BLIP3-o Dataset Implementation with Proper Flow Matching Setup
 src/modules/datasets/blip3o_dataset.py
 
-KEY FIXES:
-1. Collate function creates tensors WITHOUT gradients
-2. Gradients are added in the training loop, not in DataLoader workers
-3. Safe multiprocessing with num_workers > 0
-4. Maintains all training functionality
+Addresses the key issues:
+1. Proper tensor creation and gradient handling
+2. Correct normalization aligned with BLIP3-o paper
+3. Multiprocessing-safe implementation
+4. Proper flow matching data preparation
 """
 
 import torch
@@ -27,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 class BLIP3oEmbeddingDataset(IterableDataset):
     """
-    FIXED: Flexible BLIP3-o dataset with CLS+patch support and multiprocessing-safe gradient handling
+    BLIP3-o dataset with proper flow matching setup and normalization
     """
     
     def __init__(
@@ -40,11 +41,10 @@ class BLIP3oEmbeddingDataset(IterableDataset):
         shuffle_within_shard: bool = True,
         delete_after_use: bool = False,
         random_seed: int = 42,
-        training_mode: str = "cls_patch",
+        training_mode: str = "patch_only",
         max_shards: Optional[int] = None,
         use_same_data_for_eval: bool = False,
         expected_tokens: Optional[int] = None,
-        cache_next_shard: bool = True,
     ):
         super().__init__()
         
@@ -59,7 +59,6 @@ class BLIP3oEmbeddingDataset(IterableDataset):
         self.training_mode = training_mode
         self.max_shards = max_shards
         self.use_same_data_for_eval = use_same_data_for_eval
-        self.cache_next_shard = cache_next_shard
         
         # Determine expected tokens based on mode
         if expected_tokens is None:
@@ -69,8 +68,6 @@ class BLIP3oEmbeddingDataset(IterableDataset):
         
         # Setup random state
         self.rng = random.Random(random_seed)
-        self.torch_generator = torch.Generator()
-        self.torch_generator.manual_seed(random_seed)
         
         # Load manifest and shard list
         self._load_manifest()
@@ -82,9 +79,6 @@ class BLIP3oEmbeddingDataset(IterableDataset):
         self.current_shard_samples = []
         self.current_sample_idx = 0
         
-        # Cache for next shard
-        self.next_shard_data = None
-        
         # Statistics
         self.total_samples_processed = 0
         self.shards_processed = 0
@@ -92,7 +86,7 @@ class BLIP3oEmbeddingDataset(IterableDataset):
         # Calculate estimated length
         self._calculate_estimated_length()
         
-        logger.info(f"FIXED: Multiprocessing-safe dataset initialized:")
+        logger.info(f"✅ BLIP3-o dataset initialized:")
         logger.info(f"  Directory: {self.chunked_embeddings_dir}")
         logger.info(f"  Split: {self.split}")
         logger.info(f"  Training mode: {self.training_mode} ({self.expected_tokens} tokens)")
@@ -101,7 +95,7 @@ class BLIP3oEmbeddingDataset(IterableDataset):
         logger.info(f"  Estimated samples: {self.estimated_length:,}")
 
     def _load_manifest(self):
-        """Load the embeddings manifest file with mode detection"""
+        """Load the embeddings manifest file"""
         manifest_path = self.chunked_embeddings_dir / "embeddings_manifest.json"
         
         if not manifest_path.exists():
@@ -119,18 +113,10 @@ class BLIP3oEmbeddingDataset(IterableDataset):
         
         self.estimated_total_samples = self.manifest.get('total_samples', 0)
         
-        # Detect mode from manifest if available
-        manifest_mode = self.manifest.get('extraction_mode', '')
-        manifest_tokens = self.manifest.get('tokens_per_sample', 0)
-        
-        if manifest_tokens and manifest_tokens != self.expected_tokens:
-            logger.warning(f"Token mismatch: expected {self.expected_tokens}, manifest has {manifest_tokens}")
-            logger.warning(f"Dataset mode: {self.training_mode}, manifest mode: {manifest_mode}")
-        
         logger.info(f"Loaded manifest: {self.manifest.get('total_shards', 0)} shards, {self.estimated_total_samples:,} samples")
 
     def _prepare_shard_list(self):
-        """Prepare the list of shard files with improved pattern matching"""
+        """Prepare the list of shard files"""
         mode_suffix = "cls_patch" if self.training_mode == "cls_patch" else "patch_only"
         patterns_to_try = [
             f"embeddings_shard_*_{mode_suffix}.pkl",
@@ -229,7 +215,7 @@ class BLIP3oEmbeddingDataset(IterableDataset):
         return self.estimated_length
 
     def _load_shard(self, shard_path: Path) -> Dict[str, Any]:
-        """Load a single embedding shard with token mode adaptation"""
+        """Load a single embedding shard with proper validation"""
         logger.debug(f"Loading shard: {shard_path}")
         
         try:
@@ -297,14 +283,10 @@ class BLIP3oEmbeddingDataset(IterableDataset):
                 shard_data['clip_blip3o_embeddings'] = torch.cat([clip_cls, clip_emb], dim=1)
                 shard_data['eva_blip3o_embeddings'] = torch.cat([eva_cls, eva_emb], dim=1)
                 
-                logger.debug(f"Added CLS token: {clip_tokens} -> {self.expected_tokens} tokens")
-                
             elif clip_tokens == 257 and self.expected_tokens == 256:
                 logger.info("Removing CLS token for patch_only mode")
                 shard_data['clip_blip3o_embeddings'] = clip_emb[:, 1:, :]
                 shard_data['eva_blip3o_embeddings'] = eva_emb[:, 1:, :]
-                
-                logger.debug(f"Removed CLS token: {clip_tokens} -> {self.expected_tokens} tokens")
                 
             else:
                 raise ValueError(f"Cannot adapt from {clip_tokens} to {self.expected_tokens} tokens")
@@ -326,14 +308,20 @@ class BLIP3oEmbeddingDataset(IterableDataset):
         assert eva_emb.shape[2] == 4096, f"Expected EVA 4096-dim, got {eva_emb.shape[2]}"
 
     def _normalize_shard_embeddings(self, shard_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Normalize embeddings in a shard"""
+        """
+        Normalize embeddings following BLIP3-o paper methodology
+        - EVA embeddings: normalized for conditioning
+        - CLIP embeddings: normalized for retrieval similarity
+        """
         clip_emb = shard_data['clip_blip3o_embeddings']
         eva_emb = shard_data['eva_blip3o_embeddings']
         
+        # Normalize CLIP embeddings (targets) - critical for retrieval
         clip_norm = torch.norm(clip_emb, dim=-1, keepdim=True)
         clip_norm = torch.clamp(clip_norm, min=1e-8)
         shard_data['clip_blip3o_embeddings'] = clip_emb / clip_norm
         
+        # Normalize EVA embeddings (conditioning)
         eva_norm = torch.norm(eva_emb, dim=-1, keepdim=True)
         eva_norm = torch.clamp(eva_norm, min=1e-8)
         shard_data['eva_blip3o_embeddings'] = eva_emb / eva_norm
@@ -355,7 +343,7 @@ class BLIP3oEmbeddingDataset(IterableDataset):
         self.current_sample_idx = 0
 
     def _load_next_shard(self):
-        """Load the next shard with improved error handling"""
+        """Load the next shard"""
         if self.current_shard_data is not None:
             if self.delete_after_use and self.shards_processed > 0:
                 try:
@@ -376,50 +364,35 @@ class BLIP3oEmbeddingDataset(IterableDataset):
             self.current_shard_data = None
             return False
         
-        if self.next_shard_data is not None:
-            self.current_shard_data = self.next_shard_data
-            self.next_shard_data = None
-            logger.debug("Using cached next shard")
-        else:
-            shard_path = self.shard_files[self.current_shard_idx]
-            
-            max_retries = 3
-            retry_count = 0
-            
-            while retry_count < max_retries:
-                try:
-                    if not shard_path.exists():
-                        raise FileNotFoundError(f"Shard file does not exist: {shard_path}")
-                    
-                    self.current_shard_data = self._load_shard(shard_path)
-                    logger.debug(f"✅ Loaded current shard: {shard_path}")
-                    break
-                    
-                except Exception as e:
-                    retry_count += 1
-                    logger.warning(f"Failed to load shard {shard_path} (attempt {retry_count}/{max_retries}): {e}")
-                    
-                    if retry_count >= max_retries:
-                        logger.error(f"❌ Failed to load shard after {max_retries} attempts: {shard_path}")
-                        self.current_shard_idx += 1
-                        if self.current_shard_idx >= len(self.shard_files):
-                            return False
-                        else:
-                            return self._load_next_shard()
-                    
-                    time.sleep(0.1)
+        shard_path = self.shard_files[self.current_shard_idx]
+        
+        max_retries = 3
+        retry_count = 0
+        
+        while retry_count < max_retries:
+            try:
+                if not shard_path.exists():
+                    raise FileNotFoundError(f"Shard file does not exist: {shard_path}")
+                
+                self.current_shard_data = self._load_shard(shard_path)
+                logger.debug(f"✅ Loaded shard: {shard_path}")
+                break
+                
+            except Exception as e:
+                retry_count += 1
+                logger.warning(f"Failed to load shard {shard_path} (attempt {retry_count}/{max_retries}): {e}")
+                
+                if retry_count >= max_retries:
+                    logger.error(f"❌ Failed to load shard after {max_retries} attempts: {shard_path}")
+                    self.current_shard_idx += 1
+                    if self.current_shard_idx >= len(self.shard_files):
+                        return False
+                    else:
+                        return self._load_next_shard()
+                
+                time.sleep(0.1)
         
         self._prepare_current_shard_samples()
-        
-        if self.cache_next_shard and (self.current_shard_idx + 1) < len(self.shard_files):
-            try:
-                next_shard_path = self.shard_files[self.current_shard_idx + 1]
-                if next_shard_path.exists():
-                    self.next_shard_data = self._load_shard(next_shard_path)
-                    logger.debug(f"Cached next shard: {next_shard_path}")
-            except Exception as e:
-                logger.warning(f"Failed to cache next shard: {e}")
-                self.next_shard_data = None
         
         num_samples = len(self.current_shard_samples) if self.current_shard_samples else 0
         logger.info(f"✅ Loaded shard {self.current_shard_idx + 1}/{len(self.shard_files)}: "
@@ -476,26 +449,22 @@ class BLIP3oEmbeddingDataset(IterableDataset):
         logger.info(f"✅ Dataset iteration completed: {self.total_samples_processed} samples from {self.shards_processed} shards")
 
 
-def multiprocessing_safe_collate_fn(batch: List[Dict[str, Any]]) -> Dict[str, Any]:
+def blip3o_collate_fn(batch: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
-    FIXED: Multiprocessing-safe collate function - creates tensors WITHOUT gradients
-    
-    This function creates all tensors without gradients. Gradients will be added
-    in the training loop after the data is loaded from workers.
+    FIXED: Collate function with proper flow matching setup and normalization
+    Following BLIP3-o paper methodology
     """
     if not batch:
         raise ValueError("Empty batch received")
     
     try:
-        # Stack tensor data - ALL tensors created WITHOUT gradients
+        # Stack tensor data
         eva_embeddings = torch.stack([item['eva_embeddings'] for item in batch])  # [B, N, 4096]
         clip_embeddings = torch.stack([item['clip_embeddings'] for item in batch])  # [B, N, 1024]
         
         # Collect metadata
         captions = [item['caption'] for item in batch]
         keys = [item['key'] for item in batch]
-        shard_indices = [item['shard_idx'] for item in batch]
-        sample_indices = [item['sample_idx'] for item in batch]
         training_mode = batch[0]['training_mode']
         num_tokens = batch[0]['num_tokens']
         
@@ -504,62 +473,71 @@ def multiprocessing_safe_collate_fn(batch: List[Dict[str, Any]]) -> Dict[str, An
         device = clip_embeddings.device
         dtype = clip_embeddings.dtype
         
-        # CRITICAL FIX: ALL tensors created WITHOUT gradients for safe multiprocessing
-        eva_embeddings = eva_embeddings.detach()
-        clip_embeddings = clip_embeddings.detach()
+        # CRITICAL: Ensure embeddings are normalized (following BLIP3-o paper)
+        eva_embeddings = torch.nn.functional.normalize(eva_embeddings, p=2, dim=-1)
+        clip_embeddings = torch.nn.functional.normalize(clip_embeddings, p=2, dim=-1)
         
-        # Create flow matching setup WITHOUT gradients
+        # Flow matching setup - Rectified Flow
+        # Sample timesteps uniformly
         timesteps = torch.rand(batch_size, device=device, dtype=dtype)
         
-        # Create noise WITHOUT gradients
+        # Create noise (source distribution)
         noise = torch.randn_like(clip_embeddings, device=device, dtype=dtype)
-        base_noise = torch.randn_like(clip_embeddings, device=device, dtype=dtype)  # NO requires_grad=True
         
-        # Linear interpolation for flow matching WITHOUT gradients
-        alpha = timesteps.view(-1, 1, 1)  # [B, 1, 1]
-        hidden_states = (1 - alpha) * base_noise + alpha * clip_embeddings + 0.1 * noise
+        # Rectified flow interpolation: x_t = (1-t) * x_0 + t * x_1
+        # where x_0 = noise, x_1 = target (normalized CLIP embeddings)
+        t_expanded = timesteps.view(-1, 1, 1)  # [B, 1, 1]
+        noisy_input = (1 - t_expanded) * noise + t_expanded * clip_embeddings
         
-        # CRITICAL: Ensure NO tensors require gradients (for safe multiprocessing)
-        assert not eva_embeddings.requires_grad, "EVA embeddings should not require gradients for multiprocessing"
-        assert not clip_embeddings.requires_grad, "CLIP embeddings should not require gradients for multiprocessing"
-        assert not hidden_states.requires_grad, "Hidden states should not require gradients for multiprocessing"
-        assert not base_noise.requires_grad, "Base noise should not require gradients for multiprocessing"
+        # Velocity target for rectified flow: v = x_1 - x_0 = clip_embeddings - noise
+        velocity_target = clip_embeddings - noise
         
         # Validate tensor properties
-        assert eva_embeddings.shape == (batch_size, seq_len, 4096), f"EVA batch shape: {eva_embeddings.shape}"
-        assert clip_embeddings.shape == (batch_size, seq_len, 1024), f"CLIP batch shape: {clip_embeddings.shape}"
-        assert hidden_states.shape == (batch_size, seq_len, 1024), f"Hidden states shape: {hidden_states.shape}"
+        assert eva_embeddings.shape == (batch_size, seq_len, 4096), f"EVA shape: {eva_embeddings.shape}"
+        assert clip_embeddings.shape == (batch_size, seq_len, 1024), f"CLIP shape: {clip_embeddings.shape}"
+        assert noisy_input.shape == (batch_size, seq_len, 1024), f"Noisy input shape: {noisy_input.shape}"
+        assert velocity_target.shape == (batch_size, seq_len, 1024), f"Velocity target shape: {velocity_target.shape}"
         assert timesteps.shape == (batch_size,), f"Timesteps shape: {timesteps.shape}"
         assert seq_len in [256, 257], f"Unexpected token count: {seq_len}"
         
+        # Check normalization
+        eva_norms = torch.norm(eva_embeddings, dim=-1).mean()
+        clip_norms = torch.norm(clip_embeddings, dim=-1).mean()
+        
+        # Log normalization status
+        if eva_norms < 0.9 or eva_norms > 1.1:
+            logger.warning(f"EVA embeddings not properly normalized: mean norm = {eva_norms:.3f}")
+        if clip_norms < 0.9 or clip_norms > 1.1:
+            logger.warning(f"CLIP embeddings not properly normalized: mean norm = {clip_norms:.3f}")
+        
         return {
-            # Core embeddings (for model input) - ALL WITHOUT gradients
-            'encoder_hidden_states': eva_embeddings,        # [B, N, 4096] - EVA conditioning
-            'clip_embeddings': clip_embeddings,             # [B, N, 1024] - Target CLIP patches
-            
-            # Flow matching inputs - ALL WITHOUT gradients (gradients added in training loop)
-            'hidden_states': hidden_states,                 # [B, N, 1024] - Noisy input
+            # Model inputs
+            'encoder_hidden_states': eva_embeddings,        # [B, N, 4096] - EVA conditioning (normalized)
+            'hidden_states': noisy_input,                   # [B, N, 1024] - Noisy input for model
             'timestep': timesteps,                          # [B] - Flow matching timesteps
+            
+            # Training targets
+            'clip_embeddings': clip_embeddings,             # [B, N, 1024] - Target CLIP patches (normalized)
+            'velocity_target': velocity_target,             # [B, N, 1024] - Velocity target for flow matching
             'noise': noise,                                 # [B, N, 1024] - Original noise
-            'base_noise': base_noise,                       # [B, N, 1024] - Base noise
             
             # Metadata
             'captions': captions,                           # List[str] - Text captions
             'keys': keys,                                   # List[str] - Sample keys
-            'shard_indices': shard_indices,                 # List[int] - Shard indices
-            'sample_indices': sample_indices,               # List[int] - Sample indices
             'batch_size': batch_size,                       # int
             'training_mode': training_mode,                 # str - "cls_patch" or "patch_only"
             'num_tokens': num_tokens,                       # int - 256 or 257
             'seq_len': seq_len,                            # int - sequence length
             
-            # Training flags
-            'multiprocessing_safe': True,                   # bool - safe for multiprocessing
-            'gradients_will_be_added_in_training_loop': True,  # bool - gradients added later
+            # Normalization info
+            'eva_embeddings_normalized': True,              # bool
+            'clip_embeddings_normalized': True,             # bool
+            'eva_norm_mean': eva_norms.item(),             # float
+            'clip_norm_mean': clip_norms.item(),           # float
         }
         
     except Exception as e:
-        logger.error(f"Error in multiprocessing-safe collate function: {e}")
+        logger.error(f"Error in collate function: {e}")
         logger.error(f"Batch info: {len(batch)} items")
         if batch:
             first_item = batch[0]
@@ -572,27 +550,25 @@ def multiprocessing_safe_collate_fn(batch: List[Dict[str, Any]]) -> Dict[str, An
         raise
 
 
-def create_flexible_dataloaders(
+def create_blip3o_dataloaders(
     chunked_embeddings_dir: Union[str, Path],
     batch_size: int = 32,
     eval_batch_size: Optional[int] = None,
     eval_split_ratio: float = 0.1,
     normalize_embeddings: bool = True,
-    training_mode: str = "cls_patch",
+    training_mode: str = "patch_only",
     max_shards: Optional[int] = None,
     use_same_data_for_eval: bool = False,
     delete_after_use: bool = False,
-    num_workers: int = 4,  # Now we can safely use multiple workers!
+    num_workers: int = 0,  # Keep at 0 for debugging
     pin_memory: bool = None,
     **kwargs
 ) -> Tuple[DataLoader, Optional[DataLoader]]:
     """
-    FIXED: Create flexible dataloaders with multiprocessing-safe gradient handling
-    
-    Now supports num_workers > 0 safely!
+    Create BLIP3-o dataloaders with proper flow matching setup
     """
     if eval_batch_size is None:
-        eval_batch_size = batch_size * 2
+        eval_batch_size = batch_size
     
     if pin_memory is None:
         pin_memory = torch.cuda.is_available()
@@ -618,20 +594,20 @@ def create_flexible_dataloaders(
         logger.error(f"❌ Failed to create training dataset: {e}")
         raise
     
-    # Create training dataloader with multiprocessing-safe collate function
+    # Create training dataloader
     try:
         train_dataloader = DataLoader(
             train_dataset,
             batch_size=batch_size,
-            num_workers=num_workers,  # Now we can safely use multiple workers!
-            collate_fn=multiprocessing_safe_collate_fn,  # FIXED: multiprocessing-safe
+            num_workers=num_workers,
+            collate_fn=blip3o_collate_fn,
             pin_memory=pin_memory,
             drop_last=True,
-            persistent_workers=num_workers > 0,  # Enable persistent workers if using multiple workers
+            persistent_workers=num_workers > 0,
             **kwargs
         )
         
-        logger.info(f"✅ Training dataloader created (num_workers={num_workers}, multiprocessing-safe)")
+        logger.info(f"✅ Training dataloader created (num_workers={num_workers})")
         
     except Exception as e:
         logger.error(f"❌ Failed to create training dataloader: {e}")
@@ -657,15 +633,15 @@ def create_flexible_dataloaders(
             eval_dataloader = DataLoader(
                 eval_dataset,
                 batch_size=eval_batch_size,
-                num_workers=min(num_workers, 2),  # Slightly fewer workers for eval
-                collate_fn=multiprocessing_safe_collate_fn,  # FIXED: multiprocessing-safe
+                num_workers=min(num_workers, 1),
+                collate_fn=blip3o_collate_fn,
                 pin_memory=pin_memory,
                 drop_last=False,
-                persistent_workers=min(num_workers, 2) > 0,
+                persistent_workers=min(num_workers, 1) > 0,
                 **kwargs
             )
             
-            logger.info(f"✅ Evaluation dataloader created (multiprocessing-safe)")
+            logger.info(f"✅ Evaluation dataloader created")
             
         except Exception as e:
             logger.warning(f"⚠️ Failed to create evaluation dataloader: {e}")
@@ -674,99 +650,5 @@ def create_flexible_dataloaders(
     return train_dataloader, eval_dataloader
 
 
-# Backward compatibility aliases
-training_aware_collate_fn = multiprocessing_safe_collate_fn  # Updated alias
-flexible_collate_fn = multiprocessing_safe_collate_fn
-create_gradient_aware_dataloaders = create_flexible_dataloaders
-
-
-def test_gradient_flow_dataset(chunked_embeddings_dir: Union[str, Path], 
-                               training_mode: str = "cls_patch",
-                               max_shards: int = 1):
-    """FIXED: Test the multiprocessing-safe gradient flow setup with actual data"""
-    print(f"🧪 Testing FIXED multiprocessing-safe gradient flow setup")
-    print(f"📁 Directory: {chunked_embeddings_dir}")
-    print(f"🎯 Training mode: {training_mode}")
-    print(f"📦 Max shards: {max_shards}")
-    print("=" * 50)
-    
-    try:
-        # Create dataloaders with multiple workers (now safe!)
-        train_dataloader, eval_dataloader = create_flexible_dataloaders(
-            chunked_embeddings_dir=chunked_embeddings_dir,
-            batch_size=4,
-            training_mode=training_mode,
-            max_shards=max_shards,
-            use_same_data_for_eval=True,
-            delete_after_use=False,
-            num_workers=2,  # Test with multiple workers!
-        )
-        
-        print(f"✅ Dataloaders created successfully with num_workers=2")
-        print(f"   Train dataloader: {len(train_dataloader):,} batches")
-        if eval_dataloader:
-            print(f"   Eval dataloader: {len(eval_dataloader):,} batches")
-        
-        # Test batch creation with multiprocessing
-        print(f"🧪 Testing multiprocessing-safe batch creation...")
-        batch = next(iter(train_dataloader))
-        
-        print(f"✅ Batch created: EVA {batch['encoder_hidden_states'].shape}, CLIP {batch['clip_embeddings'].shape}")
-        print(f"   Training mode: {batch['training_mode']}")
-        print(f"   Tokens: {batch['num_tokens']}")
-        print(f"   Multiprocessing safe: {batch['multiprocessing_safe']}")
-        
-        # Verify NO tensors have gradients (multiprocessing safe)
-        eva_grad = batch['encoder_hidden_states'].requires_grad
-        clip_grad = batch['clip_embeddings'].requires_grad
-        hidden_grad = batch['hidden_states'].requires_grad
-        base_noise_grad = batch['base_noise'].requires_grad
-        
-        print(f"✅ Gradient status (all should be False for multiprocessing safety):")
-        print(f"   EVA embeddings requires_grad: {eva_grad}")
-        print(f"   CLIP embeddings requires_grad: {clip_grad}")
-        print(f"   Hidden states requires_grad: {hidden_grad}")
-        print(f"   Base noise requires_grad: {base_noise_grad}")
-        
-        # Verify all are False (multiprocessing safe)
-        if not eva_grad and not clip_grad and not hidden_grad and not base_noise_grad:
-            print("🎉 MULTIPROCESSING ISSUE COMPLETELY FIXED!")
-            print("✅ All tensors properly detached for safe multiprocessing")
-            print("✅ Can now use num_workers > 0 without crashes")
-            print("✅ Gradients will be added in training loop where needed")
-            print("✅ Ready for fast BLIP3-o training with multiple workers!")
-        else:
-            print("❌ Some tensors still have gradients - this will cause multiprocessing errors")
-        
-        # Test eval dataloader too
-        if eval_dataloader:
-            try:
-                eval_batch = next(iter(eval_dataloader))
-                print(f"✅ Eval batch also works with multiprocessing-safe setup")
-            except Exception as e:
-                print(f"⚠️ Eval batch test failed: {e}")
-        
-        print(f"🎉 ALL MULTIPROCESSING TESTS PASSED!")
-        print("✅ Multiprocessing gradient serialization issue COMPLETELY RESOLVED!")
-        print("✅ Ready for fast training with multiple DataLoader workers")
-        return True
-        
-    except Exception as e:
-        print(f"❌ Test failed: {e}")
-        import traceback
-        traceback.print_exc()
-        return False
-
-
-if __name__ == "__main__":
-    import sys
-    
-    if len(sys.argv) > 1:
-        embeddings_dir = sys.argv[1]
-        training_mode = sys.argv[2] if len(sys.argv) > 2 else "cls_patch"
-        max_shards = int(sys.argv[3]) if len(sys.argv) > 3 else 1
-        success = test_gradient_flow_dataset(embeddings_dir, training_mode, max_shards)
-        sys.exit(0 if success else 1)
-    else:
-        print("Usage: python blip3o_dataset.py <embeddings_dir> [training_mode] [max_shards]")
-        print("Example: python blip3o_dataset.py /path/to/embeddings cls_patch 1")
+# Aliases for backward compatibility
+create_flexible_dataloaders = create_blip3o_dataloaders
