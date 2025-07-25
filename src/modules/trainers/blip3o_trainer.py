@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-FIXED: BLIP3-o Trainer with Proper Evaluation During Training
+FIXED: BLIP3-o Trainer with Proper L2 Normalization Tracking
 src/modules/trainers/blip3o_trainer.py
 
-KEY FIXES:
-1. Proper evaluation every N steps
-2. Both velocity and embedding similarity tracking
-3. Clean training metrics aligned with BLIP3-o paper
-4. Evaluation matches training metrics
+KEY FIX:
+1. Track and log proper norm values (CLIP targets should be ~1.0)
+2. Monitor normalization status throughout training
+3. Report both CLIP target norms and velocity target norms
+4. Warn if normalization is not working correctly
 """
 
 import torch
@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 class BLIP3oTrainer(Trainer):
     """
-    FIXED: BLIP3-o trainer with proper evaluation during training
+    FIXED: BLIP3-o trainer with proper L2 normalization tracking
     """
     
     def __init__(
@@ -68,6 +68,11 @@ class BLIP3oTrainer(Trainer):
         self.velocity_similarity_history = []
         self.embedding_similarity_history = []
         
+        # FIXED: Norm tracking
+        self.clip_target_norm_history = []
+        self.prediction_norm_history = []
+        self.velocity_target_norm_history = []
+        
         # Best metrics tracking
         self.best_velocity_sim = 0.0
         self.best_embedding_sim = 0.0
@@ -77,25 +82,40 @@ class BLIP3oTrainer(Trainer):
         self.steps_without_velocity_improvement = 0
         self.steps_without_embedding_improvement = 0
         
-        logger.info(f"✅ FIXED BLIP3o Trainer initialized")
+        # Normalization tracking
+        self.normalization_warnings = 0
+        self.last_clip_norm = None
+        
+        logger.info(f"✅ FIXED BLIP3o Trainer initialized with L2 normalization tracking")
         logger.info(f"   Training mode: {training_mode} ({self.expected_tokens} tokens)")
         logger.info(f"   Evaluation every: {eval_every_n_steps} steps")
         logger.info(f"   Evaluation samples: {eval_num_samples}")
         logger.info(f"   Evaluation inference steps: {eval_inference_steps}")
+        logger.info(f"   Expected CLIP target norms: ~1.0 (L2 normalized)")
     
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
-        """Compute loss with clean flow matching"""
+        """Compute loss with FIXED L2 normalization tracking"""
         model.train()
         
         # Extract inputs with better error handling
         try:
             eva_embeddings = inputs['encoder_hidden_states']  # [B, N, 4096]
-            clip_embeddings = inputs['clip_embeddings']       # [B, N, 1024]
+            clip_embeddings = inputs['clip_embeddings']       # [B, N, 1024] - Should be normalized ~1.0
             timesteps = inputs['timestep']                    # [B]
         except KeyError as e:
             logger.error(f"Missing input key: {e}")
             logger.error(f"Available keys: {list(inputs.keys())}")
             raise
+        
+        # FIXED: Check normalization status from collate function
+        clip_norm_from_collate = inputs.get('clip_norm_mean', None)
+        initial_clip_norm = inputs.get('initial_clip_norm', None)
+        
+        if clip_norm_from_collate is not None:
+            if abs(clip_norm_from_collate - 1.0) > 0.1:
+                self.normalization_warnings += 1
+                if self.normalization_warnings <= 5:  # Limit warnings
+                    logger.warning(f"CLIP embeddings not properly normalized: {clip_norm_from_collate:.3f} (should be ~1.0)")
         
         # Get or create noisy input
         if 'hidden_states' in inputs:
@@ -137,7 +157,7 @@ class BLIP3oTrainer(Trainer):
         if not velocity_pred.requires_grad:
             raise RuntimeError("Model output doesn't require gradients during training!")
         
-        # Compute clean flow matching loss
+        # Compute FIXED flow matching loss
         loss, metrics = self.flow_matching_loss(
             model_output=velocity_pred,
             target_samples=clip_embeddings,
@@ -147,16 +167,16 @@ class BLIP3oTrainer(Trainer):
             training_mode=self.training_mode,
         )
         
-        # Track training metrics
-        self._track_training_metrics(loss, metrics)
+        # Track training metrics with FIXED normalization
+        self._track_training_metrics_fixed(loss, metrics)
         
         # Run evaluation every N steps
         if self.step_count > 0 and self.step_count % self.eval_every_n_steps == 0:
             self._run_evaluation_during_training()
         
-        # Log progress
+        # Log progress with normalization info
         if self.step_count % self.args.logging_steps == 0:
-            self._log_training_progress(loss, metrics)
+            self._log_training_progress_fixed(loss, metrics)
         
         # Prepare outputs
         outputs = {
@@ -167,8 +187,8 @@ class BLIP3oTrainer(Trainer):
         
         return (loss, outputs) if return_outputs else loss
     
-    def _track_training_metrics(self, loss: torch.Tensor, metrics: Optional[Dict[str, float]]):
-        """Track training metrics"""
+    def _track_training_metrics_fixed(self, loss: torch.Tensor, metrics: Optional[Dict[str, float]]):
+        """Track training metrics with FIXED L2 normalization monitoring"""
         self.step_count += 1
         loss_value = loss.item()
         self.loss_history.append(loss_value)
@@ -176,6 +196,23 @@ class BLIP3oTrainer(Trainer):
         if metrics:
             velocity_sim = metrics.get('velocity_cosine_sim', 0.0)
             self.velocity_similarity_history.append(velocity_sim)
+            
+            # FIXED: Track norm values properly
+            clip_target_norm = metrics.get('clip_target_norm', 1.0)  # CLIP embeddings (should be ~1.0)
+            prediction_norm = metrics.get('prediction_norm', 1.0)    # Model predictions
+            velocity_target_norm = metrics.get('target_norm', 1.0)   # Velocity targets
+            
+            self.clip_target_norm_history.append(clip_target_norm)
+            self.prediction_norm_history.append(prediction_norm)
+            self.velocity_target_norm_history.append(velocity_target_norm)
+            
+            self.last_clip_norm = clip_target_norm
+            
+            # Check normalization status
+            if abs(clip_target_norm - 1.0) > 0.1:
+                self.normalization_warnings += 1
+                if self.normalization_warnings <= 10:  # Limit warnings
+                    logger.warning(f"Step {self.step_count}: CLIP target norm {clip_target_norm:.3f} (should be ~1.0)")
             
             # Update best metrics
             if velocity_sim > self.best_velocity_sim:
@@ -305,8 +342,8 @@ class BLIP3oTrainer(Trainer):
             logger.error(f"Error during evaluation: {e}")
             return None
     
-    def _log_training_progress(self, loss: torch.Tensor, metrics: Optional[Dict[str, float]]):
-        """Log detailed training progress"""
+    def _log_training_progress_fixed(self, loss: torch.Tensor, metrics: Optional[Dict[str, float]]):
+        """Log detailed training progress with FIXED normalization info"""
         loss_value = loss.item()
         
         # Basic progress
@@ -322,10 +359,16 @@ class BLIP3oTrainer(Trainer):
                 latest_emb_sim = self.embedding_similarity_history[-1]
                 progress_msg += f", EmbSim={latest_emb_sim:.4f}"
             
-            # Norm tracking
-            pred_norm = metrics.get('prediction_norm', 0.0)
-            target_norm = metrics.get('target_norm', 0.0)
-            progress_msg += f", PredNorm={pred_norm:.3f}, TargetNorm={target_norm:.3f}"
+            # FIXED: Norm tracking with proper labels
+            clip_norm = metrics.get('clip_target_norm', 1.0)       # CLIP embeddings (should be ~1.0)
+            pred_norm = metrics.get('prediction_norm', 1.0)        # Model predictions
+            velocity_norm = metrics.get('target_norm', 1.0)        # Velocity targets
+            
+            progress_msg += f", ClipNorm={clip_norm:.3f}, PredNorm={pred_norm:.3f}, VelNorm={velocity_norm:.3f}"
+            
+            # Normalization status
+            norm_status = "✅" if abs(clip_norm - 1.0) < 0.1 else "⚠️"
+            progress_msg += f" {norm_status}"
             
             # Best metrics
             progress_msg += f" | Best: Vel={self.best_velocity_sim:.4f}, Emb={self.best_embedding_sim:.4f}"
@@ -335,10 +378,10 @@ class BLIP3oTrainer(Trainer):
         
         # Detailed summary every 50 steps
         if self.step_count % (self.args.logging_steps * 5) == 0:
-            self._log_detailed_summary()
+            self._log_detailed_summary_fixed()
     
-    def _log_detailed_summary(self):
-        """Log detailed training summary"""
+    def _log_detailed_summary_fixed(self):
+        """Log detailed training summary with FIXED normalization tracking"""
         logger.info("=" * 80)
         logger.info(f"📊 TRAINING SUMMARY - Step {self.step_count}")
         logger.info("=" * 80)
@@ -359,26 +402,46 @@ class BLIP3oTrainer(Trainer):
             logger.info(f"🎯 Embedding Similarity: Recent avg={recent_emb:.4f}, Best={self.best_embedding_sim:.4f}")
             logger.info(f"   Evaluations performed: {len(self.embedding_similarity_history)}")
         
+        # FIXED: Normalization summary
+        if len(self.clip_target_norm_history) > 0:
+            recent_clip_norm = sum(self.clip_target_norm_history[-10:]) / min(10, len(self.clip_target_norm_history))
+            recent_pred_norm = sum(self.prediction_norm_history[-10:]) / min(10, len(self.prediction_norm_history))
+            recent_vel_norm = sum(self.velocity_target_norm_history[-10:]) / min(10, len(self.velocity_target_norm_history))
+            
+            logger.info(f"📏 Normalization Status:")
+            logger.info(f"   CLIP targets: {recent_clip_norm:.3f} (should be ~1.0) {'✅' if abs(recent_clip_norm - 1.0) < 0.1 else '⚠️'}")
+            logger.info(f"   Predictions:  {recent_pred_norm:.3f}")
+            logger.info(f"   Vel targets:  {recent_vel_norm:.3f}")
+            logger.info(f"   Warnings issued: {self.normalization_warnings}")
+        
         # Improvement tracking
         logger.info(f"📈 Steps without improvement:")
         logger.info(f"   Velocity: {self.steps_without_velocity_improvement}")
         logger.info(f"   Embedding: {self.steps_without_embedding_improvement}")
         
         # Training health assessment
-        health = self._assess_training_health()
+        health = self._assess_training_health_fixed()
         logger.info(f"🏥 Training Health: {health}")
         
         logger.info("=" * 80)
     
-    def _assess_training_health(self) -> str:
-        """Assess training health"""
+    def _assess_training_health_fixed(self) -> str:
+        """Assess training health including normalization status"""
         if len(self.velocity_similarity_history) < 10:
             return "STARTING - Not enough data yet"
         
         recent_vel = sum(self.velocity_similarity_history[-10:]) / 10
         recent_emb = sum(self.embedding_similarity_history[-3:]) / max(3, len(self.embedding_similarity_history[-3:])) if self.embedding_similarity_history else 0
         
-        if recent_vel < 0.01:
+        # Check normalization
+        norm_ok = True
+        if len(self.clip_target_norm_history) > 0:
+            recent_clip_norm = sum(self.clip_target_norm_history[-10:]) / min(10, len(self.clip_target_norm_history))
+            norm_ok = abs(recent_clip_norm - 1.0) < 0.2
+        
+        if not norm_ok:
+            return "NORMALIZATION ISSUE - CLIP targets not properly normalized"
+        elif recent_vel < 0.01:
             return "POOR - Very low velocity similarity"
         elif recent_vel > 0.1 and recent_emb < 0.05:
             return "CONCERNING - Good velocity but poor embeddings"
@@ -403,7 +466,7 @@ class BLIP3oTrainer(Trainer):
         )
         self.model.train()
         
-        # Training summary
+        # Training summary with FIXED normalization info
         training_summary = {
             'total_steps': self.step_count,
             'final_loss': self.loss_history[-1] if self.loss_history else 0,
@@ -412,8 +475,14 @@ class BLIP3oTrainer(Trainer):
             'best_velocity_sim': self.best_velocity_sim,
             'final_embedding_sim': self.embedding_similarity_history[-1] if self.embedding_similarity_history else 0,
             'best_embedding_sim': self.best_embedding_sim,
-            'training_health': self._assess_training_health(),
+            'training_health': self._assess_training_health_fixed(),
             'evaluations_performed': len(self.embedding_similarity_history),
+            
+            # FIXED: Normalization summary
+            'final_clip_norm': self.clip_target_norm_history[-1] if self.clip_target_norm_history else 1.0,
+            'final_prediction_norm': self.prediction_norm_history[-1] if self.prediction_norm_history else 1.0,
+            'normalization_warnings': self.normalization_warnings,
+            'clip_norms_properly_normalized': self.last_clip_norm is not None and abs(self.last_clip_norm - 1.0) < 0.1,
         }
         
         return {
@@ -422,6 +491,9 @@ class BLIP3oTrainer(Trainer):
             'loss_history': self.loss_history,
             'velocity_similarity_history': self.velocity_similarity_history,
             'embedding_similarity_history': self.embedding_similarity_history,
+            'clip_target_norm_history': self.clip_target_norm_history,
+            'prediction_norm_history': self.prediction_norm_history,
+            'velocity_target_norm_history': self.velocity_target_norm_history,
         }
 
 

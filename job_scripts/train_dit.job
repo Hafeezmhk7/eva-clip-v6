@@ -52,8 +52,8 @@ mkdir -p "${OUTPUT_DIR}"
 
 # FIXED Training parameters - addressing scale mismatch
 MODEL_SIZE="base"
-NUM_EPOCHS=15  # More epochs to see improvement
-BATCH_SIZE=32  # Reasonable batch size
+NUM_EPOCHS=8  # More epochs to see improvement
+BATCH_SIZE=64  # Reasonable batch size
 LEARNING_RATE=1e-4  # Slightly higher LR for faster learning
 GRADIENT_ACCUMULATION_STEPS=2
 LOGGING_STEPS=5
