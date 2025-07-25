@@ -2,6 +2,12 @@
 """
 COMPLETELY FIXED: BLIP3-o DiT Model with Correct Generation
 src/modules/models/blip3o_patch_dit.py
+
+KEY FIXES:
+1. Removed confusing output scaling
+2. Generation matches training exactly
+3. Proper normalization following BLIP3-o paper
+4. Clean and simple implementation
 """
 
 import torch
@@ -33,7 +39,6 @@ class BLIP3oDiTConfig(PretrainedConfig):
         dropout_prob: float = 0.1,
         training_mode: str = "patch_only",
         use_gradient_checkpointing: bool = False,
-        output_scale: float = 0.1,
         **kwargs
     ):
         super().__init__(**kwargs)
@@ -48,7 +53,6 @@ class BLIP3oDiTConfig(PretrainedConfig):
         self.dropout_prob = dropout_prob
         self.training_mode = training_mode
         self.use_gradient_checkpointing = use_gradient_checkpointing
-        self.output_scale = output_scale
 
 
 class RotaryPositionalEmbedding3D(nn.Module):
@@ -218,7 +222,7 @@ class BLIP3oDiTBlock(nn.Module):
 
 class BLIP3oPatchDiTModel(PreTrainedModel):
     """
-    COMPLETELY FIXED: BLIP3-o Patch-Level DiT Model with Correct Generation
+    COMPLETELY FIXED: BLIP3-o Patch-Level DiT Model aligned with paper
     """
     
     config_class = BLIP3oDiTConfig
@@ -231,28 +235,36 @@ class BLIP3oPatchDiTModel(PreTrainedModel):
         
         self.gradient_checkpointing = False
         
+        # Input projection from CLIP dimension to hidden dimension
         self.input_proj = nn.Linear(config.clip_embedding_size, config.hidden_size, bias=True)
+        
+        # Timestep embedding
         self.timestep_embedder = TimestepEmbedder(config.hidden_size)
+        
+        # Positional embedding
         self.pos_embed = nn.Parameter(torch.zeros(1, config.max_position_embeddings, config.hidden_size))
         
+        # Transformer blocks
         self.blocks = nn.ModuleList([
             BLIP3oDiTBlock(config) for _ in range(config.num_hidden_layers)
         ])
         
+        # Output layers
         self.output_norm = nn.LayerNorm(config.hidden_size, eps=1e-6)
         self.output_proj = nn.Linear(config.hidden_size, config.clip_embedding_size, bias=True)
         
-        self.output_scale = nn.Parameter(torch.tensor(config.output_scale))
-        
+        # Initialize weights
         self.apply(self._init_weights)
         nn.init.normal_(self.pos_embed, std=0.02)
+        
+        # FIXED: Initialize output projection to small values for stability
         nn.init.normal_(self.output_proj.weight, std=0.02)
         nn.init.zeros_(self.output_proj.bias)
         
-        logger.info(f"✅ FIXED BLIP3-o model initialized")
+        logger.info(f"✅ FIXED BLIP3-o model initialized (no scaling confusion)")
         logger.info(f"   Training mode: {config.training_mode}")
         logger.info(f"   Token count: {config.num_tokens}")
-        logger.info(f"   Output scale: {config.output_scale}")
+        logger.info(f"   Parameters: {self.get_num_parameters():,}")
 
     def _init_weights(self, module):
         if isinstance(module, nn.Linear):
@@ -293,74 +305,96 @@ class BLIP3oPatchDiTModel(PreTrainedModel):
 
     def forward(
         self,
-        hidden_states: torch.Tensor,
-        timestep: torch.Tensor,
-        encoder_hidden_states: torch.Tensor,
+        hidden_states: torch.Tensor,  # [B, N, 1024] - Noisy CLIP embeddings
+        timestep: torch.Tensor,  # [B] - Flow matching timesteps
+        encoder_hidden_states: torch.Tensor,  # [B, N, 4096] - EVA-CLIP conditioning
         return_dict: bool = True,
         **kwargs
     ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
+        """
+        Forward pass for training/inference
+        
+        Args:
+            hidden_states: Noisy CLIP embeddings [B, N, 1024]
+            timestep: Flow matching timesteps [B]
+            encoder_hidden_states: EVA-CLIP conditioning [B, N, 4096]
+        
+        Returns:
+            Velocity prediction [B, N, 1024]
+        """
         batch_size, seq_len, input_dim = hidden_states.shape
-        if seq_len not in [256, 257]:
-            raise ValueError(f"Expected 256 or 257 tokens, got {seq_len}")
         
-        x = self.input_proj(hidden_states)
+        # Validate inputs
+        assert input_dim == self.config.clip_embedding_size, f"Expected {self.config.clip_embedding_size}-dim input, got {input_dim}"
+        assert seq_len in [256, 257], f"Expected 256 or 257 tokens, got {seq_len}"
+        assert encoder_hidden_states.shape[2] == self.config.eva_embedding_size, f"Expected {self.config.eva_embedding_size}-dim EVA features"
         
+        # Project input to hidden dimension
+        x = self.input_proj(hidden_states)  # [B, N, hidden_size]
+        
+        # Add positional embeddings
         if seq_len <= self.config.max_position_embeddings:
             x = x + self.pos_embed[:, :seq_len, :]
         else:
             raise ValueError(f"Sequence length {seq_len} exceeds max position embeddings")
         
-        timestep_emb = self.timestep_embedder(timestep)
-        timestep_emb = timestep_emb.unsqueeze(1).expand(-1, seq_len, -1)
+        # Add timestep embeddings
+        timestep_emb = self.timestep_embedder(timestep)  # [B, hidden_size]
+        timestep_emb = timestep_emb.unsqueeze(1).expand(-1, seq_len, -1)  # [B, N, hidden_size]
         x = x + timestep_emb
         
+        # Pass through transformer blocks
         for block in self.blocks:
             if self.gradient_checkpointing and self.training:
                 x = self._gradient_checkpointing_func(block, x, encoder_hidden_states)
             else:
                 x = block(x, encoder_hidden_states)
         
+        # Output projection
         x = self.output_norm(x)
-        velocity_pred = self.output_proj(x)
-        velocity_pred = velocity_pred * self.output_scale
+        velocity_pred = self.output_proj(x)  # [B, N, 1024]
+        
+        # FIXED: No output scaling - clean predictions
         
         if return_dict:
             return {
                 "velocity_prediction": velocity_pred,
                 "hidden_states": x,
                 "timestep_embeddings": timestep_emb,
-                "output_scale": self.output_scale,
             }
         return velocity_pred
     
     @torch.no_grad()
     def generate(
         self,
-        eva_features: torch.Tensor,
+        eva_features: torch.Tensor,  # [B, N, 4096] - EVA-CLIP conditioning
         num_inference_steps: int = 50,
         generator: Optional[torch.Generator] = None,
         return_intermediate: bool = False,
         normalize_output: bool = True,
         guidance_scale: float = 1.0,
-        velocity_scale: float = 0.1,  # CRITICAL: Must match training
     ) -> torch.Tensor:
         """
-        COMPLETELY FIXED: Generate CLIP embeddings with correct timestep and velocity scaling
+        FIXED: Generate CLIP embeddings using rectified flow (matches training exactly)
+        
+        This generation process exactly reverses the training process:
+        1. Start from noise
+        2. Use the learned velocity field to flow to data
+        3. Normalize output for retrieval (as per BLIP3-o paper)
         """
         device = eva_features.device
         batch_size, num_tokens, _ = eva_features.shape
         
-        # FIXED: Start from standard normal noise (match training)
+        # Start from pure noise (same as training)
         x = torch.randn(
             batch_size, num_tokens, self.config.clip_embedding_size,
             device=device,
             generator=generator,
             dtype=eva_features.dtype
-        )  # NO scaling here - let the model learn the right scale
+        )
         
-        # FIXED: Correct timestep schedule for rectified flow
-        # Go from t=1 (pure noise) to t=0 (pure data)
-        timesteps = torch.linspace(1.0, 0.0, num_inference_steps, device=device)
+        # RECTIFIED FLOW: Linear timestep schedule from 1 (noise) to 0 (data)
+        timesteps = torch.linspace(1.0, 0.0, num_inference_steps + 1, device=device)
         dt = 1.0 / num_inference_steps
         
         intermediates = [] if return_intermediate else None
@@ -369,7 +403,7 @@ class BLIP3oPatchDiTModel(PreTrainedModel):
             # Current timestep
             t = torch.full((batch_size,), timesteps[i], device=device, dtype=eva_features.dtype)
             
-            # Forward pass to get velocity
+            # Predict velocity
             velocity = self.forward(
                 hidden_states=x,
                 timestep=t,
@@ -377,23 +411,18 @@ class BLIP3oPatchDiTModel(PreTrainedModel):
                 return_dict=False
             )
             
-            # CRITICAL FIX: Reverse the velocity scaling from training
-            # During training: velocity_target *= velocity_scale (made smaller)
-            # During generation: velocity_pred /= velocity_scale (make bigger)
-            scaled_velocity = velocity / velocity_scale
-            
-            # Apply guidance scaling if needed
+            # Apply guidance if needed
             if guidance_scale != 1.0:
-                scaled_velocity = scaled_velocity * guidance_scale
+                velocity = velocity * guidance_scale
             
-            # FIXED: Proper Euler integration with corrected direction
-            # Move TOWARDS the data (negative timestep direction)
-            x = x - dt * scaled_velocity  # NEGATIVE because we go from t=1 to t=0
+            # RECTIFIED FLOW: Euler integration
+            # dx/dt = velocity, so x_next = x + dt * velocity
+            x = x + dt * velocity
             
             if return_intermediate:
                 intermediates.append(x.clone())
         
-        # Final normalization
+        # Final normalization for retrieval (BLIP3-o paper)
         if normalize_output:
             x = torch.nn.functional.normalize(x, p=2, dim=-1)
         
@@ -402,34 +431,50 @@ class BLIP3oPatchDiTModel(PreTrainedModel):
         return x
     
     @torch.no_grad()
-    def quick_generate_test(
+    def evaluate_similarity(
         self,
-        eva_features: torch.Tensor,
-        target_embeddings: torch.Tensor,
-        velocity_scale: float = 0.1,
-        num_steps: int = 10,
+        eva_features: torch.Tensor,  # [B, N, 4096]
+        target_embeddings: torch.Tensor,  # [B, N, 1024]
+        num_inference_steps: int = 50,
+        normalize_embeddings: bool = True,
     ) -> Dict[str, float]:
         """
-        Quick test to see if generation is working during training
+        Evaluate embedding similarity between generated and target embeddings
+        
+        This is the key metric for BLIP3-o evaluation
         """
+        # Generate embeddings
         generated = self.generate(
             eva_features=eva_features,
-            num_inference_steps=num_steps,
-            normalize_output=True,
-            velocity_scale=velocity_scale
+            num_inference_steps=num_inference_steps,
+            normalize_output=normalize_embeddings
         )
         
-        # Compute embedding similarity
-        embedding_similarity = torch.nn.functional.cosine_similarity(
-            torch.nn.functional.normalize(generated, p=2, dim=-1),
-            torch.nn.functional.normalize(target_embeddings, p=2, dim=-1),
-            dim=-1
-        ).mean().item()
+        # Normalize targets if needed
+        if normalize_embeddings:
+            targets_norm = torch.nn.functional.normalize(target_embeddings, p=2, dim=-1)
+        else:
+            targets_norm = target_embeddings
+        
+        # Compute cosine similarity per patch
+        per_patch_sim = torch.nn.functional.cosine_similarity(generated, targets_norm, dim=-1)
+        
+        # Compute per-image similarity (average over patches)
+        per_image_sim = per_patch_sim.mean(dim=1)
+        
+        # Overall similarity
+        overall_sim = per_image_sim.mean().item()
         
         return {
-            'embedding_similarity': embedding_similarity,
-            'num_steps': num_steps,
-            'velocity_scale': velocity_scale
+            'overall_embedding_similarity': overall_sim,
+            'per_image_mean': per_image_sim.mean().item(),
+            'per_image_std': per_image_sim.std().item(),
+            'per_patch_mean': per_patch_sim.mean().item(),
+            'per_patch_std': per_patch_sim.std().item(),
+            'high_quality_images': (per_image_sim > 0.7).float().mean().item(),
+            'very_high_quality_images': (per_image_sim > 0.8).float().mean().item(),
+            'num_inference_steps': num_inference_steps,
+            'normalized': normalize_embeddings,
         }
     
     def get_num_parameters(self) -> int:
@@ -443,11 +488,10 @@ def create_blip3o_patch_dit_model(
     num_hidden_layers: int = 12,
     num_attention_heads: int = 12,
     use_gradient_checkpointing: bool = False,
-    output_scale: float = 0.1,
     **kwargs
 ) -> BLIP3oPatchDiTModel:
     """
-    Create BLIP3-o patch DiT model with proper scaling configuration
+    Create BLIP3-o patch DiT model
     """
     if config is None:
         num_tokens = 257 if training_mode == "cls_patch" else 256
@@ -459,7 +503,6 @@ def create_blip3o_patch_dit_model(
             max_position_embeddings=max(num_tokens, 257),
             training_mode=training_mode,
             use_gradient_checkpointing=use_gradient_checkpointing,
-            output_scale=output_scale,
             **kwargs
         )
     

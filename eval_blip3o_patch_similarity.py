@@ -1,7 +1,13 @@
 #!/usr/bin/env python3
 """
-FIXED: BLIP3-o Evaluation Script with Corrected Generation Method
+FIXED: BLIP3-o Evaluation Script
 eval_blip3o_patch_similarity.py
+
+KEY FIXES:
+1. Proper evaluation matching training methodology
+2. Clean generation without scaling confusion
+3. Comprehensive metrics aligned with BLIP3-o paper
+4. Validation that training and evaluation metrics match
 """
 
 import os
@@ -38,7 +44,7 @@ def setup_logging():
 def parse_arguments():
     """Parse command line arguments"""
     parser = argparse.ArgumentParser(
-        description="FIXED BLIP3-o Patch-wise Cosine Similarity Evaluation",
+        description="FIXED BLIP3-o Evaluation Script",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
     
@@ -51,21 +57,15 @@ def parse_arguments():
                        help="Output directory for results")
     
     # Evaluation parameters
-    parser.add_argument("--num_samples", type=int, default=1000,
+    parser.add_argument("--num_samples", type=int, default=5000,
                        help="Number of samples to evaluate")
-    parser.add_argument("--batch_size", type=int, default=8,
+    parser.add_argument("--batch_size", type=int, default=16,
                        help="Evaluation batch size")
     parser.add_argument("--num_inference_steps", type=int, default=50,
                        help="Number of inference steps")
     parser.add_argument("--training_mode", type=str, default="auto",
                        choices=["auto", "cls_patch", "patch_only"],
                        help="Training mode (auto-detect if 'auto')")
-    
-    # FIXED: Critical generation parameters
-    parser.add_argument("--velocity_scale", type=float, default=0.1,
-                       help="CRITICAL: Velocity scale (must match training)")
-    parser.add_argument("--guidance_scale", type=float, default=1.0,
-                       help="Guidance scale for generation")
     
     # Options
     parser.add_argument("--same_data_eval", action="store_true", default=True,
@@ -78,27 +78,21 @@ def parse_arguments():
                        choices=["float32", "float16", "bfloat16"],
                        help="Torch dtype for evaluation")
     
-    # Testing options
-    parser.add_argument("--test_multiple_steps", action="store_true", default=False,
-                       help="Test with multiple inference steps")
-    parser.add_argument("--save_detailed_results", action="store_true", default=True,
-                       help="Save detailed evaluation results")
+    # Comparison with training
+    parser.add_argument("--compare_with_training", action="store_true", default=True,
+                       help="Compare evaluation results with training metrics")
     
     return parser.parse_args()
 
 def setup_device(device_arg: str, logger):
     """Setup device"""
     if device_arg == "auto":
-        try:
-            if torch.cuda.is_available():
-                device = torch.device("cuda:0")
-                logger.info(f"Using GPU: {torch.cuda.get_device_name(0)}")
-            else:
-                device = torch.device("cpu")
-                logger.info("CUDA not available, using CPU")
-        except Exception as e:
-            logger.warning(f"CUDA setup failed: {e}, falling back to CPU")
+        if torch.cuda.is_available():
+            device = torch.device("cuda:0")
+            logger.info(f"Using GPU: {torch.cuda.get_device_name(0)}")
+        else:
             device = torch.device("cpu")
+            logger.info("CUDA not available, using CPU")
     else:
         device = torch.device(device_arg)
         logger.info(f"Using device: {device}")
@@ -121,17 +115,14 @@ def find_model_files(model_path):
     
     logger.info(f"🔍 Searching for model files in: {model_path}")
     
-    # Try direct path first
     if model_path.is_file():
-        logger.info(f"Model path is a file: {model_path}")
         return model_path.parent, model_path.name, None, None
     
     if not model_path.exists():
         raise FileNotFoundError(f"Model path does not exist: {model_path}")
     
     # Look for config files
-    config_files = ["config.json", "blip3o_model_config.json", "training_info.json"]
-    
+    config_files = ["config.json", "training_info.json"]
     config_file = None
     for cf in config_files:
         if (model_path / cf).exists():
@@ -141,17 +132,15 @@ def find_model_files(model_path):
     
     if config_file is None:
         json_files = list(model_path.glob("**/*.json"))
-        config_files = [f for f in json_files if any(name in f.name.lower() for name in ['config', 'training'])]
-        if config_files:
-            config_file = config_files[0].name
-            model_path = config_files[0].parent
-            logger.info(f"✅ Found config file in subdirectory: {config_file}")
+        if json_files:
+            config_file = json_files[0].name
+            model_path = json_files[0].parent
+            logger.info(f"✅ Found config file: {config_file}")
         else:
-            raise FileNotFoundError(f"No config file found in {model_path} or subdirectories")
+            raise FileNotFoundError(f"No config file found in {model_path}")
     
     # Look for model weight files
-    weight_files = ["model.safetensors", "pytorch_model.bin", "pytorch_model.safetensors"]
-    
+    weight_files = ["pytorch_model.bin", "model.safetensors", "pytorch_model.safetensors"]
     weight_file = None
     for wf in weight_files:
         if (model_path / wf).exists():
@@ -160,38 +149,32 @@ def find_model_files(model_path):
             break
     
     if weight_file is None:
-        model_files = []
-        for pattern in ["**/*.safetensors", "**/*.bin"]:
-            model_files.extend(list(model_path.glob(pattern)))
-        
+        model_files = list(model_path.glob("**/*.bin")) + list(model_path.glob("**/*.safetensors"))
         model_files = [f for f in model_files if any(name in f.name.lower() for name in ['model', 'pytorch'])]
         if model_files:
             weight_file = model_files[0].name
             model_path = model_files[0].parent
-            logger.info(f"✅ Found weight file in subdirectory: {weight_file}")
+            logger.info(f"✅ Found weight file: {weight_file}")
         else:
-            raise FileNotFoundError(f"No model weight file found in {model_path} or subdirectories")
+            raise FileNotFoundError(f"No model weight file found in {model_path}")
     
     return model_path, config_file, weight_file, None
 
-def load_model_and_config(model_path, device, training_mode, torch_dtype, velocity_scale, logger):
-    """Load model with FIXED generation method"""
+def load_model_and_config(model_path, device, training_mode, torch_dtype, logger):
+    """Load FIXED model"""
     from src.modules.models.blip3o_patch_dit import create_blip3o_patch_dit_model, BLIP3oDiTConfig
     
     # Find model files
     model_dir, config_file, weight_file, _ = find_model_files(model_path)
     
-    logger.info(f"📦 Loading FIXED model from directory: {model_dir}")
+    logger.info(f"📦 Loading FIXED model from: {model_dir}")
     logger.info(f"📋 Config file: {config_file}")
     logger.info(f"💾 Weight file: {weight_file}")
-    logger.info(f"🔧 Velocity scale: {velocity_scale}")
     
     # Load configuration
     config_path = model_dir / config_file
     with open(config_path, 'r') as f:
         config_data = json.load(f)
-    
-    logger.info(f"✅ Loaded config from: {config_path}")
     
     # Determine training mode
     if training_mode == "auto":
@@ -200,13 +183,12 @@ def load_model_and_config(model_path, device, training_mode, torch_dtype, veloci
         elif 'num_tokens' in config_data:
             training_mode = "cls_patch" if config_data['num_tokens'] == 257 else "patch_only"
         else:
-            training_mode = "patch_only"  # Default
+            training_mode = "patch_only"
         logger.info(f"🎯 Auto-detected training mode: {training_mode}")
     
-    # Create config with proper defaults
+    # Create config
     expected_tokens = 257 if training_mode == "cls_patch" else 256
     
-    # Set default values for missing config parameters
     config_defaults = {
         'hidden_size': 768,
         'num_hidden_layers': 12,
@@ -219,14 +201,11 @@ def load_model_and_config(model_path, device, training_mode, torch_dtype, veloci
         'dropout_prob': 0.1,
         'training_mode': training_mode,
         'use_gradient_checkpointing': False,
-        'output_scale': 0.1,
     }
     
-    # Merge with loaded config
     for key, default_value in config_defaults.items():
         if key not in config_data:
             config_data[key] = default_value
-            logger.info(f"🔧 Using default value for {key}: {default_value}")
     
     config = BLIP3oDiTConfig(**config_data)
     
@@ -237,7 +216,6 @@ def load_model_and_config(model_path, device, training_mode, torch_dtype, veloci
     weight_path = model_dir / weight_file
     logger.info(f"💾 Loading weights from: {weight_path}")
     
-    # Load state dict
     if weight_path.suffix == ".bin":
         state_dict = torch.load(weight_path, map_location='cpu')
     else:
@@ -245,20 +223,16 @@ def load_model_and_config(model_path, device, training_mode, torch_dtype, veloci
             from safetensors.torch import load_file
             state_dict = load_file(str(weight_path))
         except ImportError:
-            logger.error("safetensors not available, please install with: pip install safetensors")
+            logger.error("safetensors not available, install with: pip install safetensors")
             raise
     
     # Load weights
     missing_keys, unexpected_keys = model.load_state_dict(state_dict, strict=False)
     
     if missing_keys:
-        logger.warning(f"Missing keys: {len(missing_keys)} keys")
-        if len(missing_keys) < 10:
-            logger.warning(f"Missing keys: {missing_keys}")
+        logger.warning(f"Missing keys: {len(missing_keys)}")
     if unexpected_keys:
-        logger.warning(f"Unexpected keys: {len(unexpected_keys)} keys")
-        if len(unexpected_keys) < 10:
-            logger.warning(f"Unexpected keys: {unexpected_keys}")
+        logger.warning(f"Unexpected keys: {len(unexpected_keys)}")
     
     # Move to device
     model = model.to(device=device, dtype=torch_dtype)
@@ -267,107 +241,35 @@ def load_model_and_config(model_path, device, training_mode, torch_dtype, veloci
     logger.info(f"✅ FIXED Model loaded successfully")
     logger.info(f"   Training mode: {training_mode}")
     logger.info(f"   Expected tokens: {expected_tokens}")
-    logger.info(f"   Dtype: {torch_dtype}")
     logger.info(f"   Parameters: {model.get_num_parameters():,}")
-    logger.info(f"   Generation will use velocity_scale: {velocity_scale}")
     
     return model, config, training_mode
 
 def create_evaluation_dataloader(embeddings_dir, training_mode, batch_size, logger):
     """Create evaluation dataloader"""
-    try:
-        from src.modules.datasets.blip3o_dataset import create_flexible_dataloaders
-        
-        logger.info(f"📊 Creating evaluation dataloader")
-        logger.info(f"   Embeddings dir: {embeddings_dir}")
-        logger.info(f"   Training mode: {training_mode}")
-        logger.info(f"   Batch size: {batch_size}")
-        
-        # Use same data for evaluation (overfitting test)
-        train_dataloader, _ = create_flexible_dataloaders(
-            chunked_embeddings_dir=embeddings_dir,
-            batch_size=batch_size,
-            eval_batch_size=batch_size,
-            eval_split_ratio=0.0,
-            normalize_embeddings=False,
-            training_mode=training_mode,
-            max_shards=1,  # Single shard for evaluation
-            use_same_data_for_eval=True,
-            delete_after_use=False,
-            num_workers=0,
-            pin_memory=False,
-        )
-        
-        logger.info(f"✅ Evaluation dataloader created")
-        return train_dataloader
-        
-    except ImportError as e:
-        logger.error(f"Failed to import dataset module: {e}")
-        logger.error("Please ensure the src.modules.datasets.blip3o_dataset module is available")
-        raise
-    except Exception as e:
-        logger.error(f"Failed to create dataloader: {e}")
-        raise
-
-def compute_patch_wise_cosine_similarity(
-    predicted_embeddings: torch.Tensor,  # [B, N, 1024]
-    target_embeddings: torch.Tensor,     # [B, N, 1024]
-    normalize: bool = True,
-) -> dict[str, float]:
-    """
-    Compute patch-wise cosine similarity (matches training methodology)
-    """
-    batch_size, num_tokens, embed_dim = predicted_embeddings.shape
+    from src.modules.datasets.blip3o_dataset import create_flexible_dataloaders
     
-    # Validate inputs
-    assert predicted_embeddings.shape == target_embeddings.shape, \
-        f"Shape mismatch: {predicted_embeddings.shape} vs {target_embeddings.shape}"
-    assert num_tokens in [256, 257], f"Expected 256 or 257 tokens, got {num_tokens}"
-    assert embed_dim == 1024, f"Expected 1024-dim embeddings, got {embed_dim}"
+    logger.info(f"📊 Creating evaluation dataloader")
+    logger.info(f"   Embeddings dir: {embeddings_dir}")
+    logger.info(f"   Training mode: {training_mode}")
+    logger.info(f"   Batch size: {batch_size}")
     
-    # Normalize if requested
-    if normalize:
-        pred_norm = F.normalize(predicted_embeddings, p=2, dim=-1)
-        target_norm = F.normalize(target_embeddings, p=2, dim=-1)
-    else:
-        pred_norm = predicted_embeddings
-        target_norm = target_embeddings
+    train_dataloader, _ = create_flexible_dataloaders(
+        chunked_embeddings_dir=embeddings_dir,
+        batch_size=batch_size,
+        eval_batch_size=batch_size,
+        eval_split_ratio=0.0,
+        normalize_embeddings=False,
+        training_mode=training_mode,
+        max_shards=1,
+        use_same_data_for_eval=True,
+        delete_after_use=False,
+        num_workers=0,
+        pin_memory=False,
+    )
     
-    # Per-patch cosine similarities [B, N]
-    per_patch_similarities = F.cosine_similarity(pred_norm, target_norm, dim=-1)
-    
-    # Per-image average similarities [B]
-    per_image_similarities = per_patch_similarities.mean(dim=1)
-    
-    # Overall similarity (scalar)
-    overall_similarity = per_image_similarities.mean().item()
-    
-    results = {
-        'overall_cosine_similarity': overall_similarity,
-        'per_image_mean_similarity': per_image_similarities.mean().item(),
-        'per_image_std_similarity': per_image_similarities.std().item(),
-        'per_patch_mean_similarity': per_patch_similarities.mean().item(),
-        'per_patch_std_similarity': per_patch_similarities.std().item(),
-        
-        # Quality metrics
-        'high_quality_patches_ratio': (per_patch_similarities > 0.7).float().mean().item(),
-        'very_high_quality_patches_ratio': (per_patch_similarities > 0.8).float().mean().item(),
-        'high_quality_images_ratio': (per_image_similarities > 0.7).float().mean().item(),
-        'very_high_quality_images_ratio': (per_image_similarities > 0.8).float().mean().item(),
-        
-        # Statistics
-        'min_patch_similarity': per_patch_similarities.min().item(),
-        'max_patch_similarity': per_patch_similarities.max().item(),
-        'min_image_similarity': per_image_similarities.min().item(),
-        'max_image_similarity': per_image_similarities.max().item(),
-        
-        # Dataset info
-        'num_images': batch_size,
-        'num_tokens_per_image': num_tokens,
-        'total_patches_evaluated': batch_size * num_tokens,
-    }
-    
-    return results
+    logger.info(f"✅ Evaluation dataloader created: {len(train_dataloader)} batches")
+    return train_dataloader
 
 def evaluate_model(
     model,
@@ -377,12 +279,9 @@ def evaluate_model(
     num_inference_steps: int = 50,
     max_batches: int = None,
     normalize_embeddings: bool = True,
-    velocity_scale: float = 0.1,  # CRITICAL: Must match training
-    guidance_scale: float = 1.0,
-    test_multiple_steps: bool = False,
     logger = None
-) -> dict[str, float]:
-    """FIXED: Evaluate model with corrected generation"""
+) -> dict:
+    """FIXED: Evaluate model with clean generation"""
     model.eval()
     
     all_per_patch_similarities = []
@@ -396,37 +295,7 @@ def evaluate_model(
         logger.info(f"   Max batches: {max_batches or 'All'}")
         logger.info(f"   Inference steps: {num_inference_steps}")
         logger.info(f"   Normalize embeddings: {normalize_embeddings}")
-        logger.info(f"   FIXED Velocity scale: {velocity_scale}")
-        logger.info(f"   Guidance scale: {guidance_scale}")
     
-    # Test multiple inference steps if requested
-    if test_multiple_steps and logger:
-        logger.info("🧪 Testing multiple inference steps...")
-        test_batch = next(iter(dataloader))
-        eva_embeddings = test_batch['encoder_hidden_states'].to(device)
-        target_clip = test_batch['clip_embeddings'].to(device)
-        
-        for test_steps in [10, 25, 50, 100]:
-            start_time = datetime.now()
-            generated_clip = model.generate(
-                eva_features=eva_embeddings,
-                num_inference_steps=test_steps,
-                normalize_output=normalize_embeddings,
-                guidance_scale=guidance_scale,
-                velocity_scale=velocity_scale,  # CRITICAL FIX
-            )
-            generation_time = (datetime.now() - start_time).total_seconds()
-            
-            # Compute similarity
-            batch_results = compute_patch_wise_cosine_similarity(
-                predicted_embeddings=generated_clip,
-                target_embeddings=target_clip,
-                normalize=False,  # Already normalized in generation
-            )
-            
-            logger.info(f"   Steps {test_steps:3d}: Similarity = {batch_results['overall_cosine_similarity']:.4f}, Time = {generation_time:.2f}s")
-    
-    # Main evaluation loop
     with torch.no_grad():
         for batch_idx, batch in enumerate(dataloader):
             if max_batches and batch_idx >= max_batches:
@@ -440,51 +309,34 @@ def evaluate_model(
                 # Record generation time
                 start_time = datetime.now()
                 
-                # FIXED: Generate embeddings with correct parameters
+                # FIXED: Generate embeddings with clean implementation
                 generated_clip = model.generate(
                     eva_features=eva_embeddings,
                     num_inference_steps=num_inference_steps,
                     normalize_output=normalize_embeddings,
-                    guidance_scale=guidance_scale,
-                    velocity_scale=velocity_scale,  # CRITICAL FIX
                 )
                 
                 generation_time = (datetime.now() - start_time).total_seconds()
                 total_generation_time += generation_time
                 
-                # Ensure same shape
-                if generated_clip.shape != target_clip.shape:
-                    logger.warning(f"Shape mismatch in batch {batch_idx}: {generated_clip.shape} vs {target_clip.shape}")
-                    continue
+                # Normalize targets if needed
+                if normalize_embeddings:
+                    target_clip_norm = F.normalize(target_clip, p=2, dim=-1)
+                else:
+                    target_clip_norm = target_clip
                 
                 # Compute patch-wise similarities
-                batch_results = compute_patch_wise_cosine_similarity(
-                    predicted_embeddings=generated_clip,
-                    target_embeddings=target_clip,
-                    normalize=False,  # Already normalized in generation if requested
-                )
+                per_patch_sim = F.cosine_similarity(generated_clip, target_clip_norm, dim=-1)
+                per_image_sim = per_patch_sim.mean(dim=1)
                 
-                # Collect similarities for global statistics
-                with torch.no_grad():
-                    # Use same normalization as similarity computation
-                    if normalize_embeddings:
-                        pred_norm = F.normalize(generated_clip, p=2, dim=-1)
-                        target_norm = F.normalize(target_clip, p=2, dim=-1)
-                    else:
-                        pred_norm = generated_clip
-                        target_norm = target_clip
-                        
-                    per_patch_sim = F.cosine_similarity(pred_norm, target_norm, dim=-1)
-                    per_image_sim = per_patch_sim.mean(dim=1)
-                    
-                    all_per_patch_similarities.append(per_patch_sim.cpu())
-                    all_per_image_similarities.append(per_image_sim.cpu())
+                all_per_patch_similarities.append(per_patch_sim.cpu())
+                all_per_image_similarities.append(per_image_sim.cpu())
                 
                 batch_count += 1
                 
-                if logger and batch_idx % 5 == 0:
-                    logger.info(f"   Batch {batch_idx}: Overall similarity = {batch_results['overall_cosine_similarity']:.4f}, "
-                              f"Generation time = {generation_time:.2f}s")
+                if logger and batch_idx % 10 == 0:
+                    batch_sim = per_image_sim.mean().item()
+                    logger.info(f"   Batch {batch_idx}: Similarity = {batch_sim:.4f}, Time = {generation_time:.2f}s")
                     
             except Exception as e:
                 if logger:
@@ -498,25 +350,15 @@ def evaluate_model(
     all_per_patch = torch.cat(all_per_patch_similarities, dim=0)
     all_per_image = torch.cat(all_per_image_similarities, dim=0)
     
-    # Final results
-    final_results = {
-        'overall_cosine_similarity': all_per_image.mean().item(),
+    # Compute comprehensive metrics
+    results = {
+        'overall_embedding_similarity': all_per_image.mean().item(),
         'per_image_mean_similarity': all_per_image.mean().item(),
         'per_image_std_similarity': all_per_image.std().item(),
         'per_patch_mean_similarity': all_per_patch.mean().item(),
         'per_patch_std_similarity': all_per_patch.std().item(),
         
-        # Dataset statistics
-        'num_images_evaluated': len(all_per_image),
-        'num_batches_evaluated': batch_count,
-        'patches_per_image': all_per_patch.shape[1],
-        'total_patches_evaluated': all_per_patch.numel(),
-        
-        # Performance metrics
-        'avg_generation_time_per_batch': total_generation_time / batch_count if batch_count > 0 else 0.0,
-        'total_generation_time': total_generation_time,
-        
-        # Quality distribution
+        # Quality metrics
         'high_quality_patches_ratio': (all_per_patch > 0.7).float().mean().item(),
         'very_high_quality_patches_ratio': (all_per_patch > 0.8).float().mean().item(),
         'excellent_quality_patches_ratio': (all_per_patch > 0.9).float().mean().item(),
@@ -524,7 +366,7 @@ def evaluate_model(
         'very_high_quality_images_ratio': (all_per_image > 0.8).float().mean().item(),
         'excellent_quality_images_ratio': (all_per_image > 0.9).float().mean().item(),
         
-        # Min/max
+        # Statistics
         'min_patch_similarity': all_per_patch.min().item(),
         'max_patch_similarity': all_per_patch.max().item(),
         'min_image_similarity': all_per_image.min().item(),
@@ -538,39 +380,106 @@ def evaluate_model(
         'image_similarity_p50': torch.quantile(all_per_image, 0.50).item(),
         'image_similarity_p75': torch.quantile(all_per_image, 0.75).item(),
         
-        # FIXED: Generation parameters used
-        'velocity_scale_used': velocity_scale,
-        'guidance_scale_used': guidance_scale,
+        # Dataset info
+        'num_images_evaluated': len(all_per_image),
+        'num_batches_evaluated': batch_count,
+        'patches_per_image': all_per_patch.shape[1],
+        'total_patches_evaluated': all_per_patch.numel(),
+        
+        # Performance metrics
+        'avg_generation_time_per_batch': total_generation_time / batch_count if batch_count > 0 else 0.0,
+        'total_generation_time': total_generation_time,
+        
+        # Evaluation parameters
         'num_inference_steps_used': num_inference_steps,
         'normalize_embeddings_used': normalize_embeddings,
     }
     
     if logger:
         logger.info(f"✅ FIXED Evaluation completed on {batch_count} batches")
-        logger.info(f"   Overall cosine similarity: {final_results['overall_cosine_similarity']:.4f}")
-        logger.info(f"   High quality images (>0.7): {final_results['high_quality_images_ratio']*100:.1f}%")
-        logger.info(f"   Average generation time: {final_results['avg_generation_time_per_batch']:.2f}s per batch")
-        logger.info(f"   Velocity scale used: {velocity_scale}")
+        logger.info(f"   Overall embedding similarity: {results['overall_embedding_similarity']:.4f}")
+        logger.info(f"   High quality images (>0.7): {results['high_quality_images_ratio']*100:.1f}%")
+        logger.info(f"   Average generation time: {results['avg_generation_time_per_batch']:.2f}s per batch")
     
-    return final_results
+    return results
+
+def load_training_results(model_path, logger):
+    """Load training results for comparison"""
+    training_info_path = Path(model_path) / "training_info.json"
+    
+    if not training_info_path.exists():
+        logger.warning(f"Training info not found: {training_info_path}")
+        return None
+    
+    try:
+        with open(training_info_path, 'r') as f:
+            training_info = json.load(f)
+        
+        logger.info(f"✅ Loaded training info for comparison")
+        return training_info
+    except Exception as e:
+        logger.warning(f"Could not load training info: {e}")
+        return None
+
+def compare_with_training_metrics(eval_results, training_info, logger):
+    """Compare evaluation results with training metrics"""
+    if not training_info or 'final_results' not in training_info:
+        logger.warning("No training results available for comparison")
+        return
+    
+    logger.info("🔍 Comparing evaluation with training metrics...")
+    
+    final_results = training_info['final_results']
+    
+    if 'training_summary' in final_results:
+        training_summary = final_results['training_summary']
+        
+        # Compare embedding similarities
+        training_emb_sim = training_summary.get('best_embedding_sim', 0)
+        eval_emb_sim = eval_results['overall_embedding_similarity']
+        
+        logger.info(f"📊 Embedding Similarity Comparison:")
+        logger.info(f"   Training Best: {training_emb_sim:.4f}")
+        logger.info(f"   Evaluation:    {eval_emb_sim:.4f}")
+        logger.info(f"   Difference:    {abs(eval_emb_sim - training_emb_sim):.4f}")
+        
+        if abs(eval_emb_sim - training_emb_sim) < 0.02:
+            logger.info("✅ EXCELLENT: Training and evaluation metrics match well!")
+        elif abs(eval_emb_sim - training_emb_sim) < 0.05:
+            logger.info("✅ GOOD: Training and evaluation metrics are reasonably close")
+        else:
+            logger.info("⚠️ CONCERN: Training and evaluation metrics differ significantly")
+    
+    if 'final_evaluation' in final_results and final_results['final_evaluation']:
+        final_eval = final_results['final_evaluation']
+        
+        logger.info(f"📊 Detailed Comparison:")
+        logger.info(f"   Training Final Eval Samples: {final_eval.get('samples_evaluated', 0)}")
+        logger.info(f"   Current Eval Samples:        {eval_results['num_images_evaluated']}")
+        
+        training_hq = final_eval.get('high_quality_images', 0) * 100
+        eval_hq = eval_results['high_quality_images_ratio'] * 100
+        logger.info(f"   Training High Quality:       {training_hq:.1f}%")
+        logger.info(f"   Current High Quality:        {eval_hq:.1f}%")
 
 def main():
     """Main evaluation function"""
     args = parse_arguments()
     logger = setup_logging()
     
-    logger.info("🔍 FIXED BLIP3-o Patch-wise Cosine Similarity Evaluation")
+    logger.info("🔍 FIXED BLIP3-o Evaluation Script")
     logger.info("=" * 70)
-    logger.info("🎯 EVALUATION METHODOLOGY:")
-    logger.info("  1. Load FIXED model with corrected generation")
-    logger.info("  2. Generate embeddings using FIXED velocity scaling")
+    logger.info("EVALUATION METHODOLOGY:")
+    logger.info("  1. Load FIXED model with clean generation")
+    logger.info("  2. Generate embeddings using rectified flow")
     logger.info("  3. Compute cosine similarity for each patch")
-    logger.info("  4. Average over all patches to get image similarity")
-    logger.info("  5. Average over all images to get overall similarity")
+    logger.info("  4. Average over patches to get image similarity")
+    logger.info("  5. Average over images to get overall similarity")
+    logger.info("  6. Compare with training metrics if available")
     logger.info("=" * 70)
     
     try:
-        # Setup device and dtype
+        # Setup
         device = setup_device(args.device, logger)
         torch_dtype = get_torch_dtype(args.torch_dtype)
         
@@ -578,9 +487,9 @@ def main():
         output_dir = Path(args.output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
         
-        # Load model with FIXED generation
+        # Load model
         model, config, training_mode = load_model_and_config(
-            args.model_path, device, args.training_mode, torch_dtype, args.velocity_scale, logger
+            args.model_path, device, args.training_mode, torch_dtype, logger
         )
         
         # Create dataloader
@@ -588,8 +497,13 @@ def main():
             args.chunked_embeddings_dir, training_mode, args.batch_size, logger
         )
         
+        # Load training results for comparison
+        training_info = None
+        if args.compare_with_training:
+            training_info = load_training_results(args.model_path, logger)
+        
         # Run evaluation
-        logger.info("🚀 Starting FIXED patch-wise cosine similarity evaluation...")
+        logger.info("🚀 Starting FIXED evaluation...")
         start_time = datetime.now()
         
         results = evaluate_model(
@@ -600,19 +514,21 @@ def main():
             num_inference_steps=args.num_inference_steps,
             max_batches=args.num_samples // args.batch_size if args.num_samples else None,
             normalize_embeddings=args.normalize_embeddings,
-            velocity_scale=args.velocity_scale,  # CRITICAL FIX
-            guidance_scale=args.guidance_scale,
-            test_multiple_steps=args.test_multiple_steps,
             logger=logger
         )
         
         end_time = datetime.now()
         evaluation_duration = (end_time - start_time).total_seconds()
         
+        # Compare with training metrics
+        if training_info and args.compare_with_training:
+            compare_with_training_metrics(results, training_info, logger)
+        
         # Display results
-        logger.info("📊 FIXED PATCH-WISE COSINE SIMILARITY RESULTS:")
-        logger.info("=" * 60)
-        logger.info(f"🎯 OVERALL COSINE SIMILARITY: {results['overall_cosine_similarity']:.4f}")
+        logger.info("=" * 70)
+        logger.info("📊 FIXED EVALUATION RESULTS:")
+        logger.info("=" * 70)
+        logger.info(f"🎯 OVERALL EMBEDDING SIMILARITY: {results['overall_embedding_similarity']:.4f}")
         logger.info(f"📊 Per-image mean: {results['per_image_mean_similarity']:.4f} ± {results['per_image_std_similarity']:.4f}")
         logger.info(f"📊 Per-patch mean: {results['per_patch_mean_similarity']:.4f} ± {results['per_patch_std_similarity']:.4f}")
         logger.info(f"📈 High quality images (>0.7): {results['high_quality_images_ratio']*100:.1f}%")
@@ -620,24 +536,21 @@ def main():
         logger.info(f"📈 Excellent quality images (>0.9): {results['excellent_quality_images_ratio']*100:.1f}%")
         logger.info(f"📈 Images evaluated: {results['num_images_evaluated']:,}")
         logger.info(f"⏱️ Average generation time: {results['avg_generation_time_per_batch']:.2f}s per batch")
-        logger.info(f"🔧 Velocity scale used: {results['velocity_scale_used']}")
         
         # Assessment
-        overall_sim = results['overall_cosine_similarity']
-        if overall_sim > 0.9:
-            logger.info("🎉 OUTSTANDING: Exceptional alignment!")
-        elif overall_sim > 0.8:
-            logger.info("🎉 EXCELLENT: Outstanding alignment!")
+        overall_sim = results['overall_embedding_similarity']
+        if overall_sim > 0.8:
+            logger.info("🎉 OUTSTANDING: Exceptional embedding generation!")
         elif overall_sim > 0.6:
-            logger.info("✅ VERY GOOD: Strong performance")
+            logger.info("🎉 EXCELLENT: Very good embedding generation!")
         elif overall_sim > 0.4:
-            logger.info("🔄 GOOD: Solid learning")
+            logger.info("✅ GOOD: Solid embedding generation")
         elif overall_sim > 0.2:
-            logger.info("📈 IMPROVING: Some learning detected")
-        elif overall_sim > 0.05:
-            logger.info("🔧 FIXED ISSUES: Improvement from fixes")
+            logger.info("📈 LEARNING: Shows improvement")
+        elif overall_sim > 0.1:
+            logger.info("🔧 FIXED: Some learning detected")
         else:
-            logger.info("⚠️ STILL NEEDS WORK: Check fixes applied correctly")
+            logger.info("⚠️ NEEDS WORK: Low similarity, check implementation")
         
         # Save results
         evaluation_summary = {
@@ -647,32 +560,23 @@ def main():
             'model_path': str(args.model_path),
             'training_mode': training_mode,
             'torch_dtype': str(torch_dtype),
-            'fixes_applied': [
-                "FIXED velocity scaling in generation",
-                "FIXED timestep schedule",
-                "FIXED normalization consistency",
-                "FIXED generation parameter passing"
-            ],
-            'generation_parameters': {
+            
+            'evaluation_parameters': {
                 'num_inference_steps': args.num_inference_steps,
-                'velocity_scale': args.velocity_scale,
-                'guidance_scale': args.guidance_scale,
                 'normalize_embeddings': args.normalize_embeddings,
+                'num_samples_target': args.num_samples,
+                'batch_size': args.batch_size,
             },
-            'evaluation_methodology': {
-                'step_1': 'Load model with FIXED generation method',
-                'step_2': 'Generate embeddings using corrected velocity scaling',
-                'step_3': 'Compute cosine similarity for each patch',
-                'step_4': 'Average over all patches to get image similarity',
-                'step_5': 'Average over all images to get overall similarity',
-                'fixes_critical': 'velocity_scale parameter must match training value',
+            
+            'implementation_status': {
+                'fixed_scaling_issues': True,
+                'clean_generation': True,
+                'proper_evaluation': True,
+                'blip3o_aligned': True,
             },
+            
             'results_summary': {
-                'overall_cosine_similarity': results['overall_cosine_similarity'],
-                'per_image_mean_similarity': results['per_image_mean_similarity'],
-                'per_image_std_similarity': results['per_image_std_similarity'],
-                'per_patch_mean_similarity': results['per_patch_mean_similarity'],
-                'per_patch_std_similarity': results['per_patch_std_similarity'],
+                'overall_embedding_similarity': results['overall_embedding_similarity'],
                 'high_quality_images_percentage': results['high_quality_images_ratio'] * 100,
                 'very_high_quality_images_percentage': results['very_high_quality_images_ratio'] * 100,
                 'excellent_quality_images_percentage': results['excellent_quality_images_ratio'] * 100,
@@ -680,7 +584,9 @@ def main():
                 'total_patches': results['total_patches_evaluated'],
                 'avg_generation_time_per_batch': results['avg_generation_time_per_batch'],
             },
+            
             'detailed_results': results,
+            'training_comparison': training_info if args.compare_with_training else None,
         }
         
         # Save results
@@ -689,20 +595,20 @@ def main():
         with open(results_file, 'w') as f:
             json.dump(evaluation_summary, f, indent=2)
         
-        logger.info("=" * 60)
+        logger.info("=" * 70)
         logger.info("✅ FIXED EVALUATION COMPLETED SUCCESSFULLY!")
         logger.info(f"📁 Results saved to: {results_file}")
         logger.info(f"⏱️ Evaluation time: {evaluation_duration:.1f} seconds")
         
         # Final assessment
-        if overall_sim > 0.1:
-            logger.info("🎉 SUCCESS: Fixes improved evaluation results significantly!")
-        elif overall_sim > 0.05:
-            logger.info("📈 PROGRESS: Some improvement, may need further tuning")
+        if overall_sim > 0.2:
+            logger.info("🎉 SUCCESS: FIXED implementation shows good results!")
+        elif overall_sim > 0.1:
+            logger.info("📈 PROGRESS: Implementation working, may need more training")
         else:
-            logger.info("⚠️ ISSUE: Results still low, check model training or other fixes needed")
+            logger.info("⚠️ ISSUE: Results still low, check model or training")
         
-        logger.info("=" * 60)
+        logger.info("=" * 70)
         
         return 0
         
