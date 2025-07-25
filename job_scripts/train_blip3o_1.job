@@ -2,6 +2,7 @@
 #SBATCH --job-name=blip3o_train
 #SBATCH --partition=gpu_a100
 #SBATCH --nodes=1
+#SBATCH --ntasks=2
 #SBATCH --gpus=3
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=18
