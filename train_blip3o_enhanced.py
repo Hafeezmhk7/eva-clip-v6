@@ -1,13 +1,7 @@
 #!/usr/bin/env python3
 """
-FIXED: BLIP3-o Training Script - Training Only (No Evaluation During Training)
-train_blip3o_fixed.py
-
-FIXES:
-1. Fixed TrainingArguments parameter issue (eval_strategy vs evaluation_strategy)
-2. Proper gradient flow handling
-3. Clean single-shard training
-4. Aligned with fixed trainer implementation
+FIXED: BLIP3-o Training Script with Proper Scaling and Loss Function
+Addresses the scale mismatch and normalization issues
 """
 
 import os
@@ -30,9 +24,9 @@ def setup_logging(local_rank=0, log_dir=None):
     if log_dir:
         log_dir = Path(log_dir)
         log_dir.mkdir(parents=True, exist_ok=True)
-        log_file = log_dir / f'blip3o_training_rank_{local_rank}.log'
+        log_file = log_dir / f'blip3o_training_fixed_rank_{local_rank}.log'
     else:
-        log_file = f'blip3o_training_rank_{local_rank}.log'
+        log_file = f'blip3o_training_fixed_rank_{local_rank}.log'
     
     log_level = logging.INFO if local_rank == 0 else logging.WARNING
     
@@ -50,7 +44,7 @@ def setup_logging(local_rank=0, log_dir=None):
 def parse_arguments():
     """Parse command line arguments"""
     parser = argparse.ArgumentParser(
-        description="FIXED BLIP3-o Training - Single Shard Training",
+        description="FIXED BLIP3-o Training with Proper Scaling",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
     
@@ -65,10 +59,6 @@ def parse_arguments():
                        choices=["cls_patch", "patch_only"],
                        help="Training mode: cls_patch (257 tokens) or patch_only (256 tokens)")
     
-    # Single shard training
-    parser.add_argument("--shard_index", type=int, default=0,
-                       help="Index of the shard to train on (0-based)")
-    
     # Model configuration
     parser.add_argument("--model_size", type=str, default="base",
                        choices=["tiny", "small", "base", "large"],
@@ -77,16 +67,24 @@ def parse_arguments():
     # Training configuration
     parser.add_argument("--num_epochs", type=int, default=10,
                        help="Number of training epochs")
-    parser.add_argument("--batch_size", type=int, default=64,
+    parser.add_argument("--batch_size", type=int, default=32,
                        help="Training batch size per GPU")
-    parser.add_argument("--learning_rate", type=float, default=5e-5,
+    parser.add_argument("--learning_rate", type=float, default=1e-4,
                        help="Learning rate")
     parser.add_argument("--weight_decay", type=float, default=0.01,
                        help="Weight decay")
-    parser.add_argument("--warmup_steps", type=int, default=100,
+    parser.add_argument("--warmup_steps", type=int, default=500,
                        help="Number of warmup steps")
     parser.add_argument("--gradient_accumulation_steps", type=int, default=2,
                        help="Gradient accumulation steps")
+    
+    # FIXED: Scaling parameters
+    parser.add_argument("--velocity_scale", type=float, default=0.1,
+                       help="Velocity scaling factor for flow matching")
+    parser.add_argument("--output_scale", type=float, default=0.1,
+                       help="Output scaling factor for model")
+    parser.add_argument("--target_norm_scale", type=float, default=1.0,
+                       help="Target normalization scaling factor")
     
     # Hardware configuration
     parser.add_argument("--fp16", action="store_true", default=True,
@@ -95,9 +93,9 @@ def parse_arguments():
                        help="Enable gradient checkpointing")
     
     # Logging and saving
-    parser.add_argument("--logging_steps", type=int, default=5,
+    parser.add_argument("--logging_steps", type=int, default=10,
                        help="Logging frequency")
-    parser.add_argument("--save_steps", type=int, default=100,
+    parser.add_argument("--save_steps", type=int, default=200,
                        help="Model saving frequency")
     
     # Debugging
@@ -116,23 +114,11 @@ def validate_training_setup(args, logger):
         raise FileNotFoundError(f"Embeddings directory not found: {embeddings_path}")
     
     # Look for shard files
-    shard_patterns = [
-        f"embeddings_shard_{args.shard_index:05d}_*.pkl",
-        f"embeddings_shard_{args.shard_index}_*.pkl",
-        "embeddings_shard_*.pkl"
-    ]
+    shard_files = list(embeddings_path.glob("embeddings_shard_*.pkl"))
+    if not shard_files:
+        raise FileNotFoundError(f"No shard files found in {embeddings_path}")
     
-    shard_file = None
-    for pattern in shard_patterns:
-        files = list(embeddings_path.glob(pattern))
-        if files:
-            shard_file = files[0]
-            break
-    
-    if not shard_file:
-        raise FileNotFoundError(f"No shard file found for index {args.shard_index} in {embeddings_path}")
-    
-    logger.info(f"Found shard file: {shard_file}")
+    logger.info(f"Found {len(shard_files)} shard files")
     
     # Check manifest
     manifest_path = embeddings_path / "embeddings_manifest.json" 
@@ -145,7 +131,7 @@ def validate_training_setup(args, logger):
         logger.warning("Embeddings manifest not found, proceeding anyway")
     
     logger.info("✅ Training setup validated")
-    return manifest, shard_file
+    return manifest, shard_files
 
 def setup_device_and_distributed():
     """Setup device and distributed training"""
@@ -178,7 +164,7 @@ def setup_device_and_distributed():
 
 def create_model_and_config(args, device, logger):
     """Create BLIP3-o model with proper configuration"""
-    logger.info("🏗️ Creating BLIP3-o model...")
+    logger.info("🏗️ Creating FIXED BLIP3-o model...")
     
     try:
         from src.modules.models.blip3o_patch_dit import create_blip3o_patch_dit_model, BLIP3oDiTConfig
@@ -193,7 +179,7 @@ def create_model_and_config(args, device, logger):
         
         base_config = size_configs.get(args.model_size, size_configs["base"])
         
-        # Create configuration
+        # Create configuration with FIXED scaling
         config = BLIP3oDiTConfig(
             hidden_size=base_config["hidden_size"],
             num_hidden_layers=base_config["num_hidden_layers"], 
@@ -201,12 +187,16 @@ def create_model_and_config(args, device, logger):
             intermediate_size=base_config["intermediate_size"],
             training_mode=args.training_mode,
             num_tokens=257 if args.training_mode == "cls_patch" else 256,
-            max_position_embeddings=257,  # Support both modes
-            use_gradient_checkpointing=False,  # Will be enabled later if requested
+            max_position_embeddings=257,
+            use_gradient_checkpointing=False,
+            output_scale=args.output_scale,  # FIXED: Add output scaling
         )
         
-        # Create model
-        model = create_blip3o_patch_dit_model(config=config)
+        # Create model with proper scaling
+        model = create_blip3o_patch_dit_model(
+            config=config,
+            output_scale=args.output_scale,
+        )
         model = model.to(device)
         
         # Enable gradient checkpointing if requested
@@ -218,12 +208,11 @@ def create_model_and_config(args, device, logger):
             except Exception as e:
                 logger.warning(f"⚠️ Gradient checkpointing failed: {e}")
         
-        logger.info(f"✅ BLIP3-o model created successfully")
+        logger.info(f"✅ FIXED BLIP3-o model created successfully")
         logger.info(f"   Parameters: {model.get_num_parameters():,}")
         logger.info(f"   Mode: {args.training_mode} ({config.num_tokens} tokens)")
         logger.info(f"   Hidden size: {config.hidden_size}")
-        logger.info(f"   Layers: {config.num_hidden_layers}")
-        logger.info(f"   Heads: {config.num_attention_heads}")
+        logger.info(f"   Output scale: {config.output_scale}")
         logger.info(f"   Device: {device}")
         
         return model, config
@@ -233,22 +222,25 @@ def create_model_and_config(args, device, logger):
         raise
 
 def create_loss_function(args, logger):
-    """Create flow matching loss function"""
-    logger.info("🔧 Creating flow matching loss...")
+    """Create FIXED flow matching loss function"""
+    logger.info("🔧 Creating FIXED flow matching loss...")
     
     try:
         from src.modules.losses.blip3o_flow_matching_loss import create_blip3o_flow_matching_loss
         
         flow_matching_loss = create_blip3o_flow_matching_loss(
-            prediction_type="velocity",  # BLIP3-o uses velocity prediction
-            normalize_targets=True,      # Normalize targets for consistency
-            flow_type="rectified",       # Rectified flow as per paper
+            prediction_type="velocity",
+            normalize_targets=True,
+            flow_type="rectified",
+            velocity_scale=args.velocity_scale,      # FIXED: Configurable velocity scaling
+            target_norm_scale=args.target_norm_scale, # FIXED: Configurable target scaling
         )
         
         logger.info("✅ FIXED BLIP3-o Flow Matching Loss initialized")
-        logger.info("   Flow type: rectified")
-        logger.info("   Prediction type: velocity")
-        logger.info("   Normalize targets: True")
+        logger.info(f"   Flow type: rectified")
+        logger.info(f"   Prediction type: velocity")
+        logger.info(f"   Velocity scale: {args.velocity_scale}")
+        logger.info(f"   Target norm scale: {args.target_norm_scale}")
         
         return flow_matching_loss
         
@@ -257,28 +249,28 @@ def create_loss_function(args, logger):
         raise
 
 def create_dataloader(args, logger):
-    """Create single-shard training dataloader"""
+    """Create training dataloader"""
     logger.info("🔄 Creating training dataloader...")
     
     try:
         from src.modules.datasets.blip3o_dataset import create_flexible_dataloaders
         
-        # Create dataloaders for single shard training
+        # Create dataloaders
         train_dataloader, _ = create_flexible_dataloaders(
             chunked_embeddings_dir=args.chunked_embeddings_dir,
             batch_size=args.batch_size,
-            eval_batch_size=None,  # No evaluation
-            eval_split_ratio=0.0,  # No evaluation split
+            eval_batch_size=None,
+            eval_split_ratio=0.0,
             normalize_embeddings=False,  # Loss function handles normalization
             training_mode=args.training_mode,
-            max_shards=1,  # Single shard training
-            use_same_data_for_eval=False,  # No evaluation
+            max_shards=1,  # Single shard for overfitting test
+            use_same_data_for_eval=False,
             delete_after_use=False,
-            num_workers=0,  # FIXED: Avoid multiprocessing issues
+            num_workers=0,  # Avoid multiprocessing issues
             pin_memory=torch.cuda.is_available(),
         )
         
-        logger.info(f"✅ Training dataloader created for single shard")
+        logger.info(f"✅ Training dataloader created")
         logger.info(f"   Training batches: {len(train_dataloader):,}")
         
         return train_dataloader
@@ -288,7 +280,7 @@ def create_dataloader(args, logger):
         raise
 
 def create_training_args(args):
-    """Create training arguments using fixed implementation"""
+    """Create training arguments"""
     from src.modules.trainers.blip3o_training_only_trainer import create_training_only_args
     
     return create_training_only_args(
@@ -301,13 +293,13 @@ def create_training_args(args):
         warmup_steps=args.warmup_steps,
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         fp16=args.fp16 and torch.cuda.is_available(),
-        dataloader_num_workers=0,  # FIXED: Avoid multiprocessing
+        dataloader_num_workers=0,
         logging_steps=args.logging_steps,
         save_steps=args.save_steps,
     )
 
 def create_trainer(model, training_args, flow_matching_loss, train_dataloader, args, logger):
-    """Create trainer using fixed implementation"""
+    """Create FIXED trainer"""
     from src.modules.trainers.blip3o_training_only_trainer import BLIP3oTrainingOnlyTrainer
     
     # Create trainer
@@ -315,16 +307,17 @@ def create_trainer(model, training_args, flow_matching_loss, train_dataloader, a
         model=model,
         args=training_args,
         flow_matching_loss=flow_matching_loss,
-        train_dataset=None,  # We'll override dataloader
+        train_dataset=None,
         training_mode=args.training_mode,
     )
     
-    # Override dataloader to use our specific dataloader
+    # Override dataloader
     trainer.get_train_dataloader = lambda: train_dataloader
     
     logger.info("✅ FIXED BLIP3oTrainingOnlyTrainer created")
     logger.info(f"   Mode: {args.training_mode}")
-    logger.info(f"   Evaluation during training: DISABLED")
+    logger.info(f"   Velocity scale: {args.velocity_scale}")
+    logger.info(f"   Output scale: {args.output_scale}")
     
     return trainer
 
@@ -340,24 +333,28 @@ def main():
     logger = setup_logging(local_rank, log_dir)
     
     if is_main_process:
-        print("🚀 Clean BLIP3-o Training - No Evaluation During Training")
-        print("🚀 Starting BLIP3-o Training-Only Job")
+        print("🚀 FIXED BLIP3-o Training with Proper Scaling")
         print(f"Job ID: {os.environ.get('SLURM_JOB_ID', 'local')}")
-        print(f"Node: {os.environ.get('HOSTNAME', 'local')}")
-        print(f"Time: {datetime.now().strftime('%a %b %d %H:%M:%S %Z %Y')}")
+        print(f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print("=" * 60)
+        print("🔧 FIXES APPLIED:")
+        print("  ✅ Velocity scaling to address norm mismatch")
+        print("  ✅ Output scaling in DiT model")
+        print("  ✅ Adaptive scaling in loss function")
+        print("  ✅ Proper normalization handling")
+        print("  ✅ Improved generation timestep schedule")
         print("=" * 60)
         print(f"  ✅ Training mode: {args.training_mode}")
-        print(f"  ✅ Training on shard: {args.shard_index}")
-        print(f"  🚫 Evaluation during training: DISABLED (clean separation)")
-        print(f"  📊 Will report: Loss, Learning Rate, Training Metrics Only")
-        print(f"  🔧 Post-training evaluation: Run separately for clean separation")
+        print(f"  ✅ Velocity scale: {args.velocity_scale}")
+        print(f"  ✅ Output scale: {args.output_scale}")
+        print(f"  ✅ Target norm scale: {args.target_norm_scale}")
         print("=" * 60)
     
     try:
         # 1. Validate setup
-        manifest, shard_file = validate_training_setup(args, logger)
+        manifest, shard_files = validate_training_setup(args, logger)
         
-        # 2. Create model
+        # 2. Create FIXED model
         model, config = create_model_and_config(args, device, logger)
         
         # 3. Wrap with DDP if needed
@@ -375,7 +372,7 @@ def main():
                 logger.warning(f"⚠️ DDP wrapping failed: {e}")
                 raise
         
-        # 4. Create loss function
+        # 4. Create FIXED loss function
         flow_matching_loss = create_loss_function(args, logger)
         
         # 5. Create dataloader
@@ -384,15 +381,17 @@ def main():
         # 6. Create training arguments
         training_args = create_training_args(args)
         
-        # 7. Create trainer
+        # 7. Create FIXED trainer
         trainer = create_trainer(model, training_args, flow_matching_loss, train_dataloader, args, logger)
         
         # 8. Start training
-        logger.info("🚀 Starting Training-Only Process...")
-        logger.info("🚀 Clean BLIP3-o Training - No Evaluation During Training")
+        logger.info("🚀 Starting FIXED Training Process...")
         logger.info(f"   Training for {args.num_epochs} epochs")
-        logger.info(f"   Logging every {args.logging_steps} steps")
-        logger.info(f"   Saving every {args.save_steps} steps")
+        logger.info(f"   Expected improvements:")
+        logger.info(f"     • Better norm alignment (velocity_scale={args.velocity_scale})")
+        logger.info(f"     • Proper output scaling (output_scale={args.output_scale})")
+        logger.info(f"     • Adaptive loss scaling")
+        logger.info(f"     • Should see cosine similarity > 0.1 quickly")
         
         start_time = time.time()
         train_result = trainer.train()
@@ -400,61 +399,69 @@ def main():
         
         # 9. Save results
         if is_main_process:
-            logger.info("💾 Saving model and results...")
+            logger.info("💾 Saving FIXED model and results...")
             trainer.save_model()
             
-            # Save training info
+            # Save training info with fixes
             training_stats = trainer.get_training_statistics()
             training_info = {
                 'training_completed': True,
                 'training_mode': args.training_mode,
                 'expected_tokens': config.num_tokens,
-                'shard_index': args.shard_index,
-                'shard_file': str(shard_file),
-                'evaluation_during_training': False,
                 'total_epochs': args.num_epochs,
                 'total_steps': training_stats.get('total_steps', 0),
-                'learning_rate': args.learning_rate,
                 'training_time_seconds': training_time,
                 'loss_statistics': training_stats.get('loss_statistics', {}),
                 'timestamp': datetime.now().isoformat(),
-                'trainer_used': 'BLIP3oTrainingOnlyTrainer',
+                
+                # FIXED parameters
+                'fixes_applied': {
+                    'velocity_scale': args.velocity_scale,
+                    'output_scale': args.output_scale,
+                    'target_norm_scale': args.target_norm_scale,
+                    'adaptive_scaling': True,
+                    'proper_normalization': True,
+                    'improved_generation': True,
+                },
+                'trainer_used': 'BLIP3oTrainingOnlyTrainer (FIXED)',
                 'fixed_version': True,
                 'model_config': {
                     'hidden_size': config.hidden_size,
                     'num_layers': config.num_hidden_layers,
                     'num_heads': config.num_attention_heads,
                     'num_tokens': config.num_tokens,
+                    'output_scale': config.output_scale,
                 },
-                'next_steps': [
-                    'Run evaluation script separately',
-                    f'Use model from: {args.output_dir}',
-                    f'Use embeddings from: {args.chunked_embeddings_dir}',
+                'expected_improvements': [
+                    'Prediction norms should match target norms better',
+                    'Cosine similarity should improve significantly',
+                    'Loss should decrease more effectively',
+                    'Evaluation should show much higher similarities',
                 ]
             }
             
-            with open(Path(args.output_dir) / 'training_info.json', 'w') as f:
+            with open(Path(args.output_dir) / 'training_info_fixed.json', 'w') as f:
                 json.dump(training_info, f, indent=2)
             
-            logger.info("✅ Training completed successfully!")
+            logger.info("✅ FIXED Training completed successfully!")
             logger.info(f"   Model saved to: {args.output_dir}")
             logger.info(f"   Training mode: {args.training_mode}")
             logger.info(f"   Training time: {training_time:.1f} seconds")
             final_loss = training_stats.get('loss_statistics', {}).get('current_loss', 'unknown')
             logger.info(f"   Final loss: {final_loss}")
-            logger.info(f"   Trainer used: BLIP3oTrainingOnlyTrainer (FIXED)")
+            logger.info(f"   Fixes applied: velocity_scale={args.velocity_scale}, output_scale={args.output_scale}")
             
-            print("\n✅ Training completed successfully!")
+            print("\n✅ FIXED Training completed successfully!")
             print(f"   Model saved to: {args.output_dir}")
             print(f"   Training mode: {args.training_mode} ({config.num_tokens} tokens)")
             print(f"   Final loss: {final_loss}")
             print(f"   Training time: {training_time:.1f} seconds")
+            print(f"   Fixes applied: ✅ Scaling, ✅ Normalization, ✅ Generation")
             
-            # Show next steps
             print("\n🎯 Next steps:")
-            print("1. Run evaluation script to test your trained model")
-            print("2. Check training logs in the output directory")
-            print("3. Inspect model checkpoints")
+            print("1. Run the FIXED evaluation script to test improvements")
+            print("2. Expect much higher cosine similarities (>0.3)")
+            print("3. Check that prediction norms now match target norms")
         
         # Cleanup
         if is_distributed:
@@ -464,7 +471,7 @@ def main():
         
     except Exception as e:
         if is_main_process:
-            logger.error(f"❌ Training failed: {e}")
+            logger.error(f"❌ FIXED Training failed: {e}")
             if args.debug:
                 traceback.print_exc()
         

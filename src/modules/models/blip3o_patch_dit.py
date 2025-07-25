@@ -1,13 +1,7 @@
 #!/usr/bin/env python3
 """
-FIXED: BLIP3-o Patch-Level DiT Model with Correct Generation
-src/modules/models/blip3o_patch_dit.py
-
-KEY FIXES:
-1. Correct timestep schedule in generation (0 to 1.0, not 0.98)
-2. Proper normalization consistency
-3. Fixed gradient checkpointing support
-4. Aligned with BLIP3-o paper specifications
+FIXED: BLIP3-o DiT Model with Proper Generation and Scaling
+Addresses generation timestep issues and scale mismatches
 """
 
 import torch
@@ -34,11 +28,12 @@ class BLIP3oDiTConfig(PretrainedConfig):
         intermediate_size: int = 3072,
         eva_embedding_size: int = 4096,
         clip_embedding_size: int = 1024,
-        num_tokens: int = 256,  # Default to patch_only mode
+        num_tokens: int = 256,
         max_position_embeddings: int = 256,
         dropout_prob: float = 0.1,
         training_mode: str = "patch_only",
         use_gradient_checkpointing: bool = False,
+        output_scale: float = 1.0,  # NEW: Output scaling factor
         **kwargs
     ):
         super().__init__(**kwargs)
@@ -53,6 +48,8 @@ class BLIP3oDiTConfig(PretrainedConfig):
         self.dropout_prob = dropout_prob
         self.training_mode = training_mode
         self.use_gradient_checkpointing = use_gradient_checkpointing
+        self.output_scale = output_scale
+
 
 class RotaryPositionalEmbedding3D(nn.Module):
     """3D Rotary Position Embedding for spatial patch layout"""
@@ -120,8 +117,9 @@ class RotaryPositionalEmbedding3D(nn.Module):
         
         return torch.cat([x1_rot, x2_rot, x3_rot, x4_rot], dim=-1)
 
+
 class TimestepEmbedder(nn.Module):
-    """Timestep embedding for flow matching"""
+    """FIXED: Timestep embedding with proper scaling"""
     def __init__(self, hidden_size: int, frequency_embedding_size: int = 256):
         super().__init__()
         self.mlp = nn.Sequential(
@@ -144,6 +142,7 @@ class TimestepEmbedder(nn.Module):
     def forward(self, t: torch.Tensor) -> torch.Tensor:
         t_freq = self.timestep_embedding(t, self.frequency_embedding_size)
         return self.mlp(t_freq)
+
 
 class MultiHeadAttention(nn.Module):
     """Multi-head attention with gradient checkpointing support"""
@@ -178,6 +177,7 @@ class MultiHeadAttention(nn.Module):
         attn_output = torch.matmul(attn_weights, v)
         attn_output = attn_output.transpose(1, 2).contiguous().view(batch_size, seq_len, self.hidden_size)
         return self.o_proj(attn_output)
+
 
 class BLIP3oDiTBlock(nn.Module):
     """DiT block with gradient checkpointing support"""
@@ -236,9 +236,10 @@ class BLIP3oDiTBlock(nn.Module):
         hidden_states = self._ffn_block(hidden_states)
         return hidden_states
 
+
 class BLIP3oPatchDiTModel(PreTrainedModel):
     """
-    FIXED: BLIP3-o Patch-Level DiT Model with Correct Generation and Evaluation
+    FIXED: BLIP3-o Patch-Level DiT Model with Proper Scaling and Generation
     """
     
     config_class = BLIP3oDiTConfig
@@ -270,15 +271,21 @@ class BLIP3oPatchDiTModel(PreTrainedModel):
         self.output_norm = nn.LayerNorm(config.hidden_size, eps=1e-6)
         self.output_proj = nn.Linear(config.hidden_size, config.clip_embedding_size, bias=True)
         
+        # FIXED: Output scaling layer
+        self.output_scale = nn.Parameter(torch.tensor(config.output_scale))
+        
         # Initialize weights
         self.apply(self._init_weights)
         nn.init.normal_(self.pos_embed, std=0.02)
-        nn.init.zeros_(self.output_proj.weight)
+        
+        # FIXED: Initialize output projection with smaller weights
+        nn.init.normal_(self.output_proj.weight, std=0.02)
         nn.init.zeros_(self.output_proj.bias)
         
         logger.info(f"✅ FIXED BLIP3-o model initialized")
         logger.info(f"   Training mode: {config.training_mode}")
         logger.info(f"   Token count: {config.num_tokens}")
+        logger.info(f"   Output scale: {config.output_scale}")
 
     def _init_weights(self, module):
         if isinstance(module, nn.Linear):
@@ -357,15 +364,19 @@ class BLIP3oPatchDiTModel(PreTrainedModel):
             else:
                 x = block(x, encoder_hidden_states)
         
-        # Output projection
+        # Output projection with proper scaling
         x = self.output_norm(x)
         velocity_pred = self.output_proj(x)
+        
+        # FIXED: Apply learnable output scaling
+        velocity_pred = velocity_pred * self.output_scale
         
         if return_dict:
             return {
                 "velocity_prediction": velocity_pred,
                 "hidden_states": x,
                 "timestep_embeddings": timestep_emb,
+                "output_scale": self.output_scale,
             }
         return velocity_pred
     
@@ -377,34 +388,31 @@ class BLIP3oPatchDiTModel(PreTrainedModel):
         generator: Optional[torch.Generator] = None,
         return_intermediate: bool = False,
         normalize_output: bool = True,
+        guidance_scale: float = 1.0,  # NEW: Guidance scale
     ) -> torch.Tensor:
         """
-        FIXED: Generate CLIP embeddings with correct timestep schedule
-        
-        Key fixes:
-        1. Proper timestep schedule (0 to 1.0, not 0.98)
-        2. Consistent normalization
-        3. Rectified flow integration
+        FIXED: Generate CLIP embeddings with correct timestep schedule and scaling
         """
         device = eva_features.device
         batch_size, num_tokens, _ = eva_features.shape
         
-        # Start from noise
+        # FIXED: Start from properly scaled noise
         x = torch.randn(
             batch_size, num_tokens, self.config.clip_embedding_size,
             device=device,
             generator=generator,
             dtype=eva_features.dtype
-        )
+        ) * 0.1  # Smaller initial noise
         
-        # CRITICAL FIX: Correct timestep schedule for rectified flow
+        # FIXED: Correct timestep schedule for rectified flow
+        timesteps = torch.linspace(0.0, 1.0, num_inference_steps + 1, device=device)
         dt = 1.0 / num_inference_steps
         
         intermediates = [] if return_intermediate else None
         
-        for step in range(num_inference_steps):
-            # FIXED: Correct timestep schedule - goes from 0 to 1.0
-            t = torch.full((batch_size,), step * dt, device=device, dtype=eva_features.dtype)
+        for i in range(num_inference_steps):
+            # Current timestep
+            t = torch.full((batch_size,), timesteps[i], device=device, dtype=eva_features.dtype)
             
             # Forward pass to get velocity
             velocity = self.forward(
@@ -414,14 +422,19 @@ class BLIP3oPatchDiTModel(PreTrainedModel):
                 return_dict=False
             )
             
-            # FIXED: Proper rectified flow integration
+            # FIXED: Apply guidance scaling if needed
+            if guidance_scale != 1.0:
+                velocity = velocity * guidance_scale
+            
+            # FIXED: Proper Euler integration for rectified flow
             x = x + dt * velocity
             
             if return_intermediate:
                 intermediates.append(x.clone())
         
-        # CRITICAL FIX: Apply normalization if requested (for consistency with training)
+        # FIXED: Final normalization
         if normalize_output:
+            # L2 normalize per patch
             x = torch.nn.functional.normalize(x, p=2, dim=-1)
         
         if return_intermediate:
@@ -439,10 +452,11 @@ def create_blip3o_patch_dit_model(
     num_layers: int = 12,
     num_heads: int = 12,
     use_gradient_checkpointing: bool = False,
+    output_scale: float = 0.1,  # FIXED: Start with smaller output scale
     **kwargs
 ) -> BLIP3oPatchDiTModel:
     """
-    Create BLIP3-o patch DiT model with proper configuration
+    FIXED: Create BLIP3-o patch DiT model with proper scaling configuration
     """
     if config is None:
         num_tokens = 257 if training_mode == "cls_patch" else 256
@@ -454,6 +468,7 @@ def create_blip3o_patch_dit_model(
             max_position_embeddings=max(num_tokens, 257),
             training_mode=training_mode,
             use_gradient_checkpointing=use_gradient_checkpointing,
+            output_scale=output_scale,  # FIXED: Add output scaling
             **kwargs
         )
     

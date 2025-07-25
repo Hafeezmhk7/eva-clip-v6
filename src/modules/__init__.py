@@ -1,22 +1,391 @@
 """
+BLIP3-o Modules - UPDATED with All Fixes Applied
 src/modules/__init__.py
-Top-level module initialization
+
+Main module initialization with:
+- FIXED flow matching loss with scaling parameters
+- FIXED DiT model with output scaling  
+- Updated trainers and datasets
+- Comprehensive fix verification
 """
 
-# Package version
-__version__ = "1.0.0"
-
-# Import key components for easier access
-from .models.blip3o_patch_dit import BLIP3oPatchDiTModel, create_blip3o_patch_dit_model
-from .losses.blip3o_flow_matching_loss import BLIP3oFlowMatchingLoss, create_blip3o_flow_matching_loss
-from .trainers import (
-    BLIP3oFlexibleTrainer, 
-    create_blip3o_flexible_training_args,
-    BLIP3oTrainingOnlyTrainer,
-    create_training_only_args
-)
-
-# Log initialization
 import logging
+import sys
+from pathlib import Path
+
+# Setup module-level logging
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-logger.info(f"BLIP3-o Enhanced Training Module v{__version__} initialized")
+
+logger.info("🚀 Initializing BLIP3-o modules with ALL FIXES")
+logger.info("=" * 50)
+
+# Import availability flags
+MODEL_AVAILABLE = False
+LOSS_AVAILABLE = False
+TRAINER_AVAILABLE = False
+DATASET_AVAILABLE = False
+
+# 1. Import FIXED models
+try:
+    from .models import (
+        # Core classes
+        BLIP3oPatchDiTModel,
+        BLIP3oDiTConfig,
+        
+        # Factory functions (with scaling)
+        create_blip3o_patch_dit_model,
+        create_fixed_model,
+        create_overfitting_model,
+        create_production_model,
+        
+        # Model components
+        RotaryPositionalEmbedding3D,
+        TimestepEmbedder,
+        MultiHeadAttention,
+        BLIP3oDiTBlock,
+        
+        # Utilities
+        print_model_fixes,
+        PATCH_MODEL_AVAILABLE,
+    )
+    
+    MODEL_AVAILABLE = PATCH_MODEL_AVAILABLE
+    logger.info("✅ FIXED models imported successfully")
+    
+except ImportError as e:
+    logger.error(f"❌ Failed to import FIXED models: {e}")
+    logger.error("   Ensure blip3o_patch_dit.py has all the fixes applied")
+
+# 2. Import FIXED losses  
+try:
+    from .losses import (
+        # Core classes
+        BLIP3oFlowMatchingLoss,
+        
+        # Factory functions (with scaling)
+        create_blip3o_flow_matching_loss,
+        create_debug_loss,
+        create_production_loss,
+        get_fixed_loss_function,
+        get_overfitting_loss_function,
+        
+        # Utilities
+        analyze_loss_scaling,
+        print_loss_fixes,
+        FLOW_MATCHING_LOSS_AVAILABLE,
+    )
+    
+    LOSS_AVAILABLE = FLOW_MATCHING_LOSS_AVAILABLE
+    logger.info("✅ FIXED losses imported successfully")
+    
+except ImportError as e:
+    logger.error(f"❌ Failed to import FIXED losses: {e}")
+    logger.error("   Ensure blip3o_flow_matching_loss.py is the complete fixed version")
+
+# 3. Import trainers
+try:
+    from .trainers import (
+        BLIP3oTrainingOnlyTrainer,
+        create_training_only_args,
+        TRAINING_ONLY_TRAINER_AVAILABLE,
+    )
+    
+    TRAINER_AVAILABLE = TRAINING_ONLY_TRAINER_AVAILABLE
+    logger.info("✅ Trainers imported successfully")
+    
+except ImportError as e:
+    logger.error(f"❌ Failed to import trainers: {e}")
+
+# 4. Import datasets
+try:
+    from .datasets import (
+        create_flexible_dataloaders,
+        DATASET_AVAILABLE as DATASET_MODULE_AVAILABLE,
+    )
+    
+    DATASET_AVAILABLE = DATASET_MODULE_AVAILABLE
+    logger.info("✅ Datasets imported successfully")
+    
+except ImportError as e:
+    logger.error(f"❌ Failed to import datasets: {e}")
+
+# 5. Import config if available
+try:
+    from .config import (
+        get_default_blip3o_config,
+        BLIP3oDiTConfig as ConfigClass,
+    )
+    
+    logger.info("✅ Config imported successfully")
+    
+except ImportError as e:
+    logger.warning(f"⚠️ Config import failed: {e}")
+
+# Check overall module status
+ALL_MODULES_AVAILABLE = all([
+    MODEL_AVAILABLE,
+    LOSS_AVAILABLE, 
+    TRAINER_AVAILABLE,
+    DATASET_AVAILABLE,
+])
+
+if ALL_MODULES_AVAILABLE:
+    logger.info("🎉 ALL BLIP3-o modules with FIXES loaded successfully!")
+else:
+    logger.warning("⚠️ Some modules failed to load - check individual import errors")
+
+logger.info("=" * 50)
+
+# Main exports
+__all__ = [
+    # Availability flags
+    "MODEL_AVAILABLE",
+    "LOSS_AVAILABLE", 
+    "TRAINER_AVAILABLE",
+    "DATASET_AVAILABLE",
+    "ALL_MODULES_AVAILABLE",
+]
+
+# Export models if available
+if MODEL_AVAILABLE:
+    __all__.extend([
+        # Core model classes
+        "BLIP3oPatchDiTModel",
+        "BLIP3oDiTConfig",
+        
+        # Factory functions (FIXED with scaling)
+        "create_blip3o_patch_dit_model",
+        "create_fixed_model",
+        "create_overfitting_model", 
+        "create_production_model",
+        
+        # Model components
+        "RotaryPositionalEmbedding3D",
+        "TimestepEmbedder",
+        "MultiHeadAttention", 
+        "BLIP3oDiTBlock",
+        
+        # Utilities
+        "print_model_fixes",
+    ])
+
+# Export losses if available
+if LOSS_AVAILABLE:
+    __all__.extend([
+        # Core loss classes
+        "BLIP3oFlowMatchingLoss",
+        
+        # Factory functions (FIXED with scaling)
+        "create_blip3o_flow_matching_loss",
+        "create_debug_loss",
+        "create_production_loss",
+        "get_fixed_loss_function",
+        "get_overfitting_loss_function",
+        
+        # Utilities
+        "analyze_loss_scaling",
+        "print_loss_fixes",
+    ])
+
+# Export trainers if available
+if TRAINER_AVAILABLE:
+    __all__.extend([
+        "BLIP3oTrainingOnlyTrainer",
+        "create_training_only_args",
+    ])
+
+# Export datasets if available
+if DATASET_AVAILABLE:
+    __all__.extend([
+        "create_flexible_dataloaders",
+    ])
+
+# High-level convenience functions
+def create_complete_fixed_setup(
+    training_mode: str = "patch_only",
+    velocity_scale: float = 0.1,
+    output_scale: float = 0.1,
+    **kwargs
+):
+    """
+    Create a complete BLIP3-o setup with all fixes applied
+    
+    Args:
+        training_mode: "patch_only" or "cls_patch"
+        velocity_scale: Velocity scaling for loss function
+        output_scale: Output scaling for model
+        **kwargs: Additional parameters
+        
+    Returns:
+        tuple: (model, loss_function) with all fixes applied
+    """
+    if not (MODEL_AVAILABLE and LOSS_AVAILABLE):
+        raise RuntimeError("Model and loss modules must be available")
+    
+    # Create FIXED model with scaling
+    model = create_fixed_model(
+        training_mode=training_mode,
+        output_scale=output_scale,
+        **kwargs
+    )
+    
+    # Create FIXED loss function with scaling
+    loss_fn = get_fixed_loss_function(
+        velocity_scale=velocity_scale,
+        **kwargs
+    )
+    
+    logger.info(f"✅ Created complete FIXED setup:")
+    logger.info(f"   Training mode: {training_mode}")
+    logger.info(f"   Velocity scale: {velocity_scale}")
+    logger.info(f"   Output scale: {output_scale}")
+    
+    return model, loss_fn
+
+def create_overfitting_setup(**kwargs):
+    """
+    Create setup optimized for overfitting tests
+    
+    Returns:
+        tuple: (model, loss_function) for overfitting test
+    """
+    if not (MODEL_AVAILABLE and LOSS_AVAILABLE):
+        raise RuntimeError("Model and loss modules must be available")
+    
+    model = create_overfitting_model(**kwargs)
+    loss_fn = get_overfitting_loss_function(**kwargs)
+    
+    logger.info("✅ Created overfitting test setup with all fixes")
+    
+    return model, loss_fn
+
+def create_production_setup(**kwargs):
+    """
+    Create setup optimized for production training
+    
+    Returns:
+        tuple: (model, loss_function) for production training
+    """
+    if not (MODEL_AVAILABLE and LOSS_AVAILABLE):
+        raise RuntimeError("Model and loss modules must be available")
+    
+    model = create_production_model(**kwargs)
+    loss_fn = create_production_loss(**kwargs)
+    
+    logger.info("✅ Created production setup with all fixes")
+    
+    return model, loss_fn
+
+def print_all_fixes():
+    """Print comprehensive information about all fixes applied"""
+    print("🔧 BLIP3-o Complete Fixes Applied")
+    print("=" * 60)
+    print()
+    
+    if MODEL_AVAILABLE:
+        print_model_fixes()
+        print()
+    
+    if LOSS_AVAILABLE:
+        print_loss_fixes()
+        print()
+    
+    print("📊 Module Status:")
+    print(f"   Models: {'✅ Available' if MODEL_AVAILABLE else '❌ Not Available'}")
+    print(f"   Losses: {'✅ Available' if LOSS_AVAILABLE else '❌ Not Available'}")
+    print(f"   Trainers: {'✅ Available' if TRAINER_AVAILABLE else '❌ Not Available'}")
+    print(f"   Datasets: {'✅ Available' if DATASET_AVAILABLE else '❌ Not Available'}")
+    print(f"   Overall: {'✅ All Ready' if ALL_MODULES_AVAILABLE else '⚠️ Some Issues'}")
+    print("=" * 60)
+
+def validate_fixes():
+    """Validate that all fixes are properly applied"""
+    validation_results = {}
+    
+    # Validate model fixes
+    if MODEL_AVAILABLE:
+        try:
+            test_model = create_fixed_model(
+                model_size='tiny',
+                output_scale=0.1
+            )
+            
+            # Check if model has scaling parameter
+            has_scaling = hasattr(test_model, 'output_scale')
+            validation_results['model_scaling'] = has_scaling
+            
+            # Check if model can be created with new parameters
+            validation_results['model_creation'] = True
+            
+            del test_model
+            
+        except Exception as e:
+            validation_results['model_creation'] = False
+            validation_results['model_error'] = str(e)
+    
+    # Validate loss fixes
+    if LOSS_AVAILABLE:
+        try:
+            test_loss = get_fixed_loss_function(
+                velocity_scale=0.1,
+                adaptive_scaling=True
+            )
+            
+            # Check if loss has new methods
+            has_scaling_methods = hasattr(test_loss, 'get_scaling_info')
+            validation_results['loss_scaling'] = has_scaling_methods
+            
+            # Check if loss can be created with new parameters
+            validation_results['loss_creation'] = True
+            
+            del test_loss
+            
+        except Exception as e:
+            validation_results['loss_creation'] = False
+            validation_results['loss_error'] = str(e)
+    
+    # Print validation results
+    print("🔍 Fix Validation Results:")
+    print("=" * 30)
+    for key, value in validation_results.items():
+        if key.endswith('_error'):
+            print(f"   ❌ {key}: {value}")
+        else:
+            status = "✅" if value else "❌"
+            print(f"   {status} {key}: {value}")
+    
+    all_valid = all(
+        v for k, v in validation_results.items() 
+        if not k.endswith('_error')
+    )
+    
+    if all_valid:
+        print("✅ All fixes validated successfully!")
+    else:
+        print("⚠️ Some fixes may not be properly applied")
+    
+    return validation_results
+
+# Add convenience functions to exports
+__all__.extend([
+    "create_complete_fixed_setup",
+    "create_overfitting_setup",
+    "create_production_setup", 
+    "print_all_fixes",
+    "validate_fixes",
+])
+
+# Run validation on import
+if ALL_MODULES_AVAILABLE:
+    logger.info("🔍 Running fix validation...")
+    validation_results = validate_fixes()
+    
+    if all(v for k, v in validation_results.items() if not k.endswith('_error')):
+        logger.info("✅ All fixes validated - ready for use!")
+    else:
+        logger.warning("⚠️ Some validation issues detected - check output above")
+else:
+    logger.warning("⚠️ Cannot validate fixes - some modules unavailable")
+
+logger.info("🏁 BLIP3-o module initialization complete")

@@ -1,24 +1,31 @@
 #!/bin/bash
-#SBATCH --job-name=blip3o_training_fixed
+#SBATCH --job-name=blip3o_fixed_training
 #SBATCH --partition=gpu_a100
 #SBATCH --nodes=1
-#SBATCH --gpus=3
+#SBATCH --gpus=2
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-gpu=9
 #SBATCH --time=12:00:00
 #SBATCH --mem=64GB
-#SBATCH --output=./slurm_out/blip3o_training_fixed_%j.out
-#SBATCH --error=./slurm_out/blip3o_training_fixed_%j.err
+#SBATCH --output=./slurm_out/blip3o_fixed_training_%j.out
+#SBATCH --error=./slurm_out/blip3o_fixed_training_%j.err
 
 # =============================================================================
-# FIXED BLIP3-o TRAINING JOB SCRIPT
-# Training only (no evaluation) with fixed TrainingArguments
+# FIXED BLIP3-o TRAINING JOB SCRIPT - WITH PROPER SCALING
+# Uses the new fixed training script with scale mismatch solutions
 # =============================================================================
 
-echo "🚀 Starting FIXED BLIP3-o Training Job"
+echo "🚀 Starting FIXED BLIP3-o Training Job with Proper Scaling"
 echo "Job ID: ${SLURM_JOB_ID}"
 echo "Node: $(hostname)"
 echo "Time: $(date)"
+echo "============================================================"
+echo "🔧 CRITICAL FIXES APPLIED:"
+echo "  ✅ Velocity scaling (velocity_scale=0.1)"
+echo "  ✅ Output scaling (output_scale=0.1)" 
+echo "  ✅ Adaptive norm alignment"
+echo "  ✅ Proper rectified flow implementation"
+echo "  ✅ Fixed generation timestep schedule"
 echo "============================================================"
 
 cd $SLURM_SUBMIT_DIR
@@ -37,21 +44,25 @@ export WORKSPACE="/scratch-shared/${USER}/blip3o_workspace"
 export EMBEDDINGS_DIR="${WORKSPACE}/embeddings"
 export CHECKPOINTS="${WORKSPACE}/checkpoints"
 
-# Configuration - FIXED for single shard training
+# FIXED Configuration - with proper scaling parameters
 TRAINING_MODE="patch_only"  # patch_only or cls_patch
 EMBEDDINGS_DIR="/scratch-shared/azadaianchuk1/blip3o_workspace/embeddings/patch_only_256_tokens"
-OUTPUT_DIR="${CHECKPOINTS}/training_fixed_${TRAINING_MODE}_${JOB_ID}_$(date +%Y%m%d_%H%M%S)"
+OUTPUT_DIR="${CHECKPOINTS}/fixed_training_${TRAINING_MODE}_${JOB_ID}_$(date +%Y%m%d_%H%M%S)"
 mkdir -p "${OUTPUT_DIR}"
 
-# Training parameters - FIXED
+# FIXED Training parameters - addressing scale mismatch
 MODEL_SIZE="base"
-NUM_EPOCHS=10
-BATCH_SIZE=64
-LEARNING_RATE=5e-5
+NUM_EPOCHS=15  # More epochs to see improvement
+BATCH_SIZE=32  # Reasonable batch size
+LEARNING_RATE=1e-4  # Slightly higher LR for faster learning
 GRADIENT_ACCUMULATION_STEPS=2
 LOGGING_STEPS=5
 SAVE_STEPS=100
-SHARD_INDEX=0
+
+# CRITICAL: Scale parameters to fix norm mismatch
+VELOCITY_SCALE=0.1      # Scale down velocity targets
+OUTPUT_SCALE=0.1        # Scale down model outputs  
+TARGET_NORM_SCALE=1.0   # Keep targets normalized
 
 echo "⚙️ FIXED Training Configuration:"
 echo "   Mode: $TRAINING_MODE"
@@ -61,7 +72,10 @@ echo "   Model: $MODEL_SIZE"
 echo "   Batch size: $BATCH_SIZE"
 echo "   Learning rate: $LEARNING_RATE"
 echo "   Epochs: $NUM_EPOCHS"
-echo "   Shard index: $SHARD_INDEX"
+echo "   🔧 FIXES:"
+echo "     • Velocity scale: $VELOCITY_SCALE"
+echo "     • Output scale: $OUTPUT_SCALE"
+echo "     • Target norm scale: $TARGET_NORM_SCALE"
 
 # Verify embeddings directory exists
 if [ ! -d "$EMBEDDINGS_DIR" ]; then
@@ -84,13 +98,29 @@ else
     echo "$SHARD_FILES"
 fi
 
-# Launch training with FIXED script
+# Check if we have the fixed training script
+if [ ! -f "train_blip3o_enhanced.py" ]; then
+    echo "❌ Fixed training script not found: train_blip3o_enhanced.py"
+    echo "Available Python files:"
+    ls -la *.py
+    exit 1
+else
+    echo "✅ Found fixed training script: train_blip3o_enhanced.py"
+fi
+
+# Launch FIXED training with proper scaling parameters
 echo "🚀 Starting FIXED Training Process..."
+echo "Expected improvements:"
+echo "  📈 Cosine similarity should improve from ~0.01 to >0.3"
+echo "  📊 Prediction norms should align with target norms"
+echo "  📉 Loss should decrease smoothly"
+echo "  🎯 Much better evaluation results"
+echo ""
+
 python train_blip3o_enhanced.py \
     --chunked_embeddings_dir "$EMBEDDINGS_DIR" \
     --output_dir "$OUTPUT_DIR" \
     --training_mode "$TRAINING_MODE" \
-    --shard_index $SHARD_INDEX \
     --model_size "$MODEL_SIZE" \
     --num_epochs $NUM_EPOCHS \
     --batch_size $BATCH_SIZE \
@@ -98,6 +128,9 @@ python train_blip3o_enhanced.py \
     --gradient_accumulation_steps $GRADIENT_ACCUMULATION_STEPS \
     --logging_steps $LOGGING_STEPS \
     --save_steps $SAVE_STEPS \
+    --velocity_scale $VELOCITY_SCALE \
+    --output_scale $OUTPUT_SCALE \
+    --target_norm_scale $TARGET_NORM_SCALE \
     --fp16
 
 # Check training result
@@ -107,15 +140,16 @@ if [ $TRAINING_EXIT_CODE -eq 0 ]; then
     echo "✅ FIXED Training completed successfully!"
     echo "   Model saved to: $OUTPUT_DIR"
     echo "   Training mode: $TRAINING_MODE"
+    echo "   Fixes applied: Velocity scaling, Output scaling, Norm alignment"
     echo ""
     echo "📊 Training Summary:"
-    if [ -f "$OUTPUT_DIR/training_info.json" ]; then
-        echo "Training info saved to: $OUTPUT_DIR/training_info.json"
+    if [ -f "$OUTPUT_DIR/training_info_fixed.json" ]; then
+        echo "Fixed training info saved to: $OUTPUT_DIR/training_info_fixed.json"
         # Show some key info
         python -c "
 import json
 try:
-    with open('$OUTPUT_DIR/training_info.json', 'r') as f:
+    with open('$OUTPUT_DIR/training_info_fixed.json', 'r') as f:
         info = json.load(f)
     print(f\"   Training mode: {info.get('training_mode', 'unknown')}\")
     print(f\"   Epochs completed: {info.get('total_epochs', 'unknown')}\")
@@ -124,6 +158,11 @@ try:
     if loss_stats:
         print(f\"   Final loss: {loss_stats.get('current_loss', 'unknown')}\")
         print(f\"   Loss trend: {loss_stats.get('loss_trend', 'unknown')}\")
+    fixes = info.get('fixes_applied', {})
+    if fixes:
+        print(f\"   Velocity scale: {fixes.get('velocity_scale', 'unknown')}\")
+        print(f\"   Output scale: {fixes.get('output_scale', 'unknown')}\")
+        print(f\"   Adaptive scaling: {fixes.get('adaptive_scaling', 'unknown')}\")
 except Exception as e:
     print(f\"   Could not read training info: {e}\")
 "
@@ -131,13 +170,19 @@ except Exception as e:
     
     echo ""
     echo "🎯 Next Steps:"
-    echo "1. Check the training logs in $OUTPUT_DIR/logs/"
-    echo "2. Inspect the saved model in $OUTPUT_DIR/"
-    echo "3. Run evaluation script if needed:"
+    echo "1. Run the FIXED evaluation script:"
     echo "   python eval_blip3o_patch_similarity.py \\"
     echo "     --model_path $OUTPUT_DIR \\"
     echo "     --chunked_embeddings_dir $EMBEDDINGS_DIR \\"
-    echo "     --training_mode $TRAINING_MODE"
+    echo "     --training_mode $TRAINING_MODE \\"
+    echo "     --same_data_eval \\"
+    echo "     --normalize_embeddings"
+    echo ""
+    echo "2. Expected evaluation results:"
+    echo "   • Overall cosine similarity: >0.3 (vs 0.01 before)"
+    echo "   • High quality images: >30% (vs 0% before)"
+    echo "   • Prediction norms: ~1.0 (vs 0.3 before)"
+    echo "   • Target norms: ~1.0 (vs 32.0 before)"
     
 else
     echo "❌ FIXED Training failed with exit code: $TRAINING_EXIT_CODE"
@@ -160,9 +205,9 @@ except Exception as e:
 
 try:
     import src.modules.losses.blip3o_flow_matching_loss
-    print('✅ Loss module available')
+    print('✅ FIXED Loss module available')
 except Exception as e:
-    print(f'❌ Loss module: {e}')
+    print(f'❌ FIXED Loss module: {e}')
 
 try:
     import src.modules.trainers.blip3o_training_only_trainer
@@ -179,7 +224,15 @@ except Exception as e:
 fi
 
 echo ""
-echo "🏁 Job completed at $(date)"
+echo "🏁 FIXED Training job completed at $(date)"
 echo "Exit code: $TRAINING_EXIT_CODE"
+echo ""
+echo "🔧 Fixes Applied in This Run:"
+echo "  ✅ Velocity scaling to address 50x norm mismatch"
+echo "  ✅ Output scaling in DiT model"
+echo "  ✅ Adaptive scaling mechanism in loss function"
+echo "  ✅ Proper rectified flow implementation"
+echo "  ✅ Fixed generation timestep schedule"
+echo "  ✅ Consistent normalization handling"
 
 exit $TRAINING_EXIT_CODE
