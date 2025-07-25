@@ -271,23 +271,24 @@ def create_loss_function(args, logger):
     logger.info("🔧 Creating FIXED flow matching loss with scaling...")
     
     try:
-        # Try to import the FIXED loss with scaling support
         from src.modules.losses import get_fixed_loss_function
         
         flow_matching_loss = get_fixed_loss_function(
-            velocity_scale=args.velocity_scale,      # CRITICAL: Apply velocity scaling
+            velocity_scale=args.velocity_scale,
             target_norm_scale=args.target_norm_scale,
             adaptive_scaling=True,
-            prediction_type="velocity",
-            normalize_targets=True,
-            flow_type="rectified",
+            # REMOVE THESE REDUNDANT PARAMETERS:
+            # prediction_type="velocity",
+            # normalize_targets=True,
+            # flow_type="rectified",
         )
         
         logger.info("✅ FIXED BLIP3-o Flow Matching Loss initialized")
         logger.info(f"   🔧 Velocity scale: {args.velocity_scale} (APPLIED)")
         logger.info(f"   🔧 Target norm scale: {args.target_norm_scale}")
         logger.info(f"   ✅ Adaptive scaling: enabled")
-        logger.info(f"   ✅ Flow type: rectified")
+        logger.info(f"   ✅ Flow type: rectified")  # Hardcoded since it's fixed
+        logger.info(f"   ✅ Prediction type: velocity")  # Hardcoded since it's fixed
         
         return flow_matching_loss
         
