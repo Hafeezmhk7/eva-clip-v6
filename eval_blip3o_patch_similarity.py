@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
 """
-FIXED: BLIP3-o Evaluation Script with Proper Patch-wise Cosine Similarity
-Implements the exact evaluation methodology described in the user requirements
+FIXED: BLIP3-o Evaluation Script - Patch-wise Cosine Similarity
+eval_blip3o_patch_similarity.py
+
+Evaluates trained DiT model by computing:
+1. Per-patch cosine similarity
+2. Per-image average cosine similarity
+3. Global average cosine similarity
 """
 
 import os
@@ -16,7 +21,7 @@ import logging
 from datetime import datetime
 import traceback
 
-# FIXED: Handle CUDA environment issues
+# Setup CUDA environment
 os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID'
 if 'CUDA_VISIBLE_DEVICES' not in os.environ:
     os.environ['CUDA_VISIBLE_DEVICES'] = '0'
@@ -25,67 +30,55 @@ if 'CUDA_VISIBLE_DEVICES' not in os.environ:
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 def setup_logging():
-    """Setup logging for evaluation"""
+    """Setup logging"""
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.StreamHandler(sys.stdout),
-        ]
+        handlers=[logging.StreamHandler(sys.stdout)]
     )
     return logging.getLogger(__name__)
 
 def parse_arguments():
     """Parse command line arguments"""
     parser = argparse.ArgumentParser(
-        description="FIXED: BLIP3-o Patch-wise Cosine Similarity Evaluation",
+        description="BLIP3-o Patch-wise Cosine Similarity Evaluation",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
     
-    # Model and data paths
+    # Required paths
     parser.add_argument("--model_path", type=str, required=True,
-                       help="Path to trained BLIP3-o model")
+                       help="Path to trained model")
     parser.add_argument("--chunked_embeddings_dir", type=str, required=True,
-                       help="Path to chunked embeddings directory")
+                       help="Path to embeddings directory")
     parser.add_argument("--output_dir", type=str, required=True,
-                       help="Output directory for evaluation results")
+                       help="Output directory for results")
     
-    # Evaluation configuration
+    # Evaluation parameters
     parser.add_argument("--num_samples", type=int, default=1000,
                        help="Number of samples to evaluate")
     parser.add_argument("--batch_size", type=int, default=8,
                        help="Evaluation batch size")
     parser.add_argument("--num_inference_steps", type=int, default=50,
-                       help="Number of inference steps for generation")
+                       help="Number of inference steps")
     parser.add_argument("--training_mode", type=str, default="auto",
                        choices=["auto", "cls_patch", "patch_only"],
-                       help="Training mode (auto-detect from model if 'auto')")
+                       help="Training mode (auto-detect if 'auto')")
     
-    # Evaluation options
+    # Options
     parser.add_argument("--same_data_eval", action="store_true", default=True,
-                       help="Use same training data for evaluation (overfitting test)")
+                       help="Use same training data for evaluation")
     parser.add_argument("--normalize_embeddings", action="store_true", default=True,
-                       help="Normalize embeddings before computing similarity")
-    
-    # Output options
-    parser.add_argument("--save_detailed_results", action="store_true", default=True,
-                       help="Save detailed per-image results")
-    
-    # Hardware configuration
+                       help="Normalize embeddings")
     parser.add_argument("--device", type=str, default="auto",
-                       help="Device to use (auto, cpu, cuda)")
-    parser.add_argument("--torch_dtype", type=str, default="float32",
-                       choices=["float32", "float16"],
-                       help="Torch data type")
+                       help="Device to use")
     
     return parser.parse_args()
 
-def setup_device_safely(device_arg: str, logger):
-    """FIXED: Setup device with better CUDA handling"""
+def setup_device(device_arg: str, logger):
+    """Setup device"""
     if device_arg == "auto":
         try:
             if torch.cuda.is_available():
-                torch.cuda.device_count()
                 device = torch.device("cuda:0")
                 logger.info(f"Using GPU: {torch.cuda.get_device_name(0)}")
             else:
@@ -95,30 +88,23 @@ def setup_device_safely(device_arg: str, logger):
             logger.warning(f"CUDA setup failed: {e}, falling back to CPU")
             device = torch.device("cpu")
     else:
-        try:
-            device = torch.device(device_arg)
-            if device.type == "cuda":
-                torch.cuda.set_device(device)
-                torch.cuda.device_count()
-            logger.info(f"Using specified device: {device}")
-        except Exception as e:
-            logger.warning(f"Specified device {device_arg} failed: {e}, using CPU")
-            device = torch.device("cpu")
+        device = torch.device(device_arg)
+        logger.info(f"Using device: {device}")
     
     return device
 
-def load_model_and_determine_mode(model_path, device, torch_dtype, training_mode, logger):
-    """FIXED: Load model and determine training mode with proper config handling"""
+def load_model_and_config(model_path, device, training_mode, logger):
+    """Load model and determine training mode"""
     from src.modules.models.blip3o_patch_dit import create_blip3o_patch_dit_model, BLIP3oDiTConfig
     
     model_path = Path(model_path)
     logger.info(f"📦 Loading model from: {model_path}")
     
-    # Load model configuration
+    # Load configuration
     config_files = [
         model_path / "config.json",
         model_path / "blip3o_model_config.json",
-        model_path / "enhanced_training_config.json"
+        model_path / "training_info.json"
     ]
     
     config_data = None
@@ -132,38 +118,22 @@ def load_model_and_determine_mode(model_path, device, torch_dtype, training_mode
     if config_data is None:
         raise FileNotFoundError(f"No config file found in {model_path}")
     
-    # Handle different config key names
-    if 'num_tokens' in config_data:
-        expected_tokens = config_data['num_tokens']
-    elif 'expected_tokens' in config_data:
-        expected_tokens = config_data['expected_tokens']
-    else:
-        if training_mode == "auto":
-            if 'training_mode' in config_data:
-                inferred_mode = config_data['training_mode']
-                expected_tokens = 257 if inferred_mode == "cls_patch" else 256
-            else:
-                expected_tokens = 256  # Default to patch_only
+    # Determine training mode
+    if training_mode == "auto":
+        if 'training_mode' in config_data:
+            training_mode = config_data['training_mode']
+        elif 'num_tokens' in config_data:
+            training_mode = "cls_patch" if config_data['num_tokens'] == 257 else "patch_only"
         else:
-            expected_tokens = 257 if training_mode == "cls_patch" else 256
-        
-        logger.warning(f"No token count in config, inferring: {expected_tokens}")
+            training_mode = "patch_only"  # Default
+        logger.info(f"🎯 Auto-detected training mode: {training_mode}")
     
-    # Create model config
+    # Create config
+    expected_tokens = 257 if training_mode == "cls_patch" else 256
     if 'num_tokens' not in config_data:
         config_data['num_tokens'] = expected_tokens
     
     config = BLIP3oDiTConfig(**config_data)
-    
-    # Determine training mode
-    if training_mode == "auto":
-        if hasattr(config, 'training_mode') and config.training_mode:
-            training_mode = config.training_mode
-        elif expected_tokens == 257:
-            training_mode = "cls_patch"
-        else:
-            training_mode = "patch_only"
-        logger.info(f"🎯 Auto-detected training mode: {training_mode}")
     
     # Create model
     model = create_blip3o_patch_dit_model(config=config)
@@ -193,7 +163,7 @@ def load_model_and_determine_mode(model_path, device, torch_dtype, training_mode
         from safetensors.torch import load_file
         state_dict = load_file(str(weight_file))
     
-    # Load weights into model
+    # Load weights
     missing_keys, unexpected_keys = model.load_state_dict(state_dict, strict=False)
     
     if missing_keys:
@@ -201,86 +171,75 @@ def load_model_and_determine_mode(model_path, device, torch_dtype, training_mode
     if unexpected_keys:
         logger.warning(f"Unexpected keys: {len(unexpected_keys)} keys")
     
-    # Move to device and set dtype
-    dtype = torch.float16 if torch_dtype == "float16" else torch.float32
-    model = model.to(device=device, dtype=dtype)
+    # Move to device
+    model = model.to(device=device, dtype=torch.float32)
     model.eval()
     
     logger.info(f"✅ Model loaded successfully")
     logger.info(f"   Training mode: {training_mode}")
     logger.info(f"   Expected tokens: {expected_tokens}")
-    logger.info(f"   Device: {device}")
-    logger.info(f"   Dtype: {dtype}")
     
     return model, config, training_mode
 
 def create_evaluation_dataloader(embeddings_dir, training_mode, batch_size, logger):
-    """Create dataloader for evaluation"""
+    """Create evaluation dataloader"""
     from src.modules.datasets.blip3o_dataset import create_flexible_dataloaders
     
     logger.info(f"📊 Creating evaluation dataloader")
-    logger.info(f"   Training mode: {training_mode}")
-    logger.info(f"   Batch size: {batch_size}")
     
-    # Create dataloaders - using single shard for evaluation
-    train_dataloader, eval_dataloader = create_flexible_dataloaders(
+    # Use same data for evaluation (overfitting test)
+    train_dataloader, _ = create_flexible_dataloaders(
         chunked_embeddings_dir=embeddings_dir,
         batch_size=batch_size,
         eval_batch_size=batch_size,
-        eval_split_ratio=0.0,  # Use all data for evaluation
-        normalize_embeddings=False,  # We'll handle normalization in evaluation
+        eval_split_ratio=0.0,
+        normalize_embeddings=False,
         training_mode=training_mode,
-        max_shards=1,  # Limit to single shard
-        use_same_data_for_eval=True,  # Use same data
+        max_shards=1,  # Single shard
+        use_same_data_for_eval=True,
         delete_after_use=False,
-        num_workers=0,  # Avoid multiprocessing issues
-        pin_memory=False,  # Disable to avoid CUDA issues
+        num_workers=0,
+        pin_memory=False,
     )
     
-    eval_dataloader = train_dataloader
     logger.info(f"✅ Evaluation dataloader created")
-    return eval_dataloader
+    return train_dataloader
 
 def compute_patch_wise_cosine_similarity(
-    predicted_embeddings: torch.Tensor,  # [B, N, 1024] - Generated CLIP embeddings
-    target_embeddings: torch.Tensor,     # [B, N, 1024] - Ground truth CLIP embeddings
+    predicted_embeddings: torch.Tensor,  # [B, N, 1024]
+    target_embeddings: torch.Tensor,     # [B, N, 1024]
     normalize: bool = True,
 ) -> Dict[str, float]:
     """
-    FIXED: Compute patch-wise cosine similarity exactly as specified:
+    Compute patch-wise cosine similarity:
     1. Cosine similarity for each patch
-    2. Average over all patches to get cosine similarity for each image  
-    3. Average over all images to get overall cosine similarity
+    2. Average over all patches to get image similarity  
+    3. Average over all images to get overall similarity
     """
     batch_size, num_tokens, embed_dim = predicted_embeddings.shape
     
     # Validate inputs
-    assert predicted_embeddings.shape == target_embeddings.shape, \
-        f"Shape mismatch: {predicted_embeddings.shape} vs {target_embeddings.shape}"
+    assert predicted_embeddings.shape == target_embeddings.shape
     assert num_tokens in [256, 257], f"Expected 256 or 257 tokens, got {num_tokens}"
     assert embed_dim == 1024, f"Expected 1024-dim embeddings, got {embed_dim}"
     
-    # STEP 1: Normalize embeddings if requested
+    # Normalize if requested
     if normalize:
-        pred_norm = F.normalize(predicted_embeddings, p=2, dim=-1)  # [B, N, 1024]
-        target_norm = F.normalize(target_embeddings, p=2, dim=-1)   # [B, N, 1024]
+        pred_norm = F.normalize(predicted_embeddings, p=2, dim=-1)
+        target_norm = F.normalize(target_embeddings, p=2, dim=-1)
     else:
         pred_norm = predicted_embeddings
         target_norm = target_embeddings
     
-    # STEP 2: Compute cosine similarity for each patch
-    # This gives us similarity for each patch in each image
-    per_patch_similarities = F.cosine_similarity(
-        pred_norm, target_norm, dim=-1
-    )  # [B, N] - Cosine similarity for each patch in each image
+    # Per-patch cosine similarities [B, N]
+    per_patch_similarities = F.cosine_similarity(pred_norm, target_norm, dim=-1)
     
-    # STEP 3: Average over all patches to get cosine similarity for each image
-    per_image_similarities = per_patch_similarities.mean(dim=1)  # [B] - Average similarity per image
+    # Per-image average similarities [B]
+    per_image_similarities = per_patch_similarities.mean(dim=1)
     
-    # STEP 4: Average over all images to get overall cosine similarity
-    overall_similarity = per_image_similarities.mean().item()  # Scalar - Overall average
+    # Overall similarity (scalar)
+    overall_similarity = per_image_similarities.mean().item()
     
-    # Additional statistics
     results = {
         'overall_cosine_similarity': overall_similarity,
         'per_image_mean_similarity': per_image_similarities.mean().item(),
@@ -288,16 +247,13 @@ def compute_patch_wise_cosine_similarity(
         'per_patch_mean_similarity': per_patch_similarities.mean().item(),
         'per_patch_std_similarity': per_patch_similarities.std().item(),
         
-        # Quality thresholds
+        # Quality metrics
         'high_quality_patches_ratio': (per_patch_similarities > 0.7).float().mean().item(),
         'very_high_quality_patches_ratio': (per_patch_similarities > 0.8).float().mean().item(),
-        'excellent_patches_ratio': (per_patch_similarities > 0.9).float().mean().item(),
-        
         'high_quality_images_ratio': (per_image_similarities > 0.7).float().mean().item(),
         'very_high_quality_images_ratio': (per_image_similarities > 0.8).float().mean().item(),
-        'excellent_images_ratio': (per_image_similarities > 0.9).float().mean().item(),
         
-        # Min/max statistics
+        # Statistics
         'min_patch_similarity': per_patch_similarities.min().item(),
         'max_patch_similarity': per_patch_similarities.max().item(),
         'min_image_similarity': per_image_similarities.min().item(),
@@ -311,7 +267,7 @@ def compute_patch_wise_cosine_similarity(
     
     return results
 
-def evaluate_model_comprehensive(
+def evaluate_model(
     model,
     dataloader,
     device: str,
@@ -321,9 +277,7 @@ def evaluate_model_comprehensive(
     normalize_embeddings: bool = True,
     logger = None
 ) -> Dict[str, float]:
-    """
-    FIXED: Comprehensive evaluation with proper patch-wise similarity computation
-    """
+    """Evaluate model with patch-wise similarity"""
     model.eval()
     
     all_per_patch_similarities = []
@@ -331,47 +285,41 @@ def evaluate_model_comprehensive(
     batch_count = 0
     
     if logger:
-        logger.info(f"🔍 Starting comprehensive evaluation...")
+        logger.info(f"🔍 Starting evaluation...")
         logger.info(f"   Training mode: {training_mode}")
-        logger.info(f"   Device: {device}")
         logger.info(f"   Max batches: {max_batches or 'All'}")
-        logger.info(f"   Normalize embeddings: {normalize_embeddings}")
     
     with torch.no_grad():
         for batch_idx, batch in enumerate(dataloader):
             if max_batches and batch_idx >= max_batches:
                 break
                 
-            # Move batch to device
+            # Move to device
             eva_embeddings = batch['encoder_hidden_states'].to(device)
             target_clip = batch['clip_embeddings'].to(device)
             
-            batch_size, num_tokens, _ = eva_embeddings.shape
-            
-            # Generate embeddings using the model
             try:
-                # FIXED: Use proper generation with correct scaling
+                # Generate embeddings
                 generated_clip = model.generate(
                     eva_features=eva_embeddings,
                     num_inference_steps=num_inference_steps,
                     normalize_output=normalize_embeddings,
-                    guidance_scale=1.0,  # No guidance for evaluation
+                    guidance_scale=1.0,
                 )
                 
                 # Ensure same shape
                 if generated_clip.shape != target_clip.shape:
-                    if logger:
-                        logger.warning(f"Shape mismatch: generated {generated_clip.shape} vs target {target_clip.shape}")
+                    logger.warning(f"Shape mismatch: {generated_clip.shape} vs {target_clip.shape}")
                     continue
                 
-                # FIXED: Compute patch-wise cosine similarities exactly as specified
+                # Compute patch-wise similarities
                 batch_results = compute_patch_wise_cosine_similarity(
                     predicted_embeddings=generated_clip,
                     target_embeddings=target_clip,
                     normalize=normalize_embeddings,
                 )
                 
-                # Collect similarities for global aggregation
+                # Collect similarities
                 with torch.no_grad():
                     if normalize_embeddings:
                         pred_norm = F.normalize(generated_clip, p=2, dim=-1)
@@ -380,8 +328,8 @@ def evaluate_model_comprehensive(
                         pred_norm = generated_clip
                         target_norm = target_clip
                         
-                    per_patch_sim = F.cosine_similarity(pred_norm, target_norm, dim=-1)  # [B, N]
-                    per_image_sim = per_patch_sim.mean(dim=1)  # [B]
+                    per_patch_sim = F.cosine_similarity(pred_norm, target_norm, dim=-1)
+                    per_image_sim = per_patch_sim.mean(dim=1)
                     
                     all_per_patch_similarities.append(per_patch_sim.cpu())
                     all_per_image_similarities.append(per_image_sim.cpu())
@@ -399,16 +347,13 @@ def evaluate_model_comprehensive(
     if not all_per_patch_similarities:
         raise RuntimeError("No batches were successfully evaluated")
     
-    # FIXED: Aggregate all results following the exact methodology
-    all_per_patch = torch.cat(all_per_patch_similarities, dim=0)  # [Total_Images, N]
-    all_per_image = torch.cat(all_per_image_similarities, dim=0)  # [Total_Images]
+    # Aggregate results
+    all_per_patch = torch.cat(all_per_patch_similarities, dim=0)
+    all_per_image = torch.cat(all_per_image_similarities, dim=0)
     
-    # Final comprehensive results following exact methodology:
-    # 1. Patch-wise similarities: [Total_Images, N]
-    # 2. Image-wise similarities: mean over patches [Total_Images]
-    # 3. Overall similarity: mean over images [Scalar]
+    # Final results
     final_results = {
-        'overall_cosine_similarity': all_per_image.mean().item(),  # This is the key metric
+        'overall_cosine_similarity': all_per_image.mean().item(),
         'per_image_mean_similarity': all_per_image.mean().item(),
         'per_image_std_similarity': all_per_image.std().item(),
         'per_patch_mean_similarity': all_per_patch.mean().item(),
@@ -423,11 +368,8 @@ def evaluate_model_comprehensive(
         # Quality distribution
         'high_quality_patches_ratio': (all_per_patch > 0.7).float().mean().item(),
         'very_high_quality_patches_ratio': (all_per_patch > 0.8).float().mean().item(),
-        'excellent_patches_ratio': (all_per_patch > 0.9).float().mean().item(),
-        
         'high_quality_images_ratio': (all_per_image > 0.7).float().mean().item(),
         'very_high_quality_images_ratio': (all_per_image > 0.8).float().mean().item(),
-        'excellent_images_ratio': (all_per_image > 0.9).float().mean().item(),
         
         # Min/max
         'min_patch_similarity': all_per_patch.min().item(),
@@ -436,70 +378,49 @@ def evaluate_model_comprehensive(
         'max_image_similarity': all_per_image.max().item(),
     }
     
-    # Mode-specific analysis
-    if training_mode == "cls_patch" and all_per_patch.shape[1] == 257:
-        cls_similarities = all_per_patch[:, 0]  # [Total_Images] - CLS token similarities
-        patch_similarities = all_per_patch[:, 1:]  # [Total_Images, 256] - Patch similarities
-        
-        final_results.update({
-            'cls_token_mean_similarity': cls_similarities.mean().item(),
-            'cls_token_std_similarity': cls_similarities.std().item(),
-            'patches_only_mean_similarity': patch_similarities.mean().item(),
-            'patches_only_std_similarity': patch_similarities.std().item(),
-            'cls_vs_patches_difference': (cls_similarities.mean() - patch_similarities.mean()).item(),
-        })
-    
     if logger:
         logger.info(f"✅ Evaluation completed on {batch_count} batches")
         logger.info(f"   Overall cosine similarity: {final_results['overall_cosine_similarity']:.4f}")
-        logger.info(f"   Per-image mean: {final_results['per_image_mean_similarity']:.4f}")
-        logger.info(f"   Per-patch mean: {final_results['per_patch_mean_similarity']:.4f}")
         logger.info(f"   High quality images (>0.7): {final_results['high_quality_images_ratio']*100:.1f}%")
     
     return final_results
 
 def main():
-    """FIXED: Main evaluation function"""
+    """Main evaluation function"""
     args = parse_arguments()
     logger = setup_logging()
     
-    logger.info("🔍 FIXED: BLIP3-o Patch-wise Cosine Similarity Evaluation")
+    logger.info("🔍 BLIP3-o Patch-wise Cosine Similarity Evaluation")
     logger.info("=" * 60)
     logger.info("🎯 EVALUATION METHODOLOGY:")
     logger.info("  1. Compute cosine similarity for each patch")
     logger.info("  2. Average over all patches to get image similarity")
     logger.info("  3. Average over all images to get overall similarity")
     logger.info("=" * 60)
-    logger.info(f"  ✅ Model path: {args.model_path}")
-    logger.info(f"  ✅ Training mode: {args.training_mode}")
-    logger.info(f"  ✅ Number of samples: {args.num_samples}")
-    logger.info(f"  ✅ Normalize embeddings: {args.normalize_embeddings}")
-    logger.info("=" * 60)
     
     try:
-        # 1. Setup device safely
-        device = setup_device_safely(args.device, logger)
+        # Setup device
+        device = setup_device(args.device, logger)
         
-        # 2. Create output directory
+        # Create output directory
         output_dir = Path(args.output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
-        logger.info(f"📁 Output directory: {output_dir}")
         
-        # 3. Load model with proper config handling
-        model, config, training_mode = load_model_and_determine_mode(
-            args.model_path, device, args.torch_dtype, args.training_mode, logger
+        # Load model
+        model, config, training_mode = load_model_and_config(
+            args.model_path, device, args.training_mode, logger
         )
         
-        # 4. Create evaluation dataloader
+        # Create dataloader
         eval_dataloader = create_evaluation_dataloader(
             args.chunked_embeddings_dir, training_mode, args.batch_size, logger
         )
         
-        # 5. Run comprehensive evaluation
+        # Run evaluation
         logger.info("🚀 Starting patch-wise cosine similarity evaluation...")
         start_time = datetime.now()
         
-        results = evaluate_model_comprehensive(
+        results = evaluate_model(
             model=model,
             dataloader=eval_dataloader,
             device=str(device),
@@ -513,47 +434,39 @@ def main():
         end_time = datetime.now()
         evaluation_duration = (end_time - start_time).total_seconds()
         
-        # 6. Display results
+        # Display results
         logger.info("📊 PATCH-WISE COSINE SIMILARITY RESULTS:")
         logger.info("=" * 50)
         logger.info(f"🎯 OVERALL COSINE SIMILARITY: {results['overall_cosine_similarity']:.4f}")
-        logger.info(f"📊 Per-image mean similarity: {results['per_image_mean_similarity']:.4f}")
-        logger.info(f"📊 Per-patch mean similarity: {results['per_patch_mean_similarity']:.4f}")
+        logger.info(f"📊 Per-image mean: {results['per_image_mean_similarity']:.4f}")
+        logger.info(f"📊 Per-patch mean: {results['per_patch_mean_similarity']:.4f}")
         logger.info(f"📈 High quality images (>0.7): {results['high_quality_images_ratio']*100:.1f}%")
         logger.info(f"📈 Images evaluated: {results['num_images_evaluated']:,}")
-        logger.info(f"📈 Total patches: {results['total_patches_evaluated']:,}")
         
         # Assessment
         overall_sim = results['overall_cosine_similarity']
         if overall_sim > 0.8:
-            logger.info("🎉 EXCELLENT: Outstanding patch-wise alignment!")
+            logger.info("🎉 EXCELLENT: Outstanding alignment!")
         elif overall_sim > 0.6:
-            logger.info("✅ VERY GOOD: Strong patch-wise performance")
+            logger.info("✅ VERY GOOD: Strong performance")
         elif overall_sim > 0.4:
-            logger.info("🔄 GOOD: Solid patch-wise learning")
+            logger.info("🔄 GOOD: Solid learning")
         elif overall_sim > 0.2:
-            logger.info("📈 IMPROVING: Some patch-wise learning detected")
+            logger.info("📈 IMPROVING: Some learning detected")
         else:
-            logger.info("⚠️ NEEDS IMPROVEMENT: Low patch-wise similarity")
+            logger.info("⚠️ NEEDS IMPROVEMENT: Low similarity")
         
-        # 7. Save results
+        # Save results
         evaluation_summary = {
             'evaluation_completed': True,
             'timestamp': datetime.now().isoformat(),
             'duration_seconds': evaluation_duration,
             'model_path': str(args.model_path),
-            'embeddings_dir': args.chunked_embeddings_dir,
             'training_mode': training_mode,
             'evaluation_methodology': {
                 'step_1': 'Compute cosine similarity for each patch',
                 'step_2': 'Average over all patches to get image similarity',
                 'step_3': 'Average over all images to get overall similarity',
-                'normalize_embeddings': args.normalize_embeddings,
-            },
-            'evaluation_config': {
-                'num_samples': args.num_samples,
-                'batch_size': args.batch_size,
-                'num_inference_steps': args.num_inference_steps,
                 'normalize_embeddings': args.normalize_embeddings,
             },
             'results_summary': {
@@ -565,18 +478,16 @@ def main():
                 'total_patches': results['total_patches_evaluated'],
             },
             'detailed_results': results,
-            'fixed_version': True,
-            'patch_wise_evaluation': True,
         }
         
-        # Save detailed results
+        # Save results
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        results_file = output_dir / f'patch_wise_similarity_evaluation_{timestamp}.json'
+        results_file = output_dir / f'evaluation_results_{timestamp}.json'
         with open(results_file, 'w') as f:
             json.dump(evaluation_summary, f, indent=2)
         
         logger.info("=" * 50)
-        logger.info("✅ PATCH-WISE EVALUATION COMPLETED SUCCESSFULLY!")
+        logger.info("✅ EVALUATION COMPLETED SUCCESSFULLY!")
         logger.info(f"📁 Results saved to: {results_file}")
         logger.info(f"⏱️ Evaluation time: {evaluation_duration:.1f} seconds")
         logger.info("=" * 50)

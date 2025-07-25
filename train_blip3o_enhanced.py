@@ -1,605 +1,502 @@
 #!/usr/bin/env python3
 """
-UPDATED: BLIP3-o Training Script with Better Error Handling
-train_blip3o_enhanced.py
+FIXED: BLIP3-o Evaluation Script - Patch-wise Cosine Similarity
+eval_blip3o_patch_similarity.py
 
-FEATURES:
-- Graceful handling of missing modules
-- Falls back to available trainers
-- All scaling fixes applied (velocity_scale, output_scale)
-- Training-only mode (no evaluation during training)
-- Comprehensive monitoring and metrics
-- Overfitting test support
+Evaluates trained DiT model by computing:
+1. Per-patch cosine similarity
+2. Per-image average cosine similarity
+3. Global average cosine similarity
 """
 
 import os
 import sys
 import argparse
-import logging
 import torch
-import torch.distributed as dist
+import torch.nn.functional as F
+import numpy as np
 from pathlib import Path
 import json
+import logging
 from datetime import datetime
 import traceback
-import time
+
+# Setup CUDA environment
+os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID'
+if 'CUDA_VISIBLE_DEVICES' not in os.environ:
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
-def setup_logging(local_rank=0, log_dir=None):
-    """Setup comprehensive logging"""
-    if log_dir:
-        log_dir = Path(log_dir)
-        log_dir.mkdir(parents=True, exist_ok=True)
-        log_file = log_dir / f'blip3o_training_rank_{local_rank}.log'
-    else:
-        log_file = f'blip3o_training_rank_{local_rank}.log'
-    
-    log_level = logging.INFO if local_rank == 0 else logging.WARNING
-    
+def setup_logging():
+    """Setup logging"""
     logging.basicConfig(
-        level=log_level,
-        format=f'[Rank {local_rank}] %(asctime)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.StreamHandler(sys.stdout),
-            logging.FileHandler(log_file, mode='w')
-        ]
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        handlers=[logging.StreamHandler(sys.stdout)]
     )
-    
     return logging.getLogger(__name__)
 
 def parse_arguments():
-    """Parse command line arguments with all new options"""
+    """Parse command line arguments"""
     parser = argparse.ArgumentParser(
-        description="UPDATED BLIP3-o Training with Better Error Handling",
+        description="BLIP3-o Patch-wise Cosine Similarity Evaluation",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
     
-    # Data and output paths
+    # Required paths
+    parser.add_argument("--model_path", type=str, required=True,
+                       help="Path to trained model")
     parser.add_argument("--chunked_embeddings_dir", type=str, required=True,
-                       help="Path to chunked embeddings directory")
+                       help="Path to embeddings directory")
     parser.add_argument("--output_dir", type=str, required=True,
-                       help="Output directory for checkpoints and results")
+                       help="Output directory for results")
     
-    # Training mode selection
-    parser.add_argument("--training_mode", type=str, default="patch_only",
-                       choices=["cls_patch", "patch_only"],
-                       help="Training mode: cls_patch (257 tokens) or patch_only (256 tokens)")
+    # Evaluation parameters
+    parser.add_argument("--num_samples", type=int, default=1000,
+                       help="Number of samples to evaluate")
+    parser.add_argument("--batch_size", type=int, default=8,
+                       help="Evaluation batch size")
+    parser.add_argument("--num_inference_steps", type=int, default=50,
+                       help="Number of inference steps")
+    parser.add_argument("--training_mode", type=str, default="auto",
+                       choices=["auto", "cls_patch", "patch_only"],
+                       help="Training mode (auto-detect if 'auto')")
     
-    # Model configuration
-    parser.add_argument("--model_size", type=str, default="base",
-                       choices=["tiny", "small", "base", "large"],
-                       help="Model size configuration")
-    
-    # Training configuration
-    parser.add_argument("--num_epochs", type=int, default=10,
-                       help="Number of training epochs")
-    parser.add_argument("--batch_size", type=int, default=32,
-                       help="Training batch size per GPU")
-    parser.add_argument("--learning_rate", type=float, default=1e-4,
-                       help="Learning rate")
-    parser.add_argument("--weight_decay", type=float, default=0.01,
-                       help="Weight decay")
-    parser.add_argument("--warmup_steps", type=int, default=200,
-                       help="Number of warmup steps")
-    parser.add_argument("--gradient_accumulation_steps", type=int, default=2,
-                       help="Gradient accumulation steps")
-    
-    # CRITICAL: Scaling parameters (the main fixes)
-    parser.add_argument("--velocity_scale", type=float, default=0.1,
-                       help="CRITICAL: Velocity scaling factor for flow matching loss")
-    parser.add_argument("--output_scale", type=float, default=0.1,
-                       help="CRITICAL: Output scaling factor for model")
-    parser.add_argument("--target_norm_scale", type=float, default=1.0,
-                       help="Target normalization scaling factor")
-    
-    # Hardware configuration
-    parser.add_argument("--fp16", action="store_true", default=True,
-                       help="Use mixed precision training")
-    parser.add_argument("--gradient_checkpointing", action="store_true", default=False,
-                       help="Enable gradient checkpointing")
-    
-    # Logging and saving
-    parser.add_argument("--logging_steps", type=int, default=10,
-                       help="Logging frequency")
-    parser.add_argument("--save_steps", type=int, default=200,
-                       help="Model saving frequency")
-    
-    # Training type presets
-    parser.add_argument("--training_type", type=str, default="custom",
-                       choices=["custom", "overfitting", "production", "debug"],
-                       help="Preset training configurations")
-    
-    # Debugging
-    parser.add_argument("--debug", action="store_true",
-                       help="Enable debug mode")
+    # Options
+    parser.add_argument("--same_data_eval", action="store_true", default=True,
+                       help="Use same training data for evaluation")
+    parser.add_argument("--normalize_embeddings", action="store_true", default=True,
+                       help="Normalize embeddings")
+    parser.add_argument("--device", type=str, default="auto",
+                       help="Device to use")
     
     return parser.parse_args()
 
-def apply_training_type_presets(args, logger):
-    """Apply preset configurations based on training type"""
-    if args.training_type == "overfitting":
-        # Optimize for overfitting tests
-        args.num_epochs = 15
-        args.batch_size = 16
-        args.learning_rate = 5e-5
-        args.weight_decay = 0.0  # No regularization
-        args.logging_steps = 5
-        logger.info("🎯 Applied overfitting preset configuration")
-        
-    elif args.training_type == "production":
-        # Optimize for production training
-        args.num_epochs = 10
-        args.batch_size = 32
-        args.learning_rate = 1e-4
-        args.weight_decay = 0.01
-        args.gradient_accumulation_steps = 2
-        args.gradient_checkpointing = True
-        args.save_steps = 500
-        logger.info("🚀 Applied production preset configuration")
-        
-    elif args.training_type == "debug":
-        # Optimize for debugging
-        args.model_size = "tiny"
-        args.num_epochs = 3
-        args.batch_size = 4
-        args.learning_rate = 1e-4
-        args.weight_decay = 0.0
-        args.warmup_steps = 10
-        args.gradient_accumulation_steps = 1
-        args.logging_steps = 1
-        args.save_steps = 10
-        args.fp16 = False
-        logger.info("🐛 Applied debug preset configuration")
-
-def validate_training_setup(args, logger):
-    """Validate training setup and scaling parameters"""
-    logger.info("🔍 Validating training setup...")
-    
-    # Check embeddings directory
-    embeddings_path = Path(args.chunked_embeddings_dir)
-    if not embeddings_path.exists():
-        raise FileNotFoundError(f"Embeddings directory not found: {embeddings_path}")
-    
-    # Look for shard files
-    shard_files = list(embeddings_path.glob("embeddings_shard_*.pkl"))
-    if not shard_files:
-        raise FileNotFoundError(f"No shard files found in {embeddings_path}")
-    
-    logger.info(f"Found {len(shard_files)} shard files")
-    
-    # Validate scaling parameters (CRITICAL)
-    if args.velocity_scale <= 0 or args.velocity_scale > 1.0:
-        logger.warning(f"⚠️ Unusual velocity_scale: {args.velocity_scale} (expected 0.01-0.5)")
-    
-    if args.output_scale <= 0 or args.output_scale > 1.0:
-        logger.warning(f"⚠️ Unusual output_scale: {args.output_scale} (expected 0.01-0.5)")
-    
-    logger.info("✅ Training setup validated")
-    logger.info(f"🔧 SCALING FIXES:")
-    logger.info(f"   Velocity scale: {args.velocity_scale}")
-    logger.info(f"   Output scale: {args.output_scale}")
-    logger.info(f"   Target norm scale: {args.target_norm_scale}")
-    
-    return shard_files
-
-def setup_device_and_distributed():
-    """Setup device and distributed training"""
-    local_rank = int(os.environ.get("LOCAL_RANK", 0))
-    global_rank = int(os.environ.get("RANK", 0))
-    world_size = int(os.environ.get("WORLD_SIZE", 1))
-    
-    is_distributed = world_size > 1
-    is_main_process = global_rank == 0
-    
-    if is_distributed:
+def setup_device(device_arg: str, logger):
+    """Setup device"""
+    if device_arg == "auto":
         try:
-            if not dist.is_initialized():
-                backend = 'nccl' if torch.cuda.is_available() else 'gloo'
-                dist.init_process_group(backend=backend, init_method='env://')
-            
             if torch.cuda.is_available():
-                torch.cuda.set_device(local_rank)
-                device = torch.device(f"cuda:{local_rank}")
+                device = torch.device("cuda:0")
+                logger.info(f"Using GPU: {torch.cuda.get_device_name(0)}")
             else:
                 device = torch.device("cpu")
+                logger.info("CUDA not available, using CPU")
         except Exception as e:
-            print(f"⚠️ Distributed setup failed: {e}, using single GPU")
-            is_distributed = False
-            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            logger.warning(f"CUDA setup failed: {e}, falling back to CPU")
+            device = torch.device("cpu")
     else:
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        device = torch.device(device_arg)
+        logger.info(f"Using device: {device}")
     
-    return device, is_distributed, is_main_process, local_rank, global_rank, world_size
+    return device
 
-def create_model_and_config(args, device, logger):
-    """Create BLIP3-o model with proper configuration and scaling"""
-    logger.info("🏗️ Creating BLIP3-o model with FIXED scaling...")
+def load_model_and_config(model_path, device, training_mode, logger):
+    """Load model and determine training mode"""
+    from src.modules.models.blip3o_patch_dit import create_blip3o_patch_dit_model, BLIP3oDiTConfig
     
-    try:
-        # Try to import the FIXED models with scaling support
-        from src.modules.models import create_fixed_model
-        
-        # FIXED: Pass model_size instead of individual parameters to avoid conflicts
-        model = create_fixed_model(
-            training_mode=args.training_mode,
-            model_size=args.model_size,  # FIXED: Pass model_size instead of individual params
-            output_scale=args.output_scale,  # CRITICAL: Apply output scaling
-            use_gradient_checkpointing=args.gradient_checkpointing,
-        )
-        model = model.to(device)
-        
-        # Get the config for logging
-        config = model.config
-        
-        logger.info(f"✅ FIXED BLIP3-o model created successfully")
-        logger.info(f"   Parameters: {model.get_num_parameters():,}")
-        logger.info(f"   Mode: {args.training_mode} ({config.num_tokens} tokens)")
-        logger.info(f"   Hidden size: {config.hidden_size}")
-        logger.info(f"   Layers: {config.num_hidden_layers}")
-        logger.info(f"   Heads: {config.num_attention_heads}")
-        logger.info(f"   🔧 Output scale: {config.output_scale} (APPLIED)")
-        logger.info(f"   Device: {device}")
-        
-        return model, config
-        
-    except Exception as e:
-        logger.error(f"❌ Model creation failed: {e}")
-        logger.error("Make sure you have updated the models module files")
-        raise
+    model_path = Path(model_path)
+    logger.info(f"📦 Loading model from: {model_path}")
+    
+    # Load configuration
+    config_files = [
+        model_path / "config.json",
+        model_path / "blip3o_model_config.json",
+        model_path / "training_info.json"
+    ]
+    
+    config_data = None
+    for config_file in config_files:
+        if config_file.exists():
+            with open(config_file, 'r') as f:
+                config_data = json.load(f)
+            logger.info(f"✅ Loaded config from: {config_file}")
+            break
+    
+    if config_data is None:
+        raise FileNotFoundError(f"No config file found in {model_path}")
+    
+    # Determine training mode
+    if training_mode == "auto":
+        if 'training_mode' in config_data:
+            training_mode = config_data['training_mode']
+        elif 'num_tokens' in config_data:
+            training_mode = "cls_patch" if config_data['num_tokens'] == 257 else "patch_only"
+        else:
+            training_mode = "patch_only"  # Default
+        logger.info(f"🎯 Auto-detected training mode: {training_mode}")
+    
+    # Create config
+    expected_tokens = 257 if training_mode == "cls_patch" else 256
+    if 'num_tokens' not in config_data:
+        config_data['num_tokens'] = expected_tokens
+    
+    config = BLIP3oDiTConfig(**config_data)
+    
+    # Create model
+    model = create_blip3o_patch_dit_model(config=config)
+    
+    # Load weights
+    weight_files = [
+        model_path / "pytorch_model.bin",
+        model_path / "model.safetensors", 
+        model_path / "pytorch_model.safetensors"
+    ]
+    
+    weight_file = None
+    for wf in weight_files:
+        if wf.exists():
+            weight_file = wf
+            break
+    
+    if weight_file is None:
+        raise FileNotFoundError(f"No model weights found in {model_path}")
+    
+    logger.info(f"💾 Loading weights from: {weight_file}")
+    
+    # Load state dict
+    if weight_file.suffix == ".bin":
+        state_dict = torch.load(weight_file, map_location='cpu')
+    else:
+        from safetensors.torch import load_file
+        state_dict = load_file(str(weight_file))
+    
+    # Load weights
+    missing_keys, unexpected_keys = model.load_state_dict(state_dict, strict=False)
+    
+    if missing_keys:
+        logger.warning(f"Missing keys: {len(missing_keys)} keys")
+    if unexpected_keys:
+        logger.warning(f"Unexpected keys: {len(unexpected_keys)} keys")
+    
+    # Move to device
+    model = model.to(device=device, dtype=torch.float32)
+    model.eval()
+    
+    logger.info(f"✅ Model loaded successfully")
+    logger.info(f"   Training mode: {training_mode}")
+    logger.info(f"   Expected tokens: {expected_tokens}")
+    
+    return model, config, training_mode
 
-def create_loss_function(args, logger):
-    """Create FIXED flow matching loss function with scaling"""
-    logger.info("🔧 Creating FIXED flow matching loss with scaling...")
+def create_evaluation_dataloader(embeddings_dir, training_mode, batch_size, logger):
+    """Create evaluation dataloader"""
+    from src.modules.datasets.blip3o_dataset import create_flexible_dataloaders
     
-    try:
-        from src.modules.losses import get_fixed_loss_function
-        
-        flow_matching_loss = get_fixed_loss_function(
-            velocity_scale=args.velocity_scale,
-            target_norm_scale=args.target_norm_scale,
-            adaptive_scaling=True,
-        )
-        
-        logger.info("✅ FIXED BLIP3-o Flow Matching Loss initialized")
-        logger.info(f"   🔧 Velocity scale: {args.velocity_scale} (APPLIED)")
-        logger.info(f"   🔧 Target norm scale: {args.target_norm_scale}")
-        logger.info(f"   ✅ Adaptive scaling: enabled")
-        logger.info(f"   ✅ Flow type: rectified")  # Hardcoded since it's fixed
-        logger.info(f"   ✅ Prediction type: velocity")  # Hardcoded since it's fixed
-        
-        return flow_matching_loss
-        
-    except Exception as e:
-        logger.error(f"❌ Loss creation failed: {e}")
-        logger.error("Make sure you have updated the losses module files")
-        raise
+    logger.info(f"📊 Creating evaluation dataloader")
+    
+    # Use same data for evaluation (overfitting test)
+    train_dataloader, _ = create_flexible_dataloaders(
+        chunked_embeddings_dir=embeddings_dir,
+        batch_size=batch_size,
+        eval_batch_size=batch_size,
+        eval_split_ratio=0.0,
+        normalize_embeddings=False,
+        training_mode=training_mode,
+        max_shards=1,  # Single shard
+        use_same_data_for_eval=True,
+        delete_after_use=False,
+        num_workers=0,
+        pin_memory=False,
+    )
+    
+    logger.info(f"✅ Evaluation dataloader created")
+    return train_dataloader
 
-def create_dataloader(args, logger):
-    """Create training dataloader"""
-    logger.info("🔄 Creating training dataloader...")
+def compute_patch_wise_cosine_similarity(
+    predicted_embeddings: torch.Tensor,  # [B, N, 1024]
+    target_embeddings: torch.Tensor,     # [B, N, 1024]
+    normalize: bool = True,
+) -> Dict[str, float]:
+    """
+    Compute patch-wise cosine similarity:
+    1. Cosine similarity for each patch
+    2. Average over all patches to get image similarity  
+    3. Average over all images to get overall similarity
+    """
+    batch_size, num_tokens, embed_dim = predicted_embeddings.shape
     
-    try:
-        from src.modules.datasets import create_flexible_dataloaders
+    # Validate inputs
+    assert predicted_embeddings.shape == target_embeddings.shape
+    assert num_tokens in [256, 257], f"Expected 256 or 257 tokens, got {num_tokens}"
+    assert embed_dim == 1024, f"Expected 1024-dim embeddings, got {embed_dim}"
+    
+    # Normalize if requested
+    if normalize:
+        pred_norm = F.normalize(predicted_embeddings, p=2, dim=-1)
+        target_norm = F.normalize(target_embeddings, p=2, dim=-1)
+    else:
+        pred_norm = predicted_embeddings
+        target_norm = target_embeddings
+    
+    # Per-patch cosine similarities [B, N]
+    per_patch_similarities = F.cosine_similarity(pred_norm, target_norm, dim=-1)
+    
+    # Per-image average similarities [B]
+    per_image_similarities = per_patch_similarities.mean(dim=1)
+    
+    # Overall similarity (scalar)
+    overall_similarity = per_image_similarities.mean().item()
+    
+    results = {
+        'overall_cosine_similarity': overall_similarity,
+        'per_image_mean_similarity': per_image_similarities.mean().item(),
+        'per_image_std_similarity': per_image_similarities.std().item(),
+        'per_patch_mean_similarity': per_patch_similarities.mean().item(),
+        'per_patch_std_similarity': per_patch_similarities.std().item(),
         
-        # Create dataloaders
-        train_dataloader, _ = create_flexible_dataloaders(
-            chunked_embeddings_dir=args.chunked_embeddings_dir,
-            batch_size=args.batch_size,
-            normalize_embeddings=False,  # Loss function handles normalization
-            training_mode=args.training_mode,
-            max_shards=1,  # Single shard for overfitting test
-            num_workers=0,  # Avoid multiprocessing issues
-            pin_memory=torch.cuda.is_available(),
-        )
+        # Quality metrics
+        'high_quality_patches_ratio': (per_patch_similarities > 0.7).float().mean().item(),
+        'very_high_quality_patches_ratio': (per_patch_similarities > 0.8).float().mean().item(),
+        'high_quality_images_ratio': (per_image_similarities > 0.7).float().mean().item(),
+        'very_high_quality_images_ratio': (per_image_similarities > 0.8).float().mean().item(),
         
-        logger.info(f"✅ Training dataloader created")
-        logger.info(f"   Training batches: {len(train_dataloader):,}")
+        # Statistics
+        'min_patch_similarity': per_patch_similarities.min().item(),
+        'max_patch_similarity': per_patch_similarities.max().item(),
+        'min_image_similarity': per_image_similarities.min().item(),
+        'max_image_similarity': per_image_similarities.max().item(),
         
-        return train_dataloader, None
-        
-    except Exception as e:
-        logger.error(f"❌ Dataloader creation failed: {e}")
-        raise
+        # Dataset info
+        'num_images': batch_size,
+        'num_tokens_per_image': num_tokens,
+        'total_patches_evaluated': batch_size * num_tokens,
+    }
+    
+    return results
 
-def create_training_args(args, logger):
-    """Create training arguments using available trainer"""
-    logger.info("🔧 Creating training arguments...")
+def evaluate_model(
+    model,
+    dataloader,
+    device: str,
+    training_mode: str = "patch_only",
+    num_inference_steps: int = 50,
+    max_batches: int = None,
+    normalize_embeddings: bool = True,
+    logger = None
+) -> Dict[str, float]:
+    """Evaluate model with patch-wise similarity"""
+    model.eval()
     
-    # Try unified trainer first, then fall back to training-only trainer
-    try:
-        from src.modules.trainers import create_unified_training_args
-        logger.info("✅ Using unified trainer arguments")
-        
-        return create_unified_training_args(
-            output_dir=args.output_dir,
-            enable_evaluation=False,  # Explicitly disable evaluation
-            num_train_epochs=args.num_epochs,
-            per_device_train_batch_size=args.batch_size,
-            learning_rate=args.learning_rate,
-            lr_scheduler_type="cosine",
-            weight_decay=args.weight_decay,
-            warmup_steps=args.warmup_steps,
-            gradient_accumulation_steps=args.gradient_accumulation_steps,
-            fp16=args.fp16 and torch.cuda.is_available(),
-            dataloader_num_workers=0,
-            logging_steps=args.logging_steps,
-            save_steps=args.save_steps,
-        )
-        
-    except ImportError:
-        logger.warning("⚠️ Unified trainer not available, trying training-only trainer")
-        
-        try:
-            from src.modules.trainers import create_training_only_args
-            logger.info("✅ Using training-only trainer arguments")
-            
-            return create_training_only_args(
-                output_dir=args.output_dir,
-                num_train_epochs=args.num_epochs,
-                per_device_train_batch_size=args.batch_size,
-                learning_rate=args.learning_rate,
-                lr_scheduler_type="cosine",
-                weight_decay=args.weight_decay,
-                warmup_steps=args.warmup_steps,
-                gradient_accumulation_steps=gradient_accumulation_steps,
-                fp16=args.fp16 and torch.cuda.is_available(),
-                dataloader_num_workers=0,
-                logging_steps=args.logging_steps,
-                save_steps=args.save_steps,
-            )
-            
-        except ImportError as e:
-            logger.error(f"❌ No trainer arguments available: {e}")
-            raise RuntimeError("No trainer argument factory functions available")
-
-def create_trainer(model, training_args, flow_matching_loss, train_dataloader, args, logger):
-    """Create trainer (unified or training-only)"""
-    logger.info("🏗️ Creating trainer...")
+    all_per_patch_similarities = []
+    all_per_image_similarities = []
+    batch_count = 0
     
-    # Try unified trainer first
-    try:
-        from src.modules.trainers import BLIP3oUnifiedTrainer
-        logger.info("✅ Using unified trainer")
-        
-        trainer = BLIP3oUnifiedTrainer(
-            model=model,
-            args=training_args,
-            flow_matching_loss=flow_matching_loss,
-            train_dataset=None,  # We'll override dataloader
-            enable_evaluation=False,  # Explicitly disable evaluation
-            # BLIP3-o specific parameters
-            training_mode=args.training_mode,
-            detailed_logging=True,
-            
-            # Scaling parameters for monitoring
-            expected_velocity_scale=args.velocity_scale,
-            expected_output_scale=args.output_scale,
-        )
-        
-        # Override dataloader
-        trainer.get_train_dataloader = lambda: train_dataloader
-        
-        logger.info("✅ Unified BLIP3oTrainer created")
-        
-        return trainer, "unified"
-        
-    except ImportError:
-        logger.warning("⚠️ Unified trainer not available, trying training-only trainer")
-        
-        try:
-            from src.modules.trainers import BLIP3oTrainingOnlyTrainer
-            logger.info("✅ Using training-only trainer")
-            
-            trainer = BLIP3oTrainingOnlyTrainer(
-                model=model,
-                args=training_args,
-                flow_matching_loss=flow_matching_loss,
-                train_dataset=None,  # We'll override dataloader
+    if logger:
+        logger.info(f"🔍 Starting evaluation...")
+        logger.info(f"   Training mode: {training_mode}")
+        logger.info(f"   Max batches: {max_batches or 'All'}")
+    
+    with torch.no_grad():
+        for batch_idx, batch in enumerate(dataloader):
+            if max_batches and batch_idx >= max_batches:
+                break
                 
-                # BLIP3-o specific parameters
-                training_mode=args.training_mode,
-                detailed_logging=True,
+            # Move to device
+            eva_embeddings = batch['encoder_hidden_states'].to(device)
+            target_clip = batch['clip_embeddings'].to(device)
+            
+            try:
+                # Generate embeddings
+                generated_clip = model.generate(
+                    eva_features=eva_embeddings,
+                    num_inference_steps=num_inference_steps,
+                    normalize_output=normalize_embeddings,
+                    guidance_scale=1.0,
+                )
                 
-                # Scaling parameters for monitoring
-                expected_velocity_scale=args.velocity_scale,
-                expected_output_scale=args.output_scale,
-            )
-            
-            # Override dataloader
-            trainer.get_train_dataloader = lambda: train_dataloader
-            
-            logger.info("✅ Training-only BLIP3oTrainer created")
-            
-            return trainer, "training_only"
-            
-        except ImportError as e:
-            logger.error(f"❌ No trainers available: {e}")
-            raise RuntimeError("No trainer classes available")
+                # Ensure same shape
+                if generated_clip.shape != target_clip.shape:
+                    logger.warning(f"Shape mismatch: {generated_clip.shape} vs {target_clip.shape}")
+                    continue
+                
+                # Compute patch-wise similarities
+                batch_results = compute_patch_wise_cosine_similarity(
+                    predicted_embeddings=generated_clip,
+                    target_embeddings=target_clip,
+                    normalize=normalize_embeddings,
+                )
+                
+                # Collect similarities
+                with torch.no_grad():
+                    if normalize_embeddings:
+                        pred_norm = F.normalize(generated_clip, p=2, dim=-1)
+                        target_norm = F.normalize(target_clip, p=2, dim=-1)
+                    else:
+                        pred_norm = generated_clip
+                        target_norm = target_clip
+                        
+                    per_patch_sim = F.cosine_similarity(pred_norm, target_norm, dim=-1)
+                    per_image_sim = per_patch_sim.mean(dim=1)
+                    
+                    all_per_patch_similarities.append(per_patch_sim.cpu())
+                    all_per_image_similarities.append(per_image_sim.cpu())
+                
+                batch_count += 1
+                
+                if logger and batch_idx % 5 == 0:
+                    logger.info(f"   Batch {batch_idx}: Overall similarity = {batch_results['overall_cosine_similarity']:.4f}")
+                    
+            except Exception as e:
+                if logger:
+                    logger.warning(f"   Batch {batch_idx} failed: {e}")
+                continue
+    
+    if not all_per_patch_similarities:
+        raise RuntimeError("No batches were successfully evaluated")
+    
+    # Aggregate results
+    all_per_patch = torch.cat(all_per_patch_similarities, dim=0)
+    all_per_image = torch.cat(all_per_image_similarities, dim=0)
+    
+    # Final results
+    final_results = {
+        'overall_cosine_similarity': all_per_image.mean().item(),
+        'per_image_mean_similarity': all_per_image.mean().item(),
+        'per_image_std_similarity': all_per_image.std().item(),
+        'per_patch_mean_similarity': all_per_patch.mean().item(),
+        'per_patch_std_similarity': all_per_patch.std().item(),
+        
+        # Dataset statistics
+        'num_images_evaluated': len(all_per_image),
+        'num_batches_evaluated': batch_count,
+        'patches_per_image': all_per_patch.shape[1],
+        'total_patches_evaluated': all_per_patch.numel(),
+        
+        # Quality distribution
+        'high_quality_patches_ratio': (all_per_patch > 0.7).float().mean().item(),
+        'very_high_quality_patches_ratio': (all_per_patch > 0.8).float().mean().item(),
+        'high_quality_images_ratio': (all_per_image > 0.7).float().mean().item(),
+        'very_high_quality_images_ratio': (all_per_image > 0.8).float().mean().item(),
+        
+        # Min/max
+        'min_patch_similarity': all_per_patch.min().item(),
+        'max_patch_similarity': all_per_patch.max().item(),
+        'min_image_similarity': all_per_image.min().item(),
+        'max_image_similarity': all_per_image.max().item(),
+    }
+    
+    if logger:
+        logger.info(f"✅ Evaluation completed on {batch_count} batches")
+        logger.info(f"   Overall cosine similarity: {final_results['overall_cosine_similarity']:.4f}")
+        logger.info(f"   High quality images (>0.7): {final_results['high_quality_images_ratio']*100:.1f}%")
+    
+    return final_results
 
 def main():
-    """Main training function with better error handling"""
+    """Main evaluation function"""
     args = parse_arguments()
+    logger = setup_logging()
     
-    # Setup device and distributed training
-    device, is_distributed, is_main_process, local_rank, global_rank, world_size = setup_device_and_distributed()
-    
-    # Setup logging
-    log_dir = Path(args.output_dir) / "logs" if is_main_process else None
-    logger = setup_logging(local_rank, log_dir)
-    
-    if is_main_process:
-        print("🚀 UPDATED BLIP3-o Training with Better Error Handling")
-        print(f"Job ID: {os.environ.get('SLURM_JOB_ID', 'local')}")
-        print(f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        print("=" * 70)
-        print("🔧 ALL FIXES APPLIED:")
-        print("  ✅ Graceful handling of missing modules")
-        print("  ✅ Falls back to available trainers")
-        print("  ✅ Velocity scaling to fix norm mismatch")
-        print("  ✅ Output scaling in DiT model")
-        print("  ✅ Adaptive scaling in loss function")
-        print("  ✅ Proper rectified flow implementation")
-        print("  ✅ Fixed generation timestep schedule")
-        print("  ✅ Consistent normalization handling")
-        print("=" * 70)
-        
-        # Apply training type presets
-        apply_training_type_presets(args, logger)
-        
-        print(f"  ✅ Training type: {args.training_type}")
-        print(f"  ✅ Training mode: {args.training_mode}")
-        print(f"  ✅ Velocity scale: {args.velocity_scale}")
-        print(f"  ✅ Output scale: {args.output_scale}")
-        print("=" * 70)
+    logger.info("🔍 BLIP3-o Patch-wise Cosine Similarity Evaluation")
+    logger.info("=" * 60)
+    logger.info("🎯 EVALUATION METHODOLOGY:")
+    logger.info("  1. Compute cosine similarity for each patch")
+    logger.info("  2. Average over all patches to get image similarity")
+    logger.info("  3. Average over all images to get overall similarity")
+    logger.info("=" * 60)
     
     try:
-        # 1. Validate setup
-        shard_files = validate_training_setup(args, logger)
+        # Setup device
+        device = setup_device(args.device, logger)
         
-        # 2. Create FIXED model
-        model, config = create_model_and_config(args, device, logger)
+        # Create output directory
+        output_dir = Path(args.output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
         
-        # 3. Wrap with DDP if needed
-        if is_distributed and device.type != "cpu":
-            try:
-                model = torch.nn.parallel.DistributedDataParallel(
-                    model,
-                    device_ids=[local_rank],
-                    output_device=local_rank,
-                    find_unused_parameters=False,
-                )
-                if is_main_process:
-                    logger.info("✅ Model wrapped with DDP")
-            except Exception as e:
-                logger.warning(f"⚠️ DDP wrapping failed: {e}")
-                raise
+        # Load model
+        model, config, training_mode = load_model_and_config(
+            args.model_path, device, args.training_mode, logger
+        )
         
-        # 4. Create FIXED loss function
-        flow_matching_loss = create_loss_function(args, logger)
+        # Create dataloader
+        eval_dataloader = create_evaluation_dataloader(
+            args.chunked_embeddings_dir, training_mode, args.batch_size, logger
+        )
         
-        # 5. Create dataloaders
-        train_dataloader, _ = create_dataloader(args, logger)
+        # Run evaluation
+        logger.info("🚀 Starting patch-wise cosine similarity evaluation...")
+        start_time = datetime.now()
         
-        # 6. Create training arguments
-        training_args = create_training_args(args, logger)
+        results = evaluate_model(
+            model=model,
+            dataloader=eval_dataloader,
+            device=str(device),
+            training_mode=training_mode,
+            num_inference_steps=args.num_inference_steps,
+            max_batches=args.num_samples // args.batch_size if args.num_samples else None,
+            normalize_embeddings=args.normalize_embeddings,
+            logger=logger
+        )
         
-        # 7. Create trainer (unified or training-only)
-        trainer, trainer_type = create_trainer(model, training_args, flow_matching_loss, train_dataloader, args, logger)
+        end_time = datetime.now()
+        evaluation_duration = (end_time - start_time).total_seconds()
         
-        # 8. Start training
-        logger.info(f"🚀 Starting Training Process with {trainer_type} trainer...")
-        logger.info(f"   Training for {args.num_epochs} epochs")
-        logger.info(f"   Expected improvements:")
-        logger.info(f"     📈 Cosine similarity: ~0.01 → >0.3 (30x improvement)")
-        logger.info(f"     📊 Prediction/target norm alignment")
-        logger.info(f"     📉 Smooth loss decrease")
+        # Display results
+        logger.info("📊 PATCH-WISE COSINE SIMILARITY RESULTS:")
+        logger.info("=" * 50)
+        logger.info(f"🎯 OVERALL COSINE SIMILARITY: {results['overall_cosine_similarity']:.4f}")
+        logger.info(f"📊 Per-image mean: {results['per_image_mean_similarity']:.4f}")
+        logger.info(f"📊 Per-patch mean: {results['per_patch_mean_similarity']:.4f}")
+        logger.info(f"📈 High quality images (>0.7): {results['high_quality_images_ratio']*100:.1f}%")
+        logger.info(f"📈 Images evaluated: {results['num_images_evaluated']:,}")
         
-        start_time = time.time()
-        train_result = trainer.train()
-        training_time = time.time() - start_time
+        # Assessment
+        overall_sim = results['overall_cosine_similarity']
+        if overall_sim > 0.8:
+            logger.info("🎉 EXCELLENT: Outstanding alignment!")
+        elif overall_sim > 0.6:
+            logger.info("✅ VERY GOOD: Strong performance")
+        elif overall_sim > 0.4:
+            logger.info("🔄 GOOD: Solid learning")
+        elif overall_sim > 0.2:
+            logger.info("📈 IMPROVING: Some learning detected")
+        else:
+            logger.info("⚠️ NEEDS IMPROVEMENT: Low similarity")
         
-        # 9. Save results
-        if is_main_process:
-            logger.info("💾 Saving model and results...")
-            trainer.save_model()
-            
-            # Get training statistics
-            try:
-                training_stats = trainer.get_training_statistics()
-            except AttributeError:
-                training_stats = {'total_steps': 0, 'loss_statistics': {}}
-            
-            # Save training info with all fixes
-            training_info = {
-                'training_completed': True,
-                'trainer_type': f'BLIP3o{trainer_type.title()}Trainer',
-                'training_mode': args.training_mode,
-                'expected_tokens': config.num_tokens,
-                'total_epochs': args.num_epochs,
-                'total_steps': training_stats.get('total_steps', 0),
-                'training_time_seconds': training_time,
-                'loss_statistics': training_stats.get('loss_statistics', {}),
-                'timestamp': datetime.now().isoformat(),
-                
-                # ALL FIXES applied
-                'all_fixes_applied': {
-                    'trainer_type': trainer_type,
-                    'velocity_scale': args.velocity_scale,
-                    'output_scale': args.output_scale,
-                    'target_norm_scale': args.target_norm_scale,
-                    'adaptive_scaling': True,
-                    'proper_normalization': True,
-                    'improved_generation': True,
-                    'rectified_flow': True,
-                },
-                
-                'model_config': {
-                    'hidden_size': config.hidden_size,
-                    'num_layers': config.num_hidden_layers,
-                    'num_heads': config.num_attention_heads,
-                    'num_tokens': config.num_tokens,
-                    'output_scale': config.output_scale,
-                },
-            }
-            
-            with open(Path(args.output_dir) / f'training_info_{trainer_type}.json', 'w') as f:
-                json.dump(training_info, f, indent=2)
-            
-            logger.info("✅ Training completed successfully!")
-            logger.info(f"   Model saved to: {args.output_dir}")
-            logger.info(f"   Training mode: {args.training_mode}")
-            logger.info(f"   Training time: {training_time:.1f} seconds")
-            final_loss = training_stats.get('loss_statistics', {}).get('current_loss', 'unknown')
-            logger.info(f"   Final loss: {final_loss}")
-            logger.info(f"   Trainer: {trainer_type}")
-            
-            # Check for scaling issues
-            norm_warnings = training_stats.get('norm_mismatch_warnings', 0)
-            scaling_issues = training_stats.get('scaling_issues_detected', [])
-            
-            if norm_warnings == 0 and not scaling_issues:
-                logger.info("🎉 No scaling issues detected - fixes working perfectly!")
-            else:
-                logger.warning(f"⚠️ Some scaling issues detected: {norm_warnings} warnings, {len(scaling_issues)} issues")
-            
-            print(f"\n✅ Training completed successfully!")
-            print(f"   Model saved to: {args.output_dir}")
-            print(f"   Training mode: {args.training_mode} ({config.num_tokens} tokens)")
-            print(f"   Final loss: {final_loss}")
-            print(f"   Training time: {training_time:.1f} seconds")
-            print(f"   Trainer: {trainer_type}")
-            
-            print("\n🎯 Next steps:")
-            print("1. Run evaluation to test the dramatic improvements")
-            print("2. Expect cosine similarity >0.3 (vs 0.01 before)")
-            print("3. Check that prediction norms now align with target norms")
-            print("4. Verify all scaling fixes are working properly")
+        # Save results
+        evaluation_summary = {
+            'evaluation_completed': True,
+            'timestamp': datetime.now().isoformat(),
+            'duration_seconds': evaluation_duration,
+            'model_path': str(args.model_path),
+            'training_mode': training_mode,
+            'evaluation_methodology': {
+                'step_1': 'Compute cosine similarity for each patch',
+                'step_2': 'Average over all patches to get image similarity',
+                'step_3': 'Average over all images to get overall similarity',
+                'normalize_embeddings': args.normalize_embeddings,
+            },
+            'results_summary': {
+                'overall_cosine_similarity': results['overall_cosine_similarity'],
+                'per_image_mean_similarity': results['per_image_mean_similarity'],
+                'per_patch_mean_similarity': results['per_patch_mean_similarity'],
+                'high_quality_images_percentage': results['high_quality_images_ratio'] * 100,
+                'total_images': results['num_images_evaluated'],
+                'total_patches': results['total_patches_evaluated'],
+            },
+            'detailed_results': results,
+        }
         
-        # Cleanup
-        if is_distributed:
-            dist.destroy_process_group()
+        # Save results
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        results_file = output_dir / f'evaluation_results_{timestamp}.json'
+        with open(results_file, 'w') as f:
+            json.dump(evaluation_summary, f, indent=2)
+        
+        logger.info("=" * 50)
+        logger.info("✅ EVALUATION COMPLETED SUCCESSFULLY!")
+        logger.info(f"📁 Results saved to: {results_file}")
+        logger.info(f"⏱️ Evaluation time: {evaluation_duration:.1f} seconds")
+        logger.info("=" * 50)
         
         return 0
         
     except Exception as e:
-        if is_main_process:
-            logger.error(f"❌ Training failed: {e}")
-            if args.debug:
-                traceback.print_exc()
-            
-            # Check for common import errors
-            if "No module named" in str(e):
-                logger.error("💡 Import error detected - check these files:")
-                logger.error("   • src/modules/datasets/__init__.py (add DATASET_AVAILABLE)")
-                logger.error("   • src/modules/trainers/__init__.py (ensure trainers exist)")
-                logger.error("   • src/modules/losses/__init__.py (add scaling functions)")
-                logger.error("   • src/modules/models/__init__.py (add scaling support)")
-        
-        if is_distributed and dist.is_initialized():
-            dist.destroy_process_group()
-        
+        logger.error(f"❌ Evaluation failed: {e}")
+        traceback.print_exc()
         return 1
 
 if __name__ == "__main__":
