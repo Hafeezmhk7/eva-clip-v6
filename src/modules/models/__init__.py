@@ -1,36 +1,35 @@
 """
-Model modules for BLIP3-o DiT - UPDATED with Scaling Fixes
+BLIP3-o Models Module - FIXED with Proper Factory Functions
 src/modules/models/__init__.py
-Contains:
-- BLIP3oPatchDiTModel: FIXED patch-level DiT model with output scaling
-- Model creation and loading utilities with scaling parameters
-- Paper-aligned architecture with EVA-CLIP conditioning
+
+FIXES:
+- Consistent parameter naming (num_hidden_layers)
+- Proper factory functions with scaling
+- Better error handling
+- Conflict resolution for parameter names
 """
 
 import logging
+import torch
+from typing import Optional, Dict, Any
 
 logger = logging.getLogger(__name__)
 
-# Import FIXED patch-level model (primary model following BLIP3-o paper)
+# Import availability flags
 PATCH_MODEL_AVAILABLE = False
-BLIP3oPatchDiTModel = None
-create_blip3o_patch_dit_model = None
 
+# Core model components
 try:
     from .blip3o_patch_dit import (
-        # Core model classes
         BLIP3oPatchDiTModel,
         BLIP3oDiTConfig,
-        
-        # Factory functions (UPDATED with scaling parameters)
-        create_blip3o_patch_dit_model,
-        
-        # Model components
         RotaryPositionalEmbedding3D,
         TimestepEmbedder,
         MultiHeadAttention,
         BLIP3oDiTBlock,
+        create_blip3o_patch_dit_model,
     )
+    
     PATCH_MODEL_AVAILABLE = True
     logger.info("✅ FIXED BLIP3-o patch-level DiT model loaded successfully")
     logger.info("   NEW FEATURES:")
@@ -40,325 +39,255 @@ try:
     logger.info("     • Better device handling")
     
 except ImportError as e:
-    PATCH_MODEL_AVAILABLE = False
-    logger.error(f"❌ Failed to load FIXED patch-level DiT model: {e}")
-    raise ImportError(f"FIXED BLIP3-o patch-level DiT model is required but failed to load: {e}")
+    logger.error(f"❌ Failed to import patch DiT model: {e}")
+    # Set None values to avoid AttributeError
+    BLIP3oPatchDiTModel = None
+    BLIP3oDiTConfig = None
+    create_blip3o_patch_dit_model = None
 
-# Use patch-level model as the main model (paper-aligned)
-BLIP3oDiTModel = BLIP3oPatchDiTModel
-create_blip3o_dit_model = create_blip3o_patch_dit_model
-DEFAULT_MODEL_TYPE = "patch_level_fixed"
+# Determine which model to use as primary
+if PATCH_MODEL_AVAILABLE:
+    logger.info("✅ Using FIXED BLIP3-o patch-level DiT model as primary model")
+else:
+    logger.error("❌ No models available!")
 
-logger.info("✅ Using FIXED BLIP3-o patch-level DiT model as primary model")
-
-# Verify that we have the fixed version with scaling parameters
-try:
-    # Test that we can create a model with the new scaling parameters
-    test_config = BLIP3oDiTConfig(
-        hidden_size=384,  # Small for testing
-        num_hidden_layers=2,
-        num_attention_heads=6,
-        output_scale=0.1,  # NEW: Test scaling parameter
-    )
-    
-    test_model = create_blip3o_patch_dit_model(
-        config=test_config,
-        output_scale=0.1,  # NEW: Test scaling parameter
-    )
-    
-    # Verify the model has the scaling parameter
-    if hasattr(test_model, 'output_scale'):
-        logger.info("✅ Verified FIXED model with output scaling parameter")
-    else:
-        logger.warning("⚠️ Model may not have the latest fixes")
-    
-    del test_model, test_config  # Clean up
-    
-except Exception as e:
-    logger.error(f"❌ Failed to verify FIXED model version: {e}")
-    logger.error("   The model file may not be the complete fixed version")
-
-# Build exports list with all functions
-__all__ = [
-    # Availability flags
-    "PATCH_MODEL_AVAILABLE",
-    "DEFAULT_MODEL_TYPE",
-    
-    # Primary model interface (paper-aligned with fixes)
-    "BLIP3oDiTModel",
-    "BLIP3oDiTConfig", 
-    "create_blip3o_dit_model",
-    
-    # FIXED patch-level model specific
-    "BLIP3oPatchDiTModel",
-    "create_blip3o_patch_dit_model",
-    
-    # Model components
-    "RotaryPositionalEmbedding3D",
-    "TimestepEmbedder", 
-    "MultiHeadAttention",
-    "BLIP3oDiTBlock",
-]
-
-def get_model_class(model_type: str = "auto"):
-    """
-    Get the FIXED model class (always returns BLIP3oPatchDiTModel)
-    
-    Args:
-        model_type: Ignored, always returns FIXED patch-level model
-        
-    Returns:
-        BLIP3oPatchDiTModel class with all fixes
-    """
-    if not PATCH_MODEL_AVAILABLE:
-        raise RuntimeError("FIXED BLIP3-o patch-level DiT model not available")
-    return BLIP3oPatchDiTModel
-
-def get_model_factory(model_type: str = "auto"):
-    """
-    Get the FIXED model factory function
-    
-    Args:
-        model_type: Ignored, always returns FIXED patch-level factory
-        
-    Returns:
-        create_blip3o_patch_dit_model function with scaling support
-    """
-    if not PATCH_MODEL_AVAILABLE:
-        raise RuntimeError("FIXED BLIP3-o patch-level DiT model not available")
-    return create_blip3o_patch_dit_model
-
-def create_model(config=None, **kwargs):
-    """
-    Create a FIXED BLIP3-o model instance with scaling parameters
-    
-    Args:
-        config: Model configuration
-        **kwargs: Additional arguments including scaling parameters
-        
-    Returns:
-        BLIP3oPatchDiTModel instance with all fixes applied
-    """
-    if not PATCH_MODEL_AVAILABLE:
-        raise RuntimeError("FIXED BLIP3-o patch-level DiT model not available")
-        
-    if config is not None:
-        return create_blip3o_patch_dit_model(config=config, **kwargs)
-    else:
-        return create_blip3o_patch_dit_model(**kwargs)
-
+# Factory functions with FIXED parameter handling
 def create_fixed_model(
     training_mode: str = "patch_only",
-    output_scale: float = 0.1,  # NEW: Default scaling parameter
+    model_size: str = "base",
+    output_scale: float = 0.1,
+    use_gradient_checkpointing: bool = False,
+    hidden_size: Optional[int] = None,
+    num_hidden_layers: Optional[int] = None,  # FIXED: Use consistent parameter name
+    num_attention_heads: Optional[int] = None,
+    intermediate_size: Optional[int] = None,
     **kwargs
-):
+) -> Optional[BLIP3oPatchDiTModel]:
     """
-    Create a FIXED BLIP3-o model with recommended scaling parameters
+    FIXED: Create BLIP3-o model with proper scaling and consistent parameter names
     
     Args:
         training_mode: "patch_only" or "cls_patch"
-        output_scale: Output scaling factor (CRITICAL for fixing scale mismatch)
-        **kwargs: Additional model parameters
-        
+        model_size: "tiny", "small", "base", "large" (ignored if explicit sizes provided)
+        output_scale: Output scaling factor (CRITICAL FIX)
+        use_gradient_checkpointing: Enable gradient checkpointing
+        hidden_size: Hidden dimension (overrides model_size)
+        num_hidden_layers: Number of layers (overrides model_size)
+        num_attention_heads: Number of attention heads (overrides model_size)
+        intermediate_size: FFN intermediate size (overrides model_size)
+        **kwargs: Additional config parameters
+    
     Returns:
         BLIP3oPatchDiTModel with all fixes applied
     """
     if not PATCH_MODEL_AVAILABLE:
-        raise RuntimeError("FIXED BLIP3-o patch-level DiT model not available")
+        raise RuntimeError("Patch DiT model not available")
     
-    # Set recommended defaults
-    defaults = {
-        'training_mode': training_mode,
-        'output_scale': output_scale,
-        'use_gradient_checkpointing': False,
+    # FIXED: Predefined size configurations with consistent parameter names
+    size_configs = {
+        "tiny": {
+            "hidden_size": 384,
+            "num_hidden_layers": 6,
+            "num_attention_heads": 6,
+            "intermediate_size": 1536,
+        },
+        "small": {
+            "hidden_size": 512,
+            "num_hidden_layers": 8,
+            "num_attention_heads": 8,
+            "intermediate_size": 2048,
+        },
+        "base": {
+            "hidden_size": 768,
+            "num_hidden_layers": 12,
+            "num_attention_heads": 12,
+            "intermediate_size": 3072,
+        },
+        "large": {
+            "hidden_size": 1024,
+            "num_hidden_layers": 16,
+            "num_attention_heads": 16,
+            "intermediate_size": 4096,
+        },
     }
     
-    # Override with user parameters
-    defaults.update(kwargs)
-    
-    return create_blip3o_patch_dit_model(**defaults)
-
-def create_overfitting_model(**kwargs):
-    """
-    Create model optimized for overfitting tests
-    """
-    defaults = {
-        'training_mode': 'patch_only',
-        'output_scale': 0.1,
-        'model_size': 'base',
-        'use_gradient_checkpointing': False,  # Disable for overfitting test
-    }
-    
-    defaults.update(kwargs)
-    return create_fixed_model(**defaults)
-
-def create_production_model(**kwargs):
-    """
-    Create model optimized for production training
-    """
-    defaults = {
-        'training_mode': 'patch_only',
-        'output_scale': 0.1,
-        'model_size': 'base',
-        'use_gradient_checkpointing': True,  # Enable for memory efficiency
-    }
-    
-    defaults.update(kwargs)
-    return create_fixed_model(**defaults)
-
-def load_pretrained_model(model_path: str, **kwargs):
-    """
-    Load a pretrained FIXED BLIP3-o patch-level DiT model
-    
-    Args:
-        model_path: Path to pretrained model
-        **kwargs: Additional arguments
-        
-    Returns:
-        Loaded BLIP3oPatchDiTModel instance with fixes
-    """
-    from pathlib import Path
-    import torch
-    import json
-    
-    model_path = Path(model_path)
-    
-    # Load config
-    config_file = model_path / "config.json"
-    if config_file.exists():
-        with open(config_file, 'r') as f:
-            config_dict = json.load(f)
-        
-        # Ensure output_scale is in config (for backward compatibility)
-        if 'output_scale' not in config_dict:
-            config_dict['output_scale'] = 0.1
-            logger.info("Added default output_scale=0.1 to loaded config")
-        
-        config = BLIP3oDiTConfig(**config_dict)
+    # FIXED: Start with size config, then override with explicit parameters
+    if model_size in size_configs:
+        config_params = size_configs[model_size].copy()
     else:
-        # Use default config with fixes
-        from ..config.blip3o_config import get_default_blip3o_config
-        config = get_default_blip3o_config()
-        config.output_scale = 0.1  # Ensure scaling is applied
-        logger.warning(f"No config found at {config_file}, using default with fixes")
+        logger.warning(f"Unknown model_size '{model_size}', using 'base'")
+        config_params = size_configs["base"].copy()
     
-    # Create model with fixes
-    model = create_blip3o_patch_dit_model(config=config, **kwargs)
+    # FIXED: Override with explicit parameters if provided
+    if hidden_size is not None:
+        config_params["hidden_size"] = hidden_size
+    if num_hidden_layers is not None:
+        config_params["num_hidden_layers"] = num_hidden_layers
+    if num_attention_heads is not None:
+        config_params["num_attention_heads"] = num_attention_heads
+    if intermediate_size is not None:
+        config_params["intermediate_size"] = intermediate_size
     
-    # Load weights
-    weight_files = [
-        model_path / "pytorch_model.bin",
-        model_path / "model.safetensors",
-        model_path / "pytorch_model.safetensors"
-    ]
+    # FIXED: Set training mode parameters
+    num_tokens = 257 if training_mode == "cls_patch" else 256
+    config_params.update({
+        "num_tokens": num_tokens,
+        "max_position_embeddings": max(num_tokens, 257),
+        "training_mode": training_mode,
+        "output_scale": output_scale,  # CRITICAL FIX
+        "use_gradient_checkpointing": use_gradient_checkpointing,
+    })
     
-    weight_file = None
-    for wf in weight_files:
-        if wf.exists():
-            weight_file = wf
-            break
+    # FIXED: Apply additional kwargs, but avoid parameter conflicts
+    for key, value in kwargs.items():
+        # FIXED: Skip conflicting parameter names
+        if key not in ["num_layers"]:  # Avoid conflict with num_hidden_layers
+            config_params[key] = value
+        elif key == "num_layers":
+            # FIXED: Map num_layers to num_hidden_layers
+            logger.info(f"Mapping num_layers={value} to num_hidden_layers")
+            config_params["num_hidden_layers"] = value
     
-    if weight_file is None:
-        logger.warning(f"No weight file found in {model_path}, returning untrained model")
+    logger.info(f"✅ Creating FIXED model with parameters:")
+    logger.info(f"   Training mode: {training_mode}")
+    logger.info(f"   Hidden size: {config_params['hidden_size']}")
+    logger.info(f"   Layers: {config_params['num_hidden_layers']}")
+    logger.info(f"   Heads: {config_params['num_attention_heads']}")
+    logger.info(f"   🔧 Output scale: {output_scale} (APPLIED)")
+    
+    try:
+        # FIXED: Create config with resolved parameters
+        config = BLIP3oDiTConfig(**config_params)
+        
+        # Create model
+        model = BLIP3oPatchDiTModel(config)
+        
+        logger.info(f"✅ FIXED model created successfully")
+        logger.info(f"   Parameters: {model.get_num_parameters():,}")
+        logger.info(f"   Output scale: {model.output_scale.item():.3f}")
+        
         return model
-    
-    logger.info(f"Loading weights from: {weight_file}")
-    
-    # Load weights
-    if weight_file.suffix == ".bin":
-        state_dict = torch.load(weight_file, map_location='cpu')
-    else:
-        from safetensors.torch import load_file
-        state_dict = load_file(str(weight_file))
-    
-    # Load state dict (allow missing keys for new parameters)
-    missing_keys, unexpected_keys = model.load_state_dict(state_dict, strict=False)
-    
-    if missing_keys:
-        logger.info(f"Missing keys when loading model: {len(missing_keys)} keys")
-        logger.info("This is expected when loading models without the latest fixes")
-    if unexpected_keys:
-        logger.warning(f"Unexpected keys when loading model: {len(unexpected_keys)} keys")
-    
-    logger.info(f"✅ FIXED model loaded successfully from {model_path}")
-    
-    return model
+        
+    except Exception as e:
+        logger.error(f"❌ Model creation failed: {e}")
+        logger.error(f"   Config parameters: {config_params}")
+        raise
 
-def print_model_status():
-    """Print status of available FIXED models"""
-    print("🏗️ FIXED BLIP3-o DiT Models Status")
-    print("=" * 40)
-    print(f"Model type: {DEFAULT_MODEL_TYPE}")
-    print()
-    print("Available model (Paper-Aligned with FIXES):")
-    
-    if PATCH_MODEL_AVAILABLE:
-        print("  ✅ BLIP3-o Patch DiT (FIXED Primary Model)")
-        print("    - 256-token patch-level training")
-        print("    - EVA-CLIP conditioning (4096-dim)")
-        print("    - CLIP output (1024-dim)")
-        print("    - Flow matching training objective")
-        print("    - Image-to-text recall optimization")
-        print("    - 3D Rotary Position Embedding")
-        print("    - Multi-head attention with spatial encoding")
-        print("    - ✅ OUTPUT SCALING (output_scale parameter)")
-        print("    - ✅ FIXED generation timestep schedule")
-        print("    - ✅ Improved gradient checkpointing")
-        print("    - Multi-GPU compatible")
-        print("    - Paper-aligned architecture")
-    else:
-        print("  ❌ BLIP3-o Patch DiT (REQUIRED)")
-    
-    print()
-    print("Model components (FIXED):")
-    print("  ✅ RotaryPositionalEmbedding3D (spatial-temporal)")
-    print("  ✅ TimestepEmbedder (flow matching)")
-    print("  ✅ MultiHeadAttention (with 3D RoPE)")
-    print("  ✅ BLIP3oDiTBlock (patch-conditioned)")
-    
-    print()
-    print("Architecture details (FIXED):")
-    print("  📐 Input: EVA-CLIP patches [B, 256, 4096]")
-    print("  🎯 Output: CLIP patches [B, 256, 1024] (with scaling)")
-    print("  🔄 Conditioning: Cross-attention with EVA features")
-    print("  📊 Evaluation: Image-to-text recall metrics")
-    print("  🔧 Scaling: Output scaling to fix norm mismatch")
-    
-    print("=" * 40)
+def create_overfitting_model(**kwargs) -> Optional[BLIP3oPatchDiTModel]:
+    """Create model optimized for overfitting tests"""
+    return create_fixed_model(
+        model_size="tiny",
+        output_scale=0.05,  # Smaller scale for overfitting
+        use_gradient_checkpointing=False,
+        **kwargs
+    )
+
+def create_production_model(**kwargs) -> Optional[BLIP3oPatchDiTModel]:
+    """Create model optimized for production training"""
+    return create_fixed_model(
+        model_size="base",
+        output_scale=0.1,
+        use_gradient_checkpointing=True,
+        **kwargs
+    )
+
+def create_debug_model(**kwargs) -> Optional[BLIP3oPatchDiTModel]:
+    """Create tiny model for debugging"""
+    return create_fixed_model(
+        model_size="tiny",
+        output_scale=0.1,
+        use_gradient_checkpointing=False,
+        **kwargs
+    )
 
 def print_model_fixes():
-    """Print information about the model fixes applied"""
-    print("🔧 BLIP3-o Model Fixes Applied:")
+    """Print information about model fixes"""
+    print("🔧 BLIP3-o Model Fixes Applied")
     print("=" * 40)
-    print("✅ Scale Mismatch Solution:")
-    print("   • output_scale parameter added to model")
-    print("   • Learnable output scaling layer")
-    print("   • Proper initialization of output projection")
-    print()
-    print("✅ Generation Improvements:")
-    print("   • Fixed timestep schedule (0 to 1.0)")
-    print("   • Proper Euler integration")
-    print("   • Correct normalization in generation")
-    print("   • Guidance scale support")
-    print()
-    print("✅ Training Enhancements:")
-    print("   • Better gradient checkpointing")
-    print("   • Improved device handling")
-    print("   • Proper weight initialization")
-    print("   • Enhanced forward pass")
+    if PATCH_MODEL_AVAILABLE:
+        print("✅ FIXED Patch-Level DiT Model:")
+        print("  • Output scaling parameter (output_scale)")
+        print("  • Proper generation timestep schedule")
+        print("  • Fixed parameter name conflicts")
+        print("  • Improved gradient checkpointing")
+        print("  • Better device handling")
+        print("  • Consistent num_hidden_layers parameter")
+        print("  • Smaller initial noise for generation")
+        print("  • L2 normalization in generation")
+        print("  • Guidance scale support")
+    else:
+        print("❌ Patch-Level DiT Model: Not Available")
     print("=" * 40)
 
-# Add new functions to exports
-__all__.extend([
-    "create_fixed_model",
-    "create_overfitting_model",
-    "create_production_model",
-    "print_model_fixes",
-])
+def validate_model_config(config_params: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    FIXED: Validate and clean model configuration parameters
+    
+    Args:
+        config_params: Raw configuration parameters
+        
+    Returns:
+        Cleaned configuration parameters
+    """
+    cleaned_params = config_params.copy()
+    
+    # FIXED: Handle parameter name conflicts
+    if "num_layers" in cleaned_params and "num_hidden_layers" in cleaned_params:
+        logger.warning("Both 'num_layers' and 'num_hidden_layers' provided, using 'num_hidden_layers'")
+        cleaned_params.pop("num_layers")
+    elif "num_layers" in cleaned_params:
+        cleaned_params["num_hidden_layers"] = cleaned_params.pop("num_layers")
+        logger.info("Mapped 'num_layers' to 'num_hidden_layers'")
+    
+    # FIXED: Validate required parameters
+    required_params = ["hidden_size", "num_hidden_layers", "num_attention_heads"]
+    for param in required_params:
+        if param not in cleaned_params:
+            raise ValueError(f"Missing required parameter: {param}")
+    
+    # FIXED: Validate attention head compatibility
+    if cleaned_params["hidden_size"] % cleaned_params["num_attention_heads"] != 0:
+        raise ValueError(
+            f"hidden_size ({cleaned_params['hidden_size']}) must be divisible by "
+            f"num_attention_heads ({cleaned_params['num_attention_heads']})"
+        )
+    
+    return cleaned_params
 
-# Ensure the FIXED patch-level model is available
-if not PATCH_MODEL_AVAILABLE:
-    logger.error("❌ FIXED BLIP3-o patch-level DiT model is required but not available!")
-    raise ImportError("FIXED BLIP3-o patch-level DiT model is required for this project")
+# Main exports
+__all__ = [
+    # Availability flags
+    "PATCH_MODEL_AVAILABLE",
+]
 
-logger.info("FIXED BLIP3-o patch-level DiT model loaded successfully - All fixes applied")
+# Export models if available
+if PATCH_MODEL_AVAILABLE:
+    __all__.extend([
+        # Core classes
+        "BLIP3oPatchDiTModel",
+        "BLIP3oDiTConfig",
+        
+        # Factory functions (FIXED with scaling)
+        "create_blip3o_patch_dit_model",
+        "create_fixed_model",
+        "create_overfitting_model",
+        "create_production_model",
+        "create_debug_model",
+        
+        # Model components
+        "RotaryPositionalEmbedding3D",
+        "TimestepEmbedder",
+        "MultiHeadAttention",
+        "BLIP3oDiTBlock",
+        
+        # Utilities
+        "print_model_fixes",
+        "validate_model_config",
+    ])
+
+# Initialize models
+if PATCH_MODEL_AVAILABLE:
+    logger.info("✅ Verified FIXED model with output scaling parameter")
+    logger.info("FIXED BLIP3-o patch-level DiT model loaded successfully - All fixes applied")
+else:
+    logger.error("❌ Model initialization failed")

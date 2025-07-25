@@ -7,6 +7,7 @@ Main module initialization with:
 - FIXED DiT model with output scaling  
 - Updated trainers and datasets
 - Comprehensive fix verification
+- Better error handling for missing components
 """
 
 import logging
@@ -56,6 +57,11 @@ try:
 except ImportError as e:
     logger.error(f"❌ Failed to import FIXED models: {e}")
     logger.error("   Ensure blip3o_patch_dit.py has all the fixes applied")
+    # Set None values to avoid AttributeError later
+    BLIP3oPatchDiTModel = None
+    BLIP3oDiTConfig = None
+    create_blip3o_patch_dit_model = None
+    create_fixed_model = None
 
 # 2. Import FIXED losses  
 try:
@@ -82,6 +88,10 @@ try:
 except ImportError as e:
     logger.error(f"❌ Failed to import FIXED losses: {e}")
     logger.error("   Ensure blip3o_flow_matching_loss.py is the complete fixed version")
+    # Set None values to avoid AttributeError later
+    BLIP3oFlowMatchingLoss = None
+    create_blip3o_flow_matching_loss = None
+    get_fixed_loss_function = None
 
 # 3. Import trainers
 try:
@@ -94,10 +104,26 @@ try:
     TRAINER_AVAILABLE = TRAINING_ONLY_TRAINER_AVAILABLE
     logger.info("✅ Trainers imported successfully")
     
+    # Try to import unified trainer if available
+    try:
+        from .trainers import (
+            BLIP3oUnifiedTrainer,
+            create_unified_training_args,
+            UNIFIED_TRAINER_AVAILABLE,
+        )
+        logger.info("✅ Unified trainer imported successfully")
+    except ImportError as e:
+        logger.warning(f"⚠️ Unified trainer not available: {e}")
+        BLIP3oUnifiedTrainer = None
+        create_unified_training_args = None
+    
 except ImportError as e:
     logger.error(f"❌ Failed to import trainers: {e}")
+    # Set None values to avoid AttributeError later
+    BLIP3oTrainingOnlyTrainer = None
+    create_training_only_args = None
 
-# 4. Import datasets
+# 4. Import datasets with better error handling
 try:
     from .datasets import (
         create_flexible_dataloaders,
@@ -105,10 +131,21 @@ try:
     )
     
     DATASET_AVAILABLE = DATASET_MODULE_AVAILABLE
-    logger.info("✅ Datasets imported successfully")
+    logger.info("✅ FIXED datasets imported successfully")
     
 except ImportError as e:
     logger.error(f"❌ Failed to import datasets: {e}")
+    # Try to import at least the flag
+    try:
+        from .datasets import DATASET_AVAILABLE as DATASET_MODULE_AVAILABLE
+        DATASET_AVAILABLE = DATASET_MODULE_AVAILABLE
+        logger.warning("⚠️ Partial dataset import - flag only")
+    except ImportError:
+        DATASET_AVAILABLE = False
+        logger.error("❌ Complete dataset import failure")
+    
+    # Set None values to avoid AttributeError later
+    create_flexible_dataloaders = None
 
 # 5. Import config if available
 try:
@@ -121,6 +158,7 @@ try:
     
 except ImportError as e:
     logger.warning(f"⚠️ Config import failed: {e}")
+    get_default_blip3o_config = None
 
 # Check overall module status
 ALL_MODULES_AVAILABLE = all([
@@ -148,7 +186,7 @@ __all__ = [
 ]
 
 # Export models if available
-if MODEL_AVAILABLE:
+if MODEL_AVAILABLE and BLIP3oPatchDiTModel is not None:
     __all__.extend([
         # Core model classes
         "BLIP3oPatchDiTModel",
@@ -171,7 +209,7 @@ if MODEL_AVAILABLE:
     ])
 
 # Export losses if available
-if LOSS_AVAILABLE:
+if LOSS_AVAILABLE and BLIP3oFlowMatchingLoss is not None:
     __all__.extend([
         # Core loss classes
         "BLIP3oFlowMatchingLoss",
@@ -189,14 +227,21 @@ if LOSS_AVAILABLE:
     ])
 
 # Export trainers if available
-if TRAINER_AVAILABLE:
+if TRAINER_AVAILABLE and BLIP3oTrainingOnlyTrainer is not None:
     __all__.extend([
         "BLIP3oTrainingOnlyTrainer",
         "create_training_only_args",
     ])
 
+# Export unified trainer if available
+if 'BLIP3oUnifiedTrainer' in locals() and BLIP3oUnifiedTrainer is not None:
+    __all__.extend([
+        "BLIP3oUnifiedTrainer",
+        "create_unified_training_args",
+    ])
+
 # Export datasets if available
-if DATASET_AVAILABLE:
+if DATASET_AVAILABLE and create_flexible_dataloaders is not None:
     __all__.extend([
         "create_flexible_dataloaders",
     ])
@@ -222,6 +267,9 @@ def create_complete_fixed_setup(
     """
     if not (MODEL_AVAILABLE and LOSS_AVAILABLE):
         raise RuntimeError("Model and loss modules must be available")
+    
+    if create_fixed_model is None or get_fixed_loss_function is None:
+        raise RuntimeError("Model and loss factory functions not available")
     
     # Create FIXED model with scaling
     model = create_fixed_model(
@@ -253,6 +301,9 @@ def create_overfitting_setup(**kwargs):
     if not (MODEL_AVAILABLE and LOSS_AVAILABLE):
         raise RuntimeError("Model and loss modules must be available")
     
+    if create_overfitting_model is None or get_overfitting_loss_function is None:
+        raise RuntimeError("Overfitting factory functions not available")
+    
     model = create_overfitting_model(**kwargs)
     loss_fn = get_overfitting_loss_function(**kwargs)
     
@@ -270,6 +321,9 @@ def create_production_setup(**kwargs):
     if not (MODEL_AVAILABLE and LOSS_AVAILABLE):
         raise RuntimeError("Model and loss modules must be available")
     
+    if create_production_model is None or create_production_loss is None:
+        raise RuntimeError("Production factory functions not available")
+    
     model = create_production_model(**kwargs)
     loss_fn = create_production_loss(**kwargs)
     
@@ -283,12 +337,18 @@ def print_all_fixes():
     print("=" * 60)
     print()
     
-    if MODEL_AVAILABLE:
-        print_model_fixes()
+    if MODEL_AVAILABLE and 'print_model_fixes' in globals():
+        try:
+            print_model_fixes()
+        except Exception as e:
+            print(f"⚠️ Could not print model fixes: {e}")
         print()
     
-    if LOSS_AVAILABLE:
-        print_loss_fixes()
+    if LOSS_AVAILABLE and 'print_loss_fixes' in globals():
+        try:
+            print_loss_fixes()
+        except Exception as e:
+            print(f"⚠️ Could not print loss fixes: {e}")
         print()
     
     print("📊 Module Status:")
@@ -304,7 +364,7 @@ def validate_fixes():
     validation_results = {}
     
     # Validate model fixes
-    if MODEL_AVAILABLE:
+    if MODEL_AVAILABLE and create_fixed_model is not None:
         try:
             test_model = create_fixed_model(
                 model_size='tiny',
@@ -323,9 +383,12 @@ def validate_fixes():
         except Exception as e:
             validation_results['model_creation'] = False
             validation_results['model_error'] = str(e)
+    else:
+        validation_results['model_creation'] = False
+        validation_results['model_error'] = "Model factory not available"
     
     # Validate loss fixes
-    if LOSS_AVAILABLE:
+    if LOSS_AVAILABLE and get_fixed_loss_function is not None:
         try:
             test_loss = get_fixed_loss_function(
                 velocity_scale=0.1,
@@ -344,6 +407,9 @@ def validate_fixes():
         except Exception as e:
             validation_results['loss_creation'] = False
             validation_results['loss_error'] = str(e)
+    else:
+        validation_results['loss_creation'] = False
+        validation_results['loss_error'] = "Loss factory not available"
     
     # Print validation results
     print("🔍 Fix Validation Results:")
@@ -376,15 +442,18 @@ __all__.extend([
     "validate_fixes",
 ])
 
-# Run validation on import
+# Run validation on import only if all modules are available
 if ALL_MODULES_AVAILABLE:
     logger.info("🔍 Running fix validation...")
-    validation_results = validate_fixes()
-    
-    if all(v for k, v in validation_results.items() if not k.endswith('_error')):
-        logger.info("✅ All fixes validated - ready for use!")
-    else:
-        logger.warning("⚠️ Some validation issues detected - check output above")
+    try:
+        validation_results = validate_fixes()
+        
+        if all(v for k, v in validation_results.items() if not k.endswith('_error')):
+            logger.info("✅ All fixes validated - ready for use!")
+        else:
+            logger.warning("⚠️ Some validation issues detected - check output above")
+    except Exception as e:
+        logger.warning(f"⚠️ Validation failed: {e}")
 else:
     logger.warning("⚠️ Cannot validate fixes - some modules unavailable")
 

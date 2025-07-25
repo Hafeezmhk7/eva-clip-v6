@@ -4,6 +4,7 @@ src/modules/datasets/__init__.py
 
 FIXES:
 - Fixed import errors
+- Added missing DATASET_AVAILABLE flag
 - Proper gradient handling for multiprocessing
 - Support for both CLS+patch and patch-only modes
 """
@@ -112,6 +113,9 @@ except ImportError as e:
     ENHANCED_DDP_AVAILABLE = False
     logger.warning(f"⚠️ Enhanced DDP utilities not available: {e}")
 
+# FIXED: Add the missing DATASET_AVAILABLE flag
+DATASET_AVAILABLE = CORE_DATASET_AVAILABLE or ENHANCED_DDP_AVAILABLE
+
 # Determine best dataloader creation functions
 if ENHANCED_DDP_AVAILABLE and CORE_DATASET_AVAILABLE:
     # Use enhanced versions as default
@@ -134,7 +138,8 @@ else:
 
 # Build exports list
 __all__ = [
-    # Availability flags
+    # Availability flags - FIXED: Added missing DATASET_AVAILABLE
+    "DATASET_AVAILABLE",
     "CORE_DATASET_AVAILABLE",
     "ENHANCED_DDP_AVAILABLE",
     "DEFAULT_DATALOADER_TYPE",

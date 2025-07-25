@@ -17,7 +17,7 @@ from functools import partial
 logger = logging.getLogger(__name__)
 
 class BLIP3oDiTConfig(PretrainedConfig):
-    """Configuration class for BLIP3-o DiT model"""
+    """Configuration class for BLIP3-o DiT model - FIXED version"""
     model_type = "blip3o_patch_dit"
     
     def __init__(
@@ -449,8 +449,8 @@ def create_blip3o_patch_dit_model(
     config: Optional[BLIP3oDiTConfig] = None,
     training_mode: str = "patch_only",
     hidden_size: int = 768,
-    num_layers: int = 12,
-    num_heads: int = 12,
+    num_hidden_layers: int = 12,  # FIXED: Use consistent parameter name
+    num_attention_heads: int = 12,
     use_gradient_checkpointing: bool = False,
     output_scale: float = 0.1,  # FIXED: Start with smaller output scale
     **kwargs
@@ -462,8 +462,8 @@ def create_blip3o_patch_dit_model(
         num_tokens = 257 if training_mode == "cls_patch" else 256
         config = BLIP3oDiTConfig(
             hidden_size=hidden_size,
-            num_hidden_layers=num_layers,
-            num_attention_heads=num_heads,
+            num_hidden_layers=num_hidden_layers,  # FIXED: Use consistent parameter name
+            num_attention_heads=num_attention_heads,
             num_tokens=num_tokens,
             max_position_embeddings=max(num_tokens, 257),
             training_mode=training_mode,
