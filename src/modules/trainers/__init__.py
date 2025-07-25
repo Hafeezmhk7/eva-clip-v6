@@ -295,6 +295,7 @@ try:
             load_best_model_at_end=False,
             metric_for_best_model=None,
             greater_is_better=None,
+            # FIX: Use correct parameter name
             evaluation_strategy="steps" if enable_evaluation else "no",
             **kwargs
         )

@@ -7,7 +7,7 @@ FEATURES:
 - Graceful handling of missing modules
 - Falls back to available trainers
 - All scaling fixes applied (velocity_scale, output_scale)
-- Can do training-only OR training+evaluation
+- Training-only mode (no evaluation during training)
 - Comprehensive monitoring and metrics
 - Overfitting test support
 """
@@ -67,12 +67,6 @@ def parse_arguments():
                        choices=["cls_patch", "patch_only"],
                        help="Training mode: cls_patch (257 tokens) or patch_only (256 tokens)")
     
-    # NEW: Evaluation control
-    parser.add_argument("--enable_evaluation", action="store_true", default=False,
-                       help="Enable evaluation during training (slower but more info)")
-    parser.add_argument("--enable_same_data_eval", action="store_true", default=False,
-                       help="Use same training data for evaluation (overfitting test)")
-    
     # Model configuration
     parser.add_argument("--model_size", type=str, default="base",
                        choices=["tiny", "small", "base", "large"],
@@ -111,8 +105,6 @@ def parse_arguments():
                        help="Logging frequency")
     parser.add_argument("--save_steps", type=int, default=200,
                        help="Model saving frequency")
-    parser.add_argument("--eval_steps", type=int, default=50,
-                       help="Evaluation frequency (if evaluation enabled)")
     
     # Training type presets
     parser.add_argument("--training_type", type=str, default="custom",
@@ -129,19 +121,15 @@ def apply_training_type_presets(args, logger):
     """Apply preset configurations based on training type"""
     if args.training_type == "overfitting":
         # Optimize for overfitting tests
-        args.enable_evaluation = True
-        args.enable_same_data_eval = True
         args.num_epochs = 15
         args.batch_size = 16
         args.learning_rate = 5e-5
         args.weight_decay = 0.0  # No regularization
-        args.eval_steps = 25
         args.logging_steps = 5
         logger.info("🎯 Applied overfitting preset configuration")
         
     elif args.training_type == "production":
         # Optimize for production training
-        args.enable_evaluation = False  # Usually disabled for production
         args.num_epochs = 10
         args.batch_size = 32
         args.learning_rate = 1e-4
@@ -187,11 +175,6 @@ def validate_training_setup(args, logger):
     
     if args.output_scale <= 0 or args.output_scale > 1.0:
         logger.warning(f"⚠️ Unusual output_scale: {args.output_scale} (expected 0.01-0.5)")
-    
-    # Check for recommended combinations
-    if args.enable_same_data_eval and not args.enable_evaluation:
-        logger.warning("⚠️ same_data_eval enabled but evaluation disabled - enabling evaluation")
-        args.enable_evaluation = True
     
     logger.info("✅ Training setup validated")
     logger.info(f"🔧 SCALING FIXES:")
@@ -277,10 +260,6 @@ def create_loss_function(args, logger):
             velocity_scale=args.velocity_scale,
             target_norm_scale=args.target_norm_scale,
             adaptive_scaling=True,
-            # REMOVE THESE REDUNDANT PARAMETERS:
-            # prediction_type="velocity",
-            # normalize_targets=True,
-            # flow_type="rectified",
         )
         
         logger.info("✅ FIXED BLIP3-o Flow Matching Loss initialized")
@@ -305,26 +284,20 @@ def create_dataloader(args, logger):
         from src.modules.datasets import create_flexible_dataloaders
         
         # Create dataloaders
-        train_dataloader, eval_dataloader = create_flexible_dataloaders(
+        train_dataloader, _ = create_flexible_dataloaders(
             chunked_embeddings_dir=args.chunked_embeddings_dir,
             batch_size=args.batch_size,
-            eval_batch_size=args.batch_size if args.enable_evaluation else None,
-            eval_split_ratio=0.0 if args.enable_same_data_eval else 0.1,
             normalize_embeddings=False,  # Loss function handles normalization
             training_mode=args.training_mode,
             max_shards=1,  # Single shard for overfitting test
-            use_same_data_for_eval=args.enable_same_data_eval,
-            delete_after_use=False,
             num_workers=0,  # Avoid multiprocessing issues
             pin_memory=torch.cuda.is_available(),
         )
         
         logger.info(f"✅ Training dataloader created")
         logger.info(f"   Training batches: {len(train_dataloader):,}")
-        if args.enable_evaluation and eval_dataloader:
-            logger.info(f"   Evaluation batches: {len(eval_dataloader):,}")
         
-        return train_dataloader, eval_dataloader
+        return train_dataloader, None
         
     except Exception as e:
         logger.error(f"❌ Dataloader creation failed: {e}")
@@ -341,10 +314,9 @@ def create_training_args(args, logger):
         
         return create_unified_training_args(
             output_dir=args.output_dir,
-            enable_evaluation=args.enable_evaluation,
+            enable_evaluation=False,  # Explicitly disable evaluation
             num_train_epochs=args.num_epochs,
             per_device_train_batch_size=args.batch_size,
-            per_device_eval_batch_size=args.batch_size if args.enable_evaluation else None,
             learning_rate=args.learning_rate,
             lr_scheduler_type="cosine",
             weight_decay=args.weight_decay,
@@ -354,7 +326,6 @@ def create_training_args(args, logger):
             dataloader_num_workers=0,
             logging_steps=args.logging_steps,
             save_steps=args.save_steps,
-            eval_steps=args.eval_steps if args.enable_evaluation else None,
         )
         
     except ImportError:
@@ -372,7 +343,7 @@ def create_training_args(args, logger):
                 lr_scheduler_type="cosine",
                 weight_decay=args.weight_decay,
                 warmup_steps=args.warmup_steps,
-                gradient_accumulation_steps=args.gradient_accumulation_steps,
+                gradient_accumulation_steps=gradient_accumulation_steps,
                 fp16=args.fp16 and torch.cuda.is_available(),
                 dataloader_num_workers=0,
                 logging_steps=args.logging_steps,
@@ -383,7 +354,7 @@ def create_training_args(args, logger):
             logger.error(f"❌ No trainer arguments available: {e}")
             raise RuntimeError("No trainer argument factory functions available")
 
-def create_trainer(model, training_args, flow_matching_loss, train_dataloader, eval_dataloader, args, logger):
+def create_trainer(model, training_args, flow_matching_loss, train_dataloader, args, logger):
     """Create trainer (unified or training-only)"""
     logger.info("🏗️ Creating trainer...")
     
@@ -397,12 +368,9 @@ def create_trainer(model, training_args, flow_matching_loss, train_dataloader, e
             args=training_args,
             flow_matching_loss=flow_matching_loss,
             train_dataset=None,  # We'll override dataloader
-            eval_dataset=None if not args.enable_evaluation else eval_dataloader.dataset if eval_dataloader else None,
-            
+            enable_evaluation=False,  # Explicitly disable evaluation
             # BLIP3-o specific parameters
             training_mode=args.training_mode,
-            enable_evaluation=args.enable_evaluation,
-            enable_same_data_eval=args.enable_same_data_eval,
             detailed_logging=True,
             
             # Scaling parameters for monitoring
@@ -410,10 +378,8 @@ def create_trainer(model, training_args, flow_matching_loss, train_dataloader, e
             expected_output_scale=args.output_scale,
         )
         
-        # Override dataloaders
+        # Override dataloader
         trainer.get_train_dataloader = lambda: train_dataloader
-        if args.enable_evaluation and eval_dataloader:
-            trainer.get_eval_dataloader = lambda: eval_dataloader
         
         logger.info("✅ Unified BLIP3oTrainer created")
         
@@ -445,7 +411,6 @@ def create_trainer(model, training_args, flow_matching_loss, train_dataloader, e
             trainer.get_train_dataloader = lambda: train_dataloader
             
             logger.info("✅ Training-only BLIP3oTrainer created")
-            logger.warning("⚠️ Evaluation disabled with training-only trainer")
             
             return trainer, "training_only"
             
@@ -485,7 +450,6 @@ def main():
         
         print(f"  ✅ Training type: {args.training_type}")
         print(f"  ✅ Training mode: {args.training_mode}")
-        print(f"  ✅ Evaluation: {'enabled' if args.enable_evaluation else 'disabled'}")
         print(f"  ✅ Velocity scale: {args.velocity_scale}")
         print(f"  ✅ Output scale: {args.output_scale}")
         print("=" * 70)
@@ -516,13 +480,13 @@ def main():
         flow_matching_loss = create_loss_function(args, logger)
         
         # 5. Create dataloaders
-        train_dataloader, eval_dataloader = create_dataloader(args, logger)
+        train_dataloader, _ = create_dataloader(args, logger)
         
         # 6. Create training arguments
         training_args = create_training_args(args, logger)
         
         # 7. Create trainer (unified or training-only)
-        trainer, trainer_type = create_trainer(model, training_args, flow_matching_loss, train_dataloader, eval_dataloader, args, logger)
+        trainer, trainer_type = create_trainer(model, training_args, flow_matching_loss, train_dataloader, args, logger)
         
         # 8. Start training
         logger.info(f"🚀 Starting Training Process with {trainer_type} trainer...")
@@ -531,7 +495,6 @@ def main():
         logger.info(f"     📈 Cosine similarity: ~0.01 → >0.3 (30x improvement)")
         logger.info(f"     📊 Prediction/target norm alignment")
         logger.info(f"     📉 Smooth loss decrease")
-        logger.info(f"     🎯 Much better evaluation results")
         
         start_time = time.time()
         train_result = trainer.train()
@@ -570,17 +533,6 @@ def main():
                     'proper_normalization': True,
                     'improved_generation': True,
                     'rectified_flow': True,
-                },
-                
-                'evaluation_info': {
-                    'enabled_during_training': args.enable_evaluation,
-                    'same_data_eval': args.enable_same_data_eval,
-                    'evaluation_frequency': args.eval_steps if args.enable_evaluation else None,
-                },
-                
-                'scaling_monitoring': {
-                    'norm_mismatch_warnings': training_stats.get('norm_mismatch_warnings', 0),
-                    'scaling_issues_detected': training_stats.get('scaling_issues_detected', []),
                 },
                 
                 'model_config': {
