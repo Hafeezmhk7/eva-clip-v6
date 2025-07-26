@@ -44,7 +44,8 @@ class BLIP3oEVAFlowMatchingLoss(nn.Module):
         # Improved stability parameters
         min_timestep: float = 1e-3,  # Avoid t=0 numerical issues
         max_timestep: float = 1.0 - 1e-3,  # Avoid t=1 numerical issues
-        velocity_norm_weight: float = 0.1,  # Weight for velocity norm regularization
+        velocity_norm_weight: float = 0.01,  # Weight for velocity norm regularization
+        boundary_loss_weight: float = 0.1,  # Weight for boundary conditions
     ):
         super().__init__()
         
@@ -58,6 +59,7 @@ class BLIP3oEVAFlowMatchingLoss(nn.Module):
         self.min_timestep = min_timestep
         self.max_timestep = max_timestep
         self.velocity_norm_weight = velocity_norm_weight
+        self.boundary_loss_weight = boundary_loss_weight
         
         # Training step counter
         self.register_buffer('step_count', torch.tensor(0))
@@ -74,6 +76,8 @@ class BLIP3oEVAFlowMatchingLoss(nn.Module):
         logger.info(f"   Loss scale: {loss_scale}")
         logger.info(f"   Gradient clipping: {gradient_clip_val}")
         logger.info(f"   Timestep range: [{min_timestep}, {max_timestep}]")
+        logger.info(f"   Velocity norm weight: {velocity_norm_weight}")
+        logger.info(f"   Boundary loss weight: {boundary_loss_weight}")
         logger.info(f"   Debug mode: {debug_mode}")
 
     def _clamp_timesteps(self, timesteps: torch.Tensor) -> torch.Tensor:
@@ -154,8 +158,29 @@ class BLIP3oEVAFlowMatchingLoss(nn.Module):
         target_norm = torch.norm(true_velocity, dim=-1).mean()
         norm_loss = F.mse_loss(pred_norm, target_norm) * self.velocity_norm_weight
         
-        # 6. Total loss with scaling
-        total_loss = (main_loss + norm_loss) * self.loss_scale
+        # 6. Boundary condition loss (ensure model learns correct boundary behavior)
+        boundary_mask_0 = timesteps < 0.1
+        boundary_mask_1 = timesteps > 0.9
+        
+        boundary_loss = 0.0
+        if boundary_mask_0.any():
+            # Near t=0, velocity should point from noise to target
+            boundary_loss_0 = F.mse_loss(
+                model_output[boundary_mask_0], 
+                true_velocity[boundary_mask_0]
+            )
+            boundary_loss += boundary_loss_0 * self.boundary_loss_weight
+        
+        if boundary_mask_1.any():
+            # Near t=1, velocity should still be consistent
+            boundary_loss_1 = F.mse_loss(
+                model_output[boundary_mask_1], 
+                true_velocity[boundary_mask_1]
+            )
+            boundary_loss += boundary_loss_1 * self.boundary_loss_weight
+        
+        # 7. Total loss with scaling
+        total_loss = (main_loss + norm_loss + boundary_loss) * self.loss_scale
         
         # Apply gradient clipping to loss
         if total_loss.requires_grad and self.gradient_clip_val > 0:
@@ -203,17 +228,6 @@ class BLIP3oEVAFlowMatchingLoss(nn.Module):
                 if unscaled_loss < self.best_loss.item():
                     self.best_loss = torch.tensor(unscaled_loss)
                 
-                # Boundary condition analysis
-                boundary_loss_0 = F.mse_loss(
-                    model_output[timesteps < 0.1], 
-                    true_velocity[timesteps < 0.1]
-                ).item() if (timesteps < 0.1).any() else 0.0
-                
-                boundary_loss_1 = F.mse_loss(
-                    model_output[timesteps > 0.9], 
-                    true_velocity[timesteps > 0.9]
-                ).item() if (timesteps > 0.9).any() else 0.0
-                
                 # Training health indicators
                 is_learning = mean_sim > 0.01
                 is_converging = error_norm.item() < self.error_norm_ema.item() * 1.1
@@ -227,6 +241,7 @@ class BLIP3oEVAFlowMatchingLoss(nn.Module):
                     'scaled_loss': total_loss.item(),
                     'main_loss': main_loss.item(),
                     'norm_loss': norm_loss.item(),
+                    'boundary_loss': boundary_loss if isinstance(boundary_loss, float) else boundary_loss.item(),
                     'velocity_similarity': mean_sim,
                     
                     # Detailed similarity metrics
@@ -245,8 +260,6 @@ class BLIP3oEVAFlowMatchingLoss(nn.Module):
                     # Error analysis
                     'error_norm': error_norm.item(),
                     'relative_error': (error_norm / (velocity_norm_mean + self.eps)).item(),
-                    'boundary_loss_t0': boundary_loss_0,
-                    'boundary_loss_t1': boundary_loss_1,
                     
                     # Training progress
                     'step_count': self.step_count.item(),
