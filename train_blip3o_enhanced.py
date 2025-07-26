@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
-FIXED: BLIP3-o Training Script with Proper L2 Normalization
+FIXED: BLIP3-o Training Script with Proper L2 Normalization and WandB Integration
 train_blip3o_enhanced.py
 
 KEY FIX:
 1. Enable proper L2 normalization for CLIP embeddings (normalize_embeddings=True)
 2. Ensure target norms are ~1.0 instead of ~32.0
+3. Comprehensive WandB integration for training and evaluation tracking
 """
 
 import os
@@ -37,7 +38,7 @@ def setup_logging():
 
 def parse_arguments():
     """Parse command line arguments"""
-    parser = argparse.ArgumentParser(description="FIXED BLIP3-o Training with Proper Normalization")
+    parser = argparse.ArgumentParser(description="FIXED BLIP3-o Training with Proper Normalization and WandB")
     
     # Required arguments
     parser.add_argument("--chunked_embeddings_dir", type=str, required=True,
@@ -60,6 +61,13 @@ def parse_arguments():
                        help="Training batch size")
     parser.add_argument("--learning_rate", type=float, default=1e-4,
                        help="Learning rate")
+    parser.add_argument("--weight_decay", type=float, default=0.01,
+                       help="Weight decay")
+    parser.add_argument("--warmup_steps", type=int, default=100,
+                       help="Number of warmup steps")
+    parser.add_argument("--lr_scheduler_type", type=str, default="cosine",
+                       choices=["linear", "cosine", "constant"],
+                       help="Learning rate scheduler type")
     parser.add_argument("--gradient_accumulation_steps", type=int, default=2,
                        help="Gradient accumulation steps")
     parser.add_argument("--logging_steps", type=int, default=10,
@@ -75,13 +83,118 @@ def parse_arguments():
     parser.add_argument("--eval_inference_steps", type=int, default=50,
                        help="Number of inference steps for evaluation")
     
+    # WandB configuration
+    parser.add_argument("--use_wandb", action="store_true", default=False,
+                       help="Enable Weights & Biases tracking")
+    parser.add_argument("--wandb_project", type=str, default="blip3o-training",
+                       help="WandB project name")
+    parser.add_argument("--wandb_run_name", type=str, default=None,
+                       help="WandB run name (auto-generated if not provided)")
+    parser.add_argument("--wandb_entity", type=str, default=None,
+                       help="WandB entity/team name")
+    parser.add_argument("--wandb_tags", type=str, nargs="*", default=[],
+                       help="WandB tags for this run")
+    parser.add_argument("--wandb_notes", type=str, default="",
+                       help="WandB notes for this run")
+    
     # Options
     parser.add_argument("--fp16", action="store_true", default=True,
                        help="Use mixed precision")
+    parser.add_argument("--gradient_checkpointing", action="store_true", default=False,
+                       help="Use gradient checkpointing")
     parser.add_argument("--max_training_shards", type=int, default=1,
                        help="Maximum training shards")
     
     return parser.parse_args()
+
+def setup_wandb(args, logger):
+    """Setup Weights & Biases tracking"""
+    if not args.use_wandb:
+        logger.info("WandB tracking disabled")
+        return None
+    
+    try:
+        import wandb
+        
+        # Auto-generate run name if not provided
+        if args.wandb_run_name is None:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            args.wandb_run_name = f"blip3o_{args.model_size}_{args.training_mode}_{timestamp}"
+        
+        # Add automatic tags
+        auto_tags = [
+            args.model_size,
+            args.training_mode,
+            f"{args.max_training_shards}shards",
+            f"bs{args.batch_size}",
+            f"lr{args.learning_rate}",
+        ]
+        all_tags = list(set(auto_tags + args.wandb_tags))
+        
+        # WandB configuration
+        config = {
+            # Model configuration
+            "model_size": args.model_size,
+            "training_mode": args.training_mode,
+            "expected_tokens": 257 if args.training_mode == "cls_patch" else 256,
+            
+            # Training hyperparameters
+            "num_epochs": args.num_epochs,
+            "batch_size": args.batch_size,
+            "learning_rate": args.learning_rate,
+            "weight_decay": args.weight_decay,
+            "warmup_steps": args.warmup_steps,
+            "lr_scheduler_type": args.lr_scheduler_type,
+            "gradient_accumulation_steps": args.gradient_accumulation_steps,
+            
+            # Training configuration
+            "fp16": args.fp16,
+            "gradient_checkpointing": args.gradient_checkpointing,
+            "max_training_shards": args.max_training_shards,
+            
+            # Evaluation configuration
+            "eval_every_n_steps": args.eval_every_n_steps,
+            "eval_num_samples": args.eval_num_samples,
+            "eval_inference_steps": args.eval_inference_steps,
+            
+            # Implementation details
+            "l2_normalization_enabled": True,
+            "flow_matching_type": "rectified",
+            "prediction_type": "velocity",
+            "normalize_targets": True,
+            
+            # Paths
+            "embeddings_dir": str(args.chunked_embeddings_dir),
+            "output_dir": str(args.output_dir),
+        }
+        
+        # Initialize WandB
+        wandb.init(
+            project=args.wandb_project,
+            name=args.wandb_run_name,
+            entity=args.wandb_entity,
+            config=config,
+            tags=all_tags,
+            notes=args.wandb_notes,
+            save_code=True,
+        )
+        
+        logger.info(f"✅ WandB initialized:")
+        logger.info(f"   Project: {args.wandb_project}")
+        logger.info(f"   Run name: {args.wandb_run_name}")
+        logger.info(f"   Tags: {all_tags}")
+        logger.info(f"   URL: {wandb.run.url}")
+        
+        return wandb
+        
+    except ImportError:
+        logger.error("❌ WandB not installed. Install with: pip install wandb")
+        logger.error("   Continuing without WandB tracking...")
+        return None
+    except Exception as e:
+        logger.error(f"❌ Failed to initialize WandB: {e}")
+        logger.error("   Continuing without WandB tracking...")
+        return None
 
 def setup_device(logger):
     """Setup device"""
@@ -94,7 +207,7 @@ def setup_device(logger):
         logger.info("Using CPU")
     return device
 
-def create_model(args, logger):
+def create_model(args, logger, wandb_instance=None):
     """Create BLIP3-o model"""
     from src.modules.models.blip3o_patch_dit import create_blip3o_patch_dit_model, BLIP3oDiTConfig
     
@@ -112,14 +225,33 @@ def create_model(args, logger):
     config_params.update({
         "num_tokens": 257 if args.training_mode == "cls_patch" else 256,
         "training_mode": args.training_mode,
-        "use_gradient_checkpointing": False,
+        "use_gradient_checkpointing": args.gradient_checkpointing,
     })
     
     config = BLIP3oDiTConfig(**config_params)
     model = create_blip3o_patch_dit_model(config=config)
     
+    # Enable gradient checkpointing if requested
+    if args.gradient_checkpointing:
+        try:
+            model.gradient_checkpointing_enable()
+            logger.info("✅ Gradient checkpointing enabled")
+        except Exception as e:
+            logger.warning(f"⚠️ Could not enable gradient checkpointing: {e}")
+    
     logger.info(f"✅ FIXED Model created: {model.get_num_parameters():,} parameters")
     logger.info(f"   No scaling confusion - clean implementation")
+    
+    # Log model to WandB
+    if wandb_instance:
+        wandb_instance.config.update({
+            "model_parameters": model.get_num_parameters(),
+            "model_config": config_params,
+        })
+        # Watch model for gradients and parameters
+        wandb_instance.watch(model, log="all", log_freq=args.logging_steps * 5)
+        logger.info("✅ Model registered with WandB for gradient tracking")
+    
     return model
 
 def create_loss_function(args, logger):
@@ -165,11 +297,11 @@ def create_dataloaders(args, logger):
     
     return train_dataloader, eval_dataloader
 
-def create_trainer(model, loss_fn, train_dataloader, eval_dataloader, args, logger):
-    """Create FIXED trainer with evaluation"""
+def create_trainer(model, loss_fn, train_dataloader, eval_dataloader, args, logger, wandb_instance=None):
+    """Create FIXED trainer with evaluation and WandB"""
     from src.modules.trainers.blip3o_trainer import BLIP3oTrainer, create_training_args
     
-    logger.info("Creating FIXED trainer with evaluation...")
+    logger.info("Creating FIXED trainer with evaluation and WandB...")
     
     # Create training arguments
     training_args = create_training_args(
@@ -177,14 +309,18 @@ def create_trainer(model, loss_fn, train_dataloader, eval_dataloader, args, logg
         num_train_epochs=args.num_epochs,
         per_device_train_batch_size=args.batch_size,
         learning_rate=args.learning_rate,
+        lr_scheduler_type=args.lr_scheduler_type,
+        weight_decay=args.weight_decay,
+        warmup_steps=args.warmup_steps,
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         fp16=args.fp16,
         logging_steps=args.logging_steps,
         save_steps=args.save_steps,
         dataloader_num_workers=0,
+        report_to=["wandb"] if wandb_instance else [],
     )
     
-    # Create trainer with evaluation capabilities
+    # Create trainer with evaluation capabilities and WandB
     trainer = BLIP3oTrainer(
         model=model,
         args=training_args,
@@ -198,17 +334,21 @@ def create_trainer(model, loss_fn, train_dataloader, eval_dataloader, args, logg
         eval_num_samples=args.eval_num_samples,
         eval_batch_size=args.batch_size,
         eval_inference_steps=args.eval_inference_steps,
+        # WandB integration
+        wandb_instance=wandb_instance,
+        use_wandb=args.use_wandb,
     )
     
     # Override dataloader
     trainer.get_train_dataloader = lambda: train_dataloader
     
-    logger.info("✅ FIXED Trainer created with evaluation")
+    logger.info("✅ FIXED Trainer created with evaluation and WandB integration")
     logger.info(f"   Evaluation every {args.eval_every_n_steps} steps")
     logger.info(f"   Evaluation samples: {args.eval_num_samples}")
+    logger.info(f"   WandB tracking: {'Enabled' if wandb_instance else 'Disabled'}")
     return trainer
 
-def save_training_info(args, final_results, output_dir, logger):
+def save_training_info(args, final_results, output_dir, logger, wandb_instance=None):
     """Save comprehensive training information"""
     training_info = {
         'training_completed': True,
@@ -226,6 +366,14 @@ def save_training_info(args, final_results, output_dir, logger):
             'eval_inference_steps': args.eval_inference_steps,
         },
         
+        # WandB configuration
+        'wandb_config': {
+            'use_wandb': args.use_wandb,
+            'wandb_project': args.wandb_project if args.use_wandb else None,
+            'wandb_run_name': args.wandb_run_name if args.use_wandb else None,
+            'wandb_url': wandb_instance.run.url if wandb_instance else None,
+        },
+        
         # Fixed implementation details
         'implementation_fixes': {
             'l2_normalization_enabled': True,
@@ -234,6 +382,7 @@ def save_training_info(args, final_results, output_dir, logger):
             'proper_evaluation': True,
             'blip3o_paper_aligned': True,
             'velocity_and_embedding_tracking': True,
+            'wandb_integration': args.use_wandb,
         },
         
         # Normalization status
@@ -258,13 +407,43 @@ def save_training_info(args, final_results, output_dir, logger):
         json.dump(training_info, f, indent=2)
     
     logger.info(f"Training info saved to: {info_file}")
+    
+    # Log final results to WandB
+    if wandb_instance and final_results:
+        summary_data = {}
+        
+        if 'training_summary' in final_results:
+            summary = final_results['training_summary']
+            summary_data.update({
+                "final/best_velocity_sim": summary.get('best_velocity_sim', 0),
+                "final/best_embedding_sim": summary.get('best_embedding_sim', 0),
+                "final/total_steps": summary.get('total_steps', 0),
+                "final/training_health": summary.get('training_health', 'Unknown'),
+                "final/evaluations_performed": summary.get('evaluations_performed', 0),
+            })
+        
+        if 'final_evaluation' in final_results and final_results['final_evaluation']:
+            eval_results = final_results['final_evaluation']
+            summary_data.update({
+                "final_eval/overall_embedding_similarity": eval_results.get('overall_embedding_similarity', 0),
+                "final_eval/high_quality_images_pct": eval_results.get('high_quality_images', 0) * 100,
+                "final_eval/very_high_quality_images_pct": eval_results.get('very_high_quality_images', 0) * 100,
+                "final_eval/excellent_quality_images_pct": eval_results.get('excellent_quality_images', 0) * 100,
+                "final_eval/samples_evaluated": eval_results.get('samples_evaluated', 0),
+            })
+        
+        # Log summary metrics
+        for key, value in summary_data.items():
+            wandb_instance.run.summary[key] = value
+        
+        logger.info("✅ Final results logged to WandB")
 
 def main():
     """Main training function"""
     args = parse_arguments()
     logger = setup_logging()
     
-    logger.info("🚀 Starting FIXED BLIP3-o Training with Proper L2 Normalization")
+    logger.info("🚀 Starting FIXED BLIP3-o Training with Proper L2 Normalization and WandB")
     logger.info("=" * 70)
     logger.info("NORMALIZATION FIX APPLIED:")
     logger.info("  ✅ L2 normalization enabled for CLIP embeddings")
@@ -277,7 +456,11 @@ def main():
     logger.info(f"Embeddings: {args.chunked_embeddings_dir}")
     logger.info(f"Output: {args.output_dir}")
     logger.info(f"Evaluation every {args.eval_every_n_steps} steps")
+    logger.info(f"WandB tracking: {'Enabled' if args.use_wandb else 'Disabled'}")
     logger.info("=" * 70)
+    
+    # Initialize WandB early
+    wandb_instance = setup_wandb(args, logger)
     
     try:
         # Setup
@@ -289,24 +472,26 @@ def main():
         
         # Create components
         logger.info("🏗️ Creating model components...")
-        model = create_model(args, logger)
+        model = create_model(args, logger, wandb_instance)
         loss_fn = create_loss_function(args, logger)
         train_dataloader, eval_dataloader = create_dataloaders(args, logger)
         
         # Move model to device
         model = model.to(device)
         
-        # Create trainer with evaluation
-        trainer = create_trainer(model, loss_fn, train_dataloader, eval_dataloader, args, logger)
+        # Create trainer with evaluation and WandB
+        trainer = create_trainer(model, loss_fn, train_dataloader, eval_dataloader, args, logger, wandb_instance)
         
         # Start training
-        logger.info("🚀 Starting FIXED training with proper normalization...")
+        logger.info("🚀 Starting FIXED training with proper normalization and WandB tracking...")
         logger.info("📊 Expected behavior with L2 normalization:")
         logger.info("  • Target norms should be ~1.0 (not ~32.0)")
         logger.info("  • Prediction norms should be ~1.0")
         logger.info("  • Velocity similarity should increase from ~0.01 to >0.1")
         logger.info("  • Embedding similarity should increase from ~0.01 to >0.1")
         logger.info("  • Evaluation every 100 steps to track progress")
+        if wandb_instance:
+            logger.info(f"  • All metrics tracked in WandB: {wandb_instance.run.url}")
         logger.info("")
         
         start_time = datetime.now()
@@ -325,14 +510,18 @@ def main():
         trainer.save_model()
         
         # Save training info
-        save_training_info(args, final_results, args.output_dir, logger)
+        save_training_info(args, final_results, args.output_dir, logger, wandb_instance)
         
         # Final summary
         logger.info("=" * 70)
-        logger.info("✅ FIXED TRAINING COMPLETED WITH PROPER NORMALIZATION!")
+        logger.info("✅ FIXED TRAINING COMPLETED WITH PROPER NORMALIZATION AND WANDB!")
         logger.info("=" * 70)
         logger.info(f"Duration: {duration:.1f} seconds")
         logger.info(f"Model saved to: {args.output_dir}")
+        
+        if wandb_instance:
+            logger.info(f"📊 WandB Run: {wandb_instance.run.url}")
+            logger.info(f"📊 All training curves and metrics available in WandB")
         
         if final_results and 'training_summary' in final_results:
             summary = final_results['training_summary']
@@ -364,13 +553,25 @@ def main():
                 logger.info("⚠️ NEEDS WORK: Low embedding similarity, but normalization is now fixed")
         
         logger.info("🔧 NORMALIZATION STATUS: L2 normalization enabled - target norms should now be ~1.0")
+        if wandb_instance:
+            logger.info("📊 WANDB STATUS: All training and evaluation curves saved to WandB")
         logger.info("=" * 70)
+        
+        # Finish WandB run
+        if wandb_instance:
+            wandb_instance.finish()
+            logger.info("✅ WandB run finished")
         
         return 0
         
     except Exception as e:
         logger.error(f"❌ Training failed: {e}")
         traceback.print_exc()
+        
+        # Finish WandB run even on failure
+        if wandb_instance:
+            wandb_instance.finish(exit_code=1)
+        
         return 1
 
 if __name__ == "__main__":

@@ -1,10 +1,10 @@
 #!/bin/bash
-#SBATCH --partition=gpu_a100
+#SBATCH --partition=gpu_h100
 #SBATCH --gpus=1
 #SBATCH --job-name=blip3o_extract_chunked
 #SBATCH --time=24:00:00
-#SBATCH --output=./slurm_out/extract_only_patch_1shard.out
-#SBATCH --error=./slurm_out/extract_only_patch_1shard.err
+#SBATCH --output=./slurm_out/extract_only_patch_50shard.out
+#SBATCH --error=./slurm_out/extract_only_patch_50shard.err
 #SBATCH --mem=64GB
 #SBATCH --cpus-per-task=8
 #SBATCH --nodes=1
@@ -54,7 +54,7 @@ export BLIP3O_TEMP_DIR="${BLIP3O_JOB_TEMP}"
 # --max_shards N     to limit number of shards
 # --batch_size N     to set batch size
 
-python src/modules/extract_embeddings_g.py --max_shards 1 --batch_size 16
+python src/modules/extract_embeddings_g.py --max_shards 50 --batch_size 64
 
 EXTRACTION_EXIT_CODE=$?
 if [ $EXTRACTION_EXIT_CODE -ne 0 ]; then

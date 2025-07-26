@@ -8,8 +8,8 @@
 #SBATCH --cpus-per-task=18
 #SBATCH --time=12:00:00
 #SBATCH --mem=64G
-#SBATCH --output=./slurm_out/blip3o_train_%j.out
-#SBATCH --error=./slurm_out/blip3o_train_%j.err
+#SBATCH --output=./slurm_out/blip3o_train_100step%j.out
+#SBATCH --error=./slurm_out/blip3o_train__100step%j.err
 
 # =============================================================================
 # FIXED BLIP3-o Training Job - Proper Implementation
@@ -41,14 +41,14 @@ MODEL_SIZE="small"
 
 # Training parameters - Aligned with BLIP3-o paper
 NUM_EPOCHS=20
-BATCH_SIZE=64
-LEARNING_RATE=2e-4
+BATCH_SIZE=128
+LEARNING_RATE=4e-4
 GRADIENT_ACCUMULATION_STEPS=1
 
 # Evaluation parameters - Key to our implementation
 EVAL_EVERY_N_STEPS=100
 EVAL_NUM_SAMPLES=1000
-EVAL_INFERENCE_STEPS=50
+EVAL_INFERENCE_STEPS=100
 
 # Create output directory
 mkdir -p "${OUTPUT_DIR}"

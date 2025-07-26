@@ -7,8 +7,8 @@
 #SBATCH --cpus-per-task=16
 #SBATCH --time=2:00:00
 #SBATCH --mem=32G
-#SBATCH --output=./slurm_out/blip3o_eval_%j.out
-#SBATCH --error=./slurm_out/blip3o_eval_%j.err
+#SBATCH --output=./slurm_out/blip3o_eval_50epoch%j.out
+#SBATCH --error=./slurm_out/blip3o_eval_50epoch%j.err
 
 # =============================================================================
 # BLIP3-o Evaluation - Comprehensive Model Assessment
@@ -35,21 +35,22 @@ source activate eva_clip_env
 # Configuration
 EMBEDDINGS_DIR="/scratch-shared/azadaianchuk1/blip3o_workspace/embeddings/patch_only_256_tokens"
 OUTPUT_DIR="./eval_results_$(date +%Y%m%d_%H%M%S)"
+MODEL_PATH="/home/azadaianchuk1/eva-clip-v5/checkpoints/blip3o_training_20250726_012152"
 
-# Model path - can be provided as argument or auto-detected
-if [ -n "$1" ]; then
-    MODEL_PATH="$1"
-    echo "📂 Using provided model path: $MODEL_PATH"
-else
-    echo "🔍 Auto-detecting most recent model..."
-    MODEL_PATH=$(find ./checkpoints -name "*blip3o*" -type d | sort | tail -1)
-    if [ -z "$MODEL_PATH" ]; then
-        echo "❌ No model found! Please provide model path as argument."
-        echo "Usage: sbatch job_scripts/evaluate_blip3o.job <model_path>"
-        exit 1
-    fi
-    echo "📂 Found model: $MODEL_PATH"
-fi
+# # Model path - can be provided as argument or auto-detected
+# if [ -n "$1" ]; then
+#     MODEL_PATH="$1"
+#     echo "📂 Using provided model path: $MODEL_PATH"
+# else
+#     echo "🔍 Auto-detecting most recent model..."
+#     MODEL_PATH=$(find ./checkpoints -name "*blip3o*" -type d | sort | tail -1)
+#     if [ -z "$MODEL_PATH" ]; then
+#         echo "❌ No model found! Please provide model path as argument."
+#         echo "Usage: sbatch job_scripts/evaluate_blip3o.job <model_path>"
+#         exit 1
+#     fi
+#     echo "📂 Found model: $MODEL_PATH"
+# fi
 
 # Create output directory
 mkdir -p "${OUTPUT_DIR}"

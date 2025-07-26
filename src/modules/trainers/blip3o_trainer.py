@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-FIXED: BLIP3-o Trainer with Proper L2 Normalization Tracking
+FIXED: BLIP3-o Trainer with Proper L2 Normalization Tracking and WandB Integration
 src/modules/trainers/blip3o_trainer.py
 
 KEY FIX:
@@ -8,6 +8,7 @@ KEY FIX:
 2. Monitor normalization status throughout training
 3. Report both CLIP target norms and velocity target norms
 4. Warn if normalization is not working correctly
+5. Comprehensive WandB integration for all metrics
 """
 
 import torch
@@ -24,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 class BLIP3oTrainer(Trainer):
     """
-    FIXED: BLIP3-o trainer with proper L2 normalization tracking
+    FIXED: BLIP3-o trainer with proper L2 normalization tracking and WandB integration
     """
     
     def __init__(
@@ -41,6 +42,9 @@ class BLIP3oTrainer(Trainer):
         eval_num_samples: int = 1000,
         eval_batch_size: int = 16,
         eval_inference_steps: int = 50,
+        # WANDB INTEGRATION
+        wandb_instance=None,
+        use_wandb: bool = False,
         **kwargs
     ):
         super().__init__(
@@ -61,6 +65,10 @@ class BLIP3oTrainer(Trainer):
         self.eval_batch_size = eval_batch_size
         self.eval_inference_steps = eval_inference_steps
         self.eval_dataloader = eval_dataloader
+        
+        # WandB integration
+        self.wandb_instance = wandb_instance
+        self.use_wandb = use_wandb and wandb_instance is not None
         
         # Training metrics tracking
         self.step_count = 0
@@ -86,15 +94,21 @@ class BLIP3oTrainer(Trainer):
         self.normalization_warnings = 0
         self.last_clip_norm = None
         
-        logger.info(f"✅ FIXED BLIP3o Trainer initialized with L2 normalization tracking")
+        # WandB logging intervals
+        self.wandb_log_interval = max(1, args.logging_steps // 2)  # Log to WandB more frequently
+        
+        logger.info(f"✅ FIXED BLIP3o Trainer initialized with L2 normalization tracking and WandB")
         logger.info(f"   Training mode: {training_mode} ({self.expected_tokens} tokens)")
         logger.info(f"   Evaluation every: {eval_every_n_steps} steps")
         logger.info(f"   Evaluation samples: {eval_num_samples}")
         logger.info(f"   Evaluation inference steps: {eval_inference_steps}")
         logger.info(f"   Expected CLIP target norms: ~1.0 (L2 normalized)")
+        logger.info(f"   WandB tracking: {'Enabled' if self.use_wandb else 'Disabled'}")
+        if self.use_wandb:
+            logger.info(f"   WandB URL: {self.wandb_instance.run.url}")
     
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
-        """Compute loss with FIXED L2 normalization tracking"""
+        """Compute loss with FIXED L2 normalization tracking and WandB logging"""
         model.train()
         
         # Extract inputs with better error handling
@@ -167,8 +181,8 @@ class BLIP3oTrainer(Trainer):
             training_mode=self.training_mode,
         )
         
-        # Track training metrics with FIXED normalization
-        self._track_training_metrics_fixed(loss, metrics)
+        # Track training metrics with FIXED normalization and WandB
+        self._track_training_metrics_fixed_with_wandb(loss, metrics)
         
         # Run evaluation every N steps
         if self.step_count > 0 and self.step_count % self.eval_every_n_steps == 0:
@@ -187,11 +201,26 @@ class BLIP3oTrainer(Trainer):
         
         return (loss, outputs) if return_outputs else loss
     
-    def _track_training_metrics_fixed(self, loss: torch.Tensor, metrics: Optional[Dict[str, float]]):
-        """Track training metrics with FIXED L2 normalization monitoring"""
+    def _track_training_metrics_fixed_with_wandb(self, loss: torch.Tensor, metrics: Optional[Dict[str, float]]):
+        """Track training metrics with FIXED L2 normalization monitoring and WandB logging"""
         self.step_count += 1
         loss_value = loss.item()
         self.loss_history.append(loss_value)
+        
+        # Prepare WandB logging data
+        wandb_data = {
+            "train/step": self.step_count,
+            "train/loss": loss_value,
+            "train/epoch": getattr(self, '_current_epoch', 0),
+        }
+        
+        # Get learning rate from optimizer
+        if hasattr(self, 'lr_scheduler') and self.lr_scheduler is not None:
+            current_lr = self.lr_scheduler.get_last_lr()[0]
+            wandb_data["train/learning_rate"] = current_lr
+        elif hasattr(self, 'optimizer') and self.optimizer is not None:
+            current_lr = self.optimizer.param_groups[0]['lr']
+            wandb_data["train/learning_rate"] = current_lr
         
         if metrics:
             velocity_sim = metrics.get('velocity_cosine_sim', 0.0)
@@ -208,9 +237,43 @@ class BLIP3oTrainer(Trainer):
             
             self.last_clip_norm = clip_target_norm
             
+            # Add detailed metrics to WandB
+            wandb_data.update({
+                # Velocity similarity metrics
+                "train/velocity_cosine_sim": velocity_sim,
+                "train/velocity_per_patch_mean": metrics.get('velocity_per_patch_mean', 0.0),
+                "train/velocity_per_patch_std": metrics.get('velocity_per_patch_std', 0.0),
+                "train/velocity_high_quality_patches": metrics.get('velocity_high_quality_patches', 0.0),
+                "train/velocity_very_high_quality_patches": metrics.get('velocity_very_high_quality_patches', 0.0),
+                "train/velocity_high_quality_images": metrics.get('velocity_high_quality_images', 0.0),
+                
+                # Norm tracking (FIXED)
+                "norms/clip_target_norm": clip_target_norm,
+                "norms/prediction_norm": prediction_norm,
+                "norms/velocity_target_norm": velocity_target_norm,
+                "norms/norm_ratio": metrics.get('norm_ratio', 1.0),
+                "norms/clip_normalized": metrics.get('clip_normalized', True),
+                "norms/targets_properly_normalized": metrics.get('targets_properly_normalized', True),
+                
+                # EMA metrics
+                "train/ema_velocity_cosine": metrics.get('ema_velocity_cosine', 0.0),
+                "train/ema_pred_norm": metrics.get('ema_pred_norm', 1.0),
+                "train/ema_target_norm": metrics.get('ema_target_norm', 1.0),
+                
+                # Training progress
+                "train/training_steps": metrics.get('training_steps', self.step_count),
+                "train/best_velocity_sim": metrics.get('best_velocity_sim', 0.0),
+                
+                # Implementation status
+                "status/normalize_targets": metrics.get('normalize_targets', True),
+                "status/double_normalization_avoided": metrics.get('double_normalization_avoided', True),
+                "status/l2_normalization_enabled": True,
+            })
+            
             # Check normalization status
             if abs(clip_target_norm - 1.0) > 0.1:
                 self.normalization_warnings += 1
+                wandb_data["warnings/normalization_warnings"] = self.normalization_warnings
                 if self.normalization_warnings <= 10:  # Limit warnings
                     logger.warning(f"Step {self.step_count}: CLIP target norm {clip_target_norm:.3f} (should be ~1.0)")
             
@@ -218,14 +281,27 @@ class BLIP3oTrainer(Trainer):
             if velocity_sim > self.best_velocity_sim:
                 self.best_velocity_sim = velocity_sim
                 self.steps_without_velocity_improvement = 0
+                wandb_data["train/new_best_velocity"] = True
             else:
                 self.steps_without_velocity_improvement += 1
+                wandb_data["train/new_best_velocity"] = False
+                
+            wandb_data["train/steps_without_velocity_improvement"] = self.steps_without_velocity_improvement
                 
             if loss_value < self.best_loss:
                 self.best_loss = loss_value
+                wandb_data["train/new_best_loss"] = True
+            else:
+                wandb_data["train/new_best_loss"] = False
+            
+            wandb_data["train/best_loss"] = self.best_loss
+        
+        # Log to WandB
+        if self.use_wandb and self.step_count % self.wandb_log_interval == 0:
+            self.wandb_instance.log(wandb_data, step=self.step_count)
     
     def _run_evaluation_during_training(self):
-        """Run evaluation during training to compute embedding similarity"""
+        """Run evaluation during training to compute embedding similarity with WandB logging"""
         if self.eval_dataloader is None:
             logger.warning("No evaluation dataloader available for evaluation")
             return
@@ -245,9 +321,11 @@ class BLIP3oTrainer(Trainer):
             self.embedding_similarity_history.append(embedding_sim)
             
             # Update best embedding similarity
+            new_best_embedding = False
             if embedding_sim > self.best_embedding_sim:
                 self.best_embedding_sim = embedding_sim
                 self.steps_without_embedding_improvement = 0
+                new_best_embedding = True
                 logger.info(f"🎉 New best embedding similarity: {embedding_sim:.4f}")
             else:
                 self.steps_without_embedding_improvement += 1
@@ -258,6 +336,28 @@ class BLIP3oTrainer(Trainer):
             logger.info(f"   High Quality Images (>0.7): {eval_results['high_quality_images']*100:.1f}%")
             logger.info(f"   Very High Quality Images (>0.8): {eval_results['very_high_quality_images']*100:.1f}%")
             logger.info(f"   Best so far: {self.best_embedding_sim:.4f}")
+            
+            # Log comprehensive evaluation metrics to WandB
+            if self.use_wandb:
+                eval_wandb_data = {
+                    "eval/step": self.step_count,
+                    "eval/overall_embedding_similarity": embedding_sim,
+                    "eval/per_image_mean": eval_results.get('per_image_mean', 0.0),
+                    "eval/per_image_std": eval_results.get('per_image_std', 0.0),
+                    "eval/per_patch_mean": eval_results.get('per_patch_mean', 0.0),
+                    "eval/per_patch_std": eval_results.get('per_patch_std', 0.0),
+                    "eval/high_quality_images": eval_results.get('high_quality_images', 0.0),
+                    "eval/very_high_quality_images": eval_results.get('very_high_quality_images', 0.0),
+                    "eval/excellent_quality_images": eval_results.get('excellent_quality_images', 0.0),
+                    "eval/samples_evaluated": eval_results.get('samples_evaluated', 0),
+                    "eval/inference_steps": eval_results.get('inference_steps', self.eval_inference_steps),
+                    "eval/best_embedding_sim": self.best_embedding_sim,
+                    "eval/new_best_embedding": new_best_embedding,
+                    "eval/steps_without_embedding_improvement": self.steps_without_embedding_improvement,
+                }
+                
+                self.wandb_instance.log(eval_wandb_data, step=self.step_count)
+                logger.info(f"✅ Evaluation metrics logged to WandB")
     
     def _evaluate_embedding_similarity(
         self, 
@@ -374,6 +474,9 @@ class BLIP3oTrainer(Trainer):
             progress_msg += f" | Best: Vel={self.best_velocity_sim:.4f}, Emb={self.best_embedding_sim:.4f}"
         
         progress_msg += f" [{self.training_mode}]"
+        if self.use_wandb:
+            progress_msg += f" [WandB: {self.wandb_instance.run.url}]"
+        
         logger.info(progress_msg)
         
         # Detailed summary every 50 steps
@@ -423,6 +526,11 @@ class BLIP3oTrainer(Trainer):
         health = self._assess_training_health_fixed()
         logger.info(f"🏥 Training Health: {health}")
         
+        # WandB status
+        if self.use_wandb:
+            logger.info(f"📊 WandB Run: {self.wandb_instance.run.url}")
+            logger.info(f"📊 All metrics logged to WandB dashboard")
+        
         logger.info("=" * 80)
     
     def _assess_training_health_fixed(self) -> str:
@@ -455,7 +563,7 @@ class BLIP3oTrainer(Trainer):
             return "SLOW - May need hyperparameter tuning"
     
     def get_final_evaluation(self) -> Dict[str, Any]:
-        """Get comprehensive final evaluation"""
+        """Get comprehensive final evaluation with WandB logging"""
         logger.info("🔍 Running final comprehensive evaluation...")
         
         self.model.eval()
@@ -483,7 +591,28 @@ class BLIP3oTrainer(Trainer):
             'final_prediction_norm': self.prediction_norm_history[-1] if self.prediction_norm_history else 1.0,
             'normalization_warnings': self.normalization_warnings,
             'clip_norms_properly_normalized': self.last_clip_norm is not None and abs(self.last_clip_norm - 1.0) < 0.1,
+            
+            # WandB info
+            'wandb_enabled': self.use_wandb,
+            'wandb_url': self.wandb_instance.run.url if self.use_wandb else None,
         }
+        
+        # Log final evaluation to WandB
+        if self.use_wandb and final_results:
+            final_wandb_data = {
+                "final_eval/overall_embedding_similarity": final_results.get('overall_embedding_similarity', 0),
+                "final_eval/high_quality_images": final_results.get('high_quality_images', 0),
+                "final_eval/very_high_quality_images": final_results.get('very_high_quality_images', 0),
+                "final_eval/excellent_quality_images": final_results.get('excellent_quality_images', 0),
+                "final_eval/samples_evaluated": final_results.get('samples_evaluated', 0),
+                "final_eval/per_image_mean": final_results.get('per_image_mean', 0),
+                "final_eval/per_image_std": final_results.get('per_image_std', 0),
+                "final_eval/per_patch_mean": final_results.get('per_patch_mean', 0),
+                "final_eval/per_patch_std": final_results.get('per_patch_std', 0),
+            }
+            
+            self.wandb_instance.log(final_wandb_data, step=self.step_count)
+            logger.info("✅ Final evaluation results logged to WandB")
         
         return {
             'training_summary': training_summary,
@@ -510,9 +639,13 @@ def create_training_args(
     dataloader_num_workers: int = 0,
     logging_steps: int = 10,
     save_steps: int = 200,
+    report_to: list = None,
     **kwargs
 ) -> TrainingArguments:
-    """Create training arguments for BLIP3-o training"""
+    """Create training arguments for BLIP3-o training with WandB support"""
+    
+    if report_to is None:
+        report_to = []
     
     return TrainingArguments(
         output_dir=output_dir,
@@ -533,6 +666,6 @@ def create_training_args(
         prediction_loss_only=False,
         remove_unused_columns=False,
         ddp_find_unused_parameters=False,
-        report_to=[],
+        report_to=report_to,
         **kwargs
     )
