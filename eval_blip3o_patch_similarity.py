@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
 """
 EVA-CLIP Reproduction Evaluation Script
-eval_eva_reproduction.py
-
-Comprehensive evaluation of trained EVA reproduction model.
+Comprehensive evaluation of trained models
 """
 
 import os
@@ -16,11 +14,8 @@ from pathlib import Path
 from datetime import datetime
 import numpy as np
 import matplotlib.pyplot as plt
-import seaborn as sns
 from tqdm import tqdm
-
-# Add src to path
-sys.path.insert(0, str(Path(__file__).parent / "src"))
+import torch.nn.functional as F
 
 def setup_logging():
     """Setup logging"""
@@ -36,14 +31,14 @@ def parse_arguments():
     parser = argparse.ArgumentParser(description="Evaluate EVA-CLIP Reproduction Model")
     
     parser.add_argument("--model_path", type=str, required=True,
-                       help="Path to trained model directory")
-    parser.add_argument("--chunked_embeddings_dir", type=str, required=True,
-                       help="Path to chunked embeddings directory")
+                       help="Path to trained model checkpoint")
+    parser.add_argument("--embeddings_dir", type=str, required=True,
+                       help="Path to embeddings directory")
     parser.add_argument("--output_dir", type=str, required=True,
                        help="Output directory for evaluation results")
     
     # Evaluation parameters
-    parser.add_argument("--num_samples", type=int, default=5000,
+    parser.add_argument("--num_samples", type=int, default=2000,
                        help="Number of samples to evaluate")
     parser.add_argument("--batch_size", type=int, default=16,
                        help="Evaluation batch size")
@@ -54,130 +49,141 @@ def parse_arguments():
                        help="Training mode")
     
     # Analysis options
-    parser.add_argument("--create_plots", action="store_true", default=True,
-                       help="Create visualization plots")
-    parser.add_argument("--save_samples", action="store_true", default=False,
-                       help="Save sample comparisons")
+    parser.add_argument("--save_visualizations", action="store_true", default=True,
+                       help="Save visualization plots")
     parser.add_argument("--detailed_analysis", action="store_true", default=True,
-                       help="Perform detailed similarity analysis")
+                       help="Perform detailed analysis")
     
     return parser.parse_args()
 
 def load_model(model_path, device, logger):
-    """Load trained EVA reproduction model"""
-    from src.modules.models.blip3o_eva_dit import BLIP3oEVADiTModel, BLIP3oEVADiTConfig
-    
+    """Load trained model"""
     logger.info(f"Loading model from: {model_path}")
     
-    # Load config
-    config_path = Path(model_path) / "config.json"
-    if config_path.exists():
-        with open(config_path, 'r') as f:
-            config_dict = json.load(f)
-        config = BLIP3oEVADiTConfig(**config_dict)
-    else:
-        logger.warning("No config found, using default")
-        config = BLIP3oEVADiTConfig()
+    try:
+        from fixed_model import create_eva_reproduction_model
+    except ImportError:
+        logger.error("Could not import model. Make sure fixed_model.py is available.")
+        raise
     
-    # Load model
-    model = BLIP3oEVADiTModel(config)
+    model_path = Path(model_path)
     
-    # Load weights
-    model_file = Path(model_path) / "pytorch_model.bin"
-    if not model_file.exists():
-        model_file = Path(model_path) / "model.safetensors"
-    
-    if model_file.exists():
-        if model_file.suffix == ".bin":
-            state_dict = torch.load(model_file, map_location=device)
-        else:
-            from safetensors.torch import load_file
-            state_dict = load_file(model_file)
+    # Load checkpoint
+    if model_path.is_file() and model_path.suffix == '.pt':
+        # Direct checkpoint file
+        checkpoint = torch.load(model_path, map_location=device)
         
-        model.load_state_dict(state_dict)
-        logger.info(f"✅ Model loaded from: {model_file}")
+        # Create model (you may need to adjust config based on checkpoint)
+        model = create_eva_reproduction_model(model_size="base")  # Adjust as needed
+        model.load_state_dict(checkpoint['model_state_dict'])
+        
+        logger.info(f"Loaded checkpoint from step {checkpoint.get('global_step', 'unknown')}")
+        
+    elif model_path.is_dir():
+        # Model directory - look for latest checkpoint
+        checkpoints = list(model_path.glob("checkpoint_step_*.pt"))
+        if not checkpoints:
+            raise FileNotFoundError(f"No checkpoints found in {model_path}")
+        
+        latest_checkpoint = max(checkpoints, key=lambda x: int(x.stem.split('_')[-1]))
+        checkpoint = torch.load(latest_checkpoint, map_location=device)
+        
+        model = create_eva_reproduction_model(model_size="base")  # Adjust as needed
+        model.load_state_dict(checkpoint['model_state_dict'])
+        
+        logger.info(f"Loaded latest checkpoint: {latest_checkpoint}")
+        
     else:
-        logger.error(f"❌ No model weights found in: {model_path}")
-        raise FileNotFoundError(f"Model weights not found")
+        raise ValueError(f"Invalid model path: {model_path}")
     
     model = model.to(device)
     model.eval()
     
+    logger.info(f"Model loaded with {model.get_num_parameters():,} parameters")
     return model
 
-def create_dataloader(chunked_embeddings_dir, batch_size, training_mode, logger):
+def create_evaluation_dataloader(embeddings_dir, batch_size, training_mode, logger):
     """Create evaluation dataloader"""
-    from src.modules.datasets.blip3o_eva_dataset import create_eva_reproduction_dataloaders
+    try:
+        from fixed_dataset import create_eva_reproduction_dataloaders
+    except ImportError:
+        logger.error("Could not import dataset. Make sure fixed_dataset.py is available.")
+        raise
     
     logger.info("Creating evaluation dataloader...")
     
     _, eval_dataloader = create_eva_reproduction_dataloaders(
-        chunked_embeddings_dir=chunked_embeddings_dir,
+        chunked_embeddings_dir=embeddings_dir,
         batch_size=batch_size,
-        eval_batch_size=batch_size,
-        normalize_embeddings=True,
         training_mode=training_mode,
-        max_shards=1,
-        use_same_data_for_eval=True,
-        num_workers=0,
+        max_shards=None,  # Use all available shards for evaluation
+        normalize_embeddings=True,
+        num_workers=0
     )
     
-    logger.info(f"✅ Evaluation dataloader created")
+    logger.info("Evaluation dataloader created")
     return eval_dataloader
 
 def evaluate_model(model, dataloader, num_samples, inference_steps, device, logger):
     """Comprehensive model evaluation"""
-    logger.info(f"Starting comprehensive evaluation on {num_samples} samples...")
+    logger.info(f"Starting evaluation on {num_samples} samples...")
     
     all_similarities = []
     all_per_image_sims = []
-    all_per_patch_sims = []
-    
-    # Detailed metrics
-    eva_norms = []
-    clip_norms = []
     generated_norms = []
+    target_norms = []
     
     samples_processed = 0
     
     with torch.no_grad():
-        for batch_idx, batch in enumerate(tqdm(dataloader, desc="Evaluating")):
+        pbar = tqdm(dataloader, desc="Evaluating")
+        for batch in pbar:
             if samples_processed >= num_samples:
                 break
             
-            # Move to device
-            clip_features = batch['encoder_hidden_states'].to(device)  # CLIP conditioning
-            target_eva = batch['eva_embeddings'].to(device)            # EVA targets
-            
-            batch_size = clip_features.shape[0]
-            
-            # Generate EVA embeddings
-            generated_eva = model.generate(
-                clip_features=clip_features,
-                num_inference_steps=inference_steps,
-                normalize_output=True
-            )
-            
-            # Normalize targets
-            target_eva_norm = torch.nn.functional.normalize(target_eva, p=2, dim=-1)
-            
-            # Compute similarities
-            per_patch_sim = torch.nn.functional.cosine_similarity(
-                generated_eva, target_eva_norm, dim=-1
-            )
-            per_image_sim = per_patch_sim.mean(dim=1)
-            
-            # Store results
-            all_similarities.append(per_patch_sim.cpu())
-            all_per_image_sims.append(per_image_sim.cpu())
-            all_per_patch_sims.extend(per_patch_sim.cpu().numpy())
-            
-            # Collect norms
-            eva_norms.extend(torch.norm(target_eva_norm, dim=-1).cpu().numpy().flatten())
-            clip_norms.extend(torch.norm(clip_features, dim=-1).cpu().numpy().flatten())
-            generated_norms.extend(torch.norm(generated_eva, dim=-1).cpu().numpy().flatten())
-            
-            samples_processed += batch_size
+            try:
+                # Move to device
+                clip_features = batch['encoder_hidden_states'].to(device)
+                target_eva = batch['eva_embeddings'].to(device)
+                
+                batch_size = clip_features.shape[0]
+                
+                # Generate EVA embeddings
+                generated_eva = model.generate(
+                    clip_features=clip_features,
+                    num_inference_steps=inference_steps,
+                    normalize_output=True
+                )
+                
+                # Normalize targets for fair comparison
+                target_eva_norm = F.normalize(target_eva, p=2, dim=-1)
+                
+                # Compute similarities
+                per_patch_sim = F.cosine_similarity(generated_eva, target_eva_norm, dim=-1)
+                per_image_sim = per_patch_sim.mean(dim=1)
+                
+                # Store results
+                all_similarities.append(per_patch_sim.cpu())
+                all_per_image_sims.append(per_image_sim.cpu())
+                
+                # Collect norms
+                generated_norms.extend(torch.norm(generated_eva, dim=-1).cpu().numpy().flatten())
+                target_norms.extend(torch.norm(target_eva_norm, dim=-1).cpu().numpy().flatten())
+                
+                samples_processed += batch_size
+                
+                # Update progress bar
+                pbar.set_postfix({
+                    'samples': samples_processed,
+                    'avg_sim': per_image_sim.mean().item()
+                })
+                
+            except Exception as e:
+                logger.warning(f"Error processing batch: {e}")
+                continue
+    
+    if not all_similarities:
+        raise RuntimeError("No successful evaluations")
     
     # Aggregate results
     all_patch_sims = torch.cat(all_similarities, dim=0)
@@ -211,48 +217,47 @@ def evaluate_model(model, dataloader, num_samples, inference_steps, device, logg
         },
         
         # Norm statistics
-        'eva_target_norm_mean': np.mean(eva_norms),
-        'eva_target_norm_std': np.std(eva_norms),
-        'clip_conditioning_norm_mean': np.mean(clip_norms),
-        'clip_conditioning_norm_std': np.std(clip_norms),
         'generated_norm_mean': np.mean(generated_norms),
         'generated_norm_std': np.std(generated_norms),
+        'target_norm_mean': np.mean(target_norms),
+        'target_norm_std': np.std(target_norms),
         
         # Sample counts
         'samples_evaluated': samples_processed,
         'inference_steps': inference_steps,
+        
+        # Raw data for plotting
+        'raw_data': {
+            'per_image_similarities': all_image_sims.numpy(),
+            'per_patch_similarities': all_patch_sims.numpy(),
+            'generated_norms': np.array(generated_norms),
+            'target_norms': np.array(target_norms),
+        }
     }
     
-    # Store raw data for plotting
-    results['raw_data'] = {
-        'per_image_similarities': all_image_sims.numpy(),
-        'per_patch_similarities': np.array(all_per_patch_sims),
-        'eva_norms': np.array(eva_norms),
-        'clip_norms': np.array(clip_norms),
-        'generated_norms': np.array(generated_norms),
-    }
-    
-    logger.info("✅ Evaluation completed")
+    logger.info("Evaluation completed successfully")
     return results
 
-def create_plots(results, output_dir, logger):
-    """Create comprehensive evaluation plots"""
-    logger.info("Creating evaluation plots...")
+def create_visualizations(results, output_dir, logger):
+    """Create comprehensive visualizations"""
+    logger.info("Creating visualizations...")
     
     plots_dir = Path(output_dir) / "plots"
     plots_dir.mkdir(exist_ok=True)
     
     # Set style
-    plt.style.use('seaborn-v0_8')
-    sns.set_palette("husl")
+    plt.style.use('default')
     
-    # 1. Similarity Distribution
+    # 1. Main evaluation plot
     fig, axes = plt.subplots(2, 2, figsize=(15, 12))
     
     # Per-image similarity histogram
-    axes[0, 0].hist(results['raw_data']['per_image_similarities'], bins=50, alpha=0.7, edgecolor='black')
-    axes[0, 0].axvline(results['per_image_mean'], color='red', linestyle='--', label=f'Mean: {results["per_image_mean"]:.3f}')
-    axes[0, 0].axvline(results['per_image_median'], color='orange', linestyle='--', label=f'Median: {results["per_image_median"]:.3f}')
+    per_image_sims = results['raw_data']['per_image_similarities']
+    axes[0, 0].hist(per_image_sims, bins=50, alpha=0.7, edgecolor='black', color='skyblue')
+    axes[0, 0].axvline(results['per_image_mean'], color='red', linestyle='--', 
+                      label=f'Mean: {results["per_image_mean"]:.3f}')
+    axes[0, 0].axvline(results['per_image_median'], color='orange', linestyle='--', 
+                      label=f'Median: {results["per_image_median"]:.3f}')
     axes[0, 0].set_xlabel('EVA Cosine Similarity (Per Image)')
     axes[0, 0].set_ylabel('Frequency')
     axes[0, 0].set_title('EVA Similarity Distribution (Per Image)')
@@ -260,9 +265,12 @@ def create_plots(results, output_dir, logger):
     axes[0, 0].grid(True, alpha=0.3)
     
     # Per-patch similarity histogram
-    axes[0, 1].hist(results['raw_data']['per_patch_similarities'], bins=50, alpha=0.7, edgecolor='black')
-    axes[0, 1].axvline(results['per_patch_mean'], color='red', linestyle='--', label=f'Mean: {results["per_patch_mean"]:.3f}')
-    axes[0, 1].axvline(results['per_patch_median'], color='orange', linestyle='--', label=f'Median: {results["per_patch_median"]:.3f}')
+    per_patch_sims = results['raw_data']['per_patch_similarities']
+    axes[0, 1].hist(per_patch_sims, bins=50, alpha=0.7, edgecolor='black', color='lightgreen')
+    axes[0, 1].axvline(results['per_patch_mean'], color='red', linestyle='--', 
+                      label=f'Mean: {results["per_patch_mean"]:.3f}')
+    axes[0, 1].axvline(results['per_patch_median'], color='orange', linestyle='--', 
+                      label=f'Median: {results["per_patch_median"]:.3f}')
     axes[0, 1].set_xlabel('EVA Cosine Similarity (Per Patch)')
     axes[0, 1].set_ylabel('Frequency')
     axes[0, 1].set_title('EVA Similarity Distribution (Per Patch)')
@@ -276,7 +284,8 @@ def create_plots(results, output_dir, logger):
         'Excellent (>0.9)': results['excellent_quality_images'] * 100,
     }
     
-    bars = axes[1, 0].bar(quality_data.keys(), quality_data.values(), alpha=0.7)
+    bars = axes[1, 0].bar(quality_data.keys(), quality_data.values(), 
+                         alpha=0.7, color=['orange', 'green', 'gold'])
     axes[1, 0].set_ylabel('Percentage of Images (%)')
     axes[1, 0].set_title('EVA Quality Distribution')
     axes[1, 0].grid(True, alpha=0.3)
@@ -289,12 +298,12 @@ def create_plots(results, output_dir, logger):
     
     # Norm comparison
     norm_data = {
-        'EVA Targets': results['eva_target_norm_mean'],
-        'CLIP Conditioning': results['clip_conditioning_norm_mean'],
-        'Generated EVA': results['generated_norm_mean'],
+        'Generated': results['generated_norm_mean'],
+        'Target': results['target_norm_mean'],
     }
     
-    bars = axes[1, 1].bar(norm_data.keys(), norm_data.values(), alpha=0.7)
+    bars = axes[1, 1].bar(norm_data.keys(), norm_data.values(), 
+                         alpha=0.7, color=['purple', 'cyan'])
     axes[1, 1].axhline(y=1.0, color='red', linestyle='--', label='Expected (1.0)')
     axes[1, 1].set_ylabel('L2 Norm')
     axes[1, 1].set_title('Embedding Norms Comparison')
@@ -311,19 +320,17 @@ def create_plots(results, output_dir, logger):
     plt.savefig(plots_dir / "eva_reproduction_evaluation.png", dpi=300, bbox_inches='tight')
     plt.close()
     
-    # 2. Detailed similarity analysis
-    fig, ax = plt.subplots(1, 1, figsize=(10, 8))
+    # 2. Detailed similarity scatter plot
+    fig, ax = plt.subplots(1, 1, figsize=(12, 8))
     
-    # Scatter plot of per-image similarities
-    similarities = results['raw_data']['per_image_similarities']
-    indices = np.arange(len(similarities))
+    indices = np.arange(len(per_image_sims))
+    colors = ['red' if sim < 0.5 else 'orange' if sim < 0.7 else 'green' for sim in per_image_sims]
     
-    colors = ['red' if sim < 0.5 else 'orange' if sim < 0.7 else 'green' for sim in similarities]
-    ax.scatter(indices, similarities, c=colors, alpha=0.6, s=10)
-    
+    ax.scatter(indices, per_image_sims, c=colors, alpha=0.6, s=10)
     ax.axhline(y=0.7, color='orange', linestyle='--', label='High Quality Threshold')
     ax.axhline(y=0.8, color='green', linestyle='--', label='Very High Quality Threshold')
-    ax.axhline(y=results['per_image_mean'], color='blue', linestyle='-', label=f'Mean: {results["per_image_mean"]:.3f}')
+    ax.axhline(y=results['per_image_mean'], color='blue', linestyle='-', 
+              label=f'Mean: {results["per_image_mean"]:.3f}')
     
     ax.set_xlabel('Sample Index')
     ax.set_ylabel('EVA Cosine Similarity')
@@ -335,7 +342,7 @@ def create_plots(results, output_dir, logger):
     plt.savefig(plots_dir / "per_sample_similarity.png", dpi=300, bbox_inches='tight')
     plt.close()
     
-    logger.info(f"✅ Plots saved to: {plots_dir}")
+    logger.info(f"Visualizations saved to: {plots_dir}")
 
 def save_results(results, output_dir, logger):
     """Save evaluation results"""
@@ -346,38 +353,43 @@ def save_results(results, output_dir, logger):
     raw_data = results_to_save.pop('raw_data')
     
     # Save JSON results
-    results_file = Path(output_dir) / "eva_reproduction_evaluation.json"
+    results_file = Path(output_dir) / "evaluation_results.json"
     with open(results_file, 'w') as f:
         json.dump(results_to_save, f, indent=2)
     
     # Save raw data as numpy
-    raw_data_file = Path(output_dir) / "eva_reproduction_raw_data.npz"
+    raw_data_file = Path(output_dir) / "evaluation_raw_data.npz"
     np.savez(raw_data_file, **raw_data)
     
-    logger.info(f"✅ Results saved to: {results_file}")
-    logger.info(f"✅ Raw data saved to: {raw_data_file}")
+    logger.info(f"Results saved to: {results_file}")
+    logger.info(f"Raw data saved to: {raw_data_file}")
 
-def print_summary(results, logger):
-    """Print evaluation summary"""
-    logger.info("=" * 70)
+def print_evaluation_summary(results, logger):
+    """Print comprehensive evaluation summary"""
+    logger.info("=" * 80)
     logger.info("📊 EVA REPRODUCTION EVALUATION SUMMARY")
-    logger.info("=" * 70)
+    logger.info("=" * 80)
     
     logger.info(f"🎯 Overall EVA Similarity: {results['overall_eva_similarity']:.4f}")
+    
     logger.info(f"📊 Per-Image Statistics:")
     logger.info(f"   Mean: {results['per_image_mean']:.4f}")
     logger.info(f"   Std:  {results['per_image_std']:.4f}")
     logger.info(f"   Median: {results['per_image_median']:.4f}")
     
-    logger.info(f"📊 Quality Distribution:")
+    logger.info(f"📊 Quality Distribution (Images):")
     logger.info(f"   High Quality (>0.7):    {results['high_quality_images']*100:.1f}%")
     logger.info(f"   Very High Quality (>0.8): {results['very_high_quality_images']*100:.1f}%")
     logger.info(f"   Excellent Quality (>0.9): {results['excellent_quality_images']*100:.1f}%")
     
+    logger.info(f"📊 Quality Distribution (Patches):")
+    logger.info(f"   High Quality (>0.7):    {results['high_quality_patches']*100:.1f}%")
+    logger.info(f"   Very High Quality (>0.8): {results['very_high_quality_patches']*100:.1f}%")
+    logger.info(f"   Excellent Quality (>0.9): {results['excellent_quality_patches']*100:.1f}%")
+    
     logger.info(f"📏 Normalization Status:")
-    logger.info(f"   EVA Targets:     {results['eva_target_norm_mean']:.3f} ± {results['eva_target_norm_std']:.3f}")
-    logger.info(f"   CLIP Conditioning: {results['clip_conditioning_norm_mean']:.3f} ± {results['clip_conditioning_norm_std']:.3f}")
-    logger.info(f"   Generated EVA:   {results['generated_norm_mean']:.3f} ± {results['generated_norm_std']:.3f}")
+    logger.info(f"   Generated Norms: {results['generated_norm_mean']:.3f} ± {results['generated_norm_std']:.3f}")
+    logger.info(f"   Target Norms:    {results['target_norm_mean']:.3f} ± {results['target_norm_std']:.3f}")
     
     logger.info(f"📈 Evaluation Details:")
     logger.info(f"   Samples: {results['samples_evaluated']:,}")
@@ -386,17 +398,17 @@ def print_summary(results, logger):
     # Assessment
     overall_sim = results['overall_eva_similarity']
     if overall_sim > 0.8:
-        logger.info("🎉 EXCELLENT: Outstanding EVA reproduction! DiT architecture works perfectly!")
+        logger.info("🎉 EXCELLENT: Outstanding EVA reproduction! Model works perfectly!")
     elif overall_sim > 0.6:
-        logger.info("✅ GOOD: Strong EVA reproduction! DiT architecture is working well!")
+        logger.info("✅ GOOD: Strong EVA reproduction! Model is working well!")
     elif overall_sim > 0.4:
-        logger.info("📈 FAIR: Decent EVA reproduction! DiT shows learning capability!")
+        logger.info("📈 FAIR: Decent EVA reproduction! Model shows capability!")
     elif overall_sim > 0.2:
-        logger.info("⚠️ POOR: Low EVA reproduction! DiT needs improvement!")
+        logger.info("⚠️ POOR: Low EVA reproduction! Model needs improvement!")
     else:
-        logger.info("❌ FAILED: Very low EVA reproduction! Check DiT implementation!")
+        logger.info("❌ FAILED: Very low EVA reproduction! Check implementation!")
     
-    logger.info("=" * 70)
+    logger.info("=" * 80)
 
 def main():
     """Main evaluation function"""
@@ -404,12 +416,13 @@ def main():
     logger = setup_logging()
     
     logger.info("🔍 Starting EVA-CLIP Reproduction Evaluation")
-    logger.info("=" * 50)
+    logger.info("=" * 60)
     logger.info(f"Model: {args.model_path}")
-    logger.info(f"Data: {args.chunked_embeddings_dir}")
+    logger.info(f"Data: {args.embeddings_dir}")
     logger.info(f"Output: {args.output_dir}")
     logger.info(f"Samples: {args.num_samples}")
-    logger.info("=" * 50)
+    logger.info(f"Inference steps: {args.inference_steps}")
+    logger.info("=" * 60)
     
     try:
         # Setup
@@ -424,8 +437,8 @@ def main():
         model = load_model(args.model_path, device, logger)
         
         # Create dataloader
-        dataloader = create_dataloader(
-            args.chunked_embeddings_dir, 
+        dataloader = create_evaluation_dataloader(
+            args.embeddings_dir, 
             args.batch_size, 
             args.training_mode, 
             logger
@@ -437,15 +450,28 @@ def main():
             args.inference_steps, device, logger
         )
         
-        # Create plots
-        if args.create_plots:
-            create_plots(results, args.output_dir, logger)
+        # Create visualizations
+        if args.save_visualizations:
+            create_visualizations(results, args.output_dir, logger)
         
         # Save results
         save_results(results, args.output_dir, logger)
         
         # Print summary
-        print_summary(results, logger)
+        print_evaluation_summary(results, logger)
+        
+        # Save evaluation metadata
+        eval_metadata = {
+            'evaluation_completed': True,
+            'timestamp': datetime.now().isoformat(),
+            'args': vars(args),
+            'device': str(device),
+            'model_parameters': model.get_num_parameters(),
+        }
+        
+        metadata_file = output_dir / 'evaluation_metadata.json'
+        with open(metadata_file, 'w') as f:
+            json.dump(eval_metadata, f, indent=2)
         
         logger.info("✅ EVA reproduction evaluation completed successfully!")
         return 0

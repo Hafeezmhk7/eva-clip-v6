@@ -1,156 +1,160 @@
-# BLIP3-o EVA-CLIP Reproduction Project
+# EVA-CLIP Reproduction with BLIP3-o DiT
 
-A DiT-based implementation for reproducing EVA-CLIP embeddings using rectified flow matching.
+A PyTorch implementation for reproducing clean EVA-CLIP embeddings from noisy inputs using a BLIP3-o inspired Diffusion Transformer (DiT) architecture with flow matching.
 
-## 🎯 Project Goal
+## Overview
 
-Validate our DiT (Diffusion Transformer) architecture by testing if we can reproduce EVA-CLIP embeddings from noisy EVA embeddings using CLIP embeddings as conditioning.
+This project implements and validates a BLIP3-o DiT architecture by training it to reproduce clean EVA-CLIP embeddings from noisy versions, conditioned on CLIP embeddings. This serves as an effective way to test if the DiT architecture is implemented correctly.
 
-## 🔄 Training Flow Diagram
+**Task**: `noisy_eva_embeddings + clip_conditioning → clean_eva_embeddings`
 
-```mermaid
-graph TD
-    A[EVA-CLIP Embeddings<br/>B, 256, 4096<br/>L2 Normalized] --> B[Add Noise<br/>t ~ U 0,1]
-    B --> C[Noisy EVA Embeddings<br/>x_t = 1-t·noise + t·eva]
-    
-    D[CLIP Embeddings<br/>B, 256, 1024<br/>L2 Normalized] --> E[DiT Model<br/>Conditioning]
-    
-    C --> F[DiT Forward Pass]
-    E --> F
-    G[Timestep t] --> F
-    
-    F --> H[Velocity Prediction<br/>v_pred: B, 256, 4096]
-    
-    H --> I[Rectified Flow Loss<br/>MSE v_pred, eva - noise]
-    
-    I --> J[Backpropagation]
-    
-    K[Inference: ODE Integration<br/>x_0 noise → x_1 eva] -.-> L[Generated EVA]
-    L -.-> M[Cosine Similarity<br/>with Target EVA]
+## Key Features
+
+- **Fixed Architecture**: BLIP3-o DiT with 3D RoPE, Grouped-Query Attention, and Sandwich Normalization
+- **Rectified Flow Matching**: Modern flow-based generative modeling
+- **Comprehensive Evaluation**: Cosine similarity metrics and quality assessments
+- **Overfitting Test**: Verify model can learn by overfitting on small dataset
+- **Robust Training**: Fixed gradient flow, proper initialization, and numerical stability
+
+## Quick Start
+
+### 1. Installation
+
+```bash
+# Clone and setup
+git clone <your-repo>
+cd eva-reproduction
+pip install -r requirements.txt
 ```
 
-## 🚀 Quick Start
+### 2. Prepare Data
 
-### 1. Extract Embeddings
 ```bash
-python src/modules/extract_embeddings_g.py --max_shards 10 --batch_size 16
+# Extract embeddings from your image-text dataset
+python extract_embeddings.py \
+    --input_dir /path/to/images \
+    --output_dir ./embeddings \
+    --batch_size 32
 ```
 
-### 2. Test Overfitting (Recommended First Step)
+### 3. Train Model
+
 ```bash
-python train_eva_repro.py \
-    --chunked_embeddings_dir /path/to/embeddings/patch_only_256_tokens \
-    --output_dir ./checkpoints/overfit_test \
-    --overfit_test_size 10 \
-    --num_epochs 200 \
-    --learning_rate 5e-4 \
+# Basic training
+python train_eva_reproduction.py \
+    --chunked_embeddings_dir ./embeddings \
+    --output_dir ./checkpoints \
     --batch_size 8 \
-    --eval_every_n_steps 20
+    --num_epochs 10
+
+# Overfitting test (recommended first)
+python train_eva_reproduction.py \
+    --chunked_embeddings_dir ./embeddings \
+    --output_dir ./checkpoints \
+    --overfit_test_size 10 \
+    --batch_size 4 \
+    --num_epochs 20
 ```
 
-### 3. Full Training
+### 4. Evaluate Results
+
 ```bash
-python train_eva_repro.py \
-    --chunked_embeddings_dir /path/to/embeddings/patch_only_256_tokens \
-    --output_dir ./checkpoints/eva_repro \
-    --num_epochs 100 \
-    --learning_rate 5e-4 \
-    --batch_size 64 \
-    --eval_every_n_steps 50 \
-    --use_wandb
+python evaluate_model.py \
+    --model_path ./checkpoints \
+    --embeddings_dir ./embeddings \
+    --output_dir ./evaluation \
+    --num_samples 1000
 ```
 
-## 📊 Expected Results
+## Architecture Details
 
-| Metric | Poor | Good | Excellent |
-|--------|------|------|-----------|
-| Velocity Similarity | <0.01 | 0.1-0.3 | >0.3 |
-| EVA Similarity | <0.05 | 0.1-0.3 | >0.3 |
-| Loss | >1.0 | 0.1-0.5 | <0.1 |
+### BLIP3-o DiT Components
+- **3D Rotary Position Embedding (RoPE)**: Spatial-aware positional encoding
+- **Grouped-Query Attention**: Efficient multi-head attention with key-value sharing
+- **Sandwich Normalization**: RMSNorm before and after each sublayer
+- **Adaptive Layer Normalization**: Timestep-conditioned normalization
 
-## 🔧 Key Improvements in This Version
+### Flow Matching
+- **Rectified Flow**: Linear interpolation between noise and target
+- **Velocity Prediction**: Model predicts `v = target - noise`
+- **L2 Normalized Embeddings**: Ensures stable training dynamics
 
-1. **Better Initialization**: Zero-initialized output layer for flow matching
-2. **Loss Scaling**: 100x scaling for better gradient flow
-3. **Higher Learning Rate**: 5e-4 instead of 1e-4
-4. **Gradient Monitoring**: Track gradient norms and statistics
-5. **Overfitting Test**: Validate model can learn on small subset
-6. **Debugging Features**: Comprehensive logging and metrics
-
-## 📁 Project Structure
+## File Structure
 
 ```
-blip3o_workspace/
-├── src/
-│   └── modules/
-│       ├── models/
-│       │   └── blip3o_eva_dit.py      # DiT architecture
-│       ├── losses/
-│       │   └── blip3o_eva_loss.py     # Flow matching loss
-│       ├── trainers/
-│       │   └── blip3o_eva_trainer.py  # Training logic
-│       └── datasets/
-│           └── blip3o_eva_dataset.py  # Data loading
-├── train_eva_repro.py                 # Main training script
-├── eval_blip3o_patch_similarity.py    # Evaluation script
-└── README.md                          # This file
+├── fixed_model.py              # BLIP3-o DiT implementation
+├── fixed_loss.py               # Flow matching loss function
+├── fixed_dataset.py            # Data loading and preprocessing
+├── fixed_trainer.py            # Training loop and optimization
+├── train_eva_reproduction.py   # Main training script
+├── evaluate_model.py           # Evaluation script
+├── extract_embeddings.py       # Embedding extraction (implement as needed)
+└── requirements.txt            # Dependencies
 ```
 
-## 🐛 Troubleshooting
+## Expected Results
 
-### Very Low Similarity (<0.01)
-1. Run overfitting test on 10 samples
-2. Check gradient norms (should be >0.001)
-3. Verify L2 normalization (norms should be ~1.0)
-4. Try higher learning rate (1e-3)
+### Success Indicators
+- **Loss Decrease**: Training loss should decrease steadily
+- **Velocity Similarity**: Should increase from ~0.01 to >0.1
+- **EVA Similarity**: Evaluation similarity should reach >0.4 (good), >0.7 (excellent)
+- **Overfitting Test**: Should achieve >0.8 similarity on small dataset
 
-### Model Not Learning
-1. Check loss is decreasing
-2. Verify inputs are normalized
-3. Enable debug mode: `--debug_mode`
-4. Monitor gradients: `--track_gradients`
+### Quality Thresholds
+- **>0.7**: High quality reproduction
+- **>0.8**: Very high quality reproduction  
+- **>0.9**: Excellent quality reproduction
 
-### Out of Memory
-1. Reduce batch size
-2. Enable gradient checkpointing: `--gradient_checkpointing`
-3. Use smaller model: `--model_size small`
+## Troubleshooting
 
-## 📈 Monitoring with WandB
+### Common Issues
 
-Enable WandB tracking:
-```bash
-wandb login
-python train_eva_repro.py ... --use_wandb --wandb_project my-project
-```
+**Zero Gradients**
+- Fixed with proper initialization and gradient flow
+- Check `fixed_model.py` for initialization improvements
 
-Track metrics:
-- `train/loss`: Training loss
-- `train/velocity_similarity`: Velocity cosine similarity
-- `eval/eva_similarity`: EVA reproduction quality
-- `train/gradient_norm`: Gradient magnitudes
+**NaN/Inf Values**
+- L2 normalization with epsilon stability
+- Proper timestep clamping in loss function
 
-## 🎓 Understanding the Approach
+**Poor Convergence**
+- Try overfitting test first with 10-50 samples
+- Reduce learning rate or increase warmup steps
+- Check data normalization
 
-1. **Rectified Flow**: Linear interpolation between noise and data
-   - `x_t = (1-t)·noise + t·eva`
-   - Velocity: `v = eva - noise`
+### Debugging Tips
 
-2. **Conditioning**: CLIP embeddings guide the denoising process
-   - Cross-attention between EVA features and CLIP features
-   - CLIP provides semantic information
+1. **Start with Overfitting Test**: Use `--overfit_test_size 10` to verify model can learn
+2. **Enable Debug Mode**: Use `--debug_mode` for detailed logging
+3. **Monitor Gradients**: Check for zero or exploding gradients in logs
+4. **Validate Data**: Ensure embeddings are properly normalized
 
-3. **Evaluation**: Cosine similarity between generated and target EVA embeddings
-   - >0.7: High quality
-   - >0.8: Very high quality
-   - >0.9: Excellent quality
+## Configuration Options
 
-## 📝 Citation
+### Model Sizes
+- `tiny`: 384 dim, 6 layers (for testing)
+- `small`: 512 dim, 8 layers
+- `base`: 768 dim, 12 layers (recommended)
+- `large`: 1024 dim, 16 layers
 
-This implementation is based on the BLIP3-o paper and rectified flow matching techniques.
+### Training Modes
+- `patch_only`: 256 tokens (16x16 patches)
+- `cls_patch`: 257 tokens (CLS + 256 patches)
 
-## 🤝 Contributing
+## Key Fixes Applied
 
-1. Test overfitting first to validate changes
-2. Monitor gradient norms
-3. Keep L2 normalization consistent
-4. Document any architecture changes
+1. **Gradient Flow**: Fixed initialization and attention computation
+2. **Data Pipeline**: Corrected input/output handling and normalization
+3. **Loss Function**: Improved numerical stability and target computation
+4. **Architecture**: Proper BLIP3-o implementation with all components
+5. **Training Loop**: Robust error handling and monitoring
+
+## Citation
+
+If you use this code, please cite the relevant papers:
+- BLIP3-o (original paper)
+- Rectified Flow (flow matching method)
+
+## License
+
+MIT License - see LICENSE file for details.
