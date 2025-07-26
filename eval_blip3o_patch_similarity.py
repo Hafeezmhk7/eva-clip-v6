@@ -1,33 +1,23 @@
 #!/usr/bin/env python3
 """
-FIXED: BLIP3-o Evaluation Script
-eval_blip3o_patch_similarity.py
+EVA-CLIP Reproduction Evaluation Script
+eval_eva_reproduction.py
 
-KEY FIXES:
-1. Proper evaluation matching training methodology
-2. Clean generation without scaling confusion
-3. Comprehensive metrics aligned with BLIP3-o paper
-4. Validation that training and evaluation metrics match
+Comprehensive evaluation of trained EVA reproduction model.
 """
 
 import os
 import sys
 import argparse
 import torch
-import torch.nn.functional as F
-import numpy as np
-from pathlib import Path
 import json
 import logging
+from pathlib import Path
 from datetime import datetime
-import traceback
-from typing import Dict, Any, Optional
-import glob
-
-# Setup CUDA environment
-os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID'
-if 'CUDA_VISIBLE_DEVICES' not in os.environ:
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from tqdm import tqdm
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
@@ -43,577 +33,426 @@ def setup_logging():
 
 def parse_arguments():
     """Parse command line arguments"""
-    parser = argparse.ArgumentParser(
-        description="FIXED BLIP3-o Evaluation Script",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter
-    )
+    parser = argparse.ArgumentParser(description="Evaluate EVA-CLIP Reproduction Model")
     
-    # Required paths
     parser.add_argument("--model_path", type=str, required=True,
-                       help="Path to trained model directory or checkpoint")
+                       help="Path to trained model directory")
     parser.add_argument("--chunked_embeddings_dir", type=str, required=True,
-                       help="Path to embeddings directory")
+                       help="Path to chunked embeddings directory")
     parser.add_argument("--output_dir", type=str, required=True,
-                       help="Output directory for results")
+                       help="Output directory for evaluation results")
     
     # Evaluation parameters
     parser.add_argument("--num_samples", type=int, default=5000,
                        help="Number of samples to evaluate")
     parser.add_argument("--batch_size", type=int, default=16,
                        help="Evaluation batch size")
-    parser.add_argument("--num_inference_steps", type=int, default=50,
+    parser.add_argument("--inference_steps", type=int, default=50,
                        help="Number of inference steps")
-    parser.add_argument("--training_mode", type=str, default="auto",
-                       choices=["auto", "cls_patch", "patch_only"],
-                       help="Training mode (auto-detect if 'auto')")
+    parser.add_argument("--training_mode", type=str, default="patch_only",
+                       choices=["patch_only", "cls_patch"],
+                       help="Training mode")
     
-    # Options
-    parser.add_argument("--same_data_eval", action="store_true", default=True,
-                       help="Use same training data for evaluation")
-    parser.add_argument("--normalize_embeddings", action="store_true", default=True,
-                       help="Normalize embeddings")
-    parser.add_argument("--device", type=str, default="auto",
-                       help="Device to use")
-    parser.add_argument("--torch_dtype", type=str, default="float32",
-                       choices=["float32", "float16", "bfloat16"],
-                       help="Torch dtype for evaluation")
-    
-    # Comparison with training
-    parser.add_argument("--compare_with_training", action="store_true", default=True,
-                       help="Compare evaluation results with training metrics")
+    # Analysis options
+    parser.add_argument("--create_plots", action="store_true", default=True,
+                       help="Create visualization plots")
+    parser.add_argument("--save_samples", action="store_true", default=False,
+                       help="Save sample comparisons")
+    parser.add_argument("--detailed_analysis", action="store_true", default=True,
+                       help="Perform detailed similarity analysis")
     
     return parser.parse_args()
 
-def setup_device(device_arg: str, logger):
-    """Setup device"""
-    if device_arg == "auto":
-        if torch.cuda.is_available():
-            device = torch.device("cuda:0")
-            logger.info(f"Using GPU: {torch.cuda.get_device_name(0)}")
-        else:
-            device = torch.device("cpu")
-            logger.info("CUDA not available, using CPU")
+def load_model(model_path, device, logger):
+    """Load trained EVA reproduction model"""
+    from src.modules.models.blip3o_eva_dit import BLIP3oEVADiTModel, BLIP3oEVADiTConfig
+    
+    logger.info(f"Loading model from: {model_path}")
+    
+    # Load config
+    config_path = Path(model_path) / "config.json"
+    if config_path.exists():
+        with open(config_path, 'r') as f:
+            config_dict = json.load(f)
+        config = BLIP3oEVADiTConfig(**config_dict)
     else:
-        device = torch.device(device_arg)
-        logger.info(f"Using device: {device}")
+        logger.warning("No config found, using default")
+        config = BLIP3oEVADiTConfig()
     
-    return device
-
-def get_torch_dtype(dtype_str: str):
-    """Convert string to torch dtype"""
-    dtype_map = {
-        "float32": torch.float32,
-        "float16": torch.float16,
-        "bfloat16": torch.bfloat16,
-    }
-    return dtype_map.get(dtype_str, torch.float32)
-
-def find_model_files(model_path):
-    """Find model files in various checkpoint structures"""
-    model_path = Path(model_path)
-    logger = logging.getLogger(__name__)
-    
-    logger.info(f"🔍 Searching for model files in: {model_path}")
-    
-    if model_path.is_file():
-        return model_path.parent, model_path.name, None, None
-    
-    if not model_path.exists():
-        raise FileNotFoundError(f"Model path does not exist: {model_path}")
-    
-    # Look for config files
-    config_files = ["config.json", "training_info.json"]
-    config_file = None
-    for cf in config_files:
-        if (model_path / cf).exists():
-            config_file = cf
-            logger.info(f"✅ Found config file: {cf}")
-            break
-    
-    if config_file is None:
-        json_files = list(model_path.glob("**/*.json"))
-        if json_files:
-            config_file = json_files[0].name
-            model_path = json_files[0].parent
-            logger.info(f"✅ Found config file: {config_file}")
-        else:
-            raise FileNotFoundError(f"No config file found in {model_path}")
-    
-    # Look for model weight files
-    weight_files = ["pytorch_model.bin", "model.safetensors", "pytorch_model.safetensors"]
-    weight_file = None
-    for wf in weight_files:
-        if (model_path / wf).exists():
-            weight_file = wf
-            logger.info(f"✅ Found weight file: {wf}")
-            break
-    
-    if weight_file is None:
-        model_files = list(model_path.glob("**/*.bin")) + list(model_path.glob("**/*.safetensors"))
-        model_files = [f for f in model_files if any(name in f.name.lower() for name in ['model', 'pytorch'])]
-        if model_files:
-            weight_file = model_files[0].name
-            model_path = model_files[0].parent
-            logger.info(f"✅ Found weight file: {weight_file}")
-        else:
-            raise FileNotFoundError(f"No model weight file found in {model_path}")
-    
-    return model_path, config_file, weight_file, None
-
-def load_model_and_config(model_path, device, training_mode, torch_dtype, logger):
-    """Load FIXED model"""
-    from src.modules.models.blip3o_patch_dit import create_blip3o_patch_dit_model, BLIP3oDiTConfig
-    
-    # Find model files
-    model_dir, config_file, weight_file, _ = find_model_files(model_path)
-    
-    logger.info(f"📦 Loading FIXED model from: {model_dir}")
-    logger.info(f"📋 Config file: {config_file}")
-    logger.info(f"💾 Weight file: {weight_file}")
-    
-    # Load configuration
-    config_path = model_dir / config_file
-    with open(config_path, 'r') as f:
-        config_data = json.load(f)
-    
-    # Determine training mode
-    if training_mode == "auto":
-        if 'training_mode' in config_data:
-            training_mode = config_data['training_mode']
-        elif 'num_tokens' in config_data:
-            training_mode = "cls_patch" if config_data['num_tokens'] == 257 else "patch_only"
-        else:
-            training_mode = "patch_only"
-        logger.info(f"🎯 Auto-detected training mode: {training_mode}")
-    
-    # Create config
-    expected_tokens = 257 if training_mode == "cls_patch" else 256
-    
-    config_defaults = {
-        'hidden_size': 768,
-        'num_hidden_layers': 12,
-        'num_attention_heads': 12,
-        'intermediate_size': 3072,
-        'eva_embedding_size': 4096,
-        'clip_embedding_size': 1024,
-        'num_tokens': expected_tokens,
-        'max_position_embeddings': max(expected_tokens, 257),
-        'dropout_prob': 0.1,
-        'training_mode': training_mode,
-        'use_gradient_checkpointing': False,
-    }
-    
-    for key, default_value in config_defaults.items():
-        if key not in config_data:
-            config_data[key] = default_value
-    
-    config = BLIP3oDiTConfig(**config_data)
-    
-    # Create model
-    model = create_blip3o_patch_dit_model(config=config)
+    # Load model
+    model = BLIP3oEVADiTModel(config)
     
     # Load weights
-    weight_path = model_dir / weight_file
-    logger.info(f"💾 Loading weights from: {weight_path}")
+    model_file = Path(model_path) / "pytorch_model.bin"
+    if not model_file.exists():
+        model_file = Path(model_path) / "model.safetensors"
     
-    if weight_path.suffix == ".bin":
-        state_dict = torch.load(weight_path, map_location='cpu')
-    else:
-        try:
+    if model_file.exists():
+        if model_file.suffix == ".bin":
+            state_dict = torch.load(model_file, map_location=device)
+        else:
             from safetensors.torch import load_file
-            state_dict = load_file(str(weight_path))
-        except ImportError:
-            logger.error("safetensors not available, install with: pip install safetensors")
-            raise
+            state_dict = load_file(model_file)
+        
+        model.load_state_dict(state_dict)
+        logger.info(f"✅ Model loaded from: {model_file}")
+    else:
+        logger.error(f"❌ No model weights found in: {model_path}")
+        raise FileNotFoundError(f"Model weights not found")
     
-    # Load weights
-    missing_keys, unexpected_keys = model.load_state_dict(state_dict, strict=False)
-    
-    if missing_keys:
-        logger.warning(f"Missing keys: {len(missing_keys)}")
-    if unexpected_keys:
-        logger.warning(f"Unexpected keys: {len(unexpected_keys)}")
-    
-    # Move to device
-    model = model.to(device=device, dtype=torch_dtype)
+    model = model.to(device)
     model.eval()
     
-    logger.info(f"✅ FIXED Model loaded successfully")
-    logger.info(f"   Training mode: {training_mode}")
-    logger.info(f"   Expected tokens: {expected_tokens}")
-    logger.info(f"   Parameters: {model.get_num_parameters():,}")
-    
-    return model, config, training_mode
+    return model
 
-def create_evaluation_dataloader(embeddings_dir, training_mode, batch_size, logger):
+def create_dataloader(chunked_embeddings_dir, batch_size, training_mode, logger):
     """Create evaluation dataloader"""
-    from src.modules.datasets.blip3o_dataset import create_flexible_dataloaders
+    from src.modules.datasets.blip3o_eva_dataset import create_eva_reproduction_dataloaders
     
-    logger.info(f"📊 Creating evaluation dataloader")
-    logger.info(f"   Embeddings dir: {embeddings_dir}")
-    logger.info(f"   Training mode: {training_mode}")
-    logger.info(f"   Batch size: {batch_size}")
+    logger.info("Creating evaluation dataloader...")
     
-    train_dataloader, _ = create_flexible_dataloaders(
-        chunked_embeddings_dir=embeddings_dir,
+    _, eval_dataloader = create_eva_reproduction_dataloaders(
+        chunked_embeddings_dir=chunked_embeddings_dir,
         batch_size=batch_size,
         eval_batch_size=batch_size,
-        eval_split_ratio=0.0,
-        normalize_embeddings=False,
+        normalize_embeddings=True,
         training_mode=training_mode,
         max_shards=1,
         use_same_data_for_eval=True,
-        delete_after_use=False,
         num_workers=0,
-        pin_memory=False,
     )
     
-    logger.info(f"✅ Evaluation dataloader created: {len(train_dataloader)} batches")
-    return train_dataloader
+    logger.info(f"✅ Evaluation dataloader created")
+    return eval_dataloader
 
-def evaluate_model(
-    model,
-    dataloader,
-    device: str,
-    training_mode: str = "patch_only",
-    num_inference_steps: int = 50,
-    max_batches: int = None,
-    normalize_embeddings: bool = True,
-    logger = None
-) -> dict:
-    """FIXED: Evaluate model with clean generation"""
-    model.eval()
+def evaluate_model(model, dataloader, num_samples, inference_steps, device, logger):
+    """Comprehensive model evaluation"""
+    logger.info(f"Starting comprehensive evaluation on {num_samples} samples...")
     
-    all_per_patch_similarities = []
-    all_per_image_similarities = []
-    batch_count = 0
-    total_generation_time = 0.0
+    all_similarities = []
+    all_per_image_sims = []
+    all_per_patch_sims = []
     
-    if logger:
-        logger.info(f"🔍 Starting FIXED evaluation...")
-        logger.info(f"   Training mode: {training_mode}")
-        logger.info(f"   Max batches: {max_batches or 'All'}")
-        logger.info(f"   Inference steps: {num_inference_steps}")
-        logger.info(f"   Normalize embeddings: {normalize_embeddings}")
+    # Detailed metrics
+    eva_norms = []
+    clip_norms = []
+    generated_norms = []
+    
+    samples_processed = 0
     
     with torch.no_grad():
-        for batch_idx, batch in enumerate(dataloader):
-            if max_batches and batch_idx >= max_batches:
+        for batch_idx, batch in enumerate(tqdm(dataloader, desc="Evaluating")):
+            if samples_processed >= num_samples:
                 break
-                
-            try:
-                # Move to device
-                eva_embeddings = batch['encoder_hidden_states'].to(device)
-                target_clip = batch['clip_embeddings'].to(device)
-                
-                # Record generation time
-                start_time = datetime.now()
-                
-                # FIXED: Generate embeddings with clean implementation
-                generated_clip = model.generate(
-                    eva_features=eva_embeddings,
-                    num_inference_steps=num_inference_steps,
-                    normalize_output=normalize_embeddings,
-                )
-                
-                generation_time = (datetime.now() - start_time).total_seconds()
-                total_generation_time += generation_time
-                
-                # Normalize targets if needed
-                if normalize_embeddings:
-                    target_clip_norm = F.normalize(target_clip, p=2, dim=-1)
-                else:
-                    target_clip_norm = target_clip
-                
-                # Compute patch-wise similarities
-                per_patch_sim = F.cosine_similarity(generated_clip, target_clip_norm, dim=-1)
-                per_image_sim = per_patch_sim.mean(dim=1)
-                
-                all_per_patch_similarities.append(per_patch_sim.cpu())
-                all_per_image_similarities.append(per_image_sim.cpu())
-                
-                batch_count += 1
-                
-                if logger and batch_idx % 10 == 0:
-                    batch_sim = per_image_sim.mean().item()
-                    logger.info(f"   Batch {batch_idx}: Similarity = {batch_sim:.4f}, Time = {generation_time:.2f}s")
-                    
-            except Exception as e:
-                if logger:
-                    logger.warning(f"   Batch {batch_idx} failed: {e}")
-                continue
-    
-    if not all_per_patch_similarities:
-        raise RuntimeError("No batches were successfully evaluated")
+            
+            # Move to device
+            clip_features = batch['encoder_hidden_states'].to(device)  # CLIP conditioning
+            target_eva = batch['eva_embeddings'].to(device)            # EVA targets
+            
+            batch_size = clip_features.shape[0]
+            
+            # Generate EVA embeddings
+            generated_eva = model.generate(
+                clip_features=clip_features,
+                num_inference_steps=inference_steps,
+                normalize_output=True
+            )
+            
+            # Normalize targets
+            target_eva_norm = torch.nn.functional.normalize(target_eva, p=2, dim=-1)
+            
+            # Compute similarities
+            per_patch_sim = torch.nn.functional.cosine_similarity(
+                generated_eva, target_eva_norm, dim=-1
+            )
+            per_image_sim = per_patch_sim.mean(dim=1)
+            
+            # Store results
+            all_similarities.append(per_patch_sim.cpu())
+            all_per_image_sims.append(per_image_sim.cpu())
+            all_per_patch_sims.extend(per_patch_sim.cpu().numpy())
+            
+            # Collect norms
+            eva_norms.extend(torch.norm(target_eva_norm, dim=-1).cpu().numpy().flatten())
+            clip_norms.extend(torch.norm(clip_features, dim=-1).cpu().numpy().flatten())
+            generated_norms.extend(torch.norm(generated_eva, dim=-1).cpu().numpy().flatten())
+            
+            samples_processed += batch_size
     
     # Aggregate results
-    all_per_patch = torch.cat(all_per_patch_similarities, dim=0)
-    all_per_image = torch.cat(all_per_image_similarities, dim=0)
+    all_patch_sims = torch.cat(all_similarities, dim=0)
+    all_image_sims = torch.cat(all_per_image_sims, dim=0)
     
     # Compute comprehensive metrics
     results = {
-        'overall_embedding_similarity': all_per_image.mean().item(),
-        'per_image_mean_similarity': all_per_image.mean().item(),
-        'per_image_std_similarity': all_per_image.std().item(),
-        'per_patch_mean_similarity': all_per_patch.mean().item(),
-        'per_patch_std_similarity': all_per_patch.std().item(),
+        'overall_eva_similarity': all_image_sims.mean().item(),
+        'per_image_mean': all_image_sims.mean().item(),
+        'per_image_std': all_image_sims.std().item(),
+        'per_image_median': all_image_sims.median().item(),
+        'per_patch_mean': all_patch_sims.mean().item(),
+        'per_patch_std': all_patch_sims.std().item(),
+        'per_patch_median': all_patch_sims.median().item(),
         
-        # Quality metrics
-        'high_quality_patches_ratio': (all_per_patch > 0.7).float().mean().item(),
-        'very_high_quality_patches_ratio': (all_per_patch > 0.8).float().mean().item(),
-        'excellent_quality_patches_ratio': (all_per_patch > 0.9).float().mean().item(),
-        'high_quality_images_ratio': (all_per_image > 0.7).float().mean().item(),
-        'very_high_quality_images_ratio': (all_per_image > 0.8).float().mean().item(),
-        'excellent_quality_images_ratio': (all_per_image > 0.9).float().mean().item(),
+        # Quality thresholds
+        'high_quality_images': (all_image_sims > 0.7).float().mean().item(),
+        'very_high_quality_images': (all_image_sims > 0.8).float().mean().item(),
+        'excellent_quality_images': (all_image_sims > 0.9).float().mean().item(),
         
-        # Statistics
-        'min_patch_similarity': all_per_patch.min().item(),
-        'max_patch_similarity': all_per_patch.max().item(),
-        'min_image_similarity': all_per_image.min().item(),
-        'max_image_similarity': all_per_image.max().item(),
+        'high_quality_patches': (all_patch_sims > 0.7).float().mean().item(),
+        'very_high_quality_patches': (all_patch_sims > 0.8).float().mean().item(),
+        'excellent_quality_patches': (all_patch_sims > 0.9).float().mean().item(),
         
-        # Percentiles
-        'patch_similarity_p25': torch.quantile(all_per_patch, 0.25).item(),
-        'patch_similarity_p50': torch.quantile(all_per_patch, 0.50).item(),
-        'patch_similarity_p75': torch.quantile(all_per_patch, 0.75).item(),
-        'image_similarity_p25': torch.quantile(all_per_image, 0.25).item(),
-        'image_similarity_p50': torch.quantile(all_per_image, 0.50).item(),
-        'image_similarity_p75': torch.quantile(all_per_image, 0.75).item(),
+        # Distribution statistics
+        'similarity_percentiles': {
+            '5th': np.percentile(all_image_sims.numpy(), 5),
+            '25th': np.percentile(all_image_sims.numpy(), 25),
+            '75th': np.percentile(all_image_sims.numpy(), 75),
+            '95th': np.percentile(all_image_sims.numpy(), 95),
+        },
         
-        # Dataset info
-        'num_images_evaluated': len(all_per_image),
-        'num_batches_evaluated': batch_count,
-        'patches_per_image': all_per_patch.shape[1],
-        'total_patches_evaluated': all_per_patch.numel(),
+        # Norm statistics
+        'eva_target_norm_mean': np.mean(eva_norms),
+        'eva_target_norm_std': np.std(eva_norms),
+        'clip_conditioning_norm_mean': np.mean(clip_norms),
+        'clip_conditioning_norm_std': np.std(clip_norms),
+        'generated_norm_mean': np.mean(generated_norms),
+        'generated_norm_std': np.std(generated_norms),
         
-        # Performance metrics
-        'avg_generation_time_per_batch': total_generation_time / batch_count if batch_count > 0 else 0.0,
-        'total_generation_time': total_generation_time,
-        
-        # Evaluation parameters
-        'num_inference_steps_used': num_inference_steps,
-        'normalize_embeddings_used': normalize_embeddings,
+        # Sample counts
+        'samples_evaluated': samples_processed,
+        'inference_steps': inference_steps,
     }
     
-    if logger:
-        logger.info(f"✅ FIXED Evaluation completed on {batch_count} batches")
-        logger.info(f"   Overall embedding similarity: {results['overall_embedding_similarity']:.4f}")
-        logger.info(f"   High quality images (>0.7): {results['high_quality_images_ratio']*100:.1f}%")
-        logger.info(f"   Average generation time: {results['avg_generation_time_per_batch']:.2f}s per batch")
+    # Store raw data for plotting
+    results['raw_data'] = {
+        'per_image_similarities': all_image_sims.numpy(),
+        'per_patch_similarities': np.array(all_per_patch_sims),
+        'eva_norms': np.array(eva_norms),
+        'clip_norms': np.array(clip_norms),
+        'generated_norms': np.array(generated_norms),
+    }
     
+    logger.info("✅ Evaluation completed")
     return results
 
-def load_training_results(model_path, logger):
-    """Load training results for comparison"""
-    training_info_path = Path(model_path) / "training_info.json"
+def create_plots(results, output_dir, logger):
+    """Create comprehensive evaluation plots"""
+    logger.info("Creating evaluation plots...")
     
-    if not training_info_path.exists():
-        logger.warning(f"Training info not found: {training_info_path}")
-        return None
+    plots_dir = Path(output_dir) / "plots"
+    plots_dir.mkdir(exist_ok=True)
     
-    try:
-        with open(training_info_path, 'r') as f:
-            training_info = json.load(f)
-        
-        logger.info(f"✅ Loaded training info for comparison")
-        return training_info
-    except Exception as e:
-        logger.warning(f"Could not load training info: {e}")
-        return None
+    # Set style
+    plt.style.use('seaborn-v0_8')
+    sns.set_palette("husl")
+    
+    # 1. Similarity Distribution
+    fig, axes = plt.subplots(2, 2, figsize=(15, 12))
+    
+    # Per-image similarity histogram
+    axes[0, 0].hist(results['raw_data']['per_image_similarities'], bins=50, alpha=0.7, edgecolor='black')
+    axes[0, 0].axvline(results['per_image_mean'], color='red', linestyle='--', label=f'Mean: {results["per_image_mean"]:.3f}')
+    axes[0, 0].axvline(results['per_image_median'], color='orange', linestyle='--', label=f'Median: {results["per_image_median"]:.3f}')
+    axes[0, 0].set_xlabel('EVA Cosine Similarity (Per Image)')
+    axes[0, 0].set_ylabel('Frequency')
+    axes[0, 0].set_title('EVA Similarity Distribution (Per Image)')
+    axes[0, 0].legend()
+    axes[0, 0].grid(True, alpha=0.3)
+    
+    # Per-patch similarity histogram
+    axes[0, 1].hist(results['raw_data']['per_patch_similarities'], bins=50, alpha=0.7, edgecolor='black')
+    axes[0, 1].axvline(results['per_patch_mean'], color='red', linestyle='--', label=f'Mean: {results["per_patch_mean"]:.3f}')
+    axes[0, 1].axvline(results['per_patch_median'], color='orange', linestyle='--', label=f'Median: {results["per_patch_median"]:.3f}')
+    axes[0, 1].set_xlabel('EVA Cosine Similarity (Per Patch)')
+    axes[0, 1].set_ylabel('Frequency')
+    axes[0, 1].set_title('EVA Similarity Distribution (Per Patch)')
+    axes[0, 1].legend()
+    axes[0, 1].grid(True, alpha=0.3)
+    
+    # Quality thresholds
+    quality_data = {
+        'High (>0.7)': results['high_quality_images'] * 100,
+        'Very High (>0.8)': results['very_high_quality_images'] * 100,
+        'Excellent (>0.9)': results['excellent_quality_images'] * 100,
+    }
+    
+    bars = axes[1, 0].bar(quality_data.keys(), quality_data.values(), alpha=0.7)
+    axes[1, 0].set_ylabel('Percentage of Images (%)')
+    axes[1, 0].set_title('EVA Quality Distribution')
+    axes[1, 0].grid(True, alpha=0.3)
+    
+    # Add value labels on bars
+    for bar in bars:
+        height = bar.get_height()
+        axes[1, 0].text(bar.get_x() + bar.get_width()/2., height + 0.5,
+                       f'{height:.1f}%', ha='center', va='bottom')
+    
+    # Norm comparison
+    norm_data = {
+        'EVA Targets': results['eva_target_norm_mean'],
+        'CLIP Conditioning': results['clip_conditioning_norm_mean'],
+        'Generated EVA': results['generated_norm_mean'],
+    }
+    
+    bars = axes[1, 1].bar(norm_data.keys(), norm_data.values(), alpha=0.7)
+    axes[1, 1].axhline(y=1.0, color='red', linestyle='--', label='Expected (1.0)')
+    axes[1, 1].set_ylabel('L2 Norm')
+    axes[1, 1].set_title('Embedding Norms Comparison')
+    axes[1, 1].legend()
+    axes[1, 1].grid(True, alpha=0.3)
+    
+    # Add value labels on bars
+    for bar in bars:
+        height = bar.get_height()
+        axes[1, 1].text(bar.get_x() + bar.get_width()/2., height + 0.01,
+                       f'{height:.3f}', ha='center', va='bottom')
+    
+    plt.tight_layout()
+    plt.savefig(plots_dir / "eva_reproduction_evaluation.png", dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    # 2. Detailed similarity analysis
+    fig, ax = plt.subplots(1, 1, figsize=(10, 8))
+    
+    # Scatter plot of per-image similarities
+    similarities = results['raw_data']['per_image_similarities']
+    indices = np.arange(len(similarities))
+    
+    colors = ['red' if sim < 0.5 else 'orange' if sim < 0.7 else 'green' for sim in similarities]
+    ax.scatter(indices, similarities, c=colors, alpha=0.6, s=10)
+    
+    ax.axhline(y=0.7, color='orange', linestyle='--', label='High Quality Threshold')
+    ax.axhline(y=0.8, color='green', linestyle='--', label='Very High Quality Threshold')
+    ax.axhline(y=results['per_image_mean'], color='blue', linestyle='-', label=f'Mean: {results["per_image_mean"]:.3f}')
+    
+    ax.set_xlabel('Sample Index')
+    ax.set_ylabel('EVA Cosine Similarity')
+    ax.set_title('Per-Sample EVA Similarity')
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    
+    plt.tight_layout()
+    plt.savefig(plots_dir / "per_sample_similarity.png", dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    logger.info(f"✅ Plots saved to: {plots_dir}")
 
-def compare_with_training_metrics(eval_results, training_info, logger):
-    """Compare evaluation results with training metrics"""
-    if not training_info or 'final_results' not in training_info:
-        logger.warning("No training results available for comparison")
-        return
+def save_results(results, output_dir, logger):
+    """Save evaluation results"""
+    logger.info("Saving evaluation results...")
     
-    logger.info("🔍 Comparing evaluation with training metrics...")
+    # Remove raw data for JSON serialization
+    results_to_save = results.copy()
+    raw_data = results_to_save.pop('raw_data')
     
-    final_results = training_info['final_results']
+    # Save JSON results
+    results_file = Path(output_dir) / "eva_reproduction_evaluation.json"
+    with open(results_file, 'w') as f:
+        json.dump(results_to_save, f, indent=2)
     
-    if 'training_summary' in final_results:
-        training_summary = final_results['training_summary']
-        
-        # Compare embedding similarities
-        training_emb_sim = training_summary.get('best_embedding_sim', 0)
-        eval_emb_sim = eval_results['overall_embedding_similarity']
-        
-        logger.info(f"📊 Embedding Similarity Comparison:")
-        logger.info(f"   Training Best: {training_emb_sim:.4f}")
-        logger.info(f"   Evaluation:    {eval_emb_sim:.4f}")
-        logger.info(f"   Difference:    {abs(eval_emb_sim - training_emb_sim):.4f}")
-        
-        if abs(eval_emb_sim - training_emb_sim) < 0.02:
-            logger.info("✅ EXCELLENT: Training and evaluation metrics match well!")
-        elif abs(eval_emb_sim - training_emb_sim) < 0.05:
-            logger.info("✅ GOOD: Training and evaluation metrics are reasonably close")
-        else:
-            logger.info("⚠️ CONCERN: Training and evaluation metrics differ significantly")
+    # Save raw data as numpy
+    raw_data_file = Path(output_dir) / "eva_reproduction_raw_data.npz"
+    np.savez(raw_data_file, **raw_data)
     
-    if 'final_evaluation' in final_results and final_results['final_evaluation']:
-        final_eval = final_results['final_evaluation']
-        
-        logger.info(f"📊 Detailed Comparison:")
-        logger.info(f"   Training Final Eval Samples: {final_eval.get('samples_evaluated', 0)}")
-        logger.info(f"   Current Eval Samples:        {eval_results['num_images_evaluated']}")
-        
-        training_hq = final_eval.get('high_quality_images', 0) * 100
-        eval_hq = eval_results['high_quality_images_ratio'] * 100
-        logger.info(f"   Training High Quality:       {training_hq:.1f}%")
-        logger.info(f"   Current High Quality:        {eval_hq:.1f}%")
+    logger.info(f"✅ Results saved to: {results_file}")
+    logger.info(f"✅ Raw data saved to: {raw_data_file}")
+
+def print_summary(results, logger):
+    """Print evaluation summary"""
+    logger.info("=" * 70)
+    logger.info("📊 EVA REPRODUCTION EVALUATION SUMMARY")
+    logger.info("=" * 70)
+    
+    logger.info(f"🎯 Overall EVA Similarity: {results['overall_eva_similarity']:.4f}")
+    logger.info(f"📊 Per-Image Statistics:")
+    logger.info(f"   Mean: {results['per_image_mean']:.4f}")
+    logger.info(f"   Std:  {results['per_image_std']:.4f}")
+    logger.info(f"   Median: {results['per_image_median']:.4f}")
+    
+    logger.info(f"📊 Quality Distribution:")
+    logger.info(f"   High Quality (>0.7):    {results['high_quality_images']*100:.1f}%")
+    logger.info(f"   Very High Quality (>0.8): {results['very_high_quality_images']*100:.1f}%")
+    logger.info(f"   Excellent Quality (>0.9): {results['excellent_quality_images']*100:.1f}%")
+    
+    logger.info(f"📏 Normalization Status:")
+    logger.info(f"   EVA Targets:     {results['eva_target_norm_mean']:.3f} ± {results['eva_target_norm_std']:.3f}")
+    logger.info(f"   CLIP Conditioning: {results['clip_conditioning_norm_mean']:.3f} ± {results['clip_conditioning_norm_std']:.3f}")
+    logger.info(f"   Generated EVA:   {results['generated_norm_mean']:.3f} ± {results['generated_norm_std']:.3f}")
+    
+    logger.info(f"📈 Evaluation Details:")
+    logger.info(f"   Samples: {results['samples_evaluated']:,}")
+    logger.info(f"   Inference Steps: {results['inference_steps']}")
+    
+    # Assessment
+    overall_sim = results['overall_eva_similarity']
+    if overall_sim > 0.8:
+        logger.info("🎉 EXCELLENT: Outstanding EVA reproduction! DiT architecture works perfectly!")
+    elif overall_sim > 0.6:
+        logger.info("✅ GOOD: Strong EVA reproduction! DiT architecture is working well!")
+    elif overall_sim > 0.4:
+        logger.info("📈 FAIR: Decent EVA reproduction! DiT shows learning capability!")
+    elif overall_sim > 0.2:
+        logger.info("⚠️ POOR: Low EVA reproduction! DiT needs improvement!")
+    else:
+        logger.info("❌ FAILED: Very low EVA reproduction! Check DiT implementation!")
+    
+    logger.info("=" * 70)
 
 def main():
     """Main evaluation function"""
     args = parse_arguments()
     logger = setup_logging()
     
-    logger.info("🔍 FIXED BLIP3-o Evaluation Script")
-    logger.info("=" * 70)
-    logger.info("EVALUATION METHODOLOGY:")
-    logger.info("  1. Load FIXED model with clean generation")
-    logger.info("  2. Generate embeddings using rectified flow")
-    logger.info("  3. Compute cosine similarity for each patch")
-    logger.info("  4. Average over patches to get image similarity")
-    logger.info("  5. Average over images to get overall similarity")
-    logger.info("  6. Compare with training metrics if available")
-    logger.info("=" * 70)
+    logger.info("🔍 Starting EVA-CLIP Reproduction Evaluation")
+    logger.info("=" * 50)
+    logger.info(f"Model: {args.model_path}")
+    logger.info(f"Data: {args.chunked_embeddings_dir}")
+    logger.info(f"Output: {args.output_dir}")
+    logger.info(f"Samples: {args.num_samples}")
+    logger.info("=" * 50)
     
     try:
         # Setup
-        device = setup_device(args.device, logger)
-        torch_dtype = get_torch_dtype(args.torch_dtype)
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        logger.info(f"Using device: {device}")
         
         # Create output directory
         output_dir = Path(args.output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
         
         # Load model
-        model, config, training_mode = load_model_and_config(
-            args.model_path, device, args.training_mode, torch_dtype, logger
-        )
+        model = load_model(args.model_path, device, logger)
         
         # Create dataloader
-        eval_dataloader = create_evaluation_dataloader(
-            args.chunked_embeddings_dir, training_mode, args.batch_size, logger
+        dataloader = create_dataloader(
+            args.chunked_embeddings_dir, 
+            args.batch_size, 
+            args.training_mode, 
+            logger
         )
         
-        # Load training results for comparison
-        training_info = None
-        if args.compare_with_training:
-            training_info = load_training_results(args.model_path, logger)
-        
-        # Run evaluation
-        logger.info("🚀 Starting FIXED evaluation...")
-        start_time = datetime.now()
-        
+        # Evaluate model
         results = evaluate_model(
-            model=model,
-            dataloader=eval_dataloader,
-            device=str(device),
-            training_mode=training_mode,
-            num_inference_steps=args.num_inference_steps,
-            max_batches=args.num_samples // args.batch_size if args.num_samples else None,
-            normalize_embeddings=args.normalize_embeddings,
-            logger=logger
+            model, dataloader, args.num_samples, 
+            args.inference_steps, device, logger
         )
         
-        end_time = datetime.now()
-        evaluation_duration = (end_time - start_time).total_seconds()
-        
-        # Compare with training metrics
-        if training_info and args.compare_with_training:
-            compare_with_training_metrics(results, training_info, logger)
-        
-        # Display results
-        logger.info("=" * 70)
-        logger.info("📊 FIXED EVALUATION RESULTS:")
-        logger.info("=" * 70)
-        logger.info(f"🎯 OVERALL EMBEDDING SIMILARITY: {results['overall_embedding_similarity']:.4f}")
-        logger.info(f"📊 Per-image mean: {results['per_image_mean_similarity']:.4f} ± {results['per_image_std_similarity']:.4f}")
-        logger.info(f"📊 Per-patch mean: {results['per_patch_mean_similarity']:.4f} ± {results['per_patch_std_similarity']:.4f}")
-        logger.info(f"📈 High quality images (>0.7): {results['high_quality_images_ratio']*100:.1f}%")
-        logger.info(f"📈 Very high quality images (>0.8): {results['very_high_quality_images_ratio']*100:.1f}%")
-        logger.info(f"📈 Excellent quality images (>0.9): {results['excellent_quality_images_ratio']*100:.1f}%")
-        logger.info(f"📈 Images evaluated: {results['num_images_evaluated']:,}")
-        logger.info(f"⏱️ Average generation time: {results['avg_generation_time_per_batch']:.2f}s per batch")
-        
-        # Assessment
-        overall_sim = results['overall_embedding_similarity']
-        if overall_sim > 0.8:
-            logger.info("🎉 OUTSTANDING: Exceptional embedding generation!")
-        elif overall_sim > 0.6:
-            logger.info("🎉 EXCELLENT: Very good embedding generation!")
-        elif overall_sim > 0.4:
-            logger.info("✅ GOOD: Solid embedding generation")
-        elif overall_sim > 0.2:
-            logger.info("📈 LEARNING: Shows improvement")
-        elif overall_sim > 0.1:
-            logger.info("🔧 FIXED: Some learning detected")
-        else:
-            logger.info("⚠️ NEEDS WORK: Low similarity, check implementation")
+        # Create plots
+        if args.create_plots:
+            create_plots(results, args.output_dir, logger)
         
         # Save results
-        evaluation_summary = {
-            'evaluation_completed': True,
-            'timestamp': datetime.now().isoformat(),
-            'duration_seconds': evaluation_duration,
-            'model_path': str(args.model_path),
-            'training_mode': training_mode,
-            'torch_dtype': str(torch_dtype),
-            
-            'evaluation_parameters': {
-                'num_inference_steps': args.num_inference_steps,
-                'normalize_embeddings': args.normalize_embeddings,
-                'num_samples_target': args.num_samples,
-                'batch_size': args.batch_size,
-            },
-            
-            'implementation_status': {
-                'fixed_scaling_issues': True,
-                'clean_generation': True,
-                'proper_evaluation': True,
-                'blip3o_aligned': True,
-            },
-            
-            'results_summary': {
-                'overall_embedding_similarity': results['overall_embedding_similarity'],
-                'high_quality_images_percentage': results['high_quality_images_ratio'] * 100,
-                'very_high_quality_images_percentage': results['very_high_quality_images_ratio'] * 100,
-                'excellent_quality_images_percentage': results['excellent_quality_images_ratio'] * 100,
-                'total_images': results['num_images_evaluated'],
-                'total_patches': results['total_patches_evaluated'],
-                'avg_generation_time_per_batch': results['avg_generation_time_per_batch'],
-            },
-            
-            'detailed_results': results,
-            'training_comparison': training_info if args.compare_with_training else None,
-        }
+        save_results(results, args.output_dir, logger)
         
-        # Save results
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        results_file = output_dir / f'fixed_evaluation_results_{timestamp}.json'
-        with open(results_file, 'w') as f:
-            json.dump(evaluation_summary, f, indent=2)
+        # Print summary
+        print_summary(results, logger)
         
-        logger.info("=" * 70)
-        logger.info("✅ FIXED EVALUATION COMPLETED SUCCESSFULLY!")
-        logger.info(f"📁 Results saved to: {results_file}")
-        logger.info(f"⏱️ Evaluation time: {evaluation_duration:.1f} seconds")
-        
-        # Final assessment
-        if overall_sim > 0.2:
-            logger.info("🎉 SUCCESS: FIXED implementation shows good results!")
-        elif overall_sim > 0.1:
-            logger.info("📈 PROGRESS: Implementation working, may need more training")
-        else:
-            logger.info("⚠️ ISSUE: Results still low, check model or training")
-        
-        logger.info("=" * 70)
-        
+        logger.info("✅ EVA reproduction evaluation completed successfully!")
         return 0
         
     except Exception as e:
         logger.error(f"❌ Evaluation failed: {e}")
+        import traceback
         traceback.print_exc()
         return 1
 
