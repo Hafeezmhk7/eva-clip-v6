@@ -1,0 +1,84 @@
+2025-07-26 22:23:40,138 - INFO - 🚀 Starting EVA-CLIP Reproduction with Fixed BLIP3-o DiT
+2025-07-26 22:23:40,138 - INFO - ================================================================================
+2025-07-26 22:23:40,138 - INFO - EXPERIMENT DETAILS:
+2025-07-26 22:23:40,138 - INFO -   📋 Task: Reproduce clean EVA embeddings from noisy EVA embeddings
+2025-07-26 22:23:40,138 - INFO -   🧠 Model: BLIP3-o DiT with 3D RoPE and Grouped-Query Attention
+2025-07-26 22:23:40,138 - INFO -   🎯 Target: EVA embeddings [B, N, 4096]
+2025-07-26 22:23:40,138 - INFO -   🎮 Conditioning: CLIP embeddings [B, N, 1024]
+2025-07-26 22:23:40,138 - INFO -   🌊 Method: Rectified Flow Matching
+2025-07-26 22:23:40,139 - INFO - ================================================================================
+2025-07-26 22:23:40,139 - INFO - Configuration:
+2025-07-26 22:23:40,139 - INFO -   Model size: base
+2025-07-26 22:23:40,139 - INFO -   Training mode: patch_only
+2025-07-26 22:23:40,139 - INFO -   Embeddings dir: /scratch-shared/azadaianchuk1/blip3o_workspace/embeddings/patch_only_256_tokens
+2025-07-26 22:23:40,139 - INFO -   Output dir: ./checkpoints/eva_repro_fixed_20250726_222338
+2025-07-26 22:23:40,139 - INFO -   Learning rate: 0.0005
+2025-07-26 22:23:40,139 - INFO -   Batch size: 8
+2025-07-26 22:23:40,139 - INFO -   Epochs: 10
+2025-07-26 22:23:40,139 - INFO -   Max shards: 1
+2025-07-26 22:23:40,139 - INFO -   🧪 OVERFITTING TEST: 20 samples
+2025-07-26 22:23:40,139 - INFO -   Debug mode: True
+2025-07-26 22:23:40,139 - INFO - ================================================================================
+2025-07-26 22:23:41,791 - INFO - Using GPU: NVIDIA H100
+2025-07-26 22:23:41,791 - INFO - GPU Memory: 100.0 GB
+2025-07-26 22:23:41,796 - WARNING - ⚠️ Original model import failed: No module named 'src.modules.models.blip3o_patch_dit'
+2025-07-26 22:23:41,797 - WARNING - ⚠️ Original loss import failed: No module named 'src.modules.losses.blip3o_flow_matching_loss'
+2025-07-26 22:23:41,797 - WARNING - ⚠️ Original trainer import failed: No module named 'src.modules.trainers.blip3o_trainer'
+2025-07-26 22:23:41,799 - WARNING - ⚠️ Original dataset import failed: No module named 'src.modules.datasets.blip3o_dataset'
+2025-07-26 22:23:43,918 - INFO - ✅ Original BLIP3-o config loaded successfully
+2025-07-26 22:23:47,709 - INFO - ✅ EVA reproduction model loaded successfully
+2025-07-26 22:23:47,719 - INFO - ✅ EVA reproduction loss loaded successfully
+2025-07-26 22:23:47,729 - WARNING - ⚠️ EVA trainer import failed: cannot import name 'create_eva_training_args' from 'src.modules.trainers.blip3o_eva_trainer' (/gpfs/home4/azadaianchuk1/eva-clip-v5/src/modules/trainers/blip3o_eva_trainer.py)
+2025-07-26 22:23:47,738 - INFO - ✅ EVA reproduction dataset loaded successfully
+2025-07-26 22:23:47,738 - WARNING - ⚠️ Missing original components: ['model', 'loss', 'trainer', 'dataset']
+2025-07-26 22:23:47,738 - WARNING - ⚠️ Missing EVA components: ['eva_trainer']
+2025-07-26 22:23:47,738 - WARNING - Some original BLIP3-o components failed to load. Check individual imports.
+2025-07-26 22:23:47,738 - WARNING - Some EVA reproduction components failed to load. Check individual imports.
+2025-07-26 22:23:47,738 - WARNING - ⚠️ Some components missing. Check imports before proceeding.
+2025-07-26 22:23:47,738 - ERROR - ❌ Failed to import original model: No module named 'src.modules.blip3o_patch_dit'
+2025-07-26 22:23:47,738 - ERROR - ❌ Failed to import EVA model: No module named 'src.modules.blip3o_eva_dit'
+2025-07-26 22:23:47,738 - ERROR - ❌ Failed to import original loss: No module named 'src.modules.blip3o_flow_matching_loss'
+2025-07-26 22:23:47,738 - ERROR - ❌ Failed to import EVA loss: No module named 'src.modules.blip3o_eva_loss'
+2025-07-26 22:23:47,739 - ERROR - ❌ Failed to import original trainer: No module named 'src.modules.blip3o_trainer'
+2025-07-26 22:23:47,739 - ERROR - ❌ Failed to import EVA trainer: No module named 'src.modules.blip3o_eva_trainer'
+2025-07-26 22:23:47,739 - ERROR - ❌ Failed to import original dataset: No module named 'src.modules.blip3o_dataset'
+2025-07-26 22:23:47,739 - ERROR - ❌ Failed to import EVA dataset: No module named 'src.modules.blip3o_eva_dataset'
+2025-07-26 22:23:47,739 - INFO - Creating base model for patch_only mode...
+2025-07-26 22:23:49,338 - INFO - BLIP3-o EVA DiT model initialized with 183,171,328 parameters
+2025-07-26 22:23:49,569 - INFO - Model created with 183,171,328 parameters
+2025-07-26 22:23:49,569 - INFO - Model moved to cuda
+2025-07-26 22:23:49,569 - INFO - Creating flow matching loss...
+2025-07-26 22:23:49,569 - INFO - Flow Matching Loss initialized:
+2025-07-26 22:23:49,569 - INFO -   Prediction type: velocity
+2025-07-26 22:23:49,570 - INFO -   Flow type: rectified
+2025-07-26 22:23:49,570 - INFO -   Loss weight: 1.0
+2025-07-26 22:23:49,570 - INFO -   Debug mode: True
+2025-07-26 22:23:49,570 - INFO - Flow matching loss created
+2025-07-26 22:23:49,570 - INFO - Creating dataloaders...
+2025-07-26 22:23:49,570 - INFO - Creating EVA reproduction dataloaders:
+2025-07-26 22:23:49,570 - INFO -   Target: EVA embeddings [B, N, 4096]
+2025-07-26 22:23:49,570 - INFO -   Conditioning: CLIP embeddings [B, N, 1024]
+2025-07-26 22:23:49,570 - INFO -   Normalize: True
+2025-07-26 22:23:49,571 - INFO - Loaded manifest: 1 shards, 2,646 samples
+2025-07-26 22:23:49,571 - INFO - Found 1 files with pattern: embeddings_shard_*_patch_only.pkl
+2025-07-26 22:23:49,572 - INFO - Prepared 1 shard files
+2025-07-26 22:23:49,572 - INFO - EVA Reproduction Dataset initialized:
+2025-07-26 22:23:49,572 - INFO -   Directory: /scratch-shared/azadaianchuk1/blip3o_workspace/embeddings/patch_only_256_tokens
+2025-07-26 22:23:49,572 - INFO -   Mode: patch_only (256 tokens)
+2025-07-26 22:23:49,572 - INFO -   TARGET: EVA embeddings [B, N, 4096]
+2025-07-26 22:23:49,572 - INFO -   CONDITIONING: CLIP embeddings [B, N, 1024]
+2025-07-26 22:23:49,572 - INFO -   Normalize: True
+2025-07-26 22:23:49,572 - INFO -   Shards: 1
+2025-07-26 22:23:49,572 - INFO - Loaded manifest: 1 shards, 2,646 samples
+2025-07-26 22:23:49,573 - INFO - Found 1 files with pattern: embeddings_shard_*_patch_only.pkl
+2025-07-26 22:23:49,573 - INFO - Prepared 1 shard files
+2025-07-26 22:23:49,573 - INFO - EVA Reproduction Dataset initialized:
+2025-07-26 22:23:49,573 - INFO -   Directory: /scratch-shared/azadaianchuk1/blip3o_workspace/embeddings/patch_only_256_tokens
+2025-07-26 22:23:49,573 - INFO -   Mode: patch_only (256 tokens)
+2025-07-26 22:23:49,573 - INFO -   TARGET: EVA embeddings [B, N, 4096]
+2025-07-26 22:23:49,573 - INFO -   CONDITIONING: CLIP embeddings [B, N, 1024]
+2025-07-26 22:23:49,573 - INFO -   Normalize: True
+2025-07-26 22:23:49,573 - INFO -   Shards: 1
+2025-07-26 22:23:49,573 - INFO - EVA reproduction dataloaders created successfully
+2025-07-26 22:23:49,573 - INFO - Dataloaders created
+2025-07-26 22:23:49,573 - ERROR - ❌ Training failed with error: object of type 'BLIP3oEVAReproductionDataset' has no len()

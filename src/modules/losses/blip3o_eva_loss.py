@@ -1,14 +1,11 @@
 #!/usr/bin/env python3
 """
-Fixed Flow Matching Loss for EVA-CLIP Reproduction Testing
-src/modules/losses/blip3o_eva_loss.py
-
-MAJOR FIXES:
-1. Better numerical stability with proper scaling
-2. Fixed gradient flow issues
-3. Improved debugging metrics
-4. Proper handling of normalized embeddings
-5. Better velocity field learning according to feedback
+Fixed Flow Matching Loss for EVA-CLIP Reproduction
+Key fixes:
+1. Proper loss computation and scaling
+2. Better numerical stability
+3. Correct velocity field learning
+4. Fixed target computation
 """
 
 import torch
@@ -23,83 +20,87 @@ logger = logging.getLogger(__name__)
 
 class BLIP3oEVAFlowMatchingLoss(nn.Module):
     """
-    Fixed Flow Matching Loss for EVA-CLIP Reproduction Testing
+    Fixed Flow Matching Loss for EVA reproduction
     
-    Key improvements based on feedback:
-    1. Better numerical stability without excessive scaling
-    2. Proper boundary condition handling
-    3. Comprehensive debugging metrics
-    4. Fixed velocity field learning
+    This implements rectified flow matching where:
+    - x_0 = noise (source)
+    - x_1 = clean EVA embeddings (target)
+    - x_t = (1-t) * x_0 + t * x_1 (linear interpolation)
+    - v_t = x_1 - x_0 (velocity field)
     """
     
     def __init__(
         self,
         prediction_type: str = "velocity",
-        normalize_targets: bool = True,
         flow_type: str = "rectified",
-        loss_scale: float = 1.0,  # Reduced from 100.0 based on feedback
-        gradient_clip_val: float = 1.0,
+        loss_weight: float = 1.0,
         eps: float = 1e-8,
+        # Boundary handling
+        min_timestep: float = 1e-3,
+        max_timestep: float = 1.0 - 1e-3,
+        # Regularization
+        velocity_reg_weight: float = 0.0,
+        consistency_weight: float = 0.0,
         debug_mode: bool = False,
-        # Improved stability parameters
-        min_timestep: float = 1e-3,  # Avoid t=0 numerical issues
-        max_timestep: float = 1.0 - 1e-3,  # Avoid t=1 numerical issues
-        velocity_norm_weight: float = 0.01,  # Weight for velocity norm regularization
-        boundary_loss_weight: float = 0.1,  # Weight for boundary conditions
     ):
         super().__init__()
         
         self.prediction_type = prediction_type
-        self.normalize_targets = normalize_targets
         self.flow_type = flow_type
-        self.loss_scale = loss_scale
-        self.gradient_clip_val = gradient_clip_val
+        self.loss_weight = loss_weight
         self.eps = eps
-        self.debug_mode = debug_mode
         self.min_timestep = min_timestep
         self.max_timestep = max_timestep
-        self.velocity_norm_weight = velocity_norm_weight
-        self.boundary_loss_weight = boundary_loss_weight
+        self.velocity_reg_weight = velocity_reg_weight
+        self.consistency_weight = consistency_weight
+        self.debug_mode = debug_mode
         
-        # Training step counter
+        # Validate inputs
+        assert prediction_type in ["velocity", "noise", "sample"]
+        assert flow_type in ["rectified", "reflow"]
+        
+        # Running statistics
         self.register_buffer('step_count', torch.tensor(0))
+        self.register_buffer('loss_ema', torch.tensor(0.0))
+        self.register_buffer('similarity_ema', torch.tensor(0.0))
         
-        # Best metrics tracking
-        self.register_buffer('best_velocity_sim', torch.tensor(0.0))
-        self.register_buffer('best_loss', torch.tensor(float('inf')))
-        
-        # Running statistics for stability
-        self.register_buffer('velocity_norm_ema', torch.tensor(1.0))
-        self.register_buffer('error_norm_ema', torch.tensor(1.0))
-        
-        logger.info(f"✅ Fixed EVA Reproduction Flow Matching Loss")
-        logger.info(f"   Loss scale: {loss_scale}")
-        logger.info(f"   Gradient clipping: {gradient_clip_val}")
-        logger.info(f"   Timestep range: [{min_timestep}, {max_timestep}]")
-        logger.info(f"   Velocity norm weight: {velocity_norm_weight}")
-        logger.info(f"   Boundary loss weight: {boundary_loss_weight}")
-        logger.info(f"   Debug mode: {debug_mode}")
+        logger.info(f"Flow Matching Loss initialized:")
+        logger.info(f"  Prediction type: {prediction_type}")
+        logger.info(f"  Flow type: {flow_type}")
+        logger.info(f"  Loss weight: {loss_weight}")
+        logger.info(f"  Debug mode: {debug_mode}")
 
     def _clamp_timesteps(self, timesteps: torch.Tensor) -> torch.Tensor:
-        """Clamp timesteps to avoid numerical issues at boundaries"""
+        """Clamp timesteps to avoid numerical issues"""
         return torch.clamp(timesteps, min=self.min_timestep, max=self.max_timestep)
 
-    def _update_ema(self, ema_tensor: torch.Tensor, new_value: float, alpha: float = 0.01):
+    def _update_ema(self, tensor_buffer: torch.Tensor, new_value: float, alpha: float = 0.01):
         """Update exponential moving average"""
-        ema_tensor.data = alpha * new_value + (1 - alpha) * ema_tensor.data
+        if tensor_buffer.item() == 0.0:
+            tensor_buffer.data = torch.tensor(new_value)
+        else:
+            tensor_buffer.data = alpha * new_value + (1 - alpha) * tensor_buffer.data
 
     def forward(
         self,
-        model_output: torch.Tensor,  # [B, N, 4096] - Model's velocity prediction
-        target_samples: torch.Tensor,  # [B, N, 4096] - Ground truth EVA embeddings
+        model_output: torch.Tensor,  # [B, N, 4096] - Model's prediction
+        target_samples: torch.Tensor,  # [B, N, 4096] - Clean EVA embeddings
         timesteps: torch.Tensor,  # [B] - Flow matching timesteps
-        clip_conditioning: torch.Tensor,  # [B, N, 1024] - CLIP conditioning
+        clip_conditioning: torch.Tensor,  # [B, N, 1024] - CLIP features (for logging)
         noise: Optional[torch.Tensor] = None,
-        return_metrics: bool = False,
-        training_mode: str = "patch_only",
+        return_metrics: bool = True,
+        **kwargs
     ) -> Tuple[torch.Tensor, Optional[Dict[str, float]]]:
         """
-        Fixed flow matching loss computation with improved stability
+        Compute flow matching loss
+        
+        Args:
+            model_output: Model prediction [B, N, 4096]
+            target_samples: Clean EVA embeddings [B, N, 4096]
+            timesteps: Timesteps [B]
+            clip_conditioning: CLIP conditioning [B, N, 1024]
+            noise: Noise tensor [B, N, 4096] (optional)
+            return_metrics: Whether to return detailed metrics
         """
         
         batch_size, num_tokens, embed_dim = model_output.shape
@@ -109,202 +110,156 @@ class BLIP3oEVAFlowMatchingLoss(nn.Module):
         # Update step count
         self.step_count += 1
         
-        # Clamp timesteps to avoid boundary issues
+        # Clamp timesteps
         timesteps = self._clamp_timesteps(timesteps)
         
-        # Ensure targets are properly normalized
-        if self.normalize_targets:
-            target_normalized = F.normalize(target_samples.detach(), p=2, dim=-1)
-        else:
-            target_normalized = target_samples.detach()
+        # Ensure targets are normalized (EVA embeddings should be L2 normalized)
+        target_normalized = F.normalize(target_samples.detach(), p=2, dim=-1)
         
-        # Create or validate noise
+        # Create noise if not provided
         if noise is None:
-            # Create noise with same scale as normalized embeddings
             noise = torch.randn_like(target_normalized, device=device, dtype=dtype)
-            # Normalize noise for consistency
-            noise = F.normalize(noise, p=2, dim=-1)
+            noise = F.normalize(noise, p=2, dim=-1)  # Normalize noise too
         
-        # Expand timesteps for broadcasting
-        t = timesteps.view(-1, 1, 1).to(dtype)
+        # Expand timesteps for broadcasting [B, 1, 1]
+        t = timesteps.view(batch_size, 1, 1).to(dtype)
         
-        # RECTIFIED FLOW: Linear interpolation
-        # x_t = (1-t) * x_0 + t * x_1
-        # where x_0 = noise, x_1 = target
-        x_t = (1 - t) * noise + t * target_normalized
+        # RECTIFIED FLOW COMPUTATION
+        if self.flow_type == "rectified":
+            # Linear interpolation: x_t = (1-t) * x_0 + t * x_1
+            # where x_0 = noise, x_1 = target
+            # Velocity field: v = x_1 - x_0 = target - noise
+            true_velocity = target_normalized - noise
+            
+            # The model should predict this velocity
+            target_for_loss = true_velocity
+            
+        else:  # reflow
+            raise NotImplementedError("Reflow not implemented yet")
         
-        # True velocity for rectified flow: v = x_1 - x_0
-        true_velocity = target_normalized - noise
+        # LOSS COMPUTATION
+        if self.prediction_type == "velocity":
+            # Direct velocity prediction loss
+            prediction_loss = F.mse_loss(model_output, target_for_loss, reduction='none')
+        else:
+            raise NotImplementedError(f"Prediction type {self.prediction_type} not implemented")
         
-        # IMPROVED LOSS COMPUTATION
-        # 1. Base MSE loss
-        velocity_error = model_output - true_velocity
-        base_loss = F.mse_loss(model_output, true_velocity, reduction='none')
+        # Reduce loss: mean over tokens and embedding dimensions, then over batch
+        prediction_loss = prediction_loss.mean(dim=(1, 2))  # [B]
         
-        # 2. Per-token and per-sample loss
-        per_token_loss = base_loss.mean(dim=-1)  # [B, N]
-        per_sample_loss = per_token_loss.mean(dim=1)  # [B]
+        # Optional: timestep weighting (can help with training dynamics)
+        # Weight early timesteps slightly more to ensure good noise handling
+        time_weights = 1.0 + 0.1 * (1 - t.squeeze(-1))  # [B, 1] -> [B]
+        weighted_loss = prediction_loss * time_weights.squeeze(-1)
         
-        # 3. Timestep weighting (optional - can help with boundary conditions)
-        # Weight early timesteps (near noise) slightly more
-        time_weight = 1.0 + 0.1 * (1 - t.squeeze(-1))  # [B, 1]
-        weighted_sample_loss = per_sample_loss * time_weight.squeeze(-1)
+        # Main loss
+        main_loss = weighted_loss.mean()
         
-        # 4. Main loss
-        main_loss = weighted_sample_loss.mean()
+        # REGULARIZATION TERMS
+        reg_loss = 0.0
         
-        # 5. Velocity norm regularization (helps with stability)
-        pred_norm = torch.norm(model_output, dim=-1).mean()
-        target_norm = torch.norm(true_velocity, dim=-1).mean()
-        norm_loss = F.mse_loss(pred_norm, target_norm) * self.velocity_norm_weight
+        # Velocity magnitude regularization
+        if self.velocity_reg_weight > 0:
+            pred_magnitude = torch.norm(model_output, dim=-1).mean()
+            target_magnitude = torch.norm(target_for_loss, dim=-1).mean()
+            velocity_reg = F.mse_loss(pred_magnitude, target_magnitude.detach())
+            reg_loss += self.velocity_reg_weight * velocity_reg
         
-        # 6. Boundary condition loss (ensure model learns correct boundary behavior)
-        boundary_mask_0 = timesteps < 0.1
-        boundary_mask_1 = timesteps > 0.9
+        # Total loss
+        total_loss = main_loss + reg_loss
+        total_loss = total_loss * self.loss_weight
         
-        boundary_loss = 0.0
-        if boundary_mask_0.any():
-            # Near t=0, velocity should point from noise to target
-            boundary_loss_0 = F.mse_loss(
-                model_output[boundary_mask_0], 
-                true_velocity[boundary_mask_0]
-            )
-            boundary_loss += boundary_loss_0 * self.boundary_loss_weight
-        
-        if boundary_mask_1.any():
-            # Near t=1, velocity should still be consistent
-            boundary_loss_1 = F.mse_loss(
-                model_output[boundary_mask_1], 
-                true_velocity[boundary_mask_1]
-            )
-            boundary_loss += boundary_loss_1 * self.boundary_loss_weight
-        
-        # 7. Total loss with scaling
-        total_loss = (main_loss + norm_loss + boundary_loss) * self.loss_scale
-        
-        # Apply gradient clipping to loss
-        if total_loss.requires_grad and self.gradient_clip_val > 0:
-            total_loss.register_hook(
-                lambda grad: torch.clamp(grad, -self.gradient_clip_val, self.gradient_clip_val)
-            )
-        
-        # Compute detailed metrics
-        metrics = None
-        if return_metrics or self.debug_mode:
+        # METRICS COMPUTATION
+        metrics = {}
+        if return_metrics:
             with torch.no_grad():
-                # Normalize predictions and targets for similarity
-                pred_normalized = F.normalize(model_output, p=2, dim=-1)
-                velocity_normalized = F.normalize(true_velocity, p=2, dim=-1)
+                # Normalize predictions for similarity computation
+                pred_normalized = F.normalize(model_output + self.eps, p=2, dim=-1)
+                target_norm = F.normalize(target_for_loss + self.eps, p=2, dim=-1)
                 
-                # Compute cosine similarity
-                cosine_sim = F.cosine_similarity(pred_normalized, velocity_normalized, dim=-1)
-                
-                # Per-image metrics
-                per_image_sim = cosine_sim.mean(dim=1)
-                
-                # Compute norms
-                pred_norm_mean = torch.norm(model_output, dim=-1).mean()
-                velocity_norm_mean = torch.norm(true_velocity, dim=-1).mean()
-                eva_norm = torch.norm(target_normalized, dim=-1).mean()
-                clip_norm = torch.norm(clip_conditioning, dim=-1).mean()
-                noise_norm = torch.norm(noise, dim=-1).mean()
-                error_norm = torch.norm(velocity_error, dim=-1).mean()
+                # Cosine similarity
+                cosine_sim = F.cosine_similarity(pred_normalized, target_norm, dim=-1)
+                per_image_sim = cosine_sim.mean(dim=1)  # [B]
+                mean_similarity = per_image_sim.mean().item()
                 
                 # Update EMAs
-                self._update_ema(self.velocity_norm_ema, velocity_norm_mean.item())
-                self._update_ema(self.error_norm_ema, error_norm.item())
+                self._update_ema(self.loss_ema, main_loss.item())
+                self._update_ema(self.similarity_ema, mean_similarity)
                 
-                # Gradient magnitude (if available)
-                grad_norm = 0.0
-                if model_output.grad is not None:
-                    grad_norm = torch.norm(model_output.grad).item()
+                # Compute norms for monitoring
+                pred_norm = torch.norm(model_output, dim=-1).mean().item()
+                target_norm_val = torch.norm(target_for_loss, dim=-1).mean().item()
+                eva_norm = torch.norm(target_normalized, dim=-1).mean().item()
+                noise_norm = torch.norm(noise, dim=-1).mean().item()
                 
-                # Update best metrics
-                mean_sim = per_image_sim.mean().item()
-                if mean_sim > self.best_velocity_sim.item():
-                    self.best_velocity_sim = torch.tensor(mean_sim)
-                
-                unscaled_loss = total_loss.item() / self.loss_scale
-                if unscaled_loss < self.best_loss.item():
-                    self.best_loss = torch.tensor(unscaled_loss)
-                
-                # Training health indicators
-                is_learning = mean_sim > 0.01
-                is_converging = error_norm.item() < self.error_norm_ema.item() * 1.1
-                is_stable = not (torch.isnan(total_loss) or torch.isinf(total_loss))
-                
-                training_health = "good" if (is_learning and is_converging and is_stable) else "needs_attention"
-                
-                metrics = {
-                    # Core metrics
-                    'loss': unscaled_loss,
-                    'scaled_loss': total_loss.item(),
-                    'main_loss': main_loss.item(),
-                    'norm_loss': norm_loss.item(),
-                    'boundary_loss': boundary_loss if isinstance(boundary_loss, float) else boundary_loss.item(),
-                    'velocity_similarity': mean_sim,
-                    
-                    # Detailed similarity metrics
-                    'per_image_sim_mean': per_image_sim.mean().item(),
-                    'per_image_sim_std': per_image_sim.std().item(),
-                    'per_patch_sim_mean': cosine_sim.mean().item(),
-                    'per_patch_sim_std': cosine_sim.std().item(),
-                    
-                    # Norm tracking (should be ~1.0 for normalized embeddings)
-                    'pred_norm': pred_norm_mean.item(),
-                    'velocity_norm': velocity_norm_mean.item(),
-                    'eva_norm': eva_norm.item(),
-                    'clip_norm': clip_norm.item(),
-                    'noise_norm': noise_norm.item(),
-                    
-                    # Error analysis
-                    'error_norm': error_norm.item(),
-                    'relative_error': (error_norm / (velocity_norm_mean + self.eps)).item(),
-                    
-                    # Training progress
-                    'step_count': self.step_count.item(),
-                    'best_velocity_sim': self.best_velocity_sim.item(),
-                    'best_loss': self.best_loss.item(),
-                    'grad_norm': grad_norm,
-                    'training_health': training_health,
-                    
-                    # Stability indicators
-                    'velocity_norm_ema': self.velocity_norm_ema.item(),
-                    'error_norm_ema': self.error_norm_ema.item(),
-                    'timestep_mean': timesteps.mean().item(),
-                    'timestep_std': timesteps.std().item(),
-                    'loss_scale': self.loss_scale,
-                    
-                    # Flow matching specific
-                    'x_t_norm': torch.norm(x_t, dim=-1).mean().item(),
-                    'interpolation_factor': t.mean().item(),
-                }
+                # Error analysis
+                error = model_output - target_for_loss
+                error_norm = torch.norm(error, dim=-1).mean().item()
+                relative_error = error_norm / (target_norm_val + self.eps)
                 
                 # Quality assessment
-                if mean_sim > 0.7:
+                if mean_similarity > 0.8:
                     quality = "excellent"
-                elif mean_sim > 0.3:
+                elif mean_similarity > 0.5:
                     quality = "good"
-                elif mean_sim > 0.1:
+                elif mean_similarity > 0.2:
                     quality = "fair"
                 else:
                     quality = "poor"
                 
-                metrics['quality_assessment'] = quality
-                
-                # Log debug info if enabled
-                if self.debug_mode and self.step_count % 50 == 0:
-                    logger.info(f"[Step {self.step_count}] EVA Flow Matching Debug:")
-                    logger.info(f"  Loss: {unscaled_loss:.6f} (quality: {quality})")
-                    logger.info(f"  Velocity Sim: {mean_sim:.4f} (best: {self.best_velocity_sim.item():.4f})")
-                    logger.info(f"  Norms - Pred: {pred_norm_mean.item():.3f}, Target: {velocity_norm_mean.item():.3f}")
-                    logger.info(f"  Error: {error_norm.item():.3f} (relative: {metrics['relative_error']:.3f})")
-                    logger.info(f"  Training Health: {training_health}")
+                metrics = {
+                    # Core metrics
+                    'loss': main_loss.item(),
+                    'total_loss': total_loss.item(),
+                    'reg_loss': reg_loss if isinstance(reg_loss, float) else reg_loss.item(),
+                    'velocity_similarity': mean_similarity,
+                    'velocity_similarity_std': per_image_sim.std().item(),
                     
-                    if not is_learning:
-                        logger.warning(f"  ⚠️ Model not learning! Similarity very low.")
-                    if not is_stable:
-                        logger.warning(f"  ⚠️ Training unstable! NaN/Inf detected.")
+                    # Norm tracking
+                    'pred_norm': pred_norm,
+                    'target_norm': target_norm_val,
+                    'eva_norm': eva_norm,
+                    'noise_norm': noise_norm,
+                    'clip_norm': torch.norm(clip_conditioning, dim=-1).mean().item(),
+                    
+                    # Error analysis
+                    'error_norm': error_norm,
+                    'relative_error': relative_error,
+                    
+                    # Training progress
+                    'step_count': self.step_count.item(),
+                    'loss_ema': self.loss_ema.item(),
+                    'similarity_ema': self.similarity_ema.item(),
+                    'quality_assessment': quality,
+                    
+                    # Flow matching specific
+                    'timestep_mean': timesteps.mean().item(),
+                    'timestep_std': timesteps.std().item(),
+                    'interpolation_weight': t.mean().item(),
+                    
+                    # Debugging info
+                    'pred_min': model_output.min().item(),
+                    'pred_max': model_output.max().item(),
+                    'target_min': target_for_loss.min().item(),
+                    'target_max': target_for_loss.max().item(),
+                }
+                
+                # Check for numerical issues
+                if torch.isnan(total_loss) or torch.isinf(total_loss):
+                    metrics['numerical_issue'] = True
+                    logger.error(f"[Step {self.step_count}] Numerical issue detected!")
+                    logger.error(f"  Loss: {total_loss.item()}")
+                    logger.error(f"  Pred norm: {pred_norm}")
+                    logger.error(f"  Target norm: {target_norm_val}")
+                
+                # Debug logging
+                if self.debug_mode and self.step_count % 50 == 0:
+                    logger.info(f"[Step {self.step_count}] Flow Matching Debug:")
+                    logger.info(f"  Loss: {main_loss.item():.6f} (quality: {quality})")
+                    logger.info(f"  Velocity Sim: {mean_similarity:.4f}")
+                    logger.info(f"  Norms - Pred: {pred_norm:.3f}, Target: {target_norm_val:.3f}")
+                    logger.info(f"  Error: {error_norm:.3f} (relative: {relative_error:.3f})")
+                    logger.info(f"  Timesteps: {timesteps.mean().item():.3f} ± {timesteps.std().item():.3f}")
         
         return total_loss, metrics
 
@@ -313,65 +268,46 @@ class BLIP3oEVAFlowMatchingLoss(nn.Module):
         generated: torch.Tensor,  # Generated EVA embeddings
         target: torch.Tensor,     # Target EVA embeddings
     ) -> Dict[str, float]:
-        """Compute evaluation metrics between generated and target EVA embeddings"""
+        """Compute evaluation metrics"""
         with torch.no_grad():
-            # Normalize for similarity computation
+            # Normalize both
             generated_norm = F.normalize(generated, p=2, dim=-1)
             target_norm = F.normalize(target, p=2, dim=-1)
             
-            # Compute similarities
+            # Cosine similarity
             cosine_sim = F.cosine_similarity(generated_norm, target_norm, dim=-1)
             per_image_sim = cosine_sim.mean(dim=1)
             
             # MSE in normalized space
             mse_loss = F.mse_loss(generated_norm, target_norm)
             
-            # Quality thresholds
+            # Quality metrics
             high_quality = (per_image_sim > 0.7).float().mean().item()
             very_high_quality = (per_image_sim > 0.8).float().mean().item()
             excellent_quality = (per_image_sim > 0.9).float().mean().item()
             
             return {
-                'eval_cosine_sim': per_image_sim.mean().item(),
+                'eval_eva_similarity': per_image_sim.mean().item(),
                 'eval_mse_loss': mse_loss.item(),
-                'high_quality_ratio': high_quality,
-                'very_high_quality_ratio': very_high_quality,
-                'excellent_quality_ratio': excellent_quality,
+                'eval_high_quality_ratio': high_quality,
+                'eval_very_high_quality_ratio': very_high_quality,
+                'eval_excellent_quality_ratio': excellent_quality,
                 'eval_similarity_std': per_image_sim.std().item(),
             }
-
-    def get_training_summary(self) -> Dict[str, Any]:
-        """Get comprehensive training summary"""
-        return {
-            'total_steps': self.step_count.item(),
-            'best_velocity_sim': self.best_velocity_sim.item(),
-            'best_loss': self.best_loss.item(),
-            'current_velocity_norm_ema': self.velocity_norm_ema.item(),
-            'current_error_norm_ema': self.error_norm_ema.item(),
-            'loss_scale': self.loss_scale,
-            'training_healthy': self.best_velocity_sim.item() > 0.01,
-            'converged': self.best_velocity_sim.item() > 0.3,
-        }
 
 
 def create_eva_reproduction_loss(
     prediction_type: str = "velocity",
-    normalize_targets: bool = True,
-    flow_type: str = "rectified",
-    loss_scale: float = 1.0,
-    gradient_clip_val: float = 1.0,
+    flow_type: str = "rectified", 
+    loss_weight: float = 1.0,
     debug_mode: bool = False,
     **kwargs
 ) -> BLIP3oEVAFlowMatchingLoss:
-    """
-    Factory function for EVA reproduction flow matching loss
-    """
+    """Factory function for EVA reproduction loss"""
     return BLIP3oEVAFlowMatchingLoss(
         prediction_type=prediction_type,
-        normalize_targets=normalize_targets,
         flow_type=flow_type,
-        loss_scale=loss_scale,
-        gradient_clip_val=gradient_clip_val,
+        loss_weight=loss_weight,
         debug_mode=debug_mode,
         **kwargs
     )
