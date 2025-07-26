@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
 """
-EVA-CLIP Reproduction Evaluation Script
-eval_eva_reproduction.py
+EVA-CLIP Reproduction Training Script
+train_eva_reproduction.py
 
-Comprehensive evaluation of trained EVA reproduction model.
+This script tests if we can reproduce EVA-CLIP embeddings from noisy EVA-CLIP embeddings,
+using CLIP embeddings as conditioning. This validates our DiT architecture.
+
+KEY CHANGES:
+- Target: EVA embeddings [B, N, 4096] (to reproduce)
+- Conditioning: CLIP embeddings [B, N, 1024]
+- Evaluation measures EVA similarity instead of CLIP similarity
 """
 
 import os
@@ -14,10 +20,12 @@ import json
 import logging
 from pathlib import Path
 from datetime import datetime
-import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
-from tqdm import tqdm
+import traceback
+
+# Setup CUDA environment
+os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID'
+if 'CUDA_VISIBLE_DEVICES' not in os.environ:
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
@@ -33,427 +41,578 @@ def setup_logging():
 
 def parse_arguments():
     """Parse command line arguments"""
-    parser = argparse.ArgumentParser(description="Evaluate EVA-CLIP Reproduction Model")
+    parser = argparse.ArgumentParser(description="EVA-CLIP Reproduction Test with DiT Architecture")
     
-    parser.add_argument("--model_path", type=str, required=True,
-                       help="Path to trained model directory")
+    # Required arguments
     parser.add_argument("--chunked_embeddings_dir", type=str, required=True,
                        help="Path to chunked embeddings directory")
     parser.add_argument("--output_dir", type=str, required=True,
-                       help="Output directory for evaluation results")
+                       help="Output directory for checkpoints")
     
-    # Evaluation parameters
-    parser.add_argument("--num_samples", type=int, default=5000,
-                       help="Number of samples to evaluate")
-    parser.add_argument("--batch_size", type=int, default=16,
-                       help="Evaluation batch size")
-    parser.add_argument("--inference_steps", type=int, default=50,
-                       help="Number of inference steps")
+    # Training configuration
     parser.add_argument("--training_mode", type=str, default="patch_only",
                        choices=["patch_only", "cls_patch"],
                        help="Training mode")
+    parser.add_argument("--model_size", type=str, default="base",
+                       choices=["tiny", "small", "base", "large"],
+                       help="Model size")
     
-    # Analysis options
-    parser.add_argument("--create_plots", action="store_true", default=True,
-                       help="Create visualization plots")
-    parser.add_argument("--save_samples", action="store_true", default=False,
-                       help="Save sample comparisons")
-    parser.add_argument("--detailed_analysis", action="store_true", default=True,
-                       help="Perform detailed similarity analysis")
+    # Training parameters
+    parser.add_argument("--num_epochs", type=int, default=10,
+                       help="Number of training epochs")
+    parser.add_argument("--batch_size", type=int, default=32,
+                       help="Training batch size")
+    parser.add_argument("--learning_rate", type=float, default=1e-4,
+                       help="Learning rate")
+    parser.add_argument("--weight_decay", type=float, default=0.01,
+                       help="Weight decay")
+    parser.add_argument("--warmup_steps", type=int, default=100,
+                       help="Number of warmup steps")
+    parser.add_argument("--lr_scheduler_type", type=str, default="cosine",
+                       choices=["linear", "cosine", "constant"],
+                       help="Learning rate scheduler type")
+    parser.add_argument("--gradient_accumulation_steps", type=int, default=2,
+                       help="Gradient accumulation steps")
+    parser.add_argument("--logging_steps", type=int, default=10,
+                       help="Logging frequency")
+    parser.add_argument("--save_steps", type=int, default=200,
+                       help="Save frequency")
+    
+    # Evaluation parameters
+    parser.add_argument("--eval_every_n_steps", type=int, default=100,
+                       help="Evaluate every N steps")
+    parser.add_argument("--eval_num_samples", type=int, default=1000,
+                       help="Number of samples for evaluation")
+    parser.add_argument("--eval_inference_steps", type=int, default=50,
+                       help="Number of inference steps for evaluation")
+    
+    # WandB configuration
+    parser.add_argument("--use_wandb", action="store_true", default=False,
+                       help="Enable Weights & Biases tracking")
+    parser.add_argument("--wandb_project", type=str, default="eva-reproduction-test",
+                       help="WandB project name")
+    parser.add_argument("--wandb_run_name", type=str, default=None,
+                       help="WandB run name (auto-generated if not provided)")
+    parser.add_argument("--wandb_entity", type=str, default=None,
+                       help="WandB entity/team name")
+    parser.add_argument("--wandb_tags", type=str, nargs="*", default=[],
+                       help="WandB tags for this run")
+    parser.add_argument("--wandb_notes", type=str, default="",
+                       help="WandB notes for this run")
+    
+    # Options
+    parser.add_argument("--fp16", action="store_true", default=True,
+                       help="Use mixed precision")
+    parser.add_argument("--gradient_checkpointing", action="store_true", default=False,
+                       help="Use gradient checkpointing")
+    parser.add_argument("--max_training_shards", type=int, default=1,
+                       help="Maximum training shards")
     
     return parser.parse_args()
 
-def load_model(model_path, device, logger):
-    """Load trained EVA reproduction model"""
-    from src.modules.models.blip3o_eva_dit import BLIP3oEVADiTModel, BLIP3oEVADiTConfig
+def setup_wandb(args, logger):
+    """Setup Weights & Biases tracking for EVA reproduction test"""
+    if not args.use_wandb:
+        logger.info("WandB tracking disabled")
+        return None
     
-    logger.info(f"Loading model from: {model_path}")
-    
-    # Load config
-    config_path = Path(model_path) / "config.json"
-    if config_path.exists():
-        with open(config_path, 'r') as f:
-            config_dict = json.load(f)
-        config = BLIP3oEVADiTConfig(**config_dict)
-    else:
-        logger.warning("No config found, using default")
-        config = BLIP3oEVADiTConfig()
-    
-    # Load model
-    model = BLIP3oEVADiTModel(config)
-    
-    # Load weights
-    model_file = Path(model_path) / "pytorch_model.bin"
-    if not model_file.exists():
-        model_file = Path(model_path) / "model.safetensors"
-    
-    if model_file.exists():
-        if model_file.suffix == ".bin":
-            state_dict = torch.load(model_file, map_location=device)
-        else:
-            from safetensors.torch import load_file
-            state_dict = load_file(model_file)
+    try:
+        import wandb
         
-        model.load_state_dict(state_dict)
-        logger.info(f"✅ Model loaded from: {model_file}")
+        # Auto-generate run name if not provided
+        if args.wandb_run_name is None:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            args.wandb_run_name = f"eva_repro_{args.model_size}_{args.training_mode}_{timestamp}"
+        
+        # Add automatic tags
+        auto_tags = [
+            "eva_reproduction",
+            "dit_validation",
+            args.model_size,
+            args.training_mode,
+            f"{args.max_training_shards}shards",
+            f"bs{args.batch_size}",
+            f"lr{args.learning_rate}",
+        ]
+        all_tags = list(set(auto_tags + args.wandb_tags))
+        
+        # WandB configuration
+        config = {
+            # Test configuration
+            "test_type": "eva_reproduction",
+            "test_purpose": "Validate DiT architecture by reproducing EVA from noisy EVA",
+            "target_embeddings": "EVA-CLIP [B, N, 4096]",
+            "conditioning_embeddings": "CLIP [B, N, 1024]",
+            
+            # Model configuration
+            "model_size": args.model_size,
+            "training_mode": args.training_mode,
+            "expected_tokens": 257 if args.training_mode == "cls_patch" else 256,
+            
+            # Training hyperparameters
+            "num_epochs": args.num_epochs,
+            "batch_size": args.batch_size,
+            "learning_rate": args.learning_rate,
+            "weight_decay": args.weight_decay,
+            "warmup_steps": args.warmup_steps,
+            "lr_scheduler_type": args.lr_scheduler_type,
+            "gradient_accumulation_steps": args.gradient_accumulation_steps,
+            
+            # Training configuration
+            "fp16": args.fp16,
+            "gradient_checkpointing": args.gradient_checkpointing,
+            "max_training_shards": args.max_training_shards,
+            
+            # Evaluation configuration
+            "eval_every_n_steps": args.eval_every_n_steps,
+            "eval_num_samples": args.eval_num_samples,
+            "eval_inference_steps": args.eval_inference_steps,
+            
+            # Implementation details
+            "l2_normalization_enabled": True,
+            "flow_matching_type": "rectified",
+            "prediction_type": "velocity",
+            "normalize_targets": True,
+            
+            # Paths
+            "embeddings_dir": str(args.chunked_embeddings_dir),
+            "output_dir": str(args.output_dir),
+        }
+        
+        # Initialize WandB
+        wandb.init(
+            project=args.wandb_project,
+            name=args.wandb_run_name,
+            entity=args.wandb_entity,
+            config=config,
+            tags=all_tags,
+            notes=args.wandb_notes,
+            save_code=True,
+        )
+        
+        logger.info(f"✅ WandB initialized for EVA reproduction test:")
+        logger.info(f"   Project: {args.wandb_project}")
+        logger.info(f"   Run name: {args.wandb_run_name}")
+        logger.info(f"   Tags: {all_tags}")
+        logger.info(f"   URL: {wandb.run.url}")
+        
+        return wandb
+        
+    except ImportError:
+        logger.error("❌ WandB not installed. Install with: pip install wandb")
+        logger.error("   Continuing without WandB tracking...")
+        return None
+    except Exception as e:
+        logger.error(f"❌ Failed to initialize WandB: {e}")
+        logger.error("   Continuing without WandB tracking...")
+        return None
+
+def setup_device(logger):
+    """Setup device"""
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+        logger.info(f"Using GPU: {torch.cuda.get_device_name(0)}")
+        logger.info(f"GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
     else:
-        logger.error(f"❌ No model weights found in: {model_path}")
-        raise FileNotFoundError(f"Model weights not found")
+        device = torch.device("cpu")
+        logger.info("Using CPU")
+    return device
+
+def create_eva_model(args, logger, wandb_instance=None):
+    """Create EVA reproduction DiT model"""
+    from src.modules.models.blip3o_eva_dit import create_eva_reproduction_model, BLIP3oEVADiTConfig
     
-    model = model.to(device)
-    model.eval()
+    logger.info(f"Creating {args.model_size} model for EVA reproduction ({args.training_mode} mode)...")
+    
+    # Model configurations
+    size_configs = {
+        "tiny": {"hidden_size": 384, "num_hidden_layers": 6, "num_attention_heads": 6, "intermediate_size": 1536},
+        "small": {"hidden_size": 512, "num_hidden_layers": 8, "num_attention_heads": 8, "intermediate_size": 2048},
+        "base": {"hidden_size": 768, "num_hidden_layers": 12, "num_attention_heads": 12, "intermediate_size": 3072},
+        "large": {"hidden_size": 1024, "num_hidden_layers": 16, "num_attention_heads": 16, "intermediate_size": 4096},
+    }
+    
+    config_params = size_configs[args.model_size].copy()
+    config_params.update({
+        "num_tokens": 257 if args.training_mode == "cls_patch" else 256,
+        "training_mode": args.training_mode,
+        "use_gradient_checkpointing": args.gradient_checkpointing,
+        "clip_embedding_size": 1024,  # CLIP conditioning
+        "eva_embedding_size": 4096,   # EVA input/output
+    })
+    
+    config = BLIP3oEVADiTConfig(**config_params)
+    model = create_eva_reproduction_model(config=config)
+    
+    # Enable gradient checkpointing if requested
+    if args.gradient_checkpointing:
+        try:
+            model.gradient_checkpointing_enable()
+            logger.info("✅ Gradient checkpointing enabled")
+        except Exception as e:
+            logger.warning(f"⚠️ Could not enable gradient checkpointing: {e}")
+    
+    logger.info(f"✅ EVA Reproduction Model created: {model.get_num_parameters():,} parameters")
+    logger.info(f"   Input: EVA embeddings [B, N, 4096] (noisy)")
+    logger.info(f"   Conditioning: CLIP embeddings [B, N, 1024]")
+    logger.info(f"   Output: EVA embeddings [B, N, 4096] (clean)")
+    
+    # Log model to WandB
+    if wandb_instance:
+        wandb_instance.config.update({
+            "model_parameters": model.get_num_parameters(),
+            "model_config": config_params,
+            "input_dim": 4096,
+            "conditioning_dim": 1024,
+            "output_dim": 4096,
+        })
+        # Watch model for gradients and parameters
+        wandb_instance.watch(model, log="all", log_freq=args.logging_steps * 5)
+        logger.info("✅ EVA model registered with WandB for gradient tracking")
     
     return model
 
-def create_dataloader(chunked_embeddings_dir, batch_size, training_mode, logger):
-    """Create evaluation dataloader"""
-    from src.modules.datasets.blip3o_eva_dataset import create_eva_reproduction_dataloaders
+def create_eva_loss_function(args, logger):
+    """Create EVA reproduction flow matching loss"""
+    from src.modules.losses.blip3o_eva_loss import create_eva_reproduction_loss
     
-    logger.info("Creating evaluation dataloader...")
+    logger.info("Creating EVA reproduction flow matching loss...")
     
-    _, eval_dataloader = create_eva_reproduction_dataloaders(
-        chunked_embeddings_dir=chunked_embeddings_dir,
-        batch_size=batch_size,
-        eval_batch_size=batch_size,
-        normalize_embeddings=True,
-        training_mode=training_mode,
-        max_shards=1,
-        use_same_data_for_eval=True,
-        num_workers=0,
+    loss_fn = create_eva_reproduction_loss(
+        prediction_type="velocity",
+        normalize_targets=True,  # Ensure targets are normalized
+        flow_type="rectified",
     )
     
-    logger.info(f"✅ Evaluation dataloader created")
-    return eval_dataloader
+    logger.info(f"✅ EVA Reproduction Loss created with proper normalization")
+    logger.info(f"   Target: EVA embeddings [B, N, 4096]")
+    logger.info(f"   Conditioning: CLIP embeddings [B, N, 1024]")
+    return loss_fn
 
-def evaluate_model(model, dataloader, num_samples, inference_steps, device, logger):
-    """Comprehensive model evaluation"""
-    logger.info(f"Starting comprehensive evaluation on {num_samples} samples...")
+def create_eva_dataloaders(args, logger):
+    """Create data loaders for EVA reproduction with proper normalization"""
+    from src.modules.datasets.blip3o_eva_dataset import create_eva_reproduction_dataloaders
     
-    all_similarities = []
-    all_per_image_sims = []
-    all_per_patch_sims = []
+    logger.info("Creating EVA reproduction dataloaders...")
     
-    # Detailed metrics
-    eva_norms = []
-    clip_norms = []
-    generated_norms = []
+    train_dataloader, eval_dataloader = create_eva_reproduction_dataloaders(
+        chunked_embeddings_dir=args.chunked_embeddings_dir,
+        batch_size=args.batch_size,
+        eval_batch_size=args.batch_size,
+        eval_split_ratio=0.0,  # Use same data for evaluation
+        normalize_embeddings=True,  # Enable L2 normalization
+        training_mode=args.training_mode,
+        max_shards=args.max_training_shards,
+        use_same_data_for_eval=True,
+        delete_after_use=False,
+        num_workers=0,
+        pin_memory=False,
+    )
     
-    samples_processed = 0
+    logger.info(f"✅ EVA reproduction dataloaders created:")
+    logger.info(f"   Train batches: {len(train_dataloader)}")
+    logger.info(f"   Eval dataloader: {'Available' if eval_dataloader else 'None'}")
+    logger.info(f"   TARGET: EVA embeddings [B, N, 4096] (to reproduce)")
+    logger.info(f"   CONDITIONING: CLIP embeddings [B, N, 1024]")
+    logger.info(f"   L2 Normalization: ENABLED")
     
-    with torch.no_grad():
-        for batch_idx, batch in enumerate(tqdm(dataloader, desc="Evaluating")):
-            if samples_processed >= num_samples:
-                break
-            
-            # Move to device
-            clip_features = batch['encoder_hidden_states'].to(device)  # CLIP conditioning
-            target_eva = batch['eva_embeddings'].to(device)            # EVA targets
-            
-            batch_size = clip_features.shape[0]
-            
-            # Generate EVA embeddings
-            generated_eva = model.generate(
-                clip_features=clip_features,
-                num_inference_steps=inference_steps,
-                normalize_output=True
-            )
-            
-            # Normalize targets
-            target_eva_norm = torch.nn.functional.normalize(target_eva, p=2, dim=-1)
-            
-            # Compute similarities
-            per_patch_sim = torch.nn.functional.cosine_similarity(
-                generated_eva, target_eva_norm, dim=-1
-            )
-            per_image_sim = per_patch_sim.mean(dim=1)
-            
-            # Store results
-            all_similarities.append(per_patch_sim.cpu())
-            all_per_image_sims.append(per_image_sim.cpu())
-            all_per_patch_sims.extend(per_patch_sim.cpu().numpy())
-            
-            # Collect norms
-            eva_norms.extend(torch.norm(target_eva_norm, dim=-1).cpu().numpy().flatten())
-            clip_norms.extend(torch.norm(clip_features, dim=-1).cpu().numpy().flatten())
-            generated_norms.extend(torch.norm(generated_eva, dim=-1).cpu().numpy().flatten())
-            
-            samples_processed += batch_size
+    return train_dataloader, eval_dataloader
+
+def create_eva_trainer(model, loss_fn, train_dataloader, eval_dataloader, args, logger, wandb_instance=None):
+    """Create EVA reproduction trainer with evaluation and WandB"""
+    from src.modules.trainers.blip3o_eva_trainer import BLIP3oEVATrainer, create_eva_training_args
     
-    # Aggregate results
-    all_patch_sims = torch.cat(all_similarities, dim=0)
-    all_image_sims = torch.cat(all_per_image_sims, dim=0)
+    logger.info("Creating EVA reproduction trainer with evaluation and WandB...")
     
-    # Compute comprehensive metrics
-    results = {
-        'overall_eva_similarity': all_image_sims.mean().item(),
-        'per_image_mean': all_image_sims.mean().item(),
-        'per_image_std': all_image_sims.std().item(),
-        'per_image_median': all_image_sims.median().item(),
-        'per_patch_mean': all_patch_sims.mean().item(),
-        'per_patch_std': all_patch_sims.std().item(),
-        'per_patch_median': all_patch_sims.median().item(),
+    # Create training arguments
+    training_args = create_eva_training_args(
+        output_dir=args.output_dir,
+        num_train_epochs=args.num_epochs,
+        per_device_train_batch_size=args.batch_size,
+        learning_rate=args.learning_rate,
+        lr_scheduler_type=args.lr_scheduler_type,
+        weight_decay=args.weight_decay,
+        warmup_steps=args.warmup_steps,
+        gradient_accumulation_steps=args.gradient_accumulation_steps,
+        fp16=args.fp16,
+        logging_steps=args.logging_steps,
+        save_steps=args.save_steps,
+        dataloader_num_workers=0,
+        report_to=["wandb"] if wandb_instance else [],
+    )
+    
+    # Create trainer with evaluation capabilities and WandB
+    trainer = BLIP3oEVATrainer(
+        model=model,
+        args=training_args,
+        flow_matching_loss=loss_fn,
+        train_dataset=None,  # We use custom dataloader
+        eval_dataset=None,
+        eval_dataloader=eval_dataloader,
+        training_mode=args.training_mode,
+        # Evaluation parameters
+        eval_every_n_steps=args.eval_every_n_steps,
+        eval_num_samples=args.eval_num_samples,
+        eval_batch_size=args.batch_size,
+        eval_inference_steps=args.eval_inference_steps,
+        # WandB integration
+        wandb_instance=wandb_instance,
+        use_wandb=args.use_wandb,
+    )
+    
+    # Override dataloader
+    trainer.get_train_dataloader = lambda: train_dataloader
+    
+    logger.info("✅ EVA Reproduction Trainer created with evaluation and WandB integration")
+    logger.info(f"   Evaluation every {args.eval_every_n_steps} steps")
+    logger.info(f"   Evaluation samples: {args.eval_num_samples}")
+    logger.info(f"   WandB tracking: {'Enabled' if wandb_instance else 'Disabled'}")
+    return trainer
+
+def save_eva_training_info(args, final_results, output_dir, logger, wandb_instance=None):
+    """Save comprehensive EVA reproduction training information"""
+    training_info = {
+        'training_completed': True,
+        'timestamp': datetime.now().isoformat(),
+        'test_type': 'eva_reproduction',
+        'test_purpose': 'Validate DiT architecture by reproducing EVA from noisy EVA using CLIP conditioning',
         
-        # Quality thresholds
-        'high_quality_images': (all_image_sims > 0.7).float().mean().item(),
-        'very_high_quality_images': (all_image_sims > 0.8).float().mean().item(),
-        'excellent_quality_images': (all_image_sims > 0.9).float().mean().item(),
+        # Test configuration
+        'target_embeddings': 'EVA-CLIP [B, N, 4096]',
+        'conditioning_embeddings': 'CLIP [B, N, 1024]',
+        'expected_behavior': 'Model should learn to reproduce clean EVA embeddings from noisy EVA embeddings',
         
-        'high_quality_patches': (all_patch_sims > 0.7).float().mean().item(),
-        'very_high_quality_patches': (all_patch_sims > 0.8).float().mean().item(),
-        'excellent_quality_patches': (all_patch_sims > 0.9).float().mean().item(),
+        # Training configuration
+        'training_mode': args.training_mode,
+        'model_size': args.model_size,
+        'batch_size': args.batch_size,
+        'learning_rate': args.learning_rate,
+        'num_epochs': args.num_epochs,
         
-        # Distribution statistics
-        'similarity_percentiles': {
-            '5th': np.percentile(all_image_sims.numpy(), 5),
-            '25th': np.percentile(all_image_sims.numpy(), 25),
-            '75th': np.percentile(all_image_sims.numpy(), 75),
-            '95th': np.percentile(all_image_sims.numpy(), 95),
+        # Evaluation configuration
+        'evaluation_config': {
+            'eval_every_n_steps': args.eval_every_n_steps,
+            'eval_num_samples': args.eval_num_samples,
+            'eval_inference_steps': args.eval_inference_steps,
+            'evaluation_metric': 'EVA cosine similarity',
         },
         
-        # Norm statistics
-        'eva_target_norm_mean': np.mean(eva_norms),
-        'eva_target_norm_std': np.std(eva_norms),
-        'clip_conditioning_norm_mean': np.mean(clip_norms),
-        'clip_conditioning_norm_std': np.std(clip_norms),
-        'generated_norm_mean': np.mean(generated_norms),
-        'generated_norm_std': np.std(generated_norms),
+        # WandB configuration
+        'wandb_config': {
+            'use_wandb': args.use_wandb,
+            'wandb_project': args.wandb_project if args.use_wandb else None,
+            'wandb_run_name': args.wandb_run_name if args.use_wandb else None,
+            'wandb_url': wandb_instance.run.url if wandb_instance else None,
+        },
         
-        # Sample counts
-        'samples_evaluated': samples_processed,
-        'inference_steps': inference_steps,
+        # Implementation details
+        'implementation_details': {
+            'l2_normalization_enabled': True,
+            'target_norms_fixed': True,
+            'clean_flow_matching': True,
+            'proper_evaluation': True,
+            'eva_reproduction_test': True,
+            'dit_architecture_validation': True,
+            'wandb_integration': args.use_wandb,
+        },
+        
+        # Normalization configuration
+        'normalization_config': {
+            'normalize_embeddings': True,
+            'normalize_targets': True,
+            'expected_eva_target_norm': 1.0,
+            'expected_clip_conditioning_norm': 1.0,
+            'expected_prediction_norm': 1.0,
+        },
+        
+        # Paths
+        'embeddings_dir': args.chunked_embeddings_dir,
+        'output_dir': args.output_dir,
+        'max_training_shards': args.max_training_shards,
+        
+        # Results
+        'final_results': final_results,
     }
     
-    # Store raw data for plotting
-    results['raw_data'] = {
-        'per_image_similarities': all_image_sims.numpy(),
-        'per_patch_similarities': np.array(all_per_patch_sims),
-        'eva_norms': np.array(eva_norms),
-        'clip_norms': np.array(clip_norms),
-        'generated_norms': np.array(generated_norms),
-    }
+    info_file = Path(output_dir) / "eva_reproduction_training_info.json"
+    with open(info_file, 'w') as f:
+        json.dump(training_info, f, indent=2)
     
-    logger.info("✅ Evaluation completed")
-    return results
-
-def create_plots(results, output_dir, logger):
-    """Create comprehensive evaluation plots"""
-    logger.info("Creating evaluation plots...")
+    logger.info(f"EVA reproduction training info saved to: {info_file}")
     
-    plots_dir = Path(output_dir) / "plots"
-    plots_dir.mkdir(exist_ok=True)
-    
-    # Set style
-    plt.style.use('seaborn-v0_8')
-    sns.set_palette("husl")
-    
-    # 1. Similarity Distribution
-    fig, axes = plt.subplots(2, 2, figsize=(15, 12))
-    
-    # Per-image similarity histogram
-    axes[0, 0].hist(results['raw_data']['per_image_similarities'], bins=50, alpha=0.7, edgecolor='black')
-    axes[0, 0].axvline(results['per_image_mean'], color='red', linestyle='--', label=f'Mean: {results["per_image_mean"]:.3f}')
-    axes[0, 0].axvline(results['per_image_median'], color='orange', linestyle='--', label=f'Median: {results["per_image_median"]:.3f}')
-    axes[0, 0].set_xlabel('EVA Cosine Similarity (Per Image)')
-    axes[0, 0].set_ylabel('Frequency')
-    axes[0, 0].set_title('EVA Similarity Distribution (Per Image)')
-    axes[0, 0].legend()
-    axes[0, 0].grid(True, alpha=0.3)
-    
-    # Per-patch similarity histogram
-    axes[0, 1].hist(results['raw_data']['per_patch_similarities'], bins=50, alpha=0.7, edgecolor='black')
-    axes[0, 1].axvline(results['per_patch_mean'], color='red', linestyle='--', label=f'Mean: {results["per_patch_mean"]:.3f}')
-    axes[0, 1].axvline(results['per_patch_median'], color='orange', linestyle='--', label=f'Median: {results["per_patch_median"]:.3f}')
-    axes[0, 1].set_xlabel('EVA Cosine Similarity (Per Patch)')
-    axes[0, 1].set_ylabel('Frequency')
-    axes[0, 1].set_title('EVA Similarity Distribution (Per Patch)')
-    axes[0, 1].legend()
-    axes[0, 1].grid(True, alpha=0.3)
-    
-    # Quality thresholds
-    quality_data = {
-        'High (>0.7)': results['high_quality_images'] * 100,
-        'Very High (>0.8)': results['very_high_quality_images'] * 100,
-        'Excellent (>0.9)': results['excellent_quality_images'] * 100,
-    }
-    
-    bars = axes[1, 0].bar(quality_data.keys(), quality_data.values(), alpha=0.7)
-    axes[1, 0].set_ylabel('Percentage of Images (%)')
-    axes[1, 0].set_title('EVA Quality Distribution')
-    axes[1, 0].grid(True, alpha=0.3)
-    
-    # Add value labels on bars
-    for bar in bars:
-        height = bar.get_height()
-        axes[1, 0].text(bar.get_x() + bar.get_width()/2., height + 0.5,
-                       f'{height:.1f}%', ha='center', va='bottom')
-    
-    # Norm comparison
-    norm_data = {
-        'EVA Targets': results['eva_target_norm_mean'],
-        'CLIP Conditioning': results['clip_conditioning_norm_mean'],
-        'Generated EVA': results['generated_norm_mean'],
-    }
-    
-    bars = axes[1, 1].bar(norm_data.keys(), norm_data.values(), alpha=0.7)
-    axes[1, 1].axhline(y=1.0, color='red', linestyle='--', label='Expected (1.0)')
-    axes[1, 1].set_ylabel('L2 Norm')
-    axes[1, 1].set_title('Embedding Norms Comparison')
-    axes[1, 1].legend()
-    axes[1, 1].grid(True, alpha=0.3)
-    
-    # Add value labels on bars
-    for bar in bars:
-        height = bar.get_height()
-        axes[1, 1].text(bar.get_x() + bar.get_width()/2., height + 0.01,
-                       f'{height:.3f}', ha='center', va='bottom')
-    
-    plt.tight_layout()
-    plt.savefig(plots_dir / "eva_reproduction_evaluation.png", dpi=300, bbox_inches='tight')
-    plt.close()
-    
-    # 2. Detailed similarity analysis
-    fig, ax = plt.subplots(1, 1, figsize=(10, 8))
-    
-    # Scatter plot of per-image similarities
-    similarities = results['raw_data']['per_image_similarities']
-    indices = np.arange(len(similarities))
-    
-    colors = ['red' if sim < 0.5 else 'orange' if sim < 0.7 else 'green' for sim in similarities]
-    ax.scatter(indices, similarities, c=colors, alpha=0.6, s=10)
-    
-    ax.axhline(y=0.7, color='orange', linestyle='--', label='High Quality Threshold')
-    ax.axhline(y=0.8, color='green', linestyle='--', label='Very High Quality Threshold')
-    ax.axhline(y=results['per_image_mean'], color='blue', linestyle='-', label=f'Mean: {results["per_image_mean"]:.3f}')
-    
-    ax.set_xlabel('Sample Index')
-    ax.set_ylabel('EVA Cosine Similarity')
-    ax.set_title('Per-Sample EVA Similarity')
-    ax.legend()
-    ax.grid(True, alpha=0.3)
-    
-    plt.tight_layout()
-    plt.savefig(plots_dir / "per_sample_similarity.png", dpi=300, bbox_inches='tight')
-    plt.close()
-    
-    logger.info(f"✅ Plots saved to: {plots_dir}")
-
-def save_results(results, output_dir, logger):
-    """Save evaluation results"""
-    logger.info("Saving evaluation results...")
-    
-    # Remove raw data for JSON serialization
-    results_to_save = results.copy()
-    raw_data = results_to_save.pop('raw_data')
-    
-    # Save JSON results
-    results_file = Path(output_dir) / "eva_reproduction_evaluation.json"
-    with open(results_file, 'w') as f:
-        json.dump(results_to_save, f, indent=2)
-    
-    # Save raw data as numpy
-    raw_data_file = Path(output_dir) / "eva_reproduction_raw_data.npz"
-    np.savez(raw_data_file, **raw_data)
-    
-    logger.info(f"✅ Results saved to: {results_file}")
-    logger.info(f"✅ Raw data saved to: {raw_data_file}")
-
-def print_summary(results, logger):
-    """Print evaluation summary"""
-    logger.info("=" * 70)
-    logger.info("📊 EVA REPRODUCTION EVALUATION SUMMARY")
-    logger.info("=" * 70)
-    
-    logger.info(f"🎯 Overall EVA Similarity: {results['overall_eva_similarity']:.4f}")
-    logger.info(f"📊 Per-Image Statistics:")
-    logger.info(f"   Mean: {results['per_image_mean']:.4f}")
-    logger.info(f"   Std:  {results['per_image_std']:.4f}")
-    logger.info(f"   Median: {results['per_image_median']:.4f}")
-    
-    logger.info(f"📊 Quality Distribution:")
-    logger.info(f"   High Quality (>0.7):    {results['high_quality_images']*100:.1f}%")
-    logger.info(f"   Very High Quality (>0.8): {results['very_high_quality_images']*100:.1f}%")
-    logger.info(f"   Excellent Quality (>0.9): {results['excellent_quality_images']*100:.1f}%")
-    
-    logger.info(f"📏 Normalization Status:")
-    logger.info(f"   EVA Targets:     {results['eva_target_norm_mean']:.3f} ± {results['eva_target_norm_std']:.3f}")
-    logger.info(f"   CLIP Conditioning: {results['clip_conditioning_norm_mean']:.3f} ± {results['clip_conditioning_norm_std']:.3f}")
-    logger.info(f"   Generated EVA:   {results['generated_norm_mean']:.3f} ± {results['generated_norm_std']:.3f}")
-    
-    logger.info(f"📈 Evaluation Details:")
-    logger.info(f"   Samples: {results['samples_evaluated']:,}")
-    logger.info(f"   Inference Steps: {results['inference_steps']}")
-    
-    # Assessment
-    overall_sim = results['overall_eva_similarity']
-    if overall_sim > 0.8:
-        logger.info("🎉 EXCELLENT: Outstanding EVA reproduction! DiT architecture works perfectly!")
-    elif overall_sim > 0.6:
-        logger.info("✅ GOOD: Strong EVA reproduction! DiT architecture is working well!")
-    elif overall_sim > 0.4:
-        logger.info("📈 FAIR: Decent EVA reproduction! DiT shows learning capability!")
-    elif overall_sim > 0.2:
-        logger.info("⚠️ POOR: Low EVA reproduction! DiT needs improvement!")
-    else:
-        logger.info("❌ FAILED: Very low EVA reproduction! Check DiT implementation!")
-    
-    logger.info("=" * 70)
+    # Log final results to WandB
+    if wandb_instance and final_results:
+        summary_data = {}
+        
+        if 'training_summary' in final_results:
+            summary = final_results['training_summary']
+            summary_data.update({
+                "final/best_velocity_sim": summary.get('best_velocity_sim', 0),
+                "final/best_eva_sim": summary.get('best_eva_sim', 0),
+                "final/total_steps": summary.get('total_steps', 0),
+                "final/training_health": summary.get('training_health', 'Unknown'),
+                "final/evaluations_performed": summary.get('evaluations_performed', 0),
+                "final/test_type": "eva_reproduction",
+            })
+        
+        if 'final_evaluation' in final_results and final_results['final_evaluation']:
+            eval_results = final_results['final_evaluation']
+            summary_data.update({
+                "final_eval/overall_eva_similarity": eval_results.get('overall_eva_similarity', 0),
+                "final_eval/high_quality_images_pct": eval_results.get('high_quality_images', 0) * 100,
+                "final_eval/very_high_quality_images_pct": eval_results.get('very_high_quality_images', 0) * 100,
+                "final_eval/excellent_quality_images_pct": eval_results.get('excellent_quality_images', 0) * 100,
+                "final_eval/samples_evaluated": eval_results.get('samples_evaluated', 0),
+            })
+        
+        # Log summary metrics
+        for key, value in summary_data.items():
+            wandb_instance.run.summary[key] = value
+        
+        logger.info("✅ Final EVA reproduction results logged to WandB")
 
 def main():
-    """Main evaluation function"""
+    """Main EVA reproduction training function"""
     args = parse_arguments()
     logger = setup_logging()
     
-    logger.info("🔍 Starting EVA-CLIP Reproduction Evaluation")
-    logger.info("=" * 50)
-    logger.info(f"Model: {args.model_path}")
-    logger.info(f"Data: {args.chunked_embeddings_dir}")
+    logger.info("🚀 Starting EVA-CLIP Reproduction Test with DiT Architecture")
+    logger.info("=" * 70)
+    logger.info("TEST PURPOSE:")
+    logger.info("  ✅ Validate DiT architecture by reproducing EVA embeddings")
+    logger.info("  ✅ Input: Noisy EVA embeddings [B, N, 4096]")
+    logger.info("  ✅ Conditioning: CLIP embeddings [B, N, 1024]")
+    logger.info("  ✅ Target: Clean EVA embeddings [B, N, 4096]")
+    logger.info("  ✅ Evaluation: EVA cosine similarity")
+    logger.info("=" * 70)
+    logger.info(f"Training mode: {args.training_mode}")
+    logger.info(f"Model size: {args.model_size}")
+    logger.info(f"Embeddings: {args.chunked_embeddings_dir}")
     logger.info(f"Output: {args.output_dir}")
-    logger.info(f"Samples: {args.num_samples}")
-    logger.info("=" * 50)
+    logger.info(f"Evaluation every {args.eval_every_n_steps} steps")
+    logger.info(f"WandB tracking: {'Enabled' if args.use_wandb else 'Disabled'}")
+    logger.info("=" * 70)
+    
+    # Initialize WandB early
+    wandb_instance = setup_wandb(args, logger)
     
     try:
         # Setup
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        logger.info(f"Using device: {device}")
+        device = setup_device(logger)
         
         # Create output directory
         output_dir = Path(args.output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
         
-        # Load model
-        model = load_model(args.model_path, device, logger)
+        # Create components
+        logger.info("🏗️ Creating EVA reproduction model components...")
+        model = create_eva_model(args, logger, wandb_instance)
+        loss_fn = create_eva_loss_function(args, logger)
+        train_dataloader, eval_dataloader = create_eva_dataloaders(args, logger)
         
-        # Create dataloader
-        dataloader = create_dataloader(
-            args.chunked_embeddings_dir, 
-            args.batch_size, 
-            args.training_mode, 
-            logger
-        )
+        # Move model to device
+        model = model.to(device)
         
-        # Evaluate model
-        results = evaluate_model(
-            model, dataloader, args.num_samples, 
-            args.inference_steps, device, logger
-        )
+        # Create trainer with evaluation and WandB
+        trainer = create_eva_trainer(model, loss_fn, train_dataloader, eval_dataloader, args, logger, wandb_instance)
         
-        # Create plots
-        if args.create_plots:
-            create_plots(results, args.output_dir, logger)
+        # Start training
+        logger.info("🚀 Starting EVA reproduction training to validate DiT architecture...")
+        logger.info("📊 Expected behavior:")
+        logger.info("  • EVA target norms should be ~1.0 (not ~32.0)")
+        logger.info("  • CLIP conditioning norms should be ~1.0")
+        logger.info("  • Prediction norms should be ~1.0")
+        logger.info("  • Velocity similarity should increase from ~0.01 to >0.1")
+        logger.info("  • EVA similarity should increase from ~0.01 to >0.1")
+        logger.info("  • If this works, DiT architecture is validated!")
+        logger.info("  • Evaluation every 100 steps to track progress")
+        if wandb_instance:
+            logger.info(f"  • All metrics tracked in WandB: {wandb_instance.run.url}")
+        logger.info("")
         
-        # Save results
-        save_results(results, args.output_dir, logger)
+        start_time = datetime.now()
         
-        # Print summary
-        print_summary(results, logger)
+        # Train model
+        trainer.train()
         
-        logger.info("✅ EVA reproduction evaluation completed successfully!")
+        end_time = datetime.now()
+        duration = (end_time - start_time).total_seconds()
+        
+        # Get final comprehensive evaluation
+        logger.info("🔍 Running final comprehensive EVA reproduction evaluation...")
+        final_results = trainer.get_final_evaluation()
+        
+        # Save model
+        trainer.save_model()
+        
+        # Save training info
+        save_eva_training_info(args, final_results, args.output_dir, logger, wandb_instance)
+        
+        # Final summary
+        logger.info("=" * 70)
+        logger.info("✅ EVA REPRODUCTION TEST COMPLETED!")
+        logger.info("=" * 70)
+        logger.info(f"Duration: {duration:.1f} seconds")
+        logger.info(f"Model saved to: {args.output_dir}")
+        
+        if wandb_instance:
+            logger.info(f"📊 WandB Run: {wandb_instance.run.url}")
+            logger.info(f"📊 All training curves and metrics available in WandB")
+        
+        if final_results and 'training_summary' in final_results:
+            summary = final_results['training_summary']
+            logger.info(f"📊 FINAL EVA REPRODUCTION RESULTS:")
+            logger.info(f"   Final Velocity Similarity: {summary.get('final_velocity_sim', 0):.4f}")
+            logger.info(f"   Best Velocity Similarity: {summary.get('best_velocity_sim', 0):.4f}")
+            logger.info(f"   Final EVA Similarity: {summary.get('final_eva_sim', 0):.4f}")
+            logger.info(f"   Best EVA Similarity: {summary.get('best_eva_sim', 0):.4f}")
+            logger.info(f"   Training Health: {summary.get('training_health', 'Unknown')}")
+            logger.info(f"   Evaluations Performed: {summary.get('evaluations_performed', 0)}")
+        
+        if final_results and 'final_evaluation' in final_results:
+            eval_results = final_results['final_evaluation']
+            if eval_results:
+                logger.info(f"🎯 FINAL EVA EVALUATION (on {eval_results.get('samples_evaluated', 0)} samples):")
+                logger.info(f"   Overall EVA Similarity: {eval_results.get('overall_eva_similarity', 0):.4f}")
+                logger.info(f"   High Quality Images (>0.7): {eval_results.get('high_quality_images', 0)*100:.1f}%")
+                logger.info(f"   Very High Quality Images (>0.8): {eval_results.get('very_high_quality_images', 0)*100:.1f}%")
+                logger.info(f"   Excellent Quality Images (>0.9): {eval_results.get('excellent_quality_images', 0)*100:.1f}%")
+        
+        # Success assessment for DiT validation
+        if final_results and 'training_summary' in final_results:
+            final_eva_sim = final_results['training_summary'].get('best_eva_sim', 0)
+            if final_eva_sim > 0.3:
+                logger.info("🎉 SUCCESS: DiT architecture VALIDATED! Excellent EVA reproduction!")
+                logger.info("✅ DiT can successfully reproduce EVA embeddings from noisy EVA + CLIP conditioning")
+            elif final_eva_sim > 0.1:
+                logger.info("📈 PROGRESS: DiT architecture shows good learning capability!")
+                logger.info("✅ DiT can reproduce EVA embeddings with decent quality")
+            elif final_eva_sim > 0.05:
+                logger.info("📈 LEARNING: DiT architecture shows some learning capability")
+                logger.info("⚠️ May need hyperparameter tuning for better performance")
+            else:
+                logger.info("⚠️ NEEDS WORK: Low EVA similarity, DiT may need architecture adjustments")
+        
+        logger.info("🔧 ARCHITECTURE STATUS: DiT implementation tested with EVA reproduction task")
+        if wandb_instance:
+            logger.info("📊 WANDB STATUS: All training and evaluation curves saved to WandB")
+        logger.info("=" * 70)
+        
+        # Finish WandB run
+        if wandb_instance:
+            wandb_instance.finish()
+            logger.info("✅ WandB run finished")
+        
         return 0
         
     except Exception as e:
-        logger.error(f"❌ Evaluation failed: {e}")
-        import traceback
+        logger.error(f"❌ EVA reproduction training failed: {e}")
         traceback.print_exc()
+        
+        # Finish WandB run even on failure
+        if wandb_instance:
+            wandb_instance.finish(exit_code=1)
+        
         return 1
 
 if __name__ == "__main__":

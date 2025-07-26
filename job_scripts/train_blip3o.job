@@ -52,7 +52,7 @@ LR_SCHEDULER="cosine"           # Better convergence
 # Evaluation parameters (less frequent due to cost)
 EVAL_EVERY_N_STEPS=200
 EVAL_NUM_SAMPLES=100
-EVAL_INFERENCE_STEPS=50
+EVAL_INFERENCE_STEPS=100
 
 # WandB configuration
 WANDB_PROJECT="eva-clip"
