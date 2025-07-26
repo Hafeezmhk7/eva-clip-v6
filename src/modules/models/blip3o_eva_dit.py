@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """
-COMPLETELY FIXED: BLIP3-o DiT Model with Correct Generation
-src/modules/models/blip3o_patch_dit.py
+Modified BLIP3-o DiT Model for EVA-CLIP Reproduction Testing
+src/modules/models/blip3o_eva_dit.py
 
-KEY FIXES:
-1. Removed confusing output scaling
-2. Generation matches training exactly
-3. Proper normalization following BLIP3-o paper
-4. Clean and simple implementation
+This version tests reproducing EVA-CLIP embeddings from noisy EVA-CLIP embeddings,
+using CLIP embeddings as conditioning.
+
+KEY CHANGES:
+- Input: Noisy EVA embeddings [B, N, 4096]
+- Conditioning: CLIP embeddings [B, N, 1024]
+- Output: Clean EVA embeddings [B, N, 4096]
 """
 
 import torch
@@ -22,9 +24,9 @@ from functools import partial
 
 logger = logging.getLogger(__name__)
 
-class BLIP3oDiTConfig(PretrainedConfig):
-    """Configuration class for BLIP3-o DiT model"""
-    model_type = "blip3o_patch_dit"
+class BLIP3oEVADiTConfig(PretrainedConfig):
+    """Configuration class for EVA reproduction DiT model"""
+    model_type = "blip3o_eva_dit"
     
     def __init__(
         self,
@@ -32,8 +34,8 @@ class BLIP3oDiTConfig(PretrainedConfig):
         num_hidden_layers: int = 12,
         num_attention_heads: int = 12,
         intermediate_size: int = 3072,
-        eva_embedding_size: int = 4096,
-        clip_embedding_size: int = 1024,
+        clip_embedding_size: int = 1024,  # CLIP conditioning dimension
+        eva_embedding_size: int = 4096,   # EVA input/output dimension
         num_tokens: int = 256,
         max_position_embeddings: int = 256,
         dropout_prob: float = 0.1,
@@ -46,8 +48,8 @@ class BLIP3oDiTConfig(PretrainedConfig):
         self.num_hidden_layers = num_hidden_layers
         self.num_attention_heads = num_attention_heads
         self.intermediate_size = intermediate_size
-        self.eva_embedding_size = eva_embedding_size
         self.clip_embedding_size = clip_embedding_size
+        self.eva_embedding_size = eva_embedding_size
         self.num_tokens = num_tokens
         self.max_position_embeddings = max_position_embeddings
         self.dropout_prob = dropout_prob
@@ -172,9 +174,9 @@ class MultiHeadAttention(nn.Module):
         return self.o_proj(attn_output)
 
 
-class BLIP3oDiTBlock(nn.Module):
-    """DiT block with gradient checkpointing support"""
-    def __init__(self, config: BLIP3oDiTConfig):
+class BLIP3oEVADiTBlock(nn.Module):
+    """DiT block for EVA reproduction with CLIP conditioning"""
+    def __init__(self, config: BLIP3oEVADiTConfig):
         super().__init__()
         self.hidden_size = config.hidden_size
         
@@ -193,7 +195,8 @@ class BLIP3oDiTBlock(nn.Module):
             nn.Dropout(config.dropout_prob),
         )
         
-        self.eva_proj = nn.Linear(config.eva_embedding_size, config.hidden_size)
+        # Project CLIP embeddings to hidden dimension for cross-attention
+        self.clip_proj = nn.Linear(config.clip_embedding_size, config.hidden_size)
         self.rope = RotaryPositionalEmbedding3D(config.hidden_size)
 
     def _self_attention_block(self, hidden_states: torch.Tensor) -> torch.Tensor:
@@ -204,8 +207,8 @@ class BLIP3oDiTBlock(nn.Module):
     
     def _cross_attention_block(self, hidden_states: torch.Tensor, encoder_hidden_states: torch.Tensor) -> torch.Tensor:
         norm_hidden = self.norm2(hidden_states)
-        eva_features = self.eva_proj(encoder_hidden_states)
-        cross_attn_output = self.cross_attn(norm_hidden, eva_features, eva_features)
+        clip_features = self.clip_proj(encoder_hidden_states)  # Project CLIP to hidden_size
+        cross_attn_output = self.cross_attn(norm_hidden, clip_features, clip_features)
         return hidden_states + cross_attn_output
     
     def _ffn_block(self, hidden_states: torch.Tensor) -> torch.Tensor:
@@ -220,23 +223,27 @@ class BLIP3oDiTBlock(nn.Module):
         return hidden_states
 
 
-class BLIP3oPatchDiTModel(PreTrainedModel):
+class BLIP3oEVADiTModel(PreTrainedModel):
     """
-    COMPLETELY FIXED: BLIP3-o Patch-Level DiT Model aligned with paper
+    Modified DiT Model for EVA-CLIP Reproduction Testing
+    
+    Input: Noisy EVA embeddings [B, N, 4096]
+    Conditioning: CLIP embeddings [B, N, 1024]
+    Output: Clean EVA embeddings [B, N, 4096]
     """
     
-    config_class = BLIP3oDiTConfig
+    config_class = BLIP3oEVADiTConfig
     supports_gradient_checkpointing = True
     _supports_gradient_checkpointing = True
     
-    def __init__(self, config: BLIP3oDiTConfig):
+    def __init__(self, config: BLIP3oEVADiTConfig):
         super().__init__(config)
         self.config = config
         
         self.gradient_checkpointing = False
         
-        # Input projection from CLIP dimension to hidden dimension
-        self.input_proj = nn.Linear(config.clip_embedding_size, config.hidden_size, bias=True)
+        # Input projection from EVA dimension to hidden dimension
+        self.input_proj = nn.Linear(config.eva_embedding_size, config.hidden_size, bias=True)
         
         # Timestep embedding
         self.timestep_embedder = TimestepEmbedder(config.hidden_size)
@@ -246,22 +253,25 @@ class BLIP3oPatchDiTModel(PreTrainedModel):
         
         # Transformer blocks
         self.blocks = nn.ModuleList([
-            BLIP3oDiTBlock(config) for _ in range(config.num_hidden_layers)
+            BLIP3oEVADiTBlock(config) for _ in range(config.num_hidden_layers)
         ])
         
         # Output layers
         self.output_norm = nn.LayerNorm(config.hidden_size, eps=1e-6)
-        self.output_proj = nn.Linear(config.hidden_size, config.clip_embedding_size, bias=True)
+        self.output_proj = nn.Linear(config.hidden_size, config.eva_embedding_size, bias=True)
         
         # Initialize weights
         self.apply(self._init_weights)
         nn.init.normal_(self.pos_embed, std=0.02)
         
-        # FIXED: Initialize output projection to small values for stability
+        # Initialize output projection to small values for stability
         nn.init.normal_(self.output_proj.weight, std=0.02)
         nn.init.zeros_(self.output_proj.bias)
         
-        logger.info(f"✅ FIXED BLIP3-o model initialized (no scaling confusion)")
+        logger.info(f"✅ EVA Reproduction DiT model initialized:")
+        logger.info(f"   Input: EVA embeddings [B, N, {config.eva_embedding_size}] (noisy)")
+        logger.info(f"   Conditioning: CLIP embeddings [B, N, {config.clip_embedding_size}]")
+        logger.info(f"   Output: EVA embeddings [B, N, {config.eva_embedding_size}] (clean)")
         logger.info(f"   Training mode: {config.training_mode}")
         logger.info(f"   Token count: {config.num_tokens}")
         logger.info(f"   Parameters: {self.get_num_parameters():,}")
@@ -276,7 +286,7 @@ class BLIP3oPatchDiTModel(PreTrainedModel):
             nn.init.ones_(module.weight)
 
     def _set_gradient_checkpointing(self, module, value=False):
-        if isinstance(module, BLIP3oDiTBlock):
+        if isinstance(module, BLIP3oEVADiTBlock):
             pass
 
     def gradient_checkpointing_enable(self, gradient_checkpointing_kwargs=None):
@@ -305,31 +315,31 @@ class BLIP3oPatchDiTModel(PreTrainedModel):
 
     def forward(
         self,
-        hidden_states: torch.Tensor,  # [B, N, 1024] - Noisy CLIP embeddings
+        hidden_states: torch.Tensor,  # [B, N, 4096] - Noisy EVA embeddings
         timestep: torch.Tensor,  # [B] - Flow matching timesteps
-        encoder_hidden_states: torch.Tensor,  # [B, N, 4096] - EVA-CLIP conditioning
+        encoder_hidden_states: torch.Tensor,  # [B, N, 1024] - CLIP conditioning
         return_dict: bool = True,
         **kwargs
     ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
         """
-        Forward pass for training/inference
+        Forward pass for EVA reproduction
         
         Args:
-            hidden_states: Noisy CLIP embeddings [B, N, 1024]
+            hidden_states: Noisy EVA embeddings [B, N, 4096]
             timestep: Flow matching timesteps [B]
-            encoder_hidden_states: EVA-CLIP conditioning [B, N, 4096]
+            encoder_hidden_states: CLIP conditioning [B, N, 1024]
         
         Returns:
-            Velocity prediction [B, N, 1024]
+            Velocity prediction [B, N, 4096]
         """
         batch_size, seq_len, input_dim = hidden_states.shape
         
         # Validate inputs
-        assert input_dim == self.config.clip_embedding_size, f"Expected {self.config.clip_embedding_size}-dim input, got {input_dim}"
+        assert input_dim == self.config.eva_embedding_size, f"Expected {self.config.eva_embedding_size}-dim EVA input, got {input_dim}"
         assert seq_len in [256, 257], f"Expected 256 or 257 tokens, got {seq_len}"
-        assert encoder_hidden_states.shape[2] == self.config.eva_embedding_size, f"Expected {self.config.eva_embedding_size}-dim EVA features"
+        assert encoder_hidden_states.shape[2] == self.config.clip_embedding_size, f"Expected {self.config.clip_embedding_size}-dim CLIP features"
         
-        # Project input to hidden dimension
+        # Project EVA input to hidden dimension
         x = self.input_proj(hidden_states)  # [B, N, hidden_size]
         
         # Add positional embeddings
@@ -343,18 +353,16 @@ class BLIP3oPatchDiTModel(PreTrainedModel):
         timestep_emb = timestep_emb.unsqueeze(1).expand(-1, seq_len, -1)  # [B, N, hidden_size]
         x = x + timestep_emb
         
-        # Pass through transformer blocks
+        # Pass through transformer blocks with CLIP conditioning
         for block in self.blocks:
             if self.gradient_checkpointing and self.training:
                 x = self._gradient_checkpointing_func(block, x, encoder_hidden_states)
             else:
                 x = block(x, encoder_hidden_states)
         
-        # Output projection
+        # Output projection back to EVA dimension
         x = self.output_norm(x)
-        velocity_pred = self.output_proj(x)  # [B, N, 1024]
-        
-        # FIXED: No output scaling - clean predictions
+        velocity_pred = self.output_proj(x)  # [B, N, 4096]
         
         if return_dict:
             return {
@@ -367,7 +375,7 @@ class BLIP3oPatchDiTModel(PreTrainedModel):
     @torch.no_grad()
     def generate(
         self,
-        eva_features: torch.Tensor,  # [B, N, 4096] - EVA-CLIP conditioning
+        clip_features: torch.Tensor,  # [B, N, 1024] - CLIP conditioning
         num_inference_steps: int = 50,
         generator: Optional[torch.Generator] = None,
         return_intermediate: bool = False,
@@ -375,22 +383,17 @@ class BLIP3oPatchDiTModel(PreTrainedModel):
         guidance_scale: float = 1.0,
     ) -> torch.Tensor:
         """
-        FIXED: Generate CLIP embeddings using rectified flow (matches training exactly)
-        
-        This generation process exactly reverses the training process:
-        1. Start from noise
-        2. Use the learned velocity field to flow to data
-        3. Normalize output for retrieval (as per BLIP3-o paper)
+        Generate EVA embeddings from CLIP conditioning using rectified flow
         """
-        device = eva_features.device
-        batch_size, num_tokens, _ = eva_features.shape
+        device = clip_features.device
+        batch_size, num_tokens, _ = clip_features.shape
         
-        # Start from pure noise (same as training)
+        # Start from pure noise (same dimension as EVA: 4096)
         x = torch.randn(
-            batch_size, num_tokens, self.config.clip_embedding_size,
+            batch_size, num_tokens, self.config.eva_embedding_size,
             device=device,
             generator=generator,
-            dtype=eva_features.dtype
+            dtype=clip_features.dtype
         )
         
         # RECTIFIED FLOW: Linear timestep schedule from 1 (noise) to 0 (data)
@@ -401,13 +404,13 @@ class BLIP3oPatchDiTModel(PreTrainedModel):
         
         for i in range(num_inference_steps):
             # Current timestep
-            t = torch.full((batch_size,), timesteps[i], device=device, dtype=eva_features.dtype)
+            t = torch.full((batch_size,), timesteps[i], device=device, dtype=clip_features.dtype)
             
             # Predict velocity
             velocity = self.forward(
                 hidden_states=x,
                 timestep=t,
-                encoder_hidden_states=eva_features,
+                encoder_hidden_states=clip_features,
                 return_dict=False
             )
             
@@ -422,7 +425,7 @@ class BLIP3oPatchDiTModel(PreTrainedModel):
             if return_intermediate:
                 intermediates.append(x.clone())
         
-        # Final normalization for retrieval (BLIP3-o paper)
+        # Final normalization for similarity comparison
         if normalize_output:
             x = torch.nn.functional.normalize(x, p=2, dim=-1)
         
@@ -433,28 +436,26 @@ class BLIP3oPatchDiTModel(PreTrainedModel):
     @torch.no_grad()
     def evaluate_similarity(
         self,
-        eva_features: torch.Tensor,  # [B, N, 4096]
-        target_embeddings: torch.Tensor,  # [B, N, 1024]
+        clip_features: torch.Tensor,  # [B, N, 1024]
+        target_eva_embeddings: torch.Tensor,  # [B, N, 4096]
         num_inference_steps: int = 50,
         normalize_embeddings: bool = True,
     ) -> Dict[str, float]:
         """
-        Evaluate embedding similarity between generated and target embeddings
-        
-        This is the key metric for BLIP3-o evaluation
+        Evaluate EVA embedding similarity between generated and target embeddings
         """
-        # Generate embeddings
+        # Generate EVA embeddings from CLIP conditioning
         generated = self.generate(
-            eva_features=eva_features,
+            clip_features=clip_features,
             num_inference_steps=num_inference_steps,
             normalize_output=normalize_embeddings
         )
         
         # Normalize targets if needed
         if normalize_embeddings:
-            targets_norm = torch.nn.functional.normalize(target_embeddings, p=2, dim=-1)
+            targets_norm = torch.nn.functional.normalize(target_eva_embeddings, p=2, dim=-1)
         else:
-            targets_norm = target_embeddings
+            targets_norm = target_eva_embeddings
         
         # Compute cosine similarity per patch
         per_patch_sim = torch.nn.functional.cosine_similarity(generated, targets_norm, dim=-1)
@@ -466,7 +467,7 @@ class BLIP3oPatchDiTModel(PreTrainedModel):
         overall_sim = per_image_sim.mean().item()
         
         return {
-            'overall_embedding_similarity': overall_sim,
+            'overall_eva_similarity': overall_sim,
             'per_image_mean': per_image_sim.mean().item(),
             'per_image_std': per_image_sim.std().item(),
             'per_patch_mean': per_patch_sim.mean().item(),
@@ -481,21 +482,21 @@ class BLIP3oPatchDiTModel(PreTrainedModel):
         return sum(p.numel() for p in self.parameters() if p.requires_grad)
 
 
-def create_blip3o_patch_dit_model(
-    config: Optional[BLIP3oDiTConfig] = None,
+def create_eva_reproduction_model(
+    config: Optional[BLIP3oEVADiTConfig] = None,
     training_mode: str = "patch_only",
     hidden_size: int = 768,
     num_hidden_layers: int = 12,
     num_attention_heads: int = 12,
     use_gradient_checkpointing: bool = False,
     **kwargs
-) -> BLIP3oPatchDiTModel:
+) -> BLIP3oEVADiTModel:
     """
-    Create BLIP3-o patch DiT model
+    Create EVA reproduction DiT model
     """
     if config is None:
         num_tokens = 257 if training_mode == "cls_patch" else 256
-        config = BLIP3oDiTConfig(
+        config = BLIP3oEVADiTConfig(
             hidden_size=hidden_size,
             num_hidden_layers=num_hidden_layers,
             num_attention_heads=num_attention_heads,
@@ -503,10 +504,12 @@ def create_blip3o_patch_dit_model(
             max_position_embeddings=max(num_tokens, 257),
             training_mode=training_mode,
             use_gradient_checkpointing=use_gradient_checkpointing,
+            clip_embedding_size=1024,  # CLIP conditioning
+            eva_embedding_size=4096,   # EVA input/output
             **kwargs
         )
     
-    model = BLIP3oPatchDiTModel(config)
+    model = BLIP3oEVADiTModel(config)
     
     if use_gradient_checkpointing:
         try:

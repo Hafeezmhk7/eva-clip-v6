@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
 """
-FIXED: BLIP3-o Dataset with Proper L2 Normalization
-src/modules/datasets/blip3o_dataset.py
+Modified BLIP3-o Dataset for EVA-CLIP Reproduction Testing
+src/modules/datasets/blip3o_eva_dataset.py
 
-KEY FIX:
-1. Ensure CLIP embeddings are properly L2-normalized (norm ~1.0, not ~32.0)
-2. Consistent normalization across dataset loading and collation
-3. Verify normalization status and log warnings if embeddings aren't normalized
+This version tests if we can reproduce EVA-CLIP embeddings from noisy EVA-CLIP embeddings,
+using CLIP embeddings as conditioning instead of the other way around.
 """
 
 import torch
@@ -26,9 +24,11 @@ import torch.nn.functional as F
 logger = logging.getLogger(__name__)
 
 
-class BLIP3oEmbeddingDataset(IterableDataset):
+class BLIP3oEVAReproductionDataset(IterableDataset):
     """
-    BLIP3-o dataset with FIXED L2 normalization to ensure target norms ~1.0
+    Modified dataset to test EVA-CLIP reproduction:
+    - Target: EVA-CLIP embeddings [B, N, 4096] (to be reproduced)
+    - Conditioning: CLIP embeddings [B, N, 1024] (as conditioning)
     """
     
     def __init__(
@@ -86,13 +86,14 @@ class BLIP3oEmbeddingDataset(IterableDataset):
         # Calculate estimated length
         self._calculate_estimated_length()
         
-        logger.info(f"✅ BLIP3-o dataset initialized with FIXED L2 normalization:")
+        logger.info(f"✅ EVA-CLIP Reproduction Dataset initialized:")
         logger.info(f"  Directory: {self.chunked_embeddings_dir}")
         logger.info(f"  Split: {self.split}")
         logger.info(f"  Training mode: {self.training_mode} ({self.expected_tokens} tokens)")
-        logger.info(f"  L2 Normalization: {self.normalize_embeddings} (CRITICAL: should be True)")
+        logger.info(f"  TARGET: EVA-CLIP embeddings [B, N, 4096] (to reproduce)")
+        logger.info(f"  CONDITIONING: CLIP embeddings [B, N, 1024]")
+        logger.info(f"  L2 Normalization: {self.normalize_embeddings}")
         logger.info(f"  Total shards: {len(self.shard_files)}")
-        logger.info(f"  Max shards: {self.max_shards}")
         logger.info(f"  Estimated samples: {self.estimated_length:,}")
 
     def _load_manifest(self):
@@ -216,7 +217,7 @@ class BLIP3oEmbeddingDataset(IterableDataset):
         return self.estimated_length
 
     def _load_shard(self, shard_path: Path) -> Dict[str, Any]:
-        """Load a single embedding shard with FIXED L2 normalization"""
+        """Load a single embedding shard with normalization"""
         logger.debug(f"Loading shard: {shard_path}")
         
         try:
@@ -231,11 +232,11 @@ class BLIP3oEmbeddingDataset(IterableDataset):
             
             self._validate_and_adapt_shard(shard_data, shard_path)
             
-            # CRITICAL FIX: Always apply L2 normalization if enabled
+            # Apply normalization if enabled
             if self.normalize_embeddings:
-                shard_data = self._normalize_shard_embeddings_fixed(shard_data)
+                shard_data = self._normalize_shard_embeddings(shard_data)
             
-            logger.debug(f"✅ Successfully loaded shard with L2 normalization: {shard_path}")
+            logger.debug(f"✅ Successfully loaded shard: {shard_path}")
             return shard_data
             
         except Exception as e:
@@ -309,9 +310,9 @@ class BLIP3oEmbeddingDataset(IterableDataset):
         assert clip_emb.shape[2] == 1024, f"Expected CLIP 1024-dim, got {clip_emb.shape[2]}"
         assert eva_emb.shape[2] == 4096, f"Expected EVA 4096-dim, got {eva_emb.shape[2]}"
 
-    def _normalize_shard_embeddings_fixed(self, shard_data: Dict[str, Any]) -> Dict[str, Any]:
+    def _normalize_shard_embeddings(self, shard_data: Dict[str, Any]) -> Dict[str, Any]:
         """
-        FIXED L2 normalization to ensure target norms are ~1.0 (not ~32.0)
+        Apply L2 normalization to embeddings for EVA reproduction test
         """
         clip_emb = shard_data['clip_blip3o_embeddings']
         eva_emb = shard_data['eva_blip3o_embeddings']
@@ -320,7 +321,7 @@ class BLIP3oEmbeddingDataset(IterableDataset):
         initial_clip_norm = torch.norm(clip_emb, dim=-1).mean().item()
         initial_eva_norm = torch.norm(eva_emb, dim=-1).mean().item()
         
-        # CRITICAL FIX: Apply L2 normalization properly
+        # Apply L2 normalization
         clip_emb_normalized = F.normalize(clip_emb, p=2, dim=-1)
         eva_emb_normalized = F.normalize(eva_emb, p=2, dim=-1)
         
@@ -399,7 +400,7 @@ class BLIP3oEmbeddingDataset(IterableDataset):
                     raise FileNotFoundError(f"Shard file does not exist: {shard_path}")
                 
                 self.current_shard_data = self._load_shard(shard_path)
-                logger.debug(f"✅ Loaded shard with L2 normalization: {shard_path}")
+                logger.debug(f"✅ Loaded shard: {shard_path}")
                 break
                 
             except Exception as e:
@@ -421,13 +422,13 @@ class BLIP3oEmbeddingDataset(IterableDataset):
         num_samples = len(self.current_shard_samples) if self.current_shard_samples else 0
         
         # Log normalization status for this shard
-        norm_status = "✅ L2 normalized" if self.current_shard_data.get('normalization_applied', False) else "⚠️ Not normalized"
-        final_clip_norm = self.current_shard_data.get('final_clip_norm', 'unknown')
+        norm_status = "✅ Normalized" if self.current_shard_data.get('normalization_applied', False) else "⚠️ Not normalized"
+        final_eva_norm = self.current_shard_data.get('final_eva_norm', 'unknown')
         
         logger.info(f"✅ Loaded shard {self.current_shard_idx + 1}/{len(self.shard_files)}: "
                    f"{num_samples} samples ({self.expected_tokens} tokens) - {norm_status}")
-        if isinstance(final_clip_norm, float):
-            logger.info(f"   CLIP norm: {final_clip_norm:.3f} (should be ~1.0)")
+        if isinstance(final_eva_norm, float):
+            logger.info(f"   EVA norm: {final_eva_norm:.3f} (should be ~1.0)")
         
         self.current_shard_idx += 1
         self.shards_processed += 1
@@ -442,7 +443,7 @@ class BLIP3oEmbeddingDataset(IterableDataset):
         self.total_samples_processed = 0
         self.shards_processed = 0
         
-        logger.debug(f"Starting iteration over {len(self.shard_files)} shards with L2 normalization")
+        logger.debug(f"Starting iteration over {len(self.shard_files)} shards for EVA reproduction test")
         
         if not self._load_next_shard():
             logger.warning("No shards could be loaded")
@@ -453,9 +454,11 @@ class BLIP3oEmbeddingDataset(IterableDataset):
                 try:
                     sample_idx = self.current_shard_samples[self.current_sample_idx]
                     
+                    # Note: SWAPPED roles compared to original
+                    # NOW: CLIP is conditioning, EVA is target
                     item = {
-                        'eva_embeddings': self.current_shard_data['eva_blip3o_embeddings'][sample_idx],
-                        'clip_embeddings': self.current_shard_data['clip_blip3o_embeddings'][sample_idx],
+                        'clip_embeddings': self.current_shard_data['clip_blip3o_embeddings'][sample_idx],  # [N, 1024] - CONDITIONING
+                        'eva_embeddings': self.current_shard_data['eva_blip3o_embeddings'][sample_idx],    # [N, 4096] - TARGET
                         'caption': self.current_shard_data['captions'][sample_idx],
                         'key': self.current_shard_data.get('keys', [f"sample_{sample_idx}"])[sample_idx] if self.current_shard_data.get('keys') else f"sample_{sample_idx}",
                         'shard_idx': self.current_shard_idx - 1,
@@ -463,6 +466,7 @@ class BLIP3oEmbeddingDataset(IterableDataset):
                         'training_mode': self.training_mode,
                         'num_tokens': self.expected_tokens,
                         'normalized': self.current_shard_data.get('normalization_applied', False),
+                        'test_type': 'eva_reproduction',  # Mark this as EVA reproduction test
                     }
                     
                     self.current_sample_idx += 1
@@ -478,20 +482,25 @@ class BLIP3oEmbeddingDataset(IterableDataset):
             if not self._load_next_shard():
                 break
         
-        logger.info(f"✅ Dataset iteration completed: {self.total_samples_processed} samples from {self.shards_processed} shards")
+        logger.info(f"✅ EVA reproduction dataset iteration completed: {self.total_samples_processed} samples from {self.shards_processed} shards")
 
 
-def blip3o_collate_fn_fixed(batch: List[Dict[str, Any]]) -> Dict[str, Any]:
+def blip3o_eva_collate_fn(batch: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
-    FIXED: Collate function with guaranteed L2 normalization (target norms ~1.0)
+    Collate function for EVA reproduction test
+    
+    SWAPPED ROLES:
+    - Input (noisy): EVA embeddings [B, N, 4096]
+    - Conditioning: CLIP embeddings [B, N, 1024] 
+    - Target: EVA embeddings [B, N, 4096]
     """
     if not batch:
         raise ValueError("Empty batch received")
     
     try:
-        # Stack tensor data
-        eva_embeddings = torch.stack([item['eva_embeddings'] for item in batch])  # [B, N, 4096]
-        clip_embeddings = torch.stack([item['clip_embeddings'] for item in batch])  # [B, N, 1024]
+        # Stack tensor data - NOTE THE SWAP
+        clip_embeddings = torch.stack([item['clip_embeddings'] for item in batch])  # [B, N, 1024] - CONDITIONING
+        eva_embeddings = torch.stack([item['eva_embeddings'] for item in batch])    # [B, N, 4096] - TARGET
         
         # Collect metadata
         captions = [item['caption'] for item in batch]
@@ -500,26 +509,26 @@ def blip3o_collate_fn_fixed(batch: List[Dict[str, Any]]) -> Dict[str, Any]:
         num_tokens = batch[0]['num_tokens']
         
         # Get batch info
-        batch_size, seq_len, clip_dim = clip_embeddings.shape
-        device = clip_embeddings.device
-        dtype = clip_embeddings.dtype
+        batch_size, seq_len, eva_dim = eva_embeddings.shape
+        device = eva_embeddings.device
+        dtype = eva_embeddings.dtype
         
         # Check initial norms
-        initial_eva_norm = torch.norm(eva_embeddings, dim=-1).mean().item()
         initial_clip_norm = torch.norm(clip_embeddings, dim=-1).mean().item()
+        initial_eva_norm = torch.norm(eva_embeddings, dim=-1).mean().item()
         
-        # CRITICAL FIX: Ensure L2 normalization is applied
-        eva_embeddings = F.normalize(eva_embeddings, p=2, dim=-1)
+        # Ensure L2 normalization is applied
         clip_embeddings = F.normalize(clip_embeddings, p=2, dim=-1)
+        eva_embeddings = F.normalize(eva_embeddings, p=2, dim=-1)
         
         # Check final norms (should be ~1.0)
-        final_eva_norm = torch.norm(eva_embeddings, dim=-1).mean().item()
         final_clip_norm = torch.norm(clip_embeddings, dim=-1).mean().item()
+        final_eva_norm = torch.norm(eva_embeddings, dim=-1).mean().item()
         
         # Log normalization status
-        logger.debug(f"Collate L2 normalization:")
-        logger.debug(f"  EVA:  {initial_eva_norm:.3f} -> {final_eva_norm:.3f}")
+        logger.debug(f"EVA Collate L2 normalization:")
         logger.debug(f"  CLIP: {initial_clip_norm:.3f} -> {final_clip_norm:.3f}")
+        logger.debug(f"  EVA:  {initial_eva_norm:.3f} -> {final_eva_norm:.3f}")
         
         # Warn if normalization seems wrong
         if abs(final_clip_norm - 1.0) > 0.1:
@@ -531,35 +540,35 @@ def blip3o_collate_fn_fixed(batch: List[Dict[str, Any]]) -> Dict[str, Any]:
         # Sample timesteps uniformly
         timesteps = torch.rand(batch_size, device=device, dtype=dtype)
         
-        # Create noise (source distribution)
-        noise = torch.randn_like(clip_embeddings, device=device, dtype=dtype)
+        # Create noise (source distribution) - SAME DIMENSION AS TARGET (EVA: 4096)
+        noise = torch.randn_like(eva_embeddings, device=device, dtype=dtype)
         
         # Rectified flow interpolation: x_t = (1-t) * x_0 + t * x_1
-        # where x_0 = noise, x_1 = target (normalized CLIP embeddings)
+        # where x_0 = noise, x_1 = target (normalized EVA embeddings)
         t_expanded = timesteps.view(-1, 1, 1)  # [B, 1, 1]
-        noisy_input = (1 - t_expanded) * noise + t_expanded * clip_embeddings
+        noisy_input = (1 - t_expanded) * noise + t_expanded * eva_embeddings
         
-        # Velocity target for rectified flow: v = x_1 - x_0 = clip_embeddings - noise
-        velocity_target = clip_embeddings - noise
+        # Velocity target for rectified flow: v = x_1 - x_0 = eva_embeddings - noise
+        velocity_target = eva_embeddings - noise
         
         # Validate tensor properties
-        assert eva_embeddings.shape == (batch_size, seq_len, 4096), f"EVA shape: {eva_embeddings.shape}"
         assert clip_embeddings.shape == (batch_size, seq_len, 1024), f"CLIP shape: {clip_embeddings.shape}"
-        assert noisy_input.shape == (batch_size, seq_len, 1024), f"Noisy input shape: {noisy_input.shape}"
-        assert velocity_target.shape == (batch_size, seq_len, 1024), f"Velocity target shape: {velocity_target.shape}"
+        assert eva_embeddings.shape == (batch_size, seq_len, 4096), f"EVA shape: {eva_embeddings.shape}"
+        assert noisy_input.shape == (batch_size, seq_len, 4096), f"Noisy input shape: {noisy_input.shape}"
+        assert velocity_target.shape == (batch_size, seq_len, 4096), f"Velocity target shape: {velocity_target.shape}"
         assert timesteps.shape == (batch_size,), f"Timesteps shape: {timesteps.shape}"
         assert seq_len in [256, 257], f"Unexpected token count: {seq_len}"
         
         return {
-            # Model inputs
-            'encoder_hidden_states': eva_embeddings,        # [B, N, 4096] - EVA conditioning (normalized)
-            'hidden_states': noisy_input,                   # [B, N, 1024] - Noisy input for model
+            # Model inputs - SWAPPED
+            'encoder_hidden_states': clip_embeddings,       # [B, N, 1024] - CLIP conditioning (normalized)
+            'hidden_states': noisy_input,                   # [B, N, 4096] - Noisy EVA input for model
             'timestep': timesteps,                          # [B] - Flow matching timesteps
             
-            # Training targets
-            'clip_embeddings': clip_embeddings,             # [B, N, 1024] - Target CLIP patches (normalized ~1.0)
-            'velocity_target': velocity_target,             # [B, N, 1024] - Velocity target for flow matching
-            'noise': noise,                                 # [B, N, 1024] - Original noise
+            # Training targets - EVA embeddings
+            'eva_embeddings': eva_embeddings,               # [B, N, 4096] - Target EVA patches (normalized ~1.0)
+            'velocity_target': velocity_target,             # [B, N, 4096] - Velocity target for flow matching
+            'noise': noise,                                 # [B, N, 4096] - Original noise
             
             # Metadata
             'captions': captions,                           # List[str] - Text captions
@@ -568,18 +577,19 @@ def blip3o_collate_fn_fixed(batch: List[Dict[str, Any]]) -> Dict[str, Any]:
             'training_mode': training_mode,                 # str - "cls_patch" or "patch_only"
             'num_tokens': num_tokens,                       # int - 256 or 257
             'seq_len': seq_len,                            # int - sequence length
+            'test_type': 'eva_reproduction',                # str - test type
             
-            # Normalization info (FIXED)
-            'eva_embeddings_normalized': True,              # bool
+            # Normalization info
             'clip_embeddings_normalized': True,             # bool
-            'eva_norm_mean': final_eva_norm,               # float (~1.0)
+            'eva_embeddings_normalized': True,              # bool
             'clip_norm_mean': final_clip_norm,             # float (~1.0)
+            'eva_norm_mean': final_eva_norm,               # float (~1.0)
             'initial_clip_norm': initial_clip_norm,         # float (for debugging)
             'initial_eva_norm': initial_eva_norm,          # float (for debugging)
         }
         
     except Exception as e:
-        logger.error(f"Error in FIXED collate function: {e}")
+        logger.error(f"Error in EVA reproduction collate function: {e}")
         logger.error(f"Batch info: {len(batch)} items")
         if batch:
             first_item = batch[0]
@@ -592,22 +602,22 @@ def blip3o_collate_fn_fixed(batch: List[Dict[str, Any]]) -> Dict[str, Any]:
         raise
 
 
-def create_blip3o_dataloaders(
+def create_eva_reproduction_dataloaders(
     chunked_embeddings_dir: Union[str, Path],
     batch_size: int = 32,
     eval_batch_size: Optional[int] = None,
     eval_split_ratio: float = 0.1,
-    normalize_embeddings: bool = True,  # CRITICAL: Default to True for L2 normalization
+    normalize_embeddings: bool = True,
     training_mode: str = "patch_only",
     max_shards: Optional[int] = None,
     use_same_data_for_eval: bool = False,
     delete_after_use: bool = False,
-    num_workers: int = 0,  # Keep at 0 for debugging
+    num_workers: int = 0,
     pin_memory: bool = None,
     **kwargs
 ) -> Tuple[DataLoader, Optional[DataLoader]]:
     """
-    Create BLIP3-o dataloaders with FIXED L2 normalization
+    Create EVA reproduction test dataloaders
     """
     if eval_batch_size is None:
         eval_batch_size = batch_size
@@ -615,20 +625,19 @@ def create_blip3o_dataloaders(
     if pin_memory is None:
         pin_memory = torch.cuda.is_available()
     
-    # Log normalization status
-    logger.info(f"Creating dataloaders with L2 normalization: {normalize_embeddings}")
-    if not normalize_embeddings:
-        logger.warning("⚠️ L2 normalization is DISABLED - target norms will be ~32.0 instead of ~1.0")
-    else:
-        logger.info("✅ L2 normalization is ENABLED - target norms should be ~1.0")
+    # Log test configuration
+    logger.info(f"Creating EVA reproduction test dataloaders:")
+    logger.info(f"  TARGET: EVA embeddings [B, N, 4096] (to reproduce)")
+    logger.info(f"  CONDITIONING: CLIP embeddings [B, N, 1024]")
+    logger.info(f"  L2 normalization: {normalize_embeddings}")
     
     # Create training dataset
     try:
-        train_dataset = BLIP3oEmbeddingDataset(
+        train_dataset = BLIP3oEVAReproductionDataset(
             chunked_embeddings_dir=chunked_embeddings_dir,
             split="train",
             eval_split_ratio=eval_split_ratio,
-            normalize_embeddings=normalize_embeddings,  # CRITICAL: Pass through the parameter
+            normalize_embeddings=normalize_embeddings,
             shuffle_shards=True,
             shuffle_within_shard=True,
             delete_after_use=delete_after_use,
@@ -637,10 +646,10 @@ def create_blip3o_dataloaders(
             use_same_data_for_eval=use_same_data_for_eval,
         )
         
-        logger.info(f"✅ Training dataset created: {len(train_dataset):,} estimated samples")
+        logger.info(f"✅ EVA reproduction training dataset created: {len(train_dataset):,} estimated samples")
         
     except Exception as e:
-        logger.error(f"❌ Failed to create training dataset: {e}")
+        logger.error(f"❌ Failed to create EVA reproduction training dataset: {e}")
         raise
     
     # Create training dataloader
@@ -649,28 +658,28 @@ def create_blip3o_dataloaders(
             train_dataset,
             batch_size=batch_size,
             num_workers=num_workers,
-            collate_fn=blip3o_collate_fn_fixed,  # Use FIXED collate function
+            collate_fn=blip3o_eva_collate_fn,
             pin_memory=pin_memory,
             drop_last=True,
             persistent_workers=num_workers > 0,
             **kwargs
         )
         
-        logger.info(f"✅ Training dataloader created with FIXED L2 normalization")
+        logger.info(f"✅ EVA reproduction training dataloader created")
         
     except Exception as e:
-        logger.error(f"❌ Failed to create training dataloader: {e}")
+        logger.error(f"❌ Failed to create EVA reproduction training dataloader: {e}")
         raise
     
     # Create evaluation dataloader
     eval_dataloader = None
     if eval_split_ratio > 0 or use_same_data_for_eval:
         try:
-            eval_dataset = BLIP3oEmbeddingDataset(
+            eval_dataset = BLIP3oEVAReproductionDataset(
                 chunked_embeddings_dir=chunked_embeddings_dir,
                 split="train" if use_same_data_for_eval else "eval",
                 eval_split_ratio=eval_split_ratio,
-                normalize_embeddings=normalize_embeddings,  # CRITICAL: Same normalization for eval
+                normalize_embeddings=normalize_embeddings,
                 shuffle_shards=False,
                 shuffle_within_shard=False,
                 delete_after_use=False,
@@ -683,22 +692,17 @@ def create_blip3o_dataloaders(
                 eval_dataset,
                 batch_size=eval_batch_size,
                 num_workers=min(num_workers, 1),
-                collate_fn=blip3o_collate_fn_fixed,  # Use FIXED collate function
+                collate_fn=blip3o_eva_collate_fn,
                 pin_memory=pin_memory,
                 drop_last=False,
                 persistent_workers=min(num_workers, 1) > 0,
                 **kwargs
             )
             
-            logger.info(f"✅ Evaluation dataloader created with FIXED L2 normalization")
+            logger.info(f"✅ EVA reproduction evaluation dataloader created")
             
         except Exception as e:
-            logger.warning(f"⚠️ Failed to create evaluation dataloader: {e}")
+            logger.warning(f"⚠️ Failed to create EVA reproduction evaluation dataloader: {e}")
             eval_dataloader = None
     
     return train_dataloader, eval_dataloader
-
-
-# Aliases for backward compatibility
-create_flexible_dataloaders = create_blip3o_dataloaders
-blip3o_collate_fn = blip3o_collate_fn_fixed

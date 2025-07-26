@@ -51,8 +51,8 @@ LR_SCHEDULER="cosine"           # Better convergence
 
 # Evaluation parameters (less frequent due to cost)
 EVAL_EVERY_N_STEPS=200
-EVAL_NUM_SAMPLES=2000
-EVAL_INFERENCE_STEPS=100
+EVAL_NUM_SAMPLES=100
+EVAL_INFERENCE_STEPS=50
 
 # WandB configuration
 WANDB_PROJECT="eva-clip"
@@ -111,11 +111,7 @@ if [ $SHARD_COUNT -lt 50 ]; then
     echo "   Training will use available shards"
 fi
 
-# Verify training script exists
-if [ ! -f "train_blip3o_enhanced.py" ]; then
-    echo "❌ Training script not found: train_blip3o_enhanced.py"
-    exit 1
-fi
+
 
 echo "✅ Training script found"
 
@@ -136,12 +132,12 @@ echo "  Monitor: loss, velocity_sim, embedding_sim, norms"
 echo ""
 
 # Launch large-scale training with WandB
-python train_blip3o_enhanced.py \
+python train_eva_repro.py \
     --chunked_embeddings_dir "$EMBEDDINGS_DIR" \
     --output_dir "$OUTPUT_DIR" \
     --training_mode "$TRAINING_MODE" \
     --model_size "$MODEL_SIZE" \
-    --max_training_shards 50 \
+    --max_training_shards 1 \
     --num_epochs $NUM_EPOCHS \
     --batch_size $BATCH_SIZE \
     --gradient_accumulation_steps $GRADIENT_ACCUMULATION_STEPS \
@@ -156,11 +152,13 @@ python train_blip3o_enhanced.py \
     --gradient_checkpointing \
     --logging_steps 20 \
     --save_steps 1000 \
-    --use_wandb \
     --wandb_project "$WANDB_PROJECT" \
     --wandb_run_name "$WANDB_RUN_NAME" \
     --wandb_tags $WANDB_TAGS \
     --wandb_notes "$WANDB_NOTES"
+
+
+# --use_wandb \
 
 TRAINING_EXIT_CODE=$?
 
