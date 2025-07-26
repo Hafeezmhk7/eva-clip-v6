@@ -9,6 +9,7 @@ MAJOR FIXES:
 3. Added sandwich normalization (RMSNorm before and after attention/MLP)
 4. Fixed initialization for flow matching
 5. Proper gradient flow and numerical stability
+6. Better weight initialization based on feedback
 """
 
 import torch
@@ -160,10 +161,10 @@ class BLIP3oTimestepEmbedder(nn.Module):
             nn.Linear(hidden_size, hidden_size),
         )
         
-        # Initialize with smaller weights for stability
+        # Initialize with smaller weights for stability (based on feedback)
         for layer in self.mlp:
             if isinstance(layer, nn.Linear):
-                nn.init.normal_(layer.weight, std=0.02)
+                nn.init.normal_(layer.weight, std=0.01)  # Smaller std
                 nn.init.zeros_(layer.bias)
 
     @staticmethod
@@ -214,15 +215,15 @@ class BLIP3oGroupedQueryAttention(nn.Module):
         
         self.dropout = nn.Dropout(config.attention_dropout)
         
-        # Initialize weights
+        # Initialize weights (Kaiming initialization based on feedback)
         self._init_weights()
     
     def _init_weights(self):
-        """Initialize attention weights"""
-        nn.init.xavier_uniform_(self.q_proj.weight, gain=1.0)
-        nn.init.xavier_uniform_(self.k_proj.weight, gain=1.0)
-        nn.init.xavier_uniform_(self.v_proj.weight, gain=1.0)
-        nn.init.xavier_uniform_(self.o_proj.weight, gain=1.0)
+        """Initialize attention weights with Kaiming initialization"""
+        nn.init.kaiming_uniform_(self.q_proj.weight, a=math.sqrt(5))
+        nn.init.kaiming_uniform_(self.k_proj.weight, a=math.sqrt(5))
+        nn.init.kaiming_uniform_(self.v_proj.weight, a=math.sqrt(5))
+        nn.init.kaiming_uniform_(self.o_proj.weight, a=math.sqrt(5))
     
     def forward(
         self,
@@ -286,10 +287,10 @@ class BLIP3oMLP(nn.Module):
         self.act_fn = nn.SiLU()
         self.dropout = nn.Dropout(config.hidden_dropout)
         
-        # Initialize weights
-        nn.init.xavier_uniform_(self.gate_proj.weight, gain=0.5)
-        nn.init.xavier_uniform_(self.up_proj.weight, gain=0.5)
-        nn.init.xavier_uniform_(self.down_proj.weight, gain=0.5)
+        # Initialize weights (Kaiming initialization)
+        nn.init.kaiming_uniform_(self.gate_proj.weight, a=math.sqrt(5))
+        nn.init.kaiming_uniform_(self.up_proj.weight, a=math.sqrt(5))
+        nn.init.kaiming_uniform_(self.down_proj.weight, a=math.sqrt(5))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         gate = self.act_fn(self.gate_proj(x))
@@ -361,7 +362,7 @@ class BLIP3oDiTBlock(nn.Module):
         
         # Project CLIP embeddings to hidden dimension
         self.clip_proj = nn.Linear(config.clip_embedding_size, config.hidden_size)
-        nn.init.xavier_uniform_(self.clip_proj.weight)
+        nn.init.kaiming_uniform_(self.clip_proj.weight, a=math.sqrt(5))
         nn.init.zeros_(self.clip_proj.bias)
 
     def forward(
@@ -452,7 +453,7 @@ class BLIP3oEVADiTModel(PreTrainedModel):
         
         # Input projection from EVA dimension to hidden dimension
         self.input_proj = nn.Linear(config.eva_embedding_size, config.hidden_size, bias=True)
-        nn.init.xavier_uniform_(self.input_proj.weight, gain=1.0)
+        nn.init.kaiming_uniform_(self.input_proj.weight, a=math.sqrt(5))
         nn.init.zeros_(self.input_proj.bias)
         
         # Timestep embedding
@@ -460,7 +461,7 @@ class BLIP3oEVADiTModel(PreTrainedModel):
         
         # Learnable positional embedding
         self.pos_embed = nn.Parameter(torch.zeros(1, config.max_position_embeddings, config.hidden_size))
-        nn.init.normal_(self.pos_embed, std=0.02)
+        nn.init.normal_(self.pos_embed, std=0.01)  # Smaller initialization
         
         # Transformer blocks
         self.blocks = nn.ModuleList([
@@ -472,13 +473,14 @@ class BLIP3oEVADiTModel(PreTrainedModel):
         self.output_adaln = BLIP3oAdaLN(config.hidden_size, config.hidden_size)
         self.output_proj = nn.Linear(config.hidden_size, config.eva_embedding_size, bias=True)
         
-        # Initialize output projection
+        # Initialize output projection (based on feedback)
         if config.zero_init_output:
             # Zero initialization for output helps with flow matching
             nn.init.zeros_(self.output_proj.weight)
             nn.init.zeros_(self.output_proj.bias)
         else:
-            nn.init.xavier_uniform_(self.output_proj.weight, gain=0.02)
+            # Small initialization
+            nn.init.normal_(self.output_proj.weight, std=1e-4)
             nn.init.zeros_(self.output_proj.bias)
         
         # Track initialization
@@ -490,6 +492,7 @@ class BLIP3oEVADiTModel(PreTrainedModel):
         logger.info(f"   3D RoPE: {config.use_3d_rope}")
         logger.info(f"   Grouped-Query Attention: {config.num_attention_heads}/{config.num_key_value_heads}")
         logger.info(f"   Sandwich Normalization: Enabled")
+        logger.info(f"   Better initialization: Kaiming/Xavier with small output init")
 
     def gradient_checkpointing_enable(self, gradient_checkpointing_kwargs=None):
         self.gradient_checkpointing = True

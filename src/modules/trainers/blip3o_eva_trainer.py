@@ -155,6 +155,75 @@ class BLIP3oEVATrainer(Trainer):
             logger.info(f"✅ Stored {len(samples)} batches ({sample_count} samples) for overfitting test")
             
         except Exception as e:
+            logger.error(f"❌ Failed to prepare overfit test: {e}")
+            self.overfit_samples = None
+    
+    def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
+        """Compute loss with comprehensive debugging and health monitoring"""
+        model.train()
+        
+        # Extract inputs with error handling
+        try:
+            clip_embeddings = inputs['encoder_hidden_states']  # [B, N, 1024]
+            eva_embeddings = inputs['eva_embeddings']          # [B, N, 4096]
+            timesteps = inputs['timestep']                     # [B]
+            noisy_eva = inputs.get('hidden_states')           # [B, N, 4096]
+            noise = inputs.get('noise')                        # [B, N, 4096]
+            
+            # Validate input shapes
+            assert clip_embeddings.dim() == 3, f"CLIP embeddings wrong shape: {clip_embeddings.shape}"
+            assert eva_embeddings.dim() == 3, f"EVA embeddings wrong shape: {eva_embeddings.shape}"
+            assert timesteps.dim() == 1, f"Timesteps wrong shape: {timesteps.shape}"
+            
+        except Exception as e:
+            logger.error(f"❌ Input validation failed: {e}")
+            raise
+        
+        # Use overfit samples if in overfit test mode
+        if self.overfit_samples and self.training:
+            try:
+                # Cycle through overfit samples
+                batch_idx = self.step_count % len(self.overfit_samples)
+                overfit_batch = self.overfit_samples[batch_idx]
+                
+                # Replace inputs with overfit samples
+                clip_embeddings = overfit_batch['encoder_hidden_states'].to(clip_embeddings.device)
+                eva_embeddings = overfit_batch['eva_embeddings'].to(eva_embeddings.device)
+                timesteps = overfit_batch['timestep'].to(timesteps.device)
+                noisy_eva = overfit_batch.get('hidden_states')
+                if noisy_eva is not None:
+                    noisy_eva = noisy_eva.to(clip_embeddings.device)
+                noise = overfit_batch.get('noise')
+                if noise is not None:
+                    noise = noise.to(clip_embeddings.device)
+                    
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to use overfit samples: {e}, using original batch")
+        
+        # Debug: Check input statistics
+        if self.debug_mode and self.step_count % 50 == 0:
+            logger.info(f"[Step {self.step_count}] Input Statistics:")
+            logger.info(f"  CLIP norm: {torch.norm(clip_embeddings, dim=-1).mean():.3f}")
+            logger.info(f"  EVA norm: {torch.norm(eva_embeddings, dim=-1).mean():.3f}")
+            logger.info(f"  Timesteps: {timesteps.mean():.3f} ± {timesteps.std():.3f}")
+            if noisy_eva is not None:
+                logger.info(f"  Noisy EVA norm: {torch.norm(noisy_eva, dim=-1).mean():.3f}")
+        
+        # Forward pass with error handling
+        try:
+            model_outputs = model(
+                hidden_states=noisy_eva,
+                timestep=timesteps,
+                encoder_hidden_states=clip_embeddings,
+                return_dict=True
+            )
+            
+            velocity_pred = model_outputs.get('velocity_prediction')
+            
+            if velocity_pred is None:
+                raise ValueError("Model did not return velocity_prediction")
+                
+        except Exception as e:
             logger.error(f"❌ Model forward pass failed: {e}")
             logger.error(f"   Input shapes: CLIP {clip_embeddings.shape}, EVA {eva_embeddings.shape}, t {timesteps.shape}")
             raise
@@ -669,73 +738,4 @@ def create_eva_training_args(
         metric_for_best_model="eval_loss",
         greater_is_better=False,
         **kwargs
-    ).error(f"❌ Failed to prepare overfit test: {e}")
-            self.overfit_samples = None
-    
-    def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
-        """Compute loss with comprehensive debugging and health monitoring"""
-        model.train()
-        
-        # Extract inputs with error handling
-        try:
-            clip_embeddings = inputs['encoder_hidden_states']  # [B, N, 1024]
-            eva_embeddings = inputs['eva_embeddings']          # [B, N, 4096]
-            timesteps = inputs['timestep']                     # [B]
-            noisy_eva = inputs.get('hidden_states')           # [B, N, 4096]
-            noise = inputs.get('noise')                        # [B, N, 4096]
-            
-            # Validate input shapes
-            assert clip_embeddings.dim() == 3, f"CLIP embeddings wrong shape: {clip_embeddings.shape}"
-            assert eva_embeddings.dim() == 3, f"EVA embeddings wrong shape: {eva_embeddings.shape}"
-            assert timesteps.dim() == 1, f"Timesteps wrong shape: {timesteps.shape}"
-            
-        except Exception as e:
-            logger.error(f"❌ Input validation failed: {e}")
-            raise
-        
-        # Use overfit samples if in overfit test mode
-        if self.overfit_samples and self.training:
-            try:
-                # Cycle through overfit samples
-                batch_idx = self.step_count % len(self.overfit_samples)
-                overfit_batch = self.overfit_samples[batch_idx]
-                
-                # Replace inputs with overfit samples
-                clip_embeddings = overfit_batch['encoder_hidden_states'].to(clip_embeddings.device)
-                eva_embeddings = overfit_batch['eva_embeddings'].to(eva_embeddings.device)
-                timesteps = overfit_batch['timestep'].to(timesteps.device)
-                noisy_eva = overfit_batch.get('hidden_states')
-                if noisy_eva is not None:
-                    noisy_eva = noisy_eva.to(clip_embeddings.device)
-                noise = overfit_batch.get('noise')
-                if noise is not None:
-                    noise = noise.to(clip_embeddings.device)
-                    
-            except Exception as e:
-                logger.warning(f"⚠️ Failed to use overfit samples: {e}, using original batch")
-        
-        # Debug: Check input statistics
-        if self.debug_mode and self.step_count % 50 == 0:
-            logger.info(f"[Step {self.step_count}] Input Statistics:")
-            logger.info(f"  CLIP norm: {torch.norm(clip_embeddings, dim=-1).mean():.3f}")
-            logger.info(f"  EVA norm: {torch.norm(eva_embeddings, dim=-1).mean():.3f}")
-            logger.info(f"  Timesteps: {timesteps.mean():.3f} ± {timesteps.std():.3f}")
-            if noisy_eva is not None:
-                logger.info(f"  Noisy EVA norm: {torch.norm(noisy_eva, dim=-1).mean():.3f}")
-        
-        # Forward pass with error handling
-        try:
-            model_outputs = model(
-                hidden_states=noisy_eva,
-                timestep=timesteps,
-                encoder_hidden_states=clip_embeddings,
-                return_dict=True
-            )
-            
-            velocity_pred = model_outputs.get('velocity_prediction')
-            
-            if velocity_pred is None:
-                raise ValueError("Model did not return velocity_prediction")
-                
-        except Exception as e:
-            logger
+    )
