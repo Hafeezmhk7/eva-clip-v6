@@ -1,32 +1,31 @@
 #!/usr/bin/env python3
 """
-Modified BLIP3-o Trainer for EVA-CLIP Reproduction Testing
+Fixed BLIP3-o Trainer for EVA-CLIP Reproduction Testing
 src/modules/trainers/blip3o_eva_trainer.py
 
-This version tests reproducing EVA-CLIP embeddings from noisy EVA-CLIP embeddings,
-using CLIP embeddings as conditioning.
-
-KEY CHANGES:
-- Track EVA embedding norms instead of CLIP
-- Evaluate EVA similarity instead of CLIP similarity
-- Monitor both EVA and CLIP normalization status
+Key fixes:
+- Better debugging and monitoring
+- Gradient tracking
+- Overfitting test capability
+- Improved evaluation
 """
 
 import torch
 import torch.nn.functional as F
 from transformers import Trainer, TrainingArguments
-from typing import Dict, Any, Optional, Union, Tuple
+from typing import Dict, Any, Optional, Union, Tuple, List
 import logging
 import time
-import os
-import random
+import numpy as np
+from pathlib import Path
+import json
 
 logger = logging.getLogger(__name__)
 
 
 class BLIP3oEVATrainer(Trainer):
     """
-    Modified BLIP3-o trainer for EVA reproduction testing with proper normalization tracking and WandB integration
+    Fixed trainer with comprehensive debugging and monitoring
     """
     
     def __init__(
@@ -38,12 +37,17 @@ class BLIP3oEVATrainer(Trainer):
         eval_dataset=None,
         eval_dataloader=None,
         training_mode: str = "patch_only",
-        # EVALUATION PARAMETERS
+        # Evaluation parameters
         eval_every_n_steps: int = 100,
         eval_num_samples: int = 1000,
         eval_batch_size: int = 16,
         eval_inference_steps: int = 50,
-        # WANDB INTEGRATION
+        # Debugging parameters
+        debug_mode: bool = False,
+        track_gradients: bool = True,
+        log_gradient_norms_every: int = 10,
+        overfit_test_size: Optional[int] = None,
+        # WandB
         wandb_instance=None,
         use_wandb: bool = False,
         **kwargs
@@ -60,150 +64,143 @@ class BLIP3oEVATrainer(Trainer):
         self.training_mode = training_mode
         self.expected_tokens = 257 if training_mode == "cls_patch" else 256
         
-        # Evaluation parameters
+        # Evaluation
         self.eval_every_n_steps = eval_every_n_steps
         self.eval_num_samples = eval_num_samples
         self.eval_batch_size = eval_batch_size
         self.eval_inference_steps = eval_inference_steps
         self.eval_dataloader = eval_dataloader
         
-        # WandB integration
+        # Debugging
+        self.debug_mode = debug_mode
+        self.track_gradients = track_gradients
+        self.log_gradient_norms_every = log_gradient_norms_every
+        self.overfit_test_size = overfit_test_size
+        
+        # WandB
         self.wandb_instance = wandb_instance
         self.use_wandb = use_wandb and wandb_instance is not None
         
-        # Training metrics tracking
+        # Metrics tracking
         self.step_count = 0
+        self.gradient_norms_history = []
+        self.learning_rate_history = []
         self.loss_history = []
-        self.velocity_similarity_history = []
-        self.eva_similarity_history = []  # Changed from embedding_similarity_history
+        self.velocity_sim_history = []
+        self.eva_sim_history = []
         
-        # Norm tracking for EVA reproduction
-        self.eva_target_norm_history = []
-        self.clip_conditioning_norm_history = []
-        self.prediction_norm_history = []
-        self.velocity_target_norm_history = []
-        
-        # Best metrics tracking
+        # Best metrics
         self.best_velocity_sim = 0.0
-        self.best_eva_sim = 0.0  # Changed from best_embedding_sim
+        self.best_eva_sim = 0.0
         self.best_loss = float('inf')
         
-        # Steps without improvement (for monitoring)
-        self.steps_without_velocity_improvement = 0
-        self.steps_without_eva_improvement = 0  # Changed
+        # Gradient statistics
+        self.gradient_stats = {
+            'min_norm': float('inf'),
+            'max_norm': 0.0,
+            'zero_grad_steps': 0,
+            'exploding_grad_steps': 0,
+        }
         
-        # Normalization tracking
-        self.normalization_warnings = 0
-        self.last_eva_norm = None
-        self.last_clip_norm = None
+        # Store overfit test samples if requested
+        self.overfit_samples = None
+        if self.overfit_test_size:
+            self._prepare_overfit_test()
         
-        # WandB logging intervals
-        self.wandb_log_interval = max(1, args.logging_steps // 2)
+        logger.info(f"✅ Fixed EVA Trainer initialized")
+        logger.info(f"   Debug mode: {debug_mode}")
+        logger.info(f"   Track gradients: {track_gradients}")
+        logger.info(f"   Overfit test size: {overfit_test_size}")
+    
+    def _prepare_overfit_test(self):
+        """Prepare small subset for overfitting test"""
+        logger.info(f"Preparing overfit test with {self.overfit_test_size} samples...")
         
-        logger.info(f"✅ EVA Reproduction Trainer initialized with L2 normalization tracking and WandB")
-        logger.info(f"   TARGET: EVA embeddings [B, N, 4096] (to reproduce)")
-        logger.info(f"   CONDITIONING: CLIP embeddings [B, N, 1024]")
-        logger.info(f"   Training mode: {training_mode} ({self.expected_tokens} tokens)")
-        logger.info(f"   Evaluation every: {eval_every_n_steps} steps")
-        logger.info(f"   Expected EVA target norms: ~1.0 (L2 normalized)")
-        logger.info(f"   WandB tracking: {'Enabled' if self.use_wandb else 'Disabled'}")
-        if self.use_wandb:
-            logger.info(f"   WandB URL: {self.wandb_instance.run.url}")
+        # Get first N samples from dataloader
+        samples = []
+        sample_count = 0
+        
+        for batch in self.get_train_dataloader():
+            batch_size = batch['encoder_hidden_states'].shape[0]
+            
+            # Store batch
+            samples.append({
+                k: v.clone() if torch.is_tensor(v) else v
+                for k, v in batch.items()
+            })
+            
+            sample_count += batch_size
+            if sample_count >= self.overfit_test_size:
+                break
+        
+        self.overfit_samples = samples
+        logger.info(f"✅ Stored {len(samples)} batches ({sample_count} samples) for overfitting test")
     
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
-        """Compute loss for EVA reproduction with normalization tracking and WandB logging"""
+        """Compute loss with comprehensive debugging"""
         model.train()
         
-        # Extract inputs - NOTE THE SWAPPED ROLES
-        try:
-            clip_embeddings = inputs['encoder_hidden_states']  # [B, N, 1024] - CONDITIONING
-            eva_embeddings = inputs['eva_embeddings']          # [B, N, 4096] - TARGET
-            timesteps = inputs['timestep']                     # [B]
-        except KeyError as e:
-            logger.error(f"Missing input key: {e}")
-            logger.error(f"Available keys: {list(inputs.keys())}")
-            raise
+        # Extract inputs
+        clip_embeddings = inputs['encoder_hidden_states']  # [B, N, 1024]
+        eva_embeddings = inputs['eva_embeddings']          # [B, N, 4096]
+        timesteps = inputs['timestep']                     # [B]
+        noisy_eva = inputs.get('hidden_states')           # [B, N, 4096]
+        noise = inputs.get('noise')                        # [B, N, 4096]
         
-        # Check normalization status from collate function
-        eva_norm_from_collate = inputs.get('eva_norm_mean', None)
-        clip_norm_from_collate = inputs.get('clip_norm_mean', None)
-        initial_eva_norm = inputs.get('initial_eva_norm', None)
-        initial_clip_norm = inputs.get('initial_clip_norm', None)
+        # Use overfit samples if in overfit test mode
+        if self.overfit_samples and self.training:
+            # Cycle through overfit samples
+            batch_idx = self.step_count % len(self.overfit_samples)
+            overfit_batch = self.overfit_samples[batch_idx]
+            
+            # Replace inputs with overfit samples
+            clip_embeddings = overfit_batch['encoder_hidden_states'].to(clip_embeddings.device)
+            eva_embeddings = overfit_batch['eva_embeddings'].to(eva_embeddings.device)
+            timesteps = overfit_batch['timestep'].to(timesteps.device)
+            noisy_eva = overfit_batch.get('hidden_states', noisy_eva)
+            if noisy_eva is not None:
+                noisy_eva = noisy_eva.to(clip_embeddings.device)
+            noise = overfit_batch.get('noise', noise)
+            if noise is not None:
+                noise = noise.to(clip_embeddings.device)
         
-        if eva_norm_from_collate is not None:
-            if abs(eva_norm_from_collate - 1.0) > 0.1:
-                self.normalization_warnings += 1
-                if self.normalization_warnings <= 5:
-                    logger.warning(f"EVA embeddings not properly normalized: {eva_norm_from_collate:.3f} (should be ~1.0)")
+        # Debug: Check input statistics
+        if self.debug_mode and self.step_count % 50 == 0:
+            logger.info(f"[Step {self.step_count}] Input Statistics:")
+            logger.info(f"  CLIP norm: {torch.norm(clip_embeddings, dim=-1).mean():.3f}")
+            logger.info(f"  EVA norm: {torch.norm(eva_embeddings, dim=-1).mean():.3f}")
+            logger.info(f"  Timesteps: {timesteps.mean():.3f} ± {timesteps.std():.3f}")
+            if noisy_eva is not None:
+                logger.info(f"  Noisy EVA norm: {torch.norm(noisy_eva, dim=-1).mean():.3f}")
         
-        if clip_norm_from_collate is not None:
-            if abs(clip_norm_from_collate - 1.0) > 0.1:
-                if self.normalization_warnings <= 5:
-                    logger.warning(f"CLIP embeddings not properly normalized: {clip_norm_from_collate:.3f} (should be ~1.0)")
-        
-        # Get or create noisy input
-        if 'hidden_states' in inputs:
-            noisy_eva = inputs['hidden_states']  # [B, N, 4096] - Noisy EVA input
-        else:
-            # Create noisy input for flow matching (this should be in the collate function)
-            device = clip_embeddings.device
-            noise = torch.randn_like(eva_embeddings)
-            alpha = timesteps.view(-1, 1, 1)
-            noisy_eva = (1 - alpha) * noise + alpha * eva_embeddings.detach()
-        
-        # Ensure gradients are enabled for training
-        if not noisy_eva.requires_grad:
-            noisy_eva = noisy_eva.detach().requires_grad_(True)
-        
-        # Validate shapes
-        batch_size, seq_len, clip_dim = clip_embeddings.shape
-        eva_batch, eva_seq, eva_dim = eva_embeddings.shape
-        
-        assert seq_len == self.expected_tokens, f"Expected {self.expected_tokens} tokens, got {seq_len}"
-        assert clip_dim == 1024, f"Expected CLIP 1024-dim, got {clip_dim}"
-        assert eva_dim == 4096, f"Expected EVA 4096-dim, got {eva_dim}"
-        assert noisy_eva.shape == eva_embeddings.shape, f"Noisy input shape mismatch"
-        assert eva_batch == batch_size and eva_seq == seq_len, f"EVA shape mismatch"
-        
-        # Forward pass - NOTE: inputs are swapped
+        # Forward pass
         model_outputs = model(
-            hidden_states=noisy_eva,              # [B, N, 4096] - Noisy EVA input
-            timestep=timesteps,                   # [B]
-            encoder_hidden_states=clip_embeddings,  # [B, N, 1024] - CLIP conditioning
+            hidden_states=noisy_eva,
+            timestep=timesteps,
+            encoder_hidden_states=clip_embeddings,
             return_dict=True
         )
         
-        # Extract velocity prediction
-        if isinstance(model_outputs, dict):
-            velocity_pred = model_outputs.get('velocity_prediction', 
-                                            model_outputs.get('last_hidden_state'))
-        else:
-            velocity_pred = model_outputs
+        velocity_pred = model_outputs.get('velocity_prediction')
         
-        # Verify gradients
-        if not velocity_pred.requires_grad:
-            raise RuntimeError("Model output doesn't require gradients during training!")
+        # Debug: Check output statistics
+        if self.debug_mode and self.step_count % 50 == 0:
+            logger.info(f"  Prediction norm: {torch.norm(velocity_pred, dim=-1).mean():.3f}")
+            logger.info(f"  Prediction std: {velocity_pred.std():.3f}")
         
-        # Compute EVA reproduction flow matching loss
+        # Compute loss
         loss, metrics = self.flow_matching_loss(
             model_output=velocity_pred,
             target_samples=eva_embeddings,
             timesteps=timesteps,
             clip_conditioning=clip_embeddings,
+            noise=noise,
             return_metrics=True,
             training_mode=self.training_mode,
         )
         
-        # Track training metrics with EVA focus and WandB
-        self._track_eva_training_metrics_with_wandb(loss, metrics)
-        
-        # Run evaluation every N steps
-        if self.step_count > 0 and self.step_count % self.eval_every_n_steps == 0:
-            self._run_eva_evaluation_during_training()
-        
-        # Log progress with EVA normalization info
-        if self.step_count % self.args.logging_steps == 0:
-            self._log_eva_training_progress(loss, metrics)
+        # Track metrics
+        self._track_training_metrics(loss, metrics, model)
         
         # Prepare outputs
         outputs = {
@@ -212,127 +209,182 @@ class BLIP3oEVATrainer(Trainer):
             'metrics': metrics,
         } if return_outputs else None
         
+        self.step_count += 1
+        
         return (loss, outputs) if return_outputs else loss
     
-    def _track_eva_training_metrics_with_wandb(self, loss: torch.Tensor, metrics: Optional[Dict[str, float]]):
-        """Track EVA reproduction training metrics with WandB logging"""
-        self.step_count += 1
+    def _track_training_metrics(self, loss: torch.Tensor, metrics: Dict[str, float], model):
+        """Track comprehensive training metrics"""
+        # Basic metrics
         loss_value = loss.item()
         self.loss_history.append(loss_value)
         
-        # Prepare WandB logging data
-        wandb_data = {
-            "train/step": self.step_count,
-            "train/loss": loss_value,
-            "train/epoch": getattr(self, '_current_epoch', 0),
-            "eva_test/type": "eva_reproduction",
-        }
-        
-        # Get learning rate from optimizer
-        if hasattr(self, 'lr_scheduler') and self.lr_scheduler is not None:
-            current_lr = self.lr_scheduler.get_last_lr()[0]
-            wandb_data["train/learning_rate"] = current_lr
-        elif hasattr(self, 'optimizer') and self.optimizer is not None:
-            current_lr = self.optimizer.param_groups[0]['lr']
-            wandb_data["train/learning_rate"] = current_lr
-        
         if metrics:
-            velocity_sim = metrics.get('velocity_cosine_sim', 0.0)
-            self.velocity_similarity_history.append(velocity_sim)
-            
-            # Track norm values for EVA reproduction
-            eva_target_norm = metrics.get('eva_target_norm', 1.0)      # EVA embeddings (should be ~1.0)
-            clip_conditioning_norm = metrics.get('clip_conditioning_norm', 1.0)  # CLIP conditioning
-            prediction_norm = metrics.get('prediction_norm', 1.0)      # Model predictions
-            velocity_target_norm = metrics.get('target_norm', 1.0)     # Velocity targets
-            
-            self.eva_target_norm_history.append(eva_target_norm)
-            self.clip_conditioning_norm_history.append(clip_conditioning_norm)
-            self.prediction_norm_history.append(prediction_norm)
-            self.velocity_target_norm_history.append(velocity_target_norm)
-            
-            self.last_eva_norm = eva_target_norm
-            self.last_clip_norm = clip_conditioning_norm
-            
-            # Add detailed metrics to WandB
-            wandb_data.update({
-                # Velocity similarity metrics
-                "train/velocity_cosine_sim": velocity_sim,
-                "train/velocity_per_patch_mean": metrics.get('velocity_per_patch_mean', 0.0),
-                "train/velocity_per_patch_std": metrics.get('velocity_per_patch_std', 0.0),
-                "train/velocity_high_quality_patches": metrics.get('velocity_high_quality_patches', 0.0),
-                "train/velocity_very_high_quality_patches": metrics.get('velocity_very_high_quality_patches', 0.0),
-                "train/velocity_high_quality_images": metrics.get('velocity_high_quality_images', 0.0),
-                
-                # Norm tracking for EVA reproduction
-                "norms/eva_target_norm": eva_target_norm,
-                "norms/clip_conditioning_norm": clip_conditioning_norm,
-                "norms/prediction_norm": prediction_norm,
-                "norms/velocity_target_norm": velocity_target_norm,
-                "norms/norm_ratio": metrics.get('norm_ratio', 1.0),
-                "norms/eva_normalized": metrics.get('eva_normalized', True),
-                "norms/clip_normalized": metrics.get('clip_normalized', True),
-                "norms/targets_properly_normalized": metrics.get('targets_properly_normalized', True),
-                "norms/conditioning_properly_normalized": metrics.get('conditioning_properly_normalized', True),
-                
-                # EMA metrics
-                "train/ema_velocity_cosine": metrics.get('ema_velocity_cosine', 0.0),
-                "train/ema_pred_norm": metrics.get('ema_pred_norm', 1.0),
-                "train/ema_target_norm": metrics.get('ema_target_norm', 1.0),
-                
-                # Training progress
-                "train/training_steps": metrics.get('training_steps', self.step_count),
-                "train/best_velocity_sim": metrics.get('best_velocity_sim', 0.0),
-                
-                # Implementation status
-                "status/normalize_targets": metrics.get('normalize_targets', True),
-                "status/double_normalization_avoided": metrics.get('double_normalization_avoided', True),
-                "status/l2_normalization_enabled": True,
-                "status/test_type": "eva_reproduction",
-            })
-            
-            # Check normalization status
-            if abs(eva_target_norm - 1.0) > 0.1:
-                self.normalization_warnings += 1
-                wandb_data["warnings/eva_normalization_warnings"] = self.normalization_warnings
-                if self.normalization_warnings <= 10:
-                    logger.warning(f"Step {self.step_count}: EVA target norm {eva_target_norm:.3f} (should be ~1.0)")
-            
-            if abs(clip_conditioning_norm - 1.0) > 0.1:
-                wandb_data["warnings/clip_normalization_warnings"] = self.normalization_warnings
-                if self.normalization_warnings <= 10:
-                    logger.warning(f"Step {self.step_count}: CLIP conditioning norm {clip_conditioning_norm:.3f} (should be ~1.0)")
+            velocity_sim = metrics.get('velocity_similarity', 0.0)
+            self.velocity_sim_history.append(velocity_sim)
             
             # Update best metrics
             if velocity_sim > self.best_velocity_sim:
                 self.best_velocity_sim = velocity_sim
-                self.steps_without_velocity_improvement = 0
-                wandb_data["train/new_best_velocity"] = True
-            else:
-                self.steps_without_velocity_improvement += 1
-                wandb_data["train/new_best_velocity"] = False
-                
-            wandb_data["train/steps_without_velocity_improvement"] = self.steps_without_velocity_improvement
-                
             if loss_value < self.best_loss:
                 self.best_loss = loss_value
-                wandb_data["train/new_best_loss"] = True
-            else:
-                wandb_data["train/new_best_loss"] = False
-            
-            wandb_data["train/best_loss"] = self.best_loss
+        
+        # Track gradients if enabled
+        if self.track_gradients and model.training:
+            self._track_gradient_statistics(model)
+        
+        # Track learning rate
+        if hasattr(self, 'optimizer') and self.optimizer is not None:
+            current_lr = self.optimizer.param_groups[0]['lr']
+            self.learning_rate_history.append(current_lr)
         
         # Log to WandB
-        if self.use_wandb and self.step_count % self.wandb_log_interval == 0:
+        if self.use_wandb:
+            wandb_data = {
+                "train/step": self.step_count,
+                "train/loss": loss_value,
+                "train/learning_rate": self.learning_rate_history[-1] if self.learning_rate_history else 0,
+            }
+            
+            if metrics:
+                wandb_data.update({
+                    "train/velocity_similarity": metrics.get('velocity_similarity', 0),
+                    "train/pred_norm": metrics.get('pred_norm', 0),
+                    "train/velocity_norm": metrics.get('velocity_norm', 0),
+                    "train/error_norm": metrics.get('error_norm', 0),
+                    "train/relative_error": metrics.get('relative_error', 0),
+                })
+            
+            if self.gradient_norms_history:
+                wandb_data["train/gradient_norm"] = self.gradient_norms_history[-1]
+            
             self.wandb_instance.log(wandb_data, step=self.step_count)
+        
+        # Periodic logging
+        if self.step_count % self.args.logging_steps == 0:
+            self._log_training_progress(loss_value, metrics)
+        
+        # Run evaluation
+        if self.step_count > 0 and self.step_count % self.eval_every_n_steps == 0:
+            self._run_eva_evaluation_during_training()
+    
+    def _track_gradient_statistics(self, model):
+        """Track gradient norms and statistics"""
+        total_norm = 0.0
+        param_count = 0
+        
+        for name, param in model.named_parameters():
+            if param.grad is not None:
+                param_norm = param.grad.data.norm(2).item()
+                total_norm += param_norm ** 2
+                param_count += 1
+                
+                # Track specific layer gradients
+                if self.debug_mode and self.step_count % self.log_gradient_norms_every == 0:
+                    if 'output_proj' in name or 'input_proj' in name:
+                        logger.info(f"  Gradient norm {name}: {param_norm:.6f}")
+        
+        total_norm = total_norm ** 0.5
+        self.gradient_norms_history.append(total_norm)
+        
+        # Update statistics
+        if total_norm < self.gradient_stats['min_norm']:
+            self.gradient_stats['min_norm'] = total_norm
+        if total_norm > self.gradient_stats['max_norm']:
+            self.gradient_stats['max_norm'] = total_norm
+        if total_norm < 1e-8:
+            self.gradient_stats['zero_grad_steps'] += 1
+        if total_norm > 100.0:
+            self.gradient_stats['exploding_grad_steps'] += 1
+        
+        # Log warnings
+        if total_norm < 1e-8:
+            logger.warning(f"[Step {self.step_count}] Zero gradients detected!")
+        elif total_norm > 100.0:
+            logger.warning(f"[Step {self.step_count}] Large gradient norm: {total_norm:.2f}")
+    
+    def _log_training_progress(self, loss: float, metrics: Optional[Dict[str, float]]):
+        """Log detailed training progress"""
+        msg = f"Step {self.step_count}: Loss={loss:.6f}"
+        
+        if metrics:
+            velocity_sim = metrics.get('velocity_similarity', 0.0)
+            msg += f", VelSim={velocity_sim:.4f}"
+            msg += f", PredNorm={metrics.get('pred_norm', 0):.3f}"
+            msg += f", Error={metrics.get('relative_error', 0):.3f}"
+        
+        if self.gradient_norms_history:
+            msg += f", GradNorm={self.gradient_norms_history[-1]:.3f}"
+        
+        if self.learning_rate_history:
+            msg += f", LR={self.learning_rate_history[-1]:.2e}"
+        
+        msg += f" | Best: Loss={self.best_loss:.6f}, VelSim={self.best_velocity_sim:.4f}"
+        
+        if self.overfit_samples:
+            msg += " [OVERFIT TEST]"
+        
+        logger.info(msg)
+        
+        # Detailed summary every N steps
+        if self.step_count % (self.args.logging_steps * 10) == 0:
+            self._log_detailed_summary()
+    
+    def _log_detailed_summary(self):
+        """Log comprehensive training summary"""
+        logger.info("=" * 80)
+        logger.info(f"📊 TRAINING SUMMARY - Step {self.step_count}")
+        logger.info("=" * 80)
+        
+        # Loss statistics
+        if len(self.loss_history) > 10:
+            recent_losses = self.loss_history[-100:]
+            logger.info(f"📉 Loss Statistics:")
+            logger.info(f"   Current: {self.loss_history[-1]:.6f}")
+            logger.info(f"   Recent mean: {np.mean(recent_losses):.6f}")
+            logger.info(f"   Recent std: {np.std(recent_losses):.6f}")
+            logger.info(f"   Best: {self.best_loss:.6f}")
+        
+        # Gradient statistics
+        if self.gradient_norms_history:
+            recent_grads = self.gradient_norms_history[-100:]
+            logger.info(f"📈 Gradient Statistics:")
+            logger.info(f"   Current norm: {self.gradient_norms_history[-1]:.3f}")
+            logger.info(f"   Recent mean: {np.mean(recent_grads):.3f}")
+            logger.info(f"   Min/Max: {self.gradient_stats['min_norm']:.3f} / {self.gradient_stats['max_norm']:.3f}")
+            logger.info(f"   Zero grad steps: {self.gradient_stats['zero_grad_steps']}")
+            logger.info(f"   Exploding grad steps: {self.gradient_stats['exploding_grad_steps']}")
+        
+        # Velocity similarity
+        if self.velocity_sim_history:
+            recent_sims = self.velocity_sim_history[-100:]
+            logger.info(f"🎯 Velocity Similarity:")
+            logger.info(f"   Current: {self.velocity_sim_history[-1]:.4f}")
+            logger.info(f"   Recent mean: {np.mean(recent_sims):.4f}")
+            logger.info(f"   Best: {self.best_velocity_sim:.4f}")
+        
+        # Learning rate
+        if self.learning_rate_history:
+            logger.info(f"📚 Learning Rate: {self.learning_rate_history[-1]:.2e}")
+        
+        # Overfit test status
+        if self.overfit_samples:
+            logger.info(f"🔬 Overfitting Test: Training on {len(self.overfit_samples)} batches")
+            if self.best_velocity_sim > 0.9:
+                logger.info("   ✅ Successfully overfitting! Model can learn.")
+            elif self.best_velocity_sim > 0.5:
+                logger.info("   📈 Making progress on overfitting.")
+            else:
+                logger.info("   ⚠️ Struggling to overfit. Check architecture/loss.")
+        
+        logger.info("=" * 80)
     
     def _run_eva_evaluation_during_training(self):
-        """Run EVA similarity evaluation during training with WandB logging"""
+        """Run evaluation during training"""
         if self.eval_dataloader is None:
-            logger.warning("No evaluation dataloader available for EVA evaluation")
             return
         
-        logger.info(f"🔍 Running EVA reproduction evaluation at step {self.step_count}...")
+        logger.info(f"🔍 Running evaluation at step {self.step_count}...")
         
         self.model.eval()
         eval_results = self._evaluate_eva_similarity(
@@ -344,47 +396,21 @@ class BLIP3oEVATrainer(Trainer):
         
         if eval_results:
             eva_sim = eval_results['overall_eva_similarity']
-            self.eva_similarity_history.append(eva_sim)
+            self.eva_sim_history.append(eva_sim)
             
-            # Update best EVA similarity
-            new_best_eva = False
             if eva_sim > self.best_eva_sim:
                 self.best_eva_sim = eva_sim
-                self.steps_without_eva_improvement = 0
-                new_best_eva = True
                 logger.info(f"🎉 New best EVA similarity: {eva_sim:.4f}")
-            else:
-                self.steps_without_eva_improvement += 1
             
-            # Log evaluation results
-            logger.info(f"📊 EVA Reproduction Evaluation Results:")
-            logger.info(f"   Overall EVA Similarity: {eva_sim:.4f}")
-            logger.info(f"   High Quality Images (>0.7): {eval_results['high_quality_images']*100:.1f}%")
-            logger.info(f"   Very High Quality Images (>0.8): {eval_results['very_high_quality_images']*100:.1f}%")
-            logger.info(f"   Best so far: {self.best_eva_sim:.4f}")
+            logger.info(f"📊 Evaluation Results:")
+            logger.info(f"   EVA Similarity: {eva_sim:.4f}")
+            logger.info(f"   High Quality: {eval_results['high_quality_images']*100:.1f}%")
             
-            # Log comprehensive evaluation metrics to WandB
             if self.use_wandb:
-                eval_wandb_data = {
-                    "eval/step": self.step_count,
-                    "eval/overall_eva_similarity": eva_sim,
-                    "eval/per_image_mean": eval_results.get('per_image_mean', 0.0),
-                    "eval/per_image_std": eval_results.get('per_image_std', 0.0),
-                    "eval/per_patch_mean": eval_results.get('per_patch_mean', 0.0),
-                    "eval/per_patch_std": eval_results.get('per_patch_std', 0.0),
-                    "eval/high_quality_images": eval_results.get('high_quality_images', 0.0),
-                    "eval/very_high_quality_images": eval_results.get('very_high_quality_images', 0.0),
-                    "eval/excellent_quality_images": eval_results.get('excellent_quality_images', 0.0),
-                    "eval/samples_evaluated": eval_results.get('samples_evaluated', 0),
-                    "eval/inference_steps": eval_results.get('inference_steps', self.eval_inference_steps),
-                    "eval/best_eva_sim": self.best_eva_sim,
-                    "eval/new_best_eva": new_best_eva,
-                    "eval/steps_without_eva_improvement": self.steps_without_eva_improvement,
-                    "eval/test_type": "eva_reproduction",
-                }
-                
-                self.wandb_instance.log(eval_wandb_data, step=self.step_count)
-                logger.info(f"✅ EVA evaluation metrics logged to WandB")
+                self.wandb_instance.log({
+                    "eval/eva_similarity": eva_sim,
+                    "eval/high_quality_ratio": eval_results['high_quality_images'],
+                }, step=self.step_count)
     
     def _evaluate_eva_similarity(
         self, 
@@ -392,296 +418,106 @@ class BLIP3oEVATrainer(Trainer):
         batch_size: int = 16,
         inference_steps: int = 50
     ) -> Optional[Dict[str, float]]:
-        """Evaluate EVA similarity using the model's generation capability"""
+        """Evaluate EVA similarity"""
         try:
             all_similarities = []
-            all_per_image_sims = []
             samples_processed = 0
             
-            eval_iterator = iter(self.eval_dataloader)
-            
             with torch.no_grad():
-                while samples_processed < num_samples:
-                    try:
-                        batch = next(eval_iterator)
-                    except StopIteration:
+                for batch in self.eval_dataloader:
+                    if samples_processed >= num_samples:
                         break
                     
-                    # Move batch to device - NOTE THE SWAPPED ROLES
-                    clip_features = batch['encoder_hidden_states'].to(self.model.device)  # CLIP conditioning
-                    target_eva_embeddings = batch['eva_embeddings'].to(self.model.device)  # EVA targets
+                    # Move to device
+                    clip_features = batch['encoder_hidden_states'].to(self.model.device)
+                    target_eva = batch['eva_embeddings'].to(self.model.device)
                     
-                    current_batch_size = clip_features.shape[0]
-                    
-                    # Evaluate this batch
-                    batch_results = self.model.evaluate_similarity(
-                        clip_features=clip_features,
-                        target_eva_embeddings=target_eva_embeddings,
-                        num_inference_steps=inference_steps,
-                        normalize_embeddings=True
-                    )
-                    
-                    # Collect results
-                    # Compute per-patch similarities for this batch
+                    # Generate
                     generated = self.model.generate(
                         clip_features=clip_features,
                         num_inference_steps=inference_steps,
-                        normalize_output=True
+                        normalize_output=True,
+                        solver="euler"  # Use simple solver for evaluation
                     )
                     
-                    targets_norm = F.normalize(target_eva_embeddings, p=2, dim=-1)
-                    per_patch_sim = F.cosine_similarity(generated, targets_norm, dim=-1)
-                    per_image_sim = per_patch_sim.mean(dim=1)
+                    # Compute similarity
+                    target_norm = F.normalize(target_eva, p=2, dim=-1)
+                    sim = F.cosine_similarity(generated, target_norm, dim=-1)
+                    per_image_sim = sim.mean(dim=1)
                     
-                    all_similarities.append(per_patch_sim.cpu())
-                    all_per_image_sims.append(per_image_sim.cpu())
-                    
-                    samples_processed += current_batch_size
-                    
-                    if samples_processed >= num_samples:
-                        break
+                    all_similarities.append(per_image_sim.cpu())
+                    samples_processed += clip_features.shape[0]
             
             if not all_similarities:
-                logger.warning("No EVA evaluation samples processed")
                 return None
             
-            # Aggregate results
-            all_patch_sims = torch.cat(all_similarities, dim=0)
-            all_image_sims = torch.cat(all_per_image_sims, dim=0)
+            all_sims = torch.cat(all_similarities)
             
-            # Compute final metrics
-            results = {
-                'overall_eva_similarity': all_image_sims.mean().item(),
-                'per_image_mean': all_image_sims.mean().item(),
-                'per_image_std': all_image_sims.std().item(),
-                'per_patch_mean': all_patch_sims.mean().item(),
-                'per_patch_std': all_patch_sims.std().item(),
-                'high_quality_images': (all_image_sims > 0.7).float().mean().item(),
-                'very_high_quality_images': (all_image_sims > 0.8).float().mean().item(),
-                'excellent_quality_images': (all_image_sims > 0.9).float().mean().item(),
-                'samples_evaluated': samples_processed,
-                'inference_steps': inference_steps,
+            return {
+                'overall_eva_similarity': all_sims.mean().item(),
+                'high_quality_images': (all_sims > 0.7).float().mean().item(),
+                'very_high_quality_images': (all_sims > 0.8).float().mean().item(),
             }
             
-            return results
-            
         except Exception as e:
-            logger.error(f"Error during EVA evaluation: {e}")
+            logger.error(f"Evaluation error: {e}")
             return None
     
-    def _log_eva_training_progress(self, loss: torch.Tensor, metrics: Optional[Dict[str, float]]):
-        """Log detailed EVA reproduction training progress"""
-        loss_value = loss.item()
-        
-        # Basic progress
-        progress_msg = f"Step {self.step_count}: Loss={loss_value:.6f}"
-        
-        if metrics:
-            # Velocity similarity (training metric)
-            velocity_sim = metrics.get('velocity_cosine_sim', 0.0)
-            progress_msg += f", VelSim={velocity_sim:.4f}"
-            
-            # EVA similarity (if available from recent evaluation)
-            if self.eva_similarity_history:
-                latest_eva_sim = self.eva_similarity_history[-1]
-                progress_msg += f", EVASim={latest_eva_sim:.4f}"
-            
-            # Norm tracking for EVA reproduction
-            eva_norm = metrics.get('eva_target_norm', 1.0)           # EVA embeddings (should be ~1.0)
-            clip_norm = metrics.get('clip_conditioning_norm', 1.0)   # CLIP conditioning
-            pred_norm = metrics.get('prediction_norm', 1.0)          # Model predictions
-            velocity_norm = metrics.get('target_norm', 1.0)          # Velocity targets
-            
-            progress_msg += f", EVANorm={eva_norm:.3f}, CLIPNorm={clip_norm:.3f}, PredNorm={pred_norm:.3f}, VelNorm={velocity_norm:.3f}"
-            
-            # Normalization status
-            eva_status = "✅" if abs(eva_norm - 1.0) < 0.1 else "⚠️"
-            clip_status = "✅" if abs(clip_norm - 1.0) < 0.1 else "⚠️"
-            progress_msg += f" {eva_status}{clip_status}"
-            
-            # Best metrics
-            progress_msg += f" | Best: Vel={self.best_velocity_sim:.4f}, EVA={self.best_eva_sim:.4f}"
-        
-        progress_msg += f" [EVA_REPRO_{self.training_mode}]"
-        if self.use_wandb:
-            progress_msg += f" [WandB: {self.wandb_instance.run.url}]"
-        
-        logger.info(progress_msg)
-        
-        # Detailed summary every 50 steps
-        if self.step_count % (self.args.logging_steps * 5) == 0:
-            self._log_eva_detailed_summary()
-    
-    def _log_eva_detailed_summary(self):
-        """Log detailed EVA reproduction training summary"""
-        logger.info("=" * 80)
-        logger.info(f"📊 EVA REPRODUCTION TRAINING SUMMARY - Step {self.step_count}")
-        logger.info("=" * 80)
-        
-        # Loss summary
-        if len(self.loss_history) > 0:
-            recent_loss = sum(self.loss_history[-10:]) / min(10, len(self.loss_history))
-            logger.info(f"📉 Loss: Current={self.loss_history[-1]:.6f}, Recent avg={recent_loss:.6f}, Best={self.best_loss:.6f}")
-        
-        # Velocity similarity summary
-        if len(self.velocity_similarity_history) > 0:
-            recent_vel = sum(self.velocity_similarity_history[-10:]) / min(10, len(self.velocity_similarity_history))
-            logger.info(f"🎯 Velocity Similarity: Current={self.velocity_similarity_history[-1]:.4f}, Recent avg={recent_vel:.4f}, Best={self.best_velocity_sim:.4f}")
-        
-        # EVA similarity summary
-        if len(self.eva_similarity_history) > 0:
-            recent_eva = sum(self.eva_similarity_history[-5:]) / min(5, len(self.eva_similarity_history))
-            logger.info(f"🎯 EVA Similarity: Recent avg={recent_eva:.4f}, Best={self.best_eva_sim:.4f}")
-            logger.info(f"   Evaluations performed: {len(self.eva_similarity_history)}")
-        
-        # Normalization summary for EVA reproduction
-        if len(self.eva_target_norm_history) > 0:
-            recent_eva_norm = sum(self.eva_target_norm_history[-10:]) / min(10, len(self.eva_target_norm_history))
-            recent_clip_norm = sum(self.clip_conditioning_norm_history[-10:]) / min(10, len(self.clip_conditioning_norm_history))
-            recent_pred_norm = sum(self.prediction_norm_history[-10:]) / min(10, len(self.prediction_norm_history))
-            recent_vel_norm = sum(self.velocity_target_norm_history[-10:]) / min(10, len(self.velocity_target_norm_history))
-            
-            logger.info(f"📏 Normalization Status:")
-            logger.info(f"   EVA targets:  {recent_eva_norm:.3f} (should be ~1.0) {'✅' if abs(recent_eva_norm - 1.0) < 0.1 else '⚠️'}")
-            logger.info(f"   CLIP cond:    {recent_clip_norm:.3f} (should be ~1.0) {'✅' if abs(recent_clip_norm - 1.0) < 0.1 else '⚠️'}")
-            logger.info(f"   Predictions:  {recent_pred_norm:.3f}")
-            logger.info(f"   Vel targets:  {recent_vel_norm:.3f}")
-            logger.info(f"   Warnings issued: {self.normalization_warnings}")
-        
-        # Improvement tracking
-        logger.info(f"📈 Steps without improvement:")
-        logger.info(f"   Velocity: {self.steps_without_velocity_improvement}")
-        logger.info(f"   EVA:      {self.steps_without_eva_improvement}")
-        
-        # Training health assessment
-        health = self._assess_eva_training_health()
-        logger.info(f"🏥 Training Health: {health}")
-        
-        # WandB status
-        if self.use_wandb:
-            logger.info(f"📊 WandB Run: {self.wandb_instance.run.url}")
-            logger.info(f"📊 All EVA reproduction metrics logged to WandB")
-        
-        logger.info("=" * 80)
-    
-    def _assess_eva_training_health(self) -> str:
-        """Assess EVA reproduction training health including normalization status"""
-        if len(self.velocity_similarity_history) < 10:
-            return "STARTING - Not enough data yet"
-        
-        recent_vel = sum(self.velocity_similarity_history[-10:]) / 10
-        recent_eva = sum(self.eva_similarity_history[-3:]) / max(3, len(self.eva_similarity_history[-3:])) if self.eva_similarity_history else 0
-        
-        # Check normalization
-        norm_ok = True
-        if len(self.eva_target_norm_history) > 0:
-            recent_eva_norm = sum(self.eva_target_norm_history[-10:]) / min(10, len(self.eva_target_norm_history))
-            recent_clip_norm = sum(self.clip_conditioning_norm_history[-10:]) / min(10, len(self.clip_conditioning_norm_history))
-            norm_ok = abs(recent_eva_norm - 1.0) < 0.2 and abs(recent_clip_norm - 1.0) < 0.2
-        
-        if not norm_ok:
-            return "NORMALIZATION ISSUE - EVA/CLIP targets not properly normalized"
-        elif recent_vel < 0.01:
-            return "POOR - Very low velocity similarity"
-        elif recent_vel > 0.1 and recent_eva < 0.05:
-            return "CONCERNING - Good velocity but poor EVA reproduction"
-        elif recent_vel > 0.1 and recent_eva > 0.1:
-            return "EXCELLENT - Both metrics improving well"
-        elif recent_vel > 0.05 and recent_eva > 0.05:
-            return "GOOD - Steady improvement"
-        elif recent_vel > 0.02:
-            return "LEARNING - Making progress"
-        else:
-            return "SLOW - May need hyperparameter tuning"
-    
     def get_final_evaluation(self) -> Dict[str, Any]:
-        """Get comprehensive final EVA reproduction evaluation with WandB logging"""
-        logger.info("🔍 Running final comprehensive EVA reproduction evaluation...")
+        """Get comprehensive final evaluation"""
+        logger.info("🔍 Running final evaluation...")
         
         self.model.eval()
         final_results = self._evaluate_eva_similarity(
-            num_samples=min(5000, self.eval_num_samples * 5),  # More samples for final eval
+            num_samples=min(5000, self.eval_num_samples * 5),
             batch_size=self.eval_batch_size,
-            inference_steps=self.eval_inference_steps
+            inference_steps=self.eval_inference_steps * 2  # More steps for final eval
         )
-        self.model.train()
         
-        # Training summary for EVA reproduction
+        # Training summary
         training_summary = {
             'total_steps': self.step_count,
-            'final_loss': self.loss_history[-1] if self.loss_history else 0,
             'best_loss': self.best_loss,
-            'final_velocity_sim': self.velocity_similarity_history[-1] if self.velocity_similarity_history else 0,
             'best_velocity_sim': self.best_velocity_sim,
-            'final_eva_sim': self.eva_similarity_history[-1] if self.eva_similarity_history else 0,
             'best_eva_sim': self.best_eva_sim,
-            'training_health': self._assess_eva_training_health(),
-            'evaluations_performed': len(self.eva_similarity_history),
-            
-            # Normalization summary for EVA reproduction
-            'final_eva_norm': self.eva_target_norm_history[-1] if self.eva_target_norm_history else 1.0,
-            'final_clip_norm': self.clip_conditioning_norm_history[-1] if self.clip_conditioning_norm_history else 1.0,
-            'final_prediction_norm': self.prediction_norm_history[-1] if self.prediction_norm_history else 1.0,
-            'normalization_warnings': self.normalization_warnings,
-            'eva_norms_properly_normalized': self.last_eva_norm is not None and abs(self.last_eva_norm - 1.0) < 0.1,
-            'clip_norms_properly_normalized': self.last_clip_norm is not None and abs(self.last_clip_norm - 1.0) < 0.1,
-            
-            # Test type
-            'test_type': 'eva_reproduction',
-            
-            # WandB info
-            'wandb_enabled': self.use_wandb,
-            'wandb_url': self.wandb_instance.run.url if self.use_wandb else None,
+            'gradient_stats': self.gradient_stats,
+            'overfit_test': self.overfit_test_size is not None,
+            'overfit_success': self.best_velocity_sim > 0.9 if self.overfit_test_size else None,
         }
-        
-        # Log final evaluation to WandB
-        if self.use_wandb and final_results:
-            final_wandb_data = {
-                "final_eval/overall_eva_similarity": final_results.get('overall_eva_similarity', 0),
-                "final_eval/high_quality_images": final_results.get('high_quality_images', 0),
-                "final_eval/very_high_quality_images": final_results.get('very_high_quality_images', 0),
-                "final_eval/excellent_quality_images": final_results.get('excellent_quality_images', 0),
-                "final_eval/samples_evaluated": final_results.get('samples_evaluated', 0),
-                "final_eval/per_image_mean": final_results.get('per_image_mean', 0),
-                "final_eval/per_image_std": final_results.get('per_image_std', 0),
-                "final_eval/per_patch_mean": final_results.get('per_patch_mean', 0),
-                "final_eval/per_patch_std": final_results.get('per_patch_std', 0),
-                "final_eval/test_type": "eva_reproduction",
-            }
-            
-            self.wandb_instance.log(final_wandb_data, step=self.step_count)
-            logger.info("✅ Final EVA evaluation results logged to WandB")
         
         return {
             'training_summary': training_summary,
             'final_evaluation': final_results,
-            'loss_history': self.loss_history,
-            'velocity_similarity_history': self.velocity_similarity_history,
-            'eva_similarity_history': self.eva_similarity_history,
-            'eva_target_norm_history': self.eva_target_norm_history,
-            'clip_conditioning_norm_history': self.clip_conditioning_norm_history,
-            'prediction_norm_history': self.prediction_norm_history,
-            'velocity_target_norm_history': self.velocity_target_norm_history,
+            'loss_history': self.loss_history[-1000:],  # Last 1000 steps
+            'velocity_sim_history': self.velocity_sim_history[-1000:],
+            'eva_sim_history': self.eva_sim_history,
+            'gradient_norms_history': self.gradient_norms_history[-1000:],
         }
 
 
 def create_eva_training_args(
     output_dir: str,
-    num_train_epochs: int = 15,
+    num_train_epochs: int = 10,
     per_device_train_batch_size: int = 32,
     learning_rate: float = 1e-4,
+    warmup_ratio: float = 0.1,  # Use ratio instead of steps
     lr_scheduler_type: str = "cosine",
     weight_decay: float = 0.01,
-    warmup_steps: int = 100,
-    gradient_accumulation_steps: int = 2,
+    adam_beta1: float = 0.9,
+    adam_beta2: float = 0.999,
+    adam_epsilon: float = 1e-8,
+    max_grad_norm: float = 1.0,
+    gradient_accumulation_steps: int = 1,
     fp16: bool = True,
     dataloader_num_workers: int = 0,
     logging_steps: int = 10,
-    save_steps: int = 200,
+    save_steps: int = 500,
+    eval_steps: int = 500,
+    save_total_limit: int = 3,
     report_to: list = None,
     **kwargs
 ) -> TrainingArguments:
-    """Create training arguments for EVA reproduction training with WandB support"""
+    """Create training arguments with better defaults"""
     
     if report_to is None:
         report_to = []
@@ -691,20 +527,28 @@ def create_eva_training_args(
         num_train_epochs=num_train_epochs,
         per_device_train_batch_size=per_device_train_batch_size,
         learning_rate=learning_rate,
+        warmup_ratio=warmup_ratio,
         lr_scheduler_type=lr_scheduler_type,
         weight_decay=weight_decay,
-        warmup_steps=warmup_steps,
+        adam_beta1=adam_beta1,
+        adam_beta2=adam_beta2,
+        adam_epsilon=adam_epsilon,
+        max_grad_norm=max_grad_norm,
         gradient_accumulation_steps=gradient_accumulation_steps,
         fp16=fp16,
         dataloader_num_workers=dataloader_num_workers,
         logging_steps=logging_steps,
         save_steps=save_steps,
+        eval_steps=eval_steps,
         save_strategy="steps",
-        save_total_limit=3,
+        save_total_limit=save_total_limit,
         eval_strategy="no",  # We handle evaluation manually
         prediction_loss_only=False,
         remove_unused_columns=False,
         ddp_find_unused_parameters=False,
         report_to=report_to,
+        load_best_model_at_end=False,
+        metric_for_best_model="eval_loss",
+        greater_is_better=False,
         **kwargs
     )

@@ -50,7 +50,7 @@ WARMUP_STEPS=500                # Longer warmup for stability
 LR_SCHEDULER="cosine"           # Better convergence
 
 # Evaluation parameters (less frequent due to cost)
-EVAL_EVERY_N_STEPS=200
+EVAL_EVERY_N_STEPS=50
 EVAL_NUM_SAMPLES=100
 EVAL_INFERENCE_STEPS=100
 
