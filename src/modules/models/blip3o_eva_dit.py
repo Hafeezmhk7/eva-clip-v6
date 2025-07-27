@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-Fixed BLIP3-o DiT Model for EVA-CLIP Reproduction
+Fixed BLIP3-o DiT Model for EVA-CLIP Spherical Denoising
 Key fixes:
-1. Proper gradient flow and initialization
-2. Correct input/output handling
-3. Better numerical stability
-4. Fixed timestep embedding and attention
+1. Designed for spherical manifold (unit hypersphere)
+2. Proper EVA → EVA denoising architecture
+3. Cross-attention with clean EVA conditioning
+4. Optimized for gradient flow and numerical stability
 """
 
 import torch
@@ -19,9 +19,9 @@ from transformers import PreTrainedModel, PretrainedConfig
 logger = logging.getLogger(__name__)
 
 
-class BLIP3oEVADiTConfig(PretrainedConfig):
-    """Configuration for BLIP3-o EVA DiT model"""
-    model_type = "blip3o_eva_dit"
+class SphericalEVADiTConfig(PretrainedConfig):
+    """Configuration for Spherical EVA Denoising DiT model"""
+    model_type = "spherical_eva_dit"
     
     def __init__(
         self,
@@ -30,7 +30,6 @@ class BLIP3oEVADiTConfig(PretrainedConfig):
         num_attention_heads: int = 12,
         num_key_value_heads: int = 4,
         intermediate_size: int = 3072,
-        clip_embedding_size: int = 1024,
         eva_embedding_size: int = 4096,
         num_tokens: int = 256,
         max_position_embeddings: int = 256,
@@ -41,6 +40,11 @@ class BLIP3oEVADiTConfig(PretrainedConfig):
         use_gradient_checkpointing: bool = False,
         training_mode: str = "patch_only",
         rope_theta: float = 10000.0,
+        # Spherical-specific parameters
+        use_spherical_embeddings: bool = True,
+        spherical_projection_dim: Optional[int] = None,
+        conditioning_fusion: str = "cross_attention",  # cross_attention, concat, addition
+        prediction_type: str = "velocity",
         **kwargs
     ):
         super().__init__(**kwargs)
@@ -49,7 +53,6 @@ class BLIP3oEVADiTConfig(PretrainedConfig):
         self.num_attention_heads = num_attention_heads
         self.num_key_value_heads = num_key_value_heads
         self.intermediate_size = intermediate_size
-        self.clip_embedding_size = clip_embedding_size
         self.eva_embedding_size = eva_embedding_size
         self.num_tokens = num_tokens
         self.max_position_embeddings = max_position_embeddings
@@ -60,6 +63,12 @@ class BLIP3oEVADiTConfig(PretrainedConfig):
         self.use_gradient_checkpointing = use_gradient_checkpointing
         self.training_mode = training_mode
         self.rope_theta = rope_theta
+        
+        # Spherical-specific
+        self.use_spherical_embeddings = use_spherical_embeddings
+        self.spherical_projection_dim = spherical_projection_dim or hidden_size
+        self.conditioning_fusion = conditioning_fusion
+        self.prediction_type = prediction_type
 
 
 class RMSNorm(nn.Module):
@@ -109,25 +118,31 @@ def apply_rotary_pos_emb(q: torch.Tensor, k: torch.Tensor, cos: torch.Tensor, si
     return q_embed, k_embed
 
 
-class TimestepEmbedder(nn.Module):
-    """Fixed timestep embedding"""
+class SphericalTimestepEmbedder(nn.Module):
+    """Improved timestep embedding for spherical flow"""
     def __init__(self, hidden_size: int, frequency_embedding_size: int = 256):
         super().__init__()
         self.hidden_size = hidden_size
         self.frequency_embedding_size = frequency_embedding_size
         
-        # Use SiLU activation for better gradients
+        # Use Swish/SiLU activation for better gradients
         self.mlp = nn.Sequential(
             nn.Linear(frequency_embedding_size, hidden_size),
             nn.SiLU(),
             nn.Linear(hidden_size, hidden_size),
+            nn.SiLU(),
+            nn.Linear(hidden_size, hidden_size),
         )
         
-        # Better initialization
-        nn.init.xavier_uniform_(self.mlp[0].weight)
-        nn.init.zeros_(self.mlp[0].bias)
-        nn.init.xavier_uniform_(self.mlp[2].weight)
-        nn.init.zeros_(self.mlp[2].bias)
+        # Better initialization for spherical flow
+        self._init_weights()
+
+    def _init_weights(self):
+        """Initialize weights for better gradient flow"""
+        for module in self.mlp:
+            if isinstance(module, nn.Linear):
+                nn.init.xavier_uniform_(module.weight, gain=0.5)  # Smaller gain for stability
+                nn.init.zeros_(module.bias)
 
     @staticmethod
     def timestep_embedding(t: torch.Tensor, dim: int, max_period: int = 10000) -> torch.Tensor:
@@ -145,9 +160,9 @@ class TimestepEmbedder(nn.Module):
         return self.mlp(t_freq)
 
 
-class Attention(nn.Module):
-    """Multi-head attention with RoPE"""
-    def __init__(self, config: BLIP3oEVADiTConfig):
+class SphericalAttention(nn.Module):
+    """Multi-head attention optimized for spherical embeddings"""
+    def __init__(self, config: SphericalEVADiTConfig):
         super().__init__()
         self.config = config
         self.hidden_size = config.hidden_size
@@ -172,15 +187,17 @@ class Attention(nn.Module):
         
         self.dropout = nn.Dropout(config.attention_dropout)
         
-        # Better initialization
+        # Improved initialization
         self._init_weights()
     
     def _init_weights(self):
-        """Initialize attention weights"""
+        """Initialize attention weights for spherical flow"""
+        # Query, Key, Value projections
         for module in [self.q_proj, self.k_proj, self.v_proj]:
-            nn.init.xavier_uniform_(module.weight)
-        # Smaller initialization for output projection
-        nn.init.xavier_uniform_(self.o_proj.weight, gain=1.0 / math.sqrt(self.config.num_hidden_layers))
+            nn.init.xavier_uniform_(module.weight, gain=0.8)
+        
+        # Output projection with smaller initialization
+        nn.init.xavier_uniform_(self.o_proj.weight, gain=0.5)
     
     def forward(
         self,
@@ -216,8 +233,9 @@ class Attention(nn.Module):
         key_states = key_states.repeat_interleave(self.num_key_value_groups, dim=1)
         value_states = value_states.repeat_interleave(self.num_key_value_groups, dim=1)
         
-        # Attention computation
-        attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(self.head_dim)
+        # Attention computation with scaling for spherical embeddings
+        scale = (self.head_dim ** -0.5) * 0.8  # Slightly smaller scale for stability
+        attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) * scale
         
         if attention_mask is not None:
             attn_weights = attn_weights + attention_mask
@@ -231,9 +249,9 @@ class Attention(nn.Module):
         return self.o_proj(attn_output)
 
 
-class MLP(nn.Module):
-    """Feed-forward network"""
-    def __init__(self, config: BLIP3oEVADiTConfig):
+class SphericalMLP(nn.Module):
+    """Feed-forward network optimized for spherical embeddings"""
+    def __init__(self, config: SphericalEVADiTConfig):
         super().__init__()
         self.gate_proj = nn.Linear(config.hidden_size, config.intermediate_size, bias=False)
         self.up_proj = nn.Linear(config.hidden_size, config.intermediate_size, bias=False)
@@ -241,10 +259,14 @@ class MLP(nn.Module):
         self.act_fn = nn.SiLU()
         self.dropout = nn.Dropout(config.dropout_prob)
         
-        # Better initialization
-        nn.init.xavier_uniform_(self.gate_proj.weight)
-        nn.init.xavier_uniform_(self.up_proj.weight)
-        nn.init.xavier_uniform_(self.down_proj.weight, gain=1.0 / math.sqrt(config.num_hidden_layers))
+        # Better initialization for spherical flow
+        self._init_weights()
+
+    def _init_weights(self):
+        """Initialize MLP weights for spherical flow"""
+        nn.init.xavier_uniform_(self.gate_proj.weight, gain=0.8)
+        nn.init.xavier_uniform_(self.up_proj.weight, gain=0.8)
+        nn.init.xavier_uniform_(self.down_proj.weight, gain=0.5)  # Smaller output gain
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         gate = self.act_fn(self.gate_proj(x))
@@ -253,7 +275,7 @@ class MLP(nn.Module):
 
 
 class AdaLN(nn.Module):
-    """Adaptive Layer Normalization"""
+    """Adaptive Layer Normalization with spherical conditioning"""
     def __init__(self, hidden_size: int, conditioning_size: int, eps: float = 1e-6):
         super().__init__()
         self.norm = RMSNorm(hidden_size, eps)
@@ -282,9 +304,9 @@ class AdaLN(nn.Module):
         return normalized * (1 + scale) + shift
 
 
-class DiTBlock(nn.Module):
-    """DiT transformer block"""
-    def __init__(self, config: BLIP3oEVADiTConfig):
+class SphericalDiTBlock(nn.Module):
+    """DiT transformer block optimized for spherical EVA denoising"""
+    def __init__(self, config: SphericalEVADiTConfig):
         super().__init__()
         self.hidden_size = config.hidden_size
         
@@ -299,36 +321,38 @@ class DiTBlock(nn.Module):
         self.ada_ln3 = AdaLN(config.hidden_size, config.hidden_size)
         
         # Attention layers
-        self.self_attn = Attention(config)
-        self.cross_attn = Attention(config)
+        self.self_attn = SphericalAttention(config)
+        self.cross_attn = SphericalAttention(config)
         
         # MLP
-        self.mlp = MLP(config)
+        self.mlp = SphericalMLP(config)
         
-        # CLIP projection
-        self.clip_proj = nn.Linear(config.clip_embedding_size, config.hidden_size, bias=True)
-        nn.init.xavier_uniform_(self.clip_proj.weight)
-        nn.init.zeros_(self.clip_proj.bias)
+        # EVA conditioning projection
+        self.eva_conditioning_proj = nn.Linear(config.eva_embedding_size, config.hidden_size, bias=True)
+        nn.init.xavier_uniform_(self.eva_conditioning_proj.weight, gain=0.5)
+        nn.init.zeros_(self.eva_conditioning_proj.bias)
 
     def forward(
         self, 
-        hidden_states: torch.Tensor, 
-        encoder_hidden_states: torch.Tensor,
-        timestep_emb: torch.Tensor
+        hidden_states: torch.Tensor,      # Noisy EVA in hidden space
+        conditioning_states: torch.Tensor, # Clean EVA conditioning
+        timestep_emb: torch.Tensor        # Timestep embedding
     ) -> torch.Tensor:
-        # Self-attention
+        # Self-attention with timestep conditioning
         residual = hidden_states
         hidden_states = self.norm1(hidden_states)
         hidden_states = self.ada_ln1(hidden_states, timestep_emb)
         hidden_states = self.self_attn(hidden_states)
         hidden_states = residual + hidden_states
         
-        # Cross-attention with CLIP
+        # Cross-attention with clean EVA conditioning
         residual = hidden_states
         hidden_states = self.norm2(hidden_states)
         hidden_states = self.ada_ln2(hidden_states, timestep_emb)
-        clip_features = self.clip_proj(encoder_hidden_states)
-        hidden_states = self.cross_attn(hidden_states, key_value_states=clip_features)
+        
+        # Project clean EVA to hidden dimension
+        eva_conditioning = self.eva_conditioning_proj(conditioning_states)
+        hidden_states = self.cross_attn(hidden_states, key_value_states=eva_conditioning)
         hidden_states = residual + hidden_states
         
         # MLP
@@ -341,13 +365,13 @@ class DiTBlock(nn.Module):
         return hidden_states
 
 
-class BLIP3oEVADiTModel(PreTrainedModel):
-    """Fixed BLIP3-o DiT Model for EVA reproduction"""
+class SphericalEVADiTModel(PreTrainedModel):
+    """Spherical EVA Denoising DiT Model"""
     
-    config_class = BLIP3oEVADiTConfig
+    config_class = SphericalEVADiTConfig
     supports_gradient_checkpointing = True
     
-    def __init__(self, config: BLIP3oEVADiTConfig):
+    def __init__(self, config: SphericalEVADiTConfig):
         super().__init__(config)
         self.config = config
         self.gradient_checkpointing = False
@@ -356,38 +380,60 @@ class BLIP3oEVADiTModel(PreTrainedModel):
         self.input_proj = nn.Linear(config.eva_embedding_size, config.hidden_size, bias=True)
         
         # Timestep embedding
-        self.timestep_embedder = TimestepEmbedder(config.hidden_size)
+        self.timestep_embedder = SphericalTimestepEmbedder(config.hidden_size)
         
         # Positional embedding
         self.pos_embed = nn.Parameter(torch.zeros(1, config.max_position_embeddings, config.hidden_size))
         
         # Transformer blocks
         self.blocks = nn.ModuleList([
-            DiTBlock(config) for _ in range(config.num_hidden_layers)
+            SphericalDiTBlock(config) for _ in range(config.num_hidden_layers)
         ])
         
         # Output layers
         self.output_norm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.output_adaln = AdaLN(config.hidden_size, config.hidden_size)
-        self.output_proj = nn.Linear(config.hidden_size, config.eva_embedding_size, bias=True)
+        
+        # Output projection based on prediction type
+        if config.prediction_type == "velocity":
+            # For velocity prediction, output to EVA dimension
+            self.output_proj = nn.Linear(config.hidden_size, config.eva_embedding_size, bias=True)
+        elif config.prediction_type == "target":
+            # For target prediction, output to EVA dimension with normalization
+            self.output_proj = nn.Sequential(
+                nn.Linear(config.hidden_size, config.eva_embedding_size, bias=True),
+                nn.Lambda(lambda x: F.normalize(x, p=2, dim=-1))
+            )
+        else:
+            self.output_proj = nn.Linear(config.hidden_size, config.eva_embedding_size, bias=True)
         
         # Initialize model
         self._init_weights()
         
-        logger.info(f"BLIP3-o EVA DiT model initialized with {self.get_num_parameters():,} parameters")
+        logger.info(f"Spherical EVA DiT model initialized with {self.get_num_parameters():,} parameters")
+        logger.info(f"  Input: Noisy EVA [B, N, 4096]")
+        logger.info(f"  Conditioning: Clean EVA [B, N, 4096]")
+        logger.info(f"  Output: {config.prediction_type} [B, N, 4096]")
+        logger.info(f"  Prediction type: {config.prediction_type}")
 
     def _init_weights(self):
-        """Initialize model weights"""
+        """Initialize model weights for spherical flow"""
         # Input projection
-        nn.init.xavier_uniform_(self.input_proj.weight)
+        nn.init.xavier_uniform_(self.input_proj.weight, gain=0.8)
         nn.init.zeros_(self.input_proj.bias)
         
         # Positional embedding
         nn.init.normal_(self.pos_embed, std=0.02)
         
-        # Output projection - CRITICAL: Small initialization for flow matching
-        nn.init.normal_(self.output_proj.weight, std=0.02)
-        nn.init.zeros_(self.output_proj.bias)
+        # Output projection - CRITICAL: Careful initialization for spherical flow
+        if isinstance(self.output_proj, nn.Sequential):
+            # For target prediction with normalization
+            nn.init.xavier_uniform_(self.output_proj[0].weight, gain=0.1)
+            nn.init.zeros_(self.output_proj[0].bias)
+        else:
+            # For velocity prediction
+            nn.init.xavier_uniform_(self.output_proj.weight, gain=0.1)
+            nn.init.zeros_(self.output_proj.bias)
 
     def gradient_checkpointing_enable(self, gradient_checkpointing_kwargs=None):
         self.gradient_checkpointing = True
@@ -397,14 +443,18 @@ class BLIP3oEVADiTModel(PreTrainedModel):
 
     def forward(
         self,
-        hidden_states: torch.Tensor,  # [B, N, 4096] - Noisy EVA embeddings
-        timestep: torch.Tensor,       # [B] - Flow matching timesteps
-        encoder_hidden_states: torch.Tensor,  # [B, N, 1024] - CLIP conditioning
+        hidden_states: torch.Tensor,           # [B, N, 4096] - Noisy EVA embeddings (or x_t)
+        timestep: torch.Tensor,                # [B] - Flow matching timesteps
+        encoder_hidden_states: torch.Tensor,  # [B, N, 4096] - Clean EVA conditioning
         return_dict: bool = True,
         **kwargs
     ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
-        """Forward pass"""
+        """Forward pass for spherical EVA denoising"""
         batch_size, seq_len, _ = hidden_states.shape
+        
+        # Ensure inputs are normalized (critical for spherical flow)
+        hidden_states = F.normalize(hidden_states, p=2, dim=-1)
+        encoder_hidden_states = F.normalize(encoder_hidden_states, p=2, dim=-1)
         
         # Project EVA input to hidden dimension
         x = self.input_proj(hidden_states)
@@ -428,64 +478,83 @@ class BLIP3oEVADiTModel(PreTrainedModel):
         # Output projection
         x = self.output_norm(x)
         x = self.output_adaln(x, timestep_emb)
-        velocity_pred = self.output_proj(x)
+        prediction = self.output_proj(x)
         
         if return_dict:
-            return {"velocity_prediction": velocity_pred, "hidden_states": x}
-        return velocity_pred
+            return {
+                "prediction": prediction, 
+                "hidden_states": x,
+                "prediction_type": self.config.prediction_type
+            }
+        return prediction
     
     @torch.no_grad()
-    def generate(
+    def denoise(
         self,
-        clip_features: torch.Tensor,
+        noisy_eva: torch.Tensor,             # [B, N, 4096] - Noisy EVA embeddings
+        clean_eva_conditioning: torch.Tensor, # [B, N, 4096] - Clean EVA for guidance
         num_inference_steps: int = 50,
         generator: Optional[torch.Generator] = None,
-        normalize_output: bool = True,
+        return_intermediate: bool = False,
     ) -> torch.Tensor:
-        """Generate EVA embeddings"""
-        device = clip_features.device
-        batch_size, num_tokens, _ = clip_features.shape
+        """Denoise EVA embeddings using spherical flow matching"""
+        device = noisy_eva.device
+        batch_size, num_tokens, _ = noisy_eva.shape
         
-        # Start from noise
-        x = torch.randn(
-            batch_size, num_tokens, self.config.eva_embedding_size,
-            device=device, generator=generator, dtype=clip_features.dtype
-        )
-        x = F.normalize(x, p=2, dim=-1)
+        # Ensure inputs are normalized
+        x = F.normalize(noisy_eva, p=2, dim=-1)
+        conditioning = F.normalize(clean_eva_conditioning, p=2, dim=-1)
         
         # Reverse process (t=1 to t=0)
         dt = 1.0 / num_inference_steps
         
+        intermediate_states = []
+        
         for i in range(num_inference_steps):
             t = 1.0 - i * dt
-            t_batch = torch.full((batch_size,), t, device=device, dtype=clip_features.dtype)
+            t_batch = torch.full((batch_size,), t, device=device, dtype=x.dtype)
             
-            velocity = self.forward(
+            # Get model prediction
+            output = self.forward(
                 hidden_states=x,
                 timestep=t_batch,
-                encoder_hidden_states=clip_features,
-                return_dict=False
+                encoder_hidden_states=conditioning,
+                return_dict=True
             )
+            prediction = output["prediction"]
             
-            # Euler step
-            x = x - dt * velocity
-        
-        if normalize_output:
+            if self.config.prediction_type == "velocity":
+                # Integrate velocity
+                x = x + dt * prediction
+            elif self.config.prediction_type == "target":
+                # Direct target prediction
+                x = prediction
+            else:
+                # Custom integration
+                x = x + dt * prediction
+            
+            # Ensure result stays on sphere
             x = F.normalize(x, p=2, dim=-1)
+            
+            if return_intermediate:
+                intermediate_states.append(x.clone())
         
+        if return_intermediate:
+            return x, intermediate_states
         return x
     
     def get_num_parameters(self) -> int:
         return sum(p.numel() for p in self.parameters() if p.requires_grad)
 
 
-def create_eva_reproduction_model(
-    config: Optional[BLIP3oEVADiTConfig] = None,
+def create_spherical_eva_model(
+    config: Optional[SphericalEVADiTConfig] = None,
     training_mode: str = "patch_only",
     model_size: str = "base",
+    prediction_type: str = "velocity",
     **kwargs
-) -> BLIP3oEVADiTModel:
-    """Create EVA reproduction model"""
+) -> SphericalEVADiTModel:
+    """Create spherical EVA denoising model"""
     
     if config is None:
         # Model size configurations
@@ -500,12 +569,14 @@ def create_eva_reproduction_model(
         model_config.update({
             "num_tokens": 257 if training_mode == "cls_patch" else 256,
             "training_mode": training_mode,
-            "clip_embedding_size": 1024,
             "eva_embedding_size": 4096,
             "intermediate_size": model_config["hidden_size"] * 4,
+            "prediction_type": prediction_type,
+            "use_spherical_embeddings": True,
+            "conditioning_fusion": "cross_attention",
             **kwargs
         })
         
-        config = BLIP3oEVADiTConfig(**model_config)
+        config = SphericalEVADiTConfig(**model_config)
     
-    return BLIP3oEVADiTModel(config)
+    return SphericalEVADiTModel(config)

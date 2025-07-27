@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-Fixed BLIP3-o Trainer for EVA-CLIP Reproduction
+Fixed BLIP3-o Trainer for Spherical EVA-CLIP Denoising
 Key fixes:
-1. Proper gradient flow and monitoring
-2. Better learning rate scheduling
-3. Overfitting test capability
-4. Comprehensive debugging and metrics
+1. Proper spherical flow matching training loop
+2. EVA denoising evaluation metrics
+3. Better gradient flow monitoring
+4. Comprehensive debugging and validation
 """
 
 import torch
@@ -25,9 +25,9 @@ import math
 logger = logging.getLogger(__name__)
 
 
-class BLIP3oEVATrainer:
+class SphericalEVATrainer:
     """
-    Fixed trainer for EVA reproduction with comprehensive monitoring
+    Fixed trainer for spherical EVA denoising with comprehensive monitoring
     """
     
     def __init__(
@@ -37,7 +37,7 @@ class BLIP3oEVATrainer:
         train_dataloader,
         eval_dataloader=None,
         # Training configuration
-        learning_rate: float = 1e-4,  # Start with conservative LR
+        learning_rate: float = 1e-4,
         weight_decay: float = 0.01,
         num_epochs: int = 10,
         warmup_steps: int = 100,
@@ -107,18 +107,25 @@ class BLIP3oEVATrainer:
         # Metrics tracking
         self.loss_history = deque(maxlen=1000)
         self.similarity_history = deque(maxlen=1000)
+        self.eval_similarity_history = deque(maxlen=1000)
         self.lr_history = deque(maxlen=1000)
         self.grad_norm_history = deque(maxlen=1000)
+        self.sphere_violation_history = deque(maxlen=1000)
         
         # Overfitting test data
         self.overfit_batch = None
         if self.overfit_test_size:
             self._prepare_overfit_test()
         
-        logger.info("BLIP3-o EVA Trainer initialized")
+        logger.info("Spherical EVA Denoising Trainer initialized")
         logger.info(f"  Device: {self.device}")
+        logger.info(f"  Task: EVA-CLIP Spherical Denoising")
+        logger.info(f"  Input: Noisy EVA embeddings [B, N, 4096]")
+        logger.info(f"  Conditioning: Clean EVA embeddings [B, N, 4096]")
+        logger.info(f"  Target: Clean EVA embeddings [B, N, 4096]")
         logger.info(f"  Learning rate: {self.learning_rate}")
         logger.info(f"  Epochs: {self.num_epochs}")
+        logger.info(f"  Prediction type: {getattr(model.config, 'prediction_type', 'velocity')}")
         logger.info(f"  Overfit test: {self.overfit_test_size if self.overfit_test_size else 'Disabled'}")
         logger.info(f"  Mixed precision: {self.fp16}")
 
@@ -129,12 +136,21 @@ class BLIP3oEVATrainer:
             self.model.parameters(),
             lr=self.learning_rate,
             weight_decay=self.weight_decay,
-            betas=(0.9, 0.999),
+            betas=(0.9, 0.95),  # Slightly different betas for spherical flow
             eps=1e-8
         )
         
         # Setup learning rate scheduler with warmup
-        total_steps = len(self.train_dataloader) * self.num_epochs
+        try:
+            dataloader_length = len(self.train_dataloader)
+            total_steps = dataloader_length * self.num_epochs
+        except (TypeError, AttributeError):
+            # Fallback for IterableDataset
+            logger.warning("Cannot determine exact dataloader length, using estimate")
+            estimated_samples_per_epoch = 10000  # Conservative estimate
+            batch_size = getattr(self.train_dataloader, 'batch_size', 16)
+            estimated_batches_per_epoch = estimated_samples_per_epoch // batch_size
+            total_steps = estimated_batches_per_epoch * self.num_epochs
         
         if self.warmup_steps > 0:
             # Warmup + Cosine decay
@@ -163,7 +179,7 @@ class BLIP3oEVATrainer:
             )
         
         logger.info(f"Optimizer and scheduler setup complete")
-        logger.info(f"  Total steps: {total_steps}")
+        logger.info(f"  Estimated total steps: {total_steps}")
         logger.info(f"  Warmup steps: {self.warmup_steps}")
 
     def _prepare_overfit_test(self):
@@ -211,46 +227,49 @@ class BLIP3oEVATrainer:
                 else:
                     batch[key] = value
         
-        # Extract inputs
-        hidden_states = batch['hidden_states']          # [B, N, 4096] - Noisy EVA
+        # Extract inputs for spherical EVA denoising
+        x_t = batch['hidden_states']                    # [B, N, 4096] - Current flow state
         timestep = batch['timestep']                    # [B] - Timesteps
-        encoder_hidden_states = batch['encoder_hidden_states']  # [B, N, 1024] - CLIP
-        eva_embeddings = batch['eva_embeddings']        # [B, N, 4096] - Clean EVA (target)
+        clean_eva = batch['encoder_hidden_states']      # [B, N, 4096] - Clean EVA conditioning
+        target_eva = batch['clean_eva_embeddings']      # [B, N, 4096] - Clean EVA target
+        velocity_target = batch.get('velocity_target') # [B, N, 4096] - Velocity target
         noise = batch.get('noise')                      # [B, N, 4096] - Noise
         
         # Forward pass
         if self.fp16:
             with torch.cuda.amp.autocast():
                 model_output = self.model(
-                    hidden_states=hidden_states,
+                    hidden_states=x_t,
                     timestep=timestep,
-                    encoder_hidden_states=encoder_hidden_states,
+                    encoder_hidden_states=clean_eva,
                     return_dict=False
                 )
                 
-                # Compute loss
+                # Compute spherical flow matching loss
                 loss, metrics = self.loss_fn(
                     model_output=model_output,
-                    target_samples=eva_embeddings,
+                    target_samples=target_eva,
                     timesteps=timestep,
-                    clip_conditioning=encoder_hidden_states,
+                    conditioning=clean_eva,
                     noise=noise,
+                    x_t=x_t,
                     return_metrics=True
                 )
         else:
             model_output = self.model(
-                hidden_states=hidden_states,
+                hidden_states=x_t,
                 timestep=timestep,
-                encoder_hidden_states=encoder_hidden_states,
+                encoder_hidden_states=clean_eva,
                 return_dict=False
             )
             
             loss, metrics = self.loss_fn(
                 model_output=model_output,
-                target_samples=eva_embeddings,
+                target_samples=target_eva,
                 timesteps=timestep,
-                clip_conditioning=encoder_hidden_states,
+                conditioning=clean_eva,
                 noise=noise,
+                x_t=x_t,
                 return_metrics=True
             )
         
@@ -292,7 +311,7 @@ class BLIP3oEVATrainer:
         return grad_norm
 
     def _evaluate(self, num_samples: Optional[int] = None) -> Dict[str, float]:
-        """Run evaluation"""
+        """Run spherical EVA denoising evaluation"""
         if self.eval_dataloader is None:
             return {}
         
@@ -302,6 +321,8 @@ class BLIP3oEVATrainer:
         self.model.eval()
         
         all_similarities = []
+        all_angular_distances = []
+        all_sphere_violations = []
         samples_processed = 0
         
         with torch.no_grad():
@@ -310,23 +331,36 @@ class BLIP3oEVATrainer:
                     break
                 
                 # Move to device
-                clip_features = batch['encoder_hidden_states'].to(self.device)
-                target_eva = batch['eva_embeddings'].to(self.device)
+                noisy_eva = batch['noisy_eva_embeddings'].to(self.device)
+                clean_eva = batch['clean_eva_embeddings'].to(self.device)
                 
-                # Generate EVA embeddings
-                generated_eva = self.model.generate(
-                    clip_features=clip_features,
+                # Denoise using the model
+                denoised_eva = self.model.denoise(
+                    noisy_eva=noisy_eva,
+                    clean_eva_conditioning=clean_eva,  # Use clean as conditioning
                     num_inference_steps=self.eval_inference_steps,
-                    normalize_output=True
                 )
                 
                 # Compute similarity
-                target_norm = F.normalize(target_eva, p=2, dim=-1)
-                similarity = F.cosine_similarity(generated_eva, target_norm, dim=-1)
+                clean_eva_norm = F.normalize(clean_eva, p=2, dim=-1)
+                denoised_eva_norm = F.normalize(denoised_eva, p=2, dim=-1)
+                
+                # Cosine similarity (main metric)
+                similarity = F.cosine_similarity(denoised_eva_norm, clean_eva_norm, dim=-1)
                 per_image_similarity = similarity.mean(dim=1)
                 
+                # Angular distance
+                cos_sim_clamped = torch.clamp(similarity, -1 + 1e-7, 1 - 1e-7)
+                angular_distance = torch.acos(cos_sim_clamped).mean(dim=1)
+                
+                # Sphere constraint violation
+                denoised_norms = torch.norm(denoised_eva, dim=-1)
+                sphere_violation = torch.abs(denoised_norms - 1.0).mean(dim=1)
+                
                 all_similarities.append(per_image_similarity.cpu())
-                samples_processed += clip_features.shape[0]
+                all_angular_distances.append(angular_distance.cpu())
+                all_sphere_violations.append(sphere_violation.cpu())
+                samples_processed += noisy_eva.shape[0]
         
         self.model.train()
         
@@ -334,29 +368,40 @@ class BLIP3oEVATrainer:
             return {}
         
         all_sims = torch.cat(all_similarities)
+        all_angular = torch.cat(all_angular_distances)
+        all_violations = torch.cat(all_sphere_violations)
         
         return {
             'eval_eva_similarity': all_sims.mean().item(),
             'eval_eva_similarity_std': all_sims.std().item(),
+            'eval_angular_distance': all_angular.mean().item(),
+            'eval_sphere_violation': all_violations.mean().item(),
             'eval_high_quality': (all_sims > 0.7).float().mean().item(),
             'eval_very_high_quality': (all_sims > 0.8).float().mean().item(),
             'eval_excellent_quality': (all_sims > 0.9).float().mean().item(),
             'eval_samples': samples_processed,
+            'eval_similarity_min': all_sims.min().item(),
+            'eval_similarity_max': all_sims.max().item(),
         }
 
     def _log_metrics(self, loss: float, metrics: Dict[str, float], grad_norm: float):
         """Log training metrics"""
         # Store metrics
         self.loss_history.append(loss)
-        if 'velocity_similarity' in metrics:
-            self.similarity_history.append(metrics['velocity_similarity'])
+        if 'prediction_similarity' in metrics:
+            self.similarity_history.append(metrics['prediction_similarity'])
+        if 'eval_similarity' in metrics:
+            self.eval_similarity_history.append(metrics['eval_similarity'])
+        if 'sphere_violation' in metrics:
+            self.sphere_violation_history.append(metrics['sphere_violation'])
+        
         self.lr_history.append(self.optimizer.param_groups[0]['lr'])
         self.grad_norm_history.append(grad_norm)
         
         # Update best metrics
-        if 'velocity_similarity' in metrics:
-            if metrics['velocity_similarity'] > self.best_eval_similarity:
-                self.best_eval_similarity = metrics['velocity_similarity']
+        eval_sim = metrics.get('eval_similarity', metrics.get('prediction_similarity', 0))
+        if eval_sim > self.best_eval_similarity:
+            self.best_eval_similarity = eval_sim
         
         if loss < self.best_loss:
             self.best_loss = loss
@@ -365,10 +410,15 @@ class BLIP3oEVATrainer:
         if self.global_step % self.log_every_n_steps == 0:
             log_msg = f"Step {self.global_step}: Loss={loss:.6f}"
             
-            if 'velocity_similarity' in metrics:
-                sim = metrics['velocity_similarity']
+            if 'prediction_similarity' in metrics:
+                pred_sim = metrics['prediction_similarity']
+                eval_sim = metrics.get('eval_similarity', pred_sim)
                 quality = metrics.get('quality_assessment', 'unknown')
-                log_msg += f", VelSim={sim:.4f} ({quality})"
+                log_msg += f", PredSim={pred_sim:.4f}, EvalSim={eval_sim:.4f} ({quality})"
+            
+            if 'sphere_violation' in metrics:
+                sphere_viol = metrics['sphere_violation']
+                log_msg += f", SphereViol={sphere_viol:.6f}"
             
             log_msg += f", GradNorm={grad_norm:.3f}"
             log_msg += f", LR={self.optimizer.param_groups[0]['lr']:.2e}"
@@ -399,6 +449,7 @@ class BLIP3oEVATrainer:
             'best_loss': self.best_loss,
             'loss_history': list(self.loss_history),
             'similarity_history': list(self.similarity_history),
+            'eval_similarity_history': list(self.eval_similarity_history),
         }
         
         if self.scaler is not None:
@@ -409,10 +460,18 @@ class BLIP3oEVATrainer:
 
     def train(self) -> Dict[str, Any]:
         """Main training loop"""
-        logger.info("Starting EVA reproduction training...")
+        logger.info("Starting spherical EVA denoising training...")
         logger.info(f"  Model parameters: {sum(p.numel() for p in self.model.parameters()):,}")
-        logger.info(f"  Training steps per epoch: {len(self.train_dataloader)}")
-        logger.info(f"  Total training steps: {len(self.train_dataloader) * self.num_epochs}")
+        
+        # Handle dataloader length safely
+        try:
+            steps_per_epoch = len(self.train_dataloader)
+            total_training_steps = steps_per_epoch * self.num_epochs
+            logger.info(f"  Training steps per epoch: {steps_per_epoch}")
+            logger.info(f"  Total training steps: {total_training_steps}")
+        except (TypeError, AttributeError):
+            logger.info(f"  Training steps per epoch: Unknown (IterableDataset)")
+            logger.info(f"  Total training steps: Estimated")
         
         if self.overfit_batch is not None:
             logger.info(f"  OVERFITTING TEST MODE: Using {self.overfit_batch['batch_size']} samples")
@@ -475,7 +534,7 @@ class BLIP3oEVATrainer:
                     # Check for early success in overfitting test
                     if (self.overfit_batch is not None and 
                         metrics and 
-                        metrics.get('velocity_similarity', 0) > 0.9):
+                        metrics.get('eval_similarity', 0) > 0.9):
                         logger.info("🎉 OVERFITTING TEST PASSED! Model can learn effectively.")
                         break
                 
@@ -488,8 +547,8 @@ class BLIP3oEVATrainer:
                 
                 # Early stopping for overfitting test
                 if (self.overfit_batch is not None and 
-                    len(self.similarity_history) > 0 and 
-                    self.similarity_history[-1] > 0.9):
+                    len(self.eval_similarity_history) > 0 and 
+                    max(self.eval_similarity_history[-10:]) > 0.9):
                     logger.info("Overfitting test completed successfully!")
                     break
         
@@ -520,12 +579,14 @@ class BLIP3oEVATrainer:
                 'final_eval': final_eval,
                 'overfit_test': self.overfit_batch is not None,
                 'overfit_success': (self.overfit_batch is not None and 
-                                  len(self.similarity_history) > 0 and 
-                                  max(self.similarity_history) > 0.8),
+                                  len(self.eval_similarity_history) > 0 and 
+                                  max(self.eval_similarity_history) > 0.8),
                 'loss_history': list(self.loss_history),
                 'similarity_history': list(self.similarity_history),
+                'eval_similarity_history': list(self.eval_similarity_history),
                 'lr_history': list(self.lr_history),
                 'grad_norm_history': list(self.grad_norm_history),
+                'sphere_violation_history': list(self.sphere_violation_history),
             }
             
             # Save training summary
@@ -551,7 +612,7 @@ class BLIP3oEVATrainer:
             return summary
 
 
-def create_eva_trainer(
+def create_spherical_eva_trainer(
     model,
     loss_fn,
     train_dataloader,
@@ -562,10 +623,10 @@ def create_eva_trainer(
     overfit_test_size: Optional[int] = None,
     debug_mode: bool = False,
     **kwargs
-) -> BLIP3oEVATrainer:
-    """Factory function to create EVA trainer"""
+) -> SphericalEVATrainer:
+    """Factory function to create spherical EVA trainer"""
     
-    return BLIP3oEVATrainer(
+    return SphericalEVATrainer(
         model=model,
         loss_fn=loss_fn,
         train_dataloader=train_dataloader,

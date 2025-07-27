@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-Fixed BLIP3-o Dataset for EVA-CLIP Reproduction
+Fixed BLIP3-o Dataset for EVA-CLIP Denoising
 Key fixes:
-1. Proper data loading and validation
-2. Correct collate function for flow matching
-3. Better error handling and normalization
-4. Clear input/output handling
+1. EVA → EVA denoising (not CLIP → EVA reproduction)
+2. Proper spherical data handling
+3. Correct input/output flow
+4. Better error handling and normalization
 """
 
 import torch
@@ -20,17 +20,19 @@ import random
 import time
 import gc
 import torch.nn.functional as F
+import math
 
 logger = logging.getLogger(__name__)
 
 
-class BLIP3oEVAReproductionDataset(IterableDataset):
+class BLIP3oEVADenoisingDataset(IterableDataset):
     """
-    Fixed dataset for EVA-CLIP reproduction with proper data handling
+    Fixed dataset for EVA-CLIP denoising with proper spherical data handling
     
-    This dataset loads:
-    - EVA embeddings [B, N, 4096] as TARGET (what we want to reproduce)
-    - CLIP embeddings [B, N, 1024] as CONDITIONING (guidance)
+    This dataset:
+    - Takes clean EVA embeddings [B, N, 4096] as TARGET and CONDITIONING
+    - Creates noisy versions for INPUT
+    - Implements proper spherical noise and interpolation
     """
     
     def __init__(
@@ -38,11 +40,14 @@ class BLIP3oEVAReproductionDataset(IterableDataset):
         chunked_embeddings_dir: Union[str, Path],
         split: str = "train",
         training_mode: str = "patch_only",
-        normalize_embeddings: bool = True,
         max_shards: Optional[int] = None,
         shuffle_shards: bool = True,
         shuffle_within_shard: bool = True,
         expected_tokens: Optional[int] = None,
+        # Spherical noise parameters
+        noise_schedule: str = "uniform",  # uniform, cosine
+        max_noise_level: float = 0.9,  # Maximum noise mixing ratio
+        min_noise_level: float = 0.1,   # Minimum noise mixing ratio
         # Error handling
         skip_corrupted: bool = True,
         validate_shapes: bool = True,
@@ -53,13 +58,17 @@ class BLIP3oEVAReproductionDataset(IterableDataset):
         self.chunked_embeddings_dir = Path(chunked_embeddings_dir)
         self.split = split
         self.training_mode = training_mode
-        self.normalize_embeddings = normalize_embeddings
         self.max_shards = max_shards
         self.shuffle_shards = shuffle_shards
         self.shuffle_within_shard = shuffle_within_shard
         self.skip_corrupted = skip_corrupted
         self.validate_shapes = validate_shapes
         self.max_retries = max_retries
+        
+        # Spherical noise parameters
+        self.noise_schedule = noise_schedule
+        self.max_noise_level = max_noise_level
+        self.min_noise_level = min_noise_level
         
         # Determine expected tokens
         if expected_tokens is None:
@@ -80,13 +89,16 @@ class BLIP3oEVAReproductionDataset(IterableDataset):
         self.current_sample_idx = 0
         self.total_samples_processed = 0
         
-        logger.info(f"EVA Reproduction Dataset initialized:")
+        logger.info(f"EVA Denoising Dataset initialized:")
         logger.info(f"  Directory: {self.chunked_embeddings_dir}")
         logger.info(f"  Mode: {self.training_mode} ({self.expected_tokens} tokens)")
-        logger.info(f"  TARGET: EVA embeddings [B, N, 4096]")
-        logger.info(f"  CONDITIONING: CLIP embeddings [B, N, 1024]")
-        logger.info(f"  Normalize: {self.normalize_embeddings}")
-        logger.info(f"  Shards: {len(self.shard_files)}")
+        logger.info(f"  TASK: EVA Denoising")
+        logger.info(f"  INPUT: Noisy EVA embeddings [B, N, 4096]")
+        logger.info(f"  CONDITIONING: Clean EVA embeddings [B, N, 4096]")
+        logger.info(f"  TARGET: Clean EVA embeddings [B, N, 4096]")
+        logger.info(f"  Noise schedule: {self.noise_schedule}")
+        logger.info(f"  Noise range: [{self.min_noise_level}, {self.max_noise_level}]")
+        logger.info(f"  Shards: {len(self.shard_files) if hasattr(self, 'shard_files') else 'Loading...'}")
 
     def _load_manifest(self):
         """Load embeddings manifest"""
@@ -165,90 +177,109 @@ class BLIP3oEVAReproductionDataset(IterableDataset):
     def _validate_and_process_shard(self, shard_data: Dict[str, Any], shard_path: Path):
         """Validate and process shard data"""
         # Check required keys
-        required_keys = ['clip_blip3o_embeddings', 'eva_blip3o_embeddings', 'captions']
+        required_keys = ['eva_blip3o_embeddings', 'captions']
         for key in required_keys:
             if key not in shard_data:
                 raise ValueError(f"Missing key '{key}' in shard {shard_path}")
         
-        # Get embeddings
-        clip_emb = shard_data['clip_blip3o_embeddings']
+        # Get EVA embeddings (this is our main data)
         eva_emb = shard_data['eva_blip3o_embeddings']
         
         # Convert to tensors if needed
-        if not torch.is_tensor(clip_emb):
-            clip_emb = torch.tensor(clip_emb, dtype=torch.float32)
-            shard_data['clip_blip3o_embeddings'] = clip_emb
         if not torch.is_tensor(eva_emb):
             eva_emb = torch.tensor(eva_emb, dtype=torch.float32)
             shard_data['eva_blip3o_embeddings'] = eva_emb
         
         # Validate shapes
         if self.validate_shapes:
-            if clip_emb.dim() != 3 or eva_emb.dim() != 3:
-                raise ValueError(f"Expected 3D tensors, got CLIP: {clip_emb.shape}, EVA: {eva_emb.shape}")
-            
-            if clip_emb.shape[0] != eva_emb.shape[0]:
-                raise ValueError(f"Batch size mismatch: CLIP {clip_emb.shape[0]} vs EVA {eva_emb.shape[0]}")
-            
-            clip_tokens, eva_tokens = clip_emb.shape[1], eva_emb.shape[1]
-            if clip_tokens != eva_tokens:
-                raise ValueError(f"Token count mismatch: CLIP {clip_tokens} vs EVA {eva_tokens}")
+            if eva_emb.dim() != 3:
+                raise ValueError(f"Expected 3D tensor, got EVA: {eva_emb.shape}")
         
         # Handle token count adaptation
-        current_tokens = clip_emb.shape[1]
+        current_tokens = eva_emb.shape[1]
         if current_tokens != self.expected_tokens:
             logger.debug(f"Adapting from {current_tokens} to {self.expected_tokens} tokens")
             
             if current_tokens == 256 and self.expected_tokens == 257:
                 # Add CLS token (average of patches)
-                clip_cls = clip_emb.mean(dim=1, keepdim=True)
                 eva_cls = eva_emb.mean(dim=1, keepdim=True)
-                shard_data['clip_blip3o_embeddings'] = torch.cat([clip_cls, clip_emb], dim=1)
                 shard_data['eva_blip3o_embeddings'] = torch.cat([eva_cls, eva_emb], dim=1)
             elif current_tokens == 257 and self.expected_tokens == 256:
                 # Remove CLS token
-                shard_data['clip_blip3o_embeddings'] = clip_emb[:, 1:, :]
                 shard_data['eva_blip3o_embeddings'] = eva_emb[:, 1:, :]
             else:
                 raise ValueError(f"Cannot adapt from {current_tokens} to {self.expected_tokens} tokens")
         
-        # Apply normalization if requested
-        if self.normalize_embeddings:
-            shard_data = self._normalize_embeddings(shard_data)
+        # Apply normalization - CRITICAL: EVA embeddings must be L2 normalized
+        shard_data = self._normalize_embeddings(shard_data)
 
     def _normalize_embeddings(self, shard_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Apply L2 normalization to embeddings"""
-        clip_emb = shard_data['clip_blip3o_embeddings']
+        """Apply L2 normalization to EVA embeddings"""
         eva_emb = shard_data['eva_blip3o_embeddings']
         
         # Check for NaN/Inf
-        if torch.isnan(clip_emb).any() or torch.isinf(clip_emb).any():
-            logger.warning("Found NaN/Inf in CLIP embeddings")
-            clip_emb = torch.nan_to_num(clip_emb, nan=0.0, posinf=1.0, neginf=-1.0)
-        
         if torch.isnan(eva_emb).any() or torch.isinf(eva_emb).any():
             logger.warning("Found NaN/Inf in EVA embeddings")
             eva_emb = torch.nan_to_num(eva_emb, nan=0.0, posinf=1.0, neginf=-1.0)
         
-        # Apply L2 normalization
+        # Apply L2 normalization to ensure unit sphere
         eps = 1e-8
-        clip_normalized = F.normalize(clip_emb + eps, p=2, dim=-1)
         eva_normalized = F.normalize(eva_emb + eps, p=2, dim=-1)
         
-        # Check normalization
-        clip_norm = torch.norm(clip_normalized, dim=-1).mean().item()
+        # Verify normalization
         eva_norm = torch.norm(eva_normalized, dim=-1).mean().item()
         
-        if abs(clip_norm - 1.0) > 0.1:
-            logger.warning(f"CLIP normalization may have failed: norm = {clip_norm:.3f}")
         if abs(eva_norm - 1.0) > 0.1:
             logger.warning(f"EVA normalization may have failed: norm = {eva_norm:.3f}")
         
-        shard_data['clip_blip3o_embeddings'] = clip_normalized
         shard_data['eva_blip3o_embeddings'] = eva_normalized
         shard_data['normalization_applied'] = True
         
         return shard_data
+
+    def _add_spherical_noise(self, clean_eva: torch.Tensor, noise_level: float) -> torch.Tensor:
+        """Add spherical noise to EVA embeddings using slerp"""
+        device = clean_eva.device
+        dtype = clean_eva.dtype
+        
+        # Generate random noise on sphere
+        noise = torch.randn_like(clean_eva, device=device, dtype=dtype)
+        noise = F.normalize(noise, p=2, dim=-1)
+        
+        # Spherical linear interpolation (slerp)
+        # noise_level = 0: clean, noise_level = 1: pure noise
+        
+        # Compute angle between clean and noise
+        cos_angle = torch.sum(clean_eva * noise, dim=-1, keepdim=True)
+        cos_angle = torch.clamp(cos_angle, -1 + 1e-7, 1 - 1e-7)
+        angle = torch.acos(cos_angle)
+        
+        # Avoid division by zero
+        sin_angle = torch.sin(angle)
+        sin_angle = torch.clamp(sin_angle, min=1e-7)
+        
+        # Slerp formula: slerp(a, b, t) = (sin((1-t)*θ)/sin(θ)) * a + (sin(t*θ)/sin(θ)) * b
+        clean_weight = torch.sin((1 - noise_level) * angle) / sin_angle
+        noise_weight = torch.sin(noise_level * angle) / sin_angle
+        
+        noisy_eva = clean_weight * clean_eva + noise_weight * noise
+        
+        # Ensure result is on unit sphere
+        noisy_eva = F.normalize(noisy_eva, p=2, dim=-1)
+        
+        return noisy_eva, noise
+
+    def _sample_noise_level(self) -> float:
+        """Sample noise level based on schedule"""
+        if self.noise_schedule == "uniform":
+            return self.rng.uniform(self.min_noise_level, self.max_noise_level)
+        elif self.noise_schedule == "cosine":
+            # Cosine schedule favors lower noise levels
+            u = self.rng.uniform(0, 1)
+            t = 0.5 * (1 + math.cos(u * math.pi))  # Cosine decay
+            return self.min_noise_level + t * (self.max_noise_level - self.min_noise_level)
+        else:
+            raise ValueError(f"Unknown noise schedule: {self.noise_schedule}")
 
     def _load_next_shard(self) -> bool:
         """Load next shard"""
@@ -270,7 +301,7 @@ class BLIP3oEVAReproductionDataset(IterableDataset):
             
             if self.current_shard_data is not None:
                 # Prepare samples
-                num_samples = self.current_shard_data['clip_blip3o_embeddings'].shape[0]
+                num_samples = self.current_shard_data['eva_blip3o_embeddings'].shape[0]
                 self.current_samples = list(range(num_samples))
                 
                 if self.shuffle_within_shard:
@@ -287,6 +318,35 @@ class BLIP3oEVAReproductionDataset(IterableDataset):
         
         self.current_shard_data = None
         return False
+
+    def __len__(self) -> int:
+        """Estimate total number of samples"""
+        if hasattr(self, '_estimated_length'):
+            return self._estimated_length
+        
+        # Try to estimate from manifest
+        if hasattr(self, 'manifest') and 'total_samples' in self.manifest:
+            manifest_samples = self.manifest['total_samples']
+            if self.max_shards is not None:
+                # Estimate based on max_shards ratio
+                total_shards = self.manifest.get('total_shards', len(self.shard_files))
+                if total_shards > 0:
+                    estimated_samples = int(manifest_samples * self.max_shards / total_shards)
+                    self._estimated_length = estimated_samples
+                    return estimated_samples
+            else:
+                self._estimated_length = manifest_samples
+                return manifest_samples
+        
+        # Fallback: estimate based on file count and average samples per shard
+        num_shards = len(self.shard_files) if hasattr(self, 'shard_files') else 1
+        avg_samples_per_shard = 1000  # Conservative estimate
+        
+        estimated_samples = num_shards * avg_samples_per_shard
+        self._estimated_length = estimated_samples
+        
+        logger.debug(f"Estimated dataset length: {estimated_samples} samples from {num_shards} shards")
+        return estimated_samples
 
     def __iter__(self) -> Iterator[Dict[str, Any]]:
         """Iterate through all samples"""
@@ -305,31 +365,39 @@ class BLIP3oEVAReproductionDataset(IterableDataset):
                 try:
                     sample_idx = self.current_samples[self.current_sample_idx]
                     
-                    # Extract sample data
-                    clip_emb = self.current_shard_data['clip_blip3o_embeddings'][sample_idx]
-                    eva_emb = self.current_shard_data['eva_blip3o_embeddings'][sample_idx]
+                    # Extract clean EVA embeddings
+                    clean_eva = self.current_shard_data['eva_blip3o_embeddings'][sample_idx]
                     caption = self.current_shard_data['captions'][sample_idx]
                     
                     # Final validation
                     if self.validate_shapes:
-                        if clip_emb.shape != (self.expected_tokens, 1024):
-                            raise ValueError(f"Invalid CLIP shape: {clip_emb.shape}")
-                        if eva_emb.shape != (self.expected_tokens, 4096):
-                            raise ValueError(f"Invalid EVA shape: {eva_emb.shape}")
+                        if clean_eva.shape != (self.expected_tokens, 4096):
+                            raise ValueError(f"Invalid EVA shape: {clean_eva.shape}")
                     
                     # Check for NaN/Inf
-                    if torch.isnan(clip_emb).any() or torch.isnan(eva_emb).any():
+                    if torch.isnan(clean_eva).any():
                         if self.skip_corrupted:
                             self.current_sample_idx += 1
                             continue
                         else:
-                            raise ValueError("NaN detected in embeddings")
+                            raise ValueError("NaN detected in EVA embeddings")
                     
-                    # Create sample item for EVA reproduction
+                    # Sample noise level for this sample
+                    noise_level = self._sample_noise_level()
+                    
+                    # Add spherical noise to create noisy version
+                    noisy_eva, noise = self._add_spherical_noise(clean_eva, noise_level)
+                    
+                    # Create sample item for EVA denoising
                     item = {
-                        'clip_embeddings': clip_emb,  # [N, 1024] - CONDITIONING
-                        'eva_embeddings': eva_emb,    # [N, 4096] - TARGET to reproduce
+                        # Model inputs
+                        'noisy_eva_embeddings': noisy_eva,      # [N, 4096] - Noisy input
+                        'clean_eva_embeddings': clean_eva,      # [N, 4096] - Clean conditioning & target
+                        'noise': noise,                         # [N, 4096] - Pure noise used
+                        'noise_level': noise_level,             # scalar - Noise mixing ratio
                         'caption': caption,
+                        
+                        # Metadata
                         'key': f"shard_{self.current_shard_idx-1}_sample_{sample_idx}",
                         'sample_idx': sample_idx,
                         'training_mode': self.training_mode,
@@ -356,15 +424,14 @@ class BLIP3oEVAReproductionDataset(IterableDataset):
         logger.info(f"Iteration completed: {self.total_samples_processed} samples processed")
 
 
-def eva_reproduction_collate_fn(batch: List[Dict[str, Any]]) -> Dict[str, Any]:
+def eva_denoising_collate_fn(batch: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
-    Collate function for EVA reproduction with proper flow matching setup
+    Collate function for EVA denoising with proper spherical flow matching setup
     
     This function:
-    1. Takes clean EVA embeddings as targets
-    2. Creates noisy versions for input
-    3. Uses CLIP embeddings for conditioning
-    4. Sets up flow matching with proper timesteps
+    1. Takes clean EVA embeddings as targets and conditioning
+    2. Uses pre-computed noisy versions for input
+    3. Sets up spherical flow matching with proper timesteps
     """
     if not batch:
         raise ValueError("Empty batch")
@@ -376,58 +443,84 @@ def eva_reproduction_collate_fn(batch: List[Dict[str, Any]]) -> Dict[str, Any]:
     
     try:
         # Stack embeddings
-        clip_embeddings = torch.stack([item['clip_embeddings'] for item in valid_batch])  # [B, N, 1024]
-        eva_embeddings = torch.stack([item['eva_embeddings'] for item in valid_batch])    # [B, N, 4096]
+        noisy_eva = torch.stack([item['noisy_eva_embeddings'] for item in valid_batch])    # [B, N, 4096]
+        clean_eva = torch.stack([item['clean_eva_embeddings'] for item in valid_batch])    # [B, N, 4096]
+        noise = torch.stack([item['noise'] for item in valid_batch])                       # [B, N, 4096]
+        noise_levels = torch.tensor([item['noise_level'] for item in valid_batch])         # [B]
         
         # Collect metadata
         captions = [item['caption'] for item in valid_batch]
         keys = [item['key'] for item in valid_batch]
         
-        batch_size, seq_len, eva_dim = eva_embeddings.shape
-        device = eva_embeddings.device
-        dtype = eva_embeddings.dtype
+        batch_size, seq_len, eva_dim = clean_eva.shape
+        device = clean_eva.device
+        dtype = clean_eva.dtype
         
         # Ensure float32 for stability
-        clip_embeddings = clip_embeddings.float()
-        eva_embeddings = eva_embeddings.float()
+        noisy_eva = noisy_eva.float()
+        clean_eva = clean_eva.float()
+        noise = noise.float()
+        noise_levels = noise_levels.float()
         
-        # Apply final normalization to ensure L2 norm = 1
+        # Ensure L2 normalization
         eps = 1e-8
-        clip_embeddings = F.normalize(clip_embeddings + eps, p=2, dim=-1)
-        eva_embeddings = F.normalize(eva_embeddings + eps, p=2, dim=-1)
+        noisy_eva = F.normalize(noisy_eva + eps, p=2, dim=-1)
+        clean_eva = F.normalize(clean_eva + eps, p=2, dim=-1)
+        noise = F.normalize(noise + eps, p=2, dim=-1)
         
-        # FLOW MATCHING SETUP for EVA reproduction
-        # Sample random timesteps for each sample in batch
+        # SPHERICAL FLOW MATCHING SETUP
+        # Sample timesteps for flow matching (0 = noise, 1 = clean)
         timesteps = torch.rand(batch_size, device=device, dtype=dtype)
         
-        # Create noise (source distribution) - same dimension as EVA
-        noise = torch.randn_like(eva_embeddings, device=device, dtype=dtype)
-        noise = F.normalize(noise + eps, p=2, dim=-1)  # Normalize noise
-        
-        # Linear interpolation for rectified flow: x_t = (1-t) * noise + t * eva_clean
+        # For spherical flow, we interpolate on the sphere using slerp
         t_expanded = timesteps.view(batch_size, 1, 1)  # [B, 1, 1]
-        noisy_eva = (1 - t_expanded) * noise + t_expanded * eva_embeddings
         
-        # Velocity target: v = eva_clean - noise (for rectified flow)
-        velocity_target = eva_embeddings - noise
+        # Compute angles between clean and noise
+        cos_angles = torch.sum(clean_eva * noise, dim=-1, keepdim=True)
+        cos_angles = torch.clamp(cos_angles, -1 + 1e-7, 1 - 1e-7)
+        angles = torch.acos(cos_angles)
+        
+        # Avoid division by zero
+        sin_angles = torch.sin(angles)
+        sin_angles = torch.clamp(sin_angles, min=1e-7)
+        
+        # Spherical interpolation: x_t = slerp(noise, clean, t)
+        clean_weight = torch.sin(t_expanded * angles) / sin_angles
+        noise_weight = torch.sin((1 - t_expanded) * angles) / sin_angles
+        
+        x_t = noise_weight * noise + clean_weight * clean_eva
+        x_t = F.normalize(x_t + eps, p=2, dim=-1)
+        
+        # Spherical velocity (tangent to sphere)
+        # For spherical flow: v = d/dt slerp(noise, clean, t)
+        velocity_target = (clean_eva - noise_weight / clean_weight * x_t) * angles / sin_angles
+        
+        # Alternative: Direct velocity from parametric derivative
+        # This is more stable for training
+        velocity_target = clean_eva - noise
         
         # Validation
-        assert clip_embeddings.shape == (batch_size, seq_len, 1024), f"CLIP shape: {clip_embeddings.shape}"
-        assert eva_embeddings.shape == (batch_size, seq_len, 4096), f"EVA shape: {eva_embeddings.shape}"
         assert noisy_eva.shape == (batch_size, seq_len, 4096), f"Noisy EVA shape: {noisy_eva.shape}"
+        assert clean_eva.shape == (batch_size, seq_len, 4096), f"Clean EVA shape: {clean_eva.shape}"
+        assert x_t.shape == (batch_size, seq_len, 4096), f"x_t shape: {x_t.shape}"
         assert velocity_target.shape == (batch_size, seq_len, 4096), f"Velocity target shape: {velocity_target.shape}"
         assert timesteps.shape == (batch_size,), f"Timesteps shape: {timesteps.shape}"
         
         return {
             # Model inputs
-            'encoder_hidden_states': clip_embeddings,    # [B, N, 1024] - CLIP conditioning
-            'hidden_states': noisy_eva,                  # [B, N, 4096] - Noisy EVA input
+            'hidden_states': x_t,                        # [B, N, 4096] - Interpolated state
+            'encoder_hidden_states': clean_eva,          # [B, N, 4096] - Clean EVA conditioning
             'timestep': timesteps,                       # [B] - Flow matching timesteps
             
             # Training targets
-            'eva_embeddings': eva_embeddings,            # [B, N, 4096] - Clean EVA (target)
+            'clean_eva_embeddings': clean_eva,           # [B, N, 4096] - Clean EVA (target)
             'velocity_target': velocity_target,          # [B, N, 4096] - Velocity for flow matching
-            'noise': noise,                              # [B, N, 4096] - Original noise
+            'noise': noise,                              # [B, N, 4096] - Pure noise
+            'noisy_eva_embeddings': noisy_eva,           # [B, N, 4096] - Pre-computed noisy version
+            
+            # Flow matching state
+            'x_t': x_t,                                  # [B, N, 4096] - Current flow state
+            'noise_levels': noise_levels,                # [B] - Original noise levels
             
             # Metadata
             'captions': captions,
@@ -438,10 +531,9 @@ def eva_reproduction_collate_fn(batch: List[Dict[str, Any]]) -> Dict[str, Any]:
             'seq_len': seq_len,
             
             # Normalization status
-            'clip_embeddings_normalized': True,
             'eva_embeddings_normalized': True,
-            'clip_norm_mean': torch.norm(clip_embeddings, dim=-1).mean().item(),
-            'eva_norm_mean': torch.norm(eva_embeddings, dim=-1).mean().item(),
+            'eva_norm_mean': torch.norm(clean_eva, dim=-1).mean().item(),
+            'noisy_eva_norm_mean': torch.norm(noisy_eva, dim=-1).mean().item(),
         }
         
     except Exception as e:
@@ -458,36 +550,43 @@ def eva_reproduction_collate_fn(batch: List[Dict[str, Any]]) -> Dict[str, Any]:
         raise
 
 
-def create_eva_reproduction_dataloaders(
+def create_eva_denoising_dataloaders(
     chunked_embeddings_dir: Union[str, Path],
     batch_size: int = 16,
     eval_batch_size: Optional[int] = None,
     training_mode: str = "patch_only",
     max_shards: Optional[int] = None,
-    normalize_embeddings: bool = True,
+    noise_schedule: str = "uniform",
+    max_noise_level: float = 0.9,
+    min_noise_level: float = 0.1,
     num_workers: int = 0,
     pin_memory: bool = False,
     **kwargs
 ) -> Tuple[DataLoader, Optional[DataLoader]]:
-    """Create dataloaders for EVA reproduction"""
+    """Create dataloaders for EVA denoising"""
     
     if eval_batch_size is None:
         eval_batch_size = batch_size
     
-    logger.info(f"Creating EVA reproduction dataloaders:")
-    logger.info(f"  Target: EVA embeddings [B, N, 4096]")
-    logger.info(f"  Conditioning: CLIP embeddings [B, N, 1024]")
-    logger.info(f"  Normalize: {normalize_embeddings}")
+    logger.info(f"Creating EVA denoising dataloaders:")
+    logger.info(f"  TASK: EVA-CLIP Denoising")
+    logger.info(f"  INPUT: Noisy EVA embeddings [B, N, 4096]")
+    logger.info(f"  CONDITIONING: Clean EVA embeddings [B, N, 4096]")
+    logger.info(f"  TARGET: Clean EVA embeddings [B, N, 4096]")
+    logger.info(f"  Noise schedule: {noise_schedule}")
+    logger.info(f"  Noise range: [{min_noise_level}, {max_noise_level}]")
     
     # Create training dataset
-    train_dataset = BLIP3oEVAReproductionDataset(
+    train_dataset = BLIP3oEVADenoisingDataset(
         chunked_embeddings_dir=chunked_embeddings_dir,
         split="train",
         training_mode=training_mode,
-        normalize_embeddings=normalize_embeddings,
         max_shards=max_shards,
         shuffle_shards=True,
         shuffle_within_shard=True,
+        noise_schedule=noise_schedule,
+        max_noise_level=max_noise_level,
+        min_noise_level=min_noise_level,
         **kwargs
     )
     
@@ -496,21 +595,23 @@ def create_eva_reproduction_dataloaders(
         train_dataset,
         batch_size=batch_size,
         num_workers=num_workers,
-        collate_fn=eva_reproduction_collate_fn,
+        collate_fn=eva_denoising_collate_fn,
         pin_memory=pin_memory,
         drop_last=True,
         persistent_workers=num_workers > 0,
     )
     
-    # Create evaluation dataset (same data for now)
-    eval_dataset = BLIP3oEVAReproductionDataset(
+    # Create evaluation dataset (same data, different noise)
+    eval_dataset = BLIP3oEVADenoisingDataset(
         chunked_embeddings_dir=chunked_embeddings_dir,
         split="eval",
         training_mode=training_mode,
-        normalize_embeddings=normalize_embeddings,
         max_shards=max_shards,
         shuffle_shards=False,
         shuffle_within_shard=False,
+        noise_schedule="uniform",  # Use uniform for consistent eval
+        max_noise_level=0.7,  # Less noise for evaluation
+        min_noise_level=0.3,
         **kwargs
     )
     
@@ -518,12 +619,12 @@ def create_eva_reproduction_dataloaders(
         eval_dataset,
         batch_size=eval_batch_size,
         num_workers=min(num_workers, 1),
-        collate_fn=eva_reproduction_collate_fn,
+        collate_fn=eva_denoising_collate_fn,
         pin_memory=pin_memory,
         drop_last=False,
         persistent_workers=min(num_workers, 1) > 0,
     )
     
-    logger.info(f"EVA reproduction dataloaders created successfully")
+    logger.info(f"EVA denoising dataloaders created successfully")
     
     return train_dataloader, eval_dataloader

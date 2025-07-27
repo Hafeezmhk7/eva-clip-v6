@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-Fixed Flow Matching Loss for EVA-CLIP Reproduction
+Fixed Spherical Flow Matching Loss for EVA-CLIP Denoising
 Key fixes:
-1. Proper loss computation and scaling
-2. Better numerical stability
-3. Correct velocity field learning
-4. Fixed target computation
+1. Proper spherical flow matching on unit hypersphere
+2. Spherical linear interpolation (slerp) instead of linear
+3. Correct velocity field computation for sphere manifold
+4. Better numerical stability and regularization
 """
 
 import torch
@@ -18,56 +18,69 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-class BLIP3oEVAFlowMatchingLoss(nn.Module):
+class SphericalFlowMatchingLoss(nn.Module):
     """
-    Fixed Flow Matching Loss for EVA reproduction
+    Spherical Flow Matching Loss for EVA denoising
     
-    This implements rectified flow matching where:
+    This implements spherical flow matching where:
+    - All points lie on the unit hypersphere (L2 norm = 1)
+    - Interpolation uses spherical linear interpolation (slerp)
+    - Velocity field respects the sphere manifold
     - x_0 = noise (source)
     - x_1 = clean EVA embeddings (target)
-    - x_t = (1-t) * x_0 + t * x_1 (linear interpolation)
-    - v_t = x_1 - x_0 (velocity field)
+    - x_t = slerp(x_0, x_1, t) (spherical interpolation)
+    - v_t = tangent vector on sphere pointing toward target
     """
     
     def __init__(
         self,
         prediction_type: str = "velocity",
-        flow_type: str = "rectified",
         loss_weight: float = 1.0,
         eps: float = 1e-8,
         # Boundary handling
         min_timestep: float = 1e-3,
         max_timestep: float = 1.0 - 1e-3,
-        # Regularization
-        velocity_reg_weight: float = 0.0,
-        consistency_weight: float = 0.0,
+        # Spherical regularization
+        sphere_constraint_weight: float = 0.1,  # Ensure outputs stay on sphere
+        velocity_smoothness_weight: float = 0.0,  # Smooth velocity field
+        angle_preservation_weight: float = 0.0,   # Preserve angular relationships
+        # Numerical stability
+        min_angle_threshold: float = 1e-6,  # Avoid numerical issues with small angles
+        max_angle_threshold: float = math.pi - 1e-6,  # Avoid antipodal points
         debug_mode: bool = False,
     ):
         super().__init__()
         
         self.prediction_type = prediction_type
-        self.flow_type = flow_type
         self.loss_weight = loss_weight
         self.eps = eps
         self.min_timestep = min_timestep
         self.max_timestep = max_timestep
-        self.velocity_reg_weight = velocity_reg_weight
-        self.consistency_weight = consistency_weight
+        
+        # Spherical regularization
+        self.sphere_constraint_weight = sphere_constraint_weight
+        self.velocity_smoothness_weight = velocity_smoothness_weight
+        self.angle_preservation_weight = angle_preservation_weight
+        
+        # Numerical stability
+        self.min_angle_threshold = min_angle_threshold
+        self.max_angle_threshold = max_angle_threshold
+        
         self.debug_mode = debug_mode
         
         # Validate inputs
-        assert prediction_type in ["velocity", "noise", "sample"]
-        assert flow_type in ["rectified", "reflow"]
+        assert prediction_type in ["velocity", "target", "noise"]
         
         # Running statistics
         self.register_buffer('step_count', torch.tensor(0))
         self.register_buffer('loss_ema', torch.tensor(0.0))
         self.register_buffer('similarity_ema', torch.tensor(0.0))
+        self.register_buffer('sphere_violation_ema', torch.tensor(0.0))
         
-        logger.info(f"Flow Matching Loss initialized:")
+        logger.info(f"Spherical Flow Matching Loss initialized:")
         logger.info(f"  Prediction type: {prediction_type}")
-        logger.info(f"  Flow type: {flow_type}")
         logger.info(f"  Loss weight: {loss_weight}")
+        logger.info(f"  Sphere constraint weight: {sphere_constraint_weight}")
         logger.info(f"  Debug mode: {debug_mode}")
 
     def _clamp_timesteps(self, timesteps: torch.Tensor) -> torch.Tensor:
@@ -81,25 +94,111 @@ class BLIP3oEVAFlowMatchingLoss(nn.Module):
         else:
             tensor_buffer.data = alpha * new_value + (1 - alpha) * tensor_buffer.data
 
+    def _slerp(self, x0: torch.Tensor, x1: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
+        """
+        Spherical linear interpolation between two unit vectors
+        
+        Args:
+            x0: Source vectors [B, N, D] on unit sphere
+            x1: Target vectors [B, N, D] on unit sphere  
+            t: Interpolation parameter [B, 1, 1] in [0, 1]
+            
+        Returns:
+            Interpolated vectors [B, N, D] on unit sphere
+        """
+        # Ensure inputs are normalized
+        x0 = F.normalize(x0, p=2, dim=-1)
+        x1 = F.normalize(x1, p=2, dim=-1)
+        
+        # Compute angle between vectors
+        cos_angle = torch.sum(x0 * x1, dim=-1, keepdim=True)
+        cos_angle = torch.clamp(cos_angle, -1 + self.eps, 1 - self.eps)
+        angle = torch.acos(cos_angle)
+        
+        # Handle small angles (linear interpolation for numerical stability)
+        small_angle_mask = angle < self.min_angle_threshold
+        large_angle_mask = angle > self.max_angle_threshold
+        
+        # For small angles, use linear interpolation + normalization
+        linear_interp = (1 - t) * x0 + t * x1
+        linear_interp = F.normalize(linear_interp, p=2, dim=-1)
+        
+        # For large angles (nearly antipodal), use a robust slerp
+        sin_angle = torch.sin(angle)
+        sin_angle = torch.clamp(sin_angle, min=self.eps)
+        
+        # Standard slerp formula
+        w0 = torch.sin((1 - t) * angle) / sin_angle
+        w1 = torch.sin(t * angle) / sin_angle
+        
+        slerp_result = w0 * x0 + w1 * x1
+        slerp_result = F.normalize(slerp_result, p=2, dim=-1)
+        
+        # Choose interpolation method based on angle
+        result = torch.where(small_angle_mask, linear_interp, slerp_result)
+        result = torch.where(large_angle_mask, linear_interp, result)
+        
+        return result
+
+    def _spherical_velocity(self, x0: torch.Tensor, x1: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
+        """
+        Compute velocity field for spherical flow matching
+        
+        This computes the tangent vector on the sphere that points from current position
+        toward the target, respecting the sphere manifold.
+        """
+        # Ensure inputs are normalized
+        x0 = F.normalize(x0, p=2, dim=-1)
+        x1 = F.normalize(x1, p=2, dim=-1)
+        
+        # Compute angle and interpolation weights
+        cos_angle = torch.sum(x0 * x1, dim=-1, keepdim=True)
+        cos_angle = torch.clamp(cos_angle, -1 + self.eps, 1 - self.eps)
+        angle = torch.acos(cos_angle)
+        
+        # Handle edge cases
+        small_angle_mask = angle < self.min_angle_threshold
+        
+        # For small angles, velocity is approximately x1 - x0 projected to tangent space
+        simple_velocity = x1 - x0
+        
+        # For normal case, compute proper spherical velocity
+        sin_angle = torch.sin(angle)
+        sin_angle = torch.clamp(sin_angle, min=self.eps)
+        
+        # Velocity is the derivative of slerp with respect to t
+        # d/dt slerp(x0, x1, t) = angle * [cos(t*angle)*x1*sin((1-t)*angle) - cos((1-t)*angle)*x0*sin(t*angle)] / sin(angle)
+        
+        # Simplified: velocity = angle * (x1 - cos(angle) * x0) / sin(angle)
+        # This gives the tangent vector pointing toward x1
+        velocity = angle * (x1 - cos_angle * x0) / sin_angle
+        
+        # For small angles, use simple velocity
+        velocity = torch.where(small_angle_mask, simple_velocity, velocity)
+        
+        return velocity
+
     def forward(
         self,
         model_output: torch.Tensor,  # [B, N, 4096] - Model's prediction
         target_samples: torch.Tensor,  # [B, N, 4096] - Clean EVA embeddings
         timesteps: torch.Tensor,  # [B] - Flow matching timesteps
-        clip_conditioning: torch.Tensor,  # [B, N, 1024] - CLIP features (for logging)
+        conditioning: torch.Tensor,  # [B, N, 4096] - Clean EVA (same as target for denoising)
         noise: Optional[torch.Tensor] = None,
+        x_t: Optional[torch.Tensor] = None,  # Current flow state
         return_metrics: bool = True,
         **kwargs
     ) -> Tuple[torch.Tensor, Optional[Dict[str, float]]]:
         """
-        Compute flow matching loss
+        Compute spherical flow matching loss
         
         Args:
             model_output: Model prediction [B, N, 4096]
             target_samples: Clean EVA embeddings [B, N, 4096]
             timesteps: Timesteps [B]
-            clip_conditioning: CLIP conditioning [B, N, 1024]
+            conditioning: Clean EVA conditioning [B, N, 4096] (same as target)
             noise: Noise tensor [B, N, 4096] (optional)
+            x_t: Current interpolated state [B, N, 4096] (optional)
             return_metrics: Whether to return detailed metrics
         """
         
@@ -113,60 +212,71 @@ class BLIP3oEVAFlowMatchingLoss(nn.Module):
         # Clamp timesteps
         timesteps = self._clamp_timesteps(timesteps)
         
-        # Ensure targets are normalized (EVA embeddings should be L2 normalized)
+        # Ensure all inputs are normalized (critical for spherical flow)
         target_normalized = F.normalize(target_samples.detach(), p=2, dim=-1)
+        conditioning_normalized = F.normalize(conditioning.detach(), p=2, dim=-1)
         
         # Create noise if not provided
         if noise is None:
             noise = torch.randn_like(target_normalized, device=device, dtype=dtype)
-            noise = F.normalize(noise, p=2, dim=-1)  # Normalize noise too
+            noise = F.normalize(noise, p=2, dim=-1)
         
         # Expand timesteps for broadcasting [B, 1, 1]
         t = timesteps.view(batch_size, 1, 1).to(dtype)
         
-        # RECTIFIED FLOW COMPUTATION
-        if self.flow_type == "rectified":
-            # Linear interpolation: x_t = (1-t) * x_0 + t * x_1
-            # where x_0 = noise, x_1 = target
-            # Velocity field: v = x_1 - x_0 = target - noise
-            true_velocity = target_normalized - noise
-            
-            # The model should predict this velocity
+        # SPHERICAL FLOW COMPUTATION
+        if self.prediction_type == "velocity":
+            # Direct velocity prediction
+            true_velocity = self._spherical_velocity(noise, target_normalized, t)
             target_for_loss = true_velocity
             
-        else:  # reflow
-            raise NotImplementedError("Reflow not implemented yet")
+        elif self.prediction_type == "target":
+            # Direct target prediction
+            target_for_loss = target_normalized
+            
+        elif self.prediction_type == "noise":
+            # Noise prediction (epsilon parameterization)
+            target_for_loss = noise
         
-        # LOSS COMPUTATION
-        if self.prediction_type == "velocity":
-            # Direct velocity prediction loss
-            prediction_loss = F.mse_loss(model_output, target_for_loss, reduction='none')
         else:
             raise NotImplementedError(f"Prediction type {self.prediction_type} not implemented")
         
+        # MAIN LOSS COMPUTATION
+        # For velocity prediction, model_output should be a tangent vector
+        if self.prediction_type == "velocity":
+            # MSE loss on velocity field
+            main_loss = F.mse_loss(model_output, target_for_loss, reduction='none')
+        else:
+            # For target/noise prediction, ensure outputs are normalized
+            model_output_norm = F.normalize(model_output, p=2, dim=-1)
+            main_loss = F.mse_loss(model_output_norm, target_for_loss, reduction='none')
+        
         # Reduce loss: mean over tokens and embedding dimensions, then over batch
-        prediction_loss = prediction_loss.mean(dim=(1, 2))  # [B]
+        main_loss = main_loss.mean(dim=(1, 2))  # [B]
         
-        # Optional: timestep weighting (can help with training dynamics)
-        # Weight early timesteps slightly more to ensure good noise handling
-        time_weights = 1.0 + 0.1 * (1 - t.squeeze(-1))  # [B, 1] -> [B]
-        weighted_loss = prediction_loss * time_weights.squeeze(-1)
-        
-        # Main loss
-        main_loss = weighted_loss.mean()
-        
-        # REGULARIZATION TERMS
+        # SPHERICAL REGULARIZATION TERMS
         reg_loss = 0.0
         
-        # Velocity magnitude regularization
-        if self.velocity_reg_weight > 0:
-            pred_magnitude = torch.norm(model_output, dim=-1).mean()
-            target_magnitude = torch.norm(target_for_loss, dim=-1).mean()
-            velocity_reg = F.mse_loss(pred_magnitude, target_magnitude.detach())
-            reg_loss += self.velocity_reg_weight * velocity_reg
+        # 1. Sphere constraint: ensure model outputs respect unit sphere
+        if self.sphere_constraint_weight > 0:
+            if self.prediction_type == "velocity":
+                # For velocity, no direct sphere constraint (tangent vectors)
+                sphere_violation = 0.0
+            else:
+                # For target/noise prediction, enforce unit norm
+                output_norms = torch.norm(model_output, dim=-1)  # [B, N]
+                sphere_violation = F.mse_loss(output_norms, torch.ones_like(output_norms))
+                reg_loss += self.sphere_constraint_weight * sphere_violation
+        
+        # 2. Velocity smoothness (optional)
+        if self.velocity_smoothness_weight > 0 and self.prediction_type == "velocity":
+            # Encourage smooth velocity fields across tokens
+            velocity_diff = model_output[:, 1:, :] - model_output[:, :-1, :]  # [B, N-1, D]
+            smoothness_loss = torch.norm(velocity_diff, dim=-1).mean()
+            reg_loss += self.velocity_smoothness_weight * smoothness_loss
         
         # Total loss
-        total_loss = main_loss + reg_loss
+        total_loss = main_loss.mean() + reg_loss
         total_loss = total_loss * self.loss_weight
         
         # METRICS COMPUTATION
@@ -174,22 +284,49 @@ class BLIP3oEVAFlowMatchingLoss(nn.Module):
         if return_metrics:
             with torch.no_grad():
                 # Normalize predictions for similarity computation
-                pred_normalized = F.normalize(model_output + self.eps, p=2, dim=-1)
-                target_norm = F.normalize(target_for_loss + self.eps, p=2, dim=-1)
+                if self.prediction_type == "velocity":
+                    # For velocity, compare direction similarity
+                    pred_normalized = F.normalize(model_output + self.eps, p=2, dim=-1)
+                    target_norm = F.normalize(target_for_loss + self.eps, p=2, dim=-1)
+                else:
+                    pred_normalized = F.normalize(model_output + self.eps, p=2, dim=-1)
+                    target_norm = target_for_loss
                 
                 # Cosine similarity
                 cosine_sim = F.cosine_similarity(pred_normalized, target_norm, dim=-1)
                 per_image_sim = cosine_sim.mean(dim=1)  # [B]
                 mean_similarity = per_image_sim.mean().item()
                 
+                # For final evaluation: predict clean from noisy
+                if x_t is not None and self.prediction_type == "velocity":
+                    # Integrate velocity to get clean prediction
+                    dt = 0.1  # Small step
+                    predicted_clean = x_t + dt * model_output
+                    predicted_clean = F.normalize(predicted_clean, p=2, dim=-1)
+                    
+                    # Compare with actual clean
+                    clean_similarity = F.cosine_similarity(predicted_clean, target_normalized, dim=-1)
+                    clean_per_image_sim = clean_similarity.mean(dim=1)
+                    eval_similarity = clean_per_image_sim.mean().item()
+                else:
+                    eval_similarity = mean_similarity
+                
                 # Update EMAs
-                self._update_ema(self.loss_ema, main_loss.item())
+                self._update_ema(self.loss_ema, main_loss.mean().item())
                 self._update_ema(self.similarity_ema, mean_similarity)
+                
+                # Sphere constraint monitoring
+                if self.prediction_type != "velocity":
+                    output_norms = torch.norm(model_output, dim=-1).mean().item()
+                    sphere_violation_val = abs(output_norms - 1.0)
+                    self._update_ema(self.sphere_violation_ema, sphere_violation_val)
+                else:
+                    sphere_violation_val = 0.0
                 
                 # Compute norms for monitoring
                 pred_norm = torch.norm(model_output, dim=-1).mean().item()
                 target_norm_val = torch.norm(target_for_loss, dim=-1).mean().item()
-                eva_norm = torch.norm(target_normalized, dim=-1).mean().item()
+                clean_norm = torch.norm(target_normalized, dim=-1).mean().item()
                 noise_norm = torch.norm(noise, dim=-1).mean().item()
                 
                 # Error analysis
@@ -198,29 +335,34 @@ class BLIP3oEVAFlowMatchingLoss(nn.Module):
                 relative_error = error_norm / (target_norm_val + self.eps)
                 
                 # Quality assessment
-                if mean_similarity > 0.8:
+                if eval_similarity > 0.8:
                     quality = "excellent"
-                elif mean_similarity > 0.5:
+                elif eval_similarity > 0.5:
                     quality = "good"
-                elif mean_similarity > 0.2:
+                elif eval_similarity > 0.2:
                     quality = "fair"
                 else:
                     quality = "poor"
                 
                 metrics = {
                     # Core metrics
-                    'loss': main_loss.item(),
+                    'loss': main_loss.mean().item(),
                     'total_loss': total_loss.item(),
                     'reg_loss': reg_loss if isinstance(reg_loss, float) else reg_loss.item(),
-                    'velocity_similarity': mean_similarity,
-                    'velocity_similarity_std': per_image_sim.std().item(),
+                    'prediction_similarity': mean_similarity,
+                    'eval_similarity': eval_similarity,  # More relevant metric
+                    'similarity_std': per_image_sim.std().item(),
+                    
+                    # Sphere constraint
+                    'sphere_violation': sphere_violation_val,
+                    'sphere_constraint_loss': sphere_violation if self.sphere_constraint_weight > 0 else 0.0,
                     
                     # Norm tracking
                     'pred_norm': pred_norm,
                     'target_norm': target_norm_val,
-                    'eva_norm': eva_norm,
+                    'clean_norm': clean_norm,
                     'noise_norm': noise_norm,
-                    'clip_norm': torch.norm(clip_conditioning, dim=-1).mean().item(),
+                    'conditioning_norm': torch.norm(conditioning_normalized, dim=-1).mean().item(),
                     
                     # Error analysis
                     'error_norm': error_norm,
@@ -230,6 +372,7 @@ class BLIP3oEVAFlowMatchingLoss(nn.Module):
                     'step_count': self.step_count.item(),
                     'loss_ema': self.loss_ema.item(),
                     'similarity_ema': self.similarity_ema.item(),
+                    'sphere_violation_ema': self.sphere_violation_ema.item(),
                     'quality_assessment': quality,
                     
                     # Flow matching specific
@@ -254,9 +397,11 @@ class BLIP3oEVAFlowMatchingLoss(nn.Module):
                 
                 # Debug logging
                 if self.debug_mode and self.step_count % 50 == 0:
-                    logger.info(f"[Step {self.step_count}] Flow Matching Debug:")
-                    logger.info(f"  Loss: {main_loss.item():.6f} (quality: {quality})")
-                    logger.info(f"  Velocity Sim: {mean_similarity:.4f}")
+                    logger.info(f"[Step {self.step_count}] Spherical Flow Debug:")
+                    logger.info(f"  Loss: {main_loss.mean().item():.6f} (quality: {quality})")
+                    logger.info(f"  Prediction Sim: {mean_similarity:.4f}")
+                    logger.info(f"  Eval Sim: {eval_similarity:.4f}")
+                    logger.info(f"  Sphere Violation: {sphere_violation_val:.6f}")
                     logger.info(f"  Norms - Pred: {pred_norm:.3f}, Target: {target_norm_val:.3f}")
                     logger.info(f"  Error: {error_norm:.3f} (relative: {relative_error:.3f})")
                     logger.info(f"  Timesteps: {timesteps.mean().item():.3f} ± {timesteps.std().item():.3f}")
@@ -265,49 +410,61 @@ class BLIP3oEVAFlowMatchingLoss(nn.Module):
 
     def compute_eval_loss(
         self,
-        generated: torch.Tensor,  # Generated EVA embeddings
-        target: torch.Tensor,     # Target EVA embeddings
+        generated: torch.Tensor,  # Generated clean EVA embeddings
+        target: torch.Tensor,     # Target clean EVA embeddings
     ) -> Dict[str, float]:
-        """Compute evaluation metrics"""
+        """Compute evaluation metrics for denoising task"""
         with torch.no_grad():
             # Normalize both
             generated_norm = F.normalize(generated, p=2, dim=-1)
             target_norm = F.normalize(target, p=2, dim=-1)
             
-            # Cosine similarity
+            # Cosine similarity (main metric)
             cosine_sim = F.cosine_similarity(generated_norm, target_norm, dim=-1)
             per_image_sim = cosine_sim.mean(dim=1)
             
             # MSE in normalized space
             mse_loss = F.mse_loss(generated_norm, target_norm)
             
+            # Angular distance
+            cos_sim_clamped = torch.clamp(cosine_sim, -1 + 1e-7, 1 - 1e-7)
+            angular_distance = torch.acos(cos_sim_clamped).mean()
+            
             # Quality metrics
             high_quality = (per_image_sim > 0.7).float().mean().item()
             very_high_quality = (per_image_sim > 0.8).float().mean().item()
             excellent_quality = (per_image_sim > 0.9).float().mean().item()
             
+            # Sphere constraint violation
+            generated_norms = torch.norm(generated, dim=-1)
+            sphere_violation = F.mse_loss(generated_norms, torch.ones_like(generated_norms)).item()
+            
             return {
                 'eval_eva_similarity': per_image_sim.mean().item(),
                 'eval_mse_loss': mse_loss.item(),
+                'eval_angular_distance': angular_distance.item(),
                 'eval_high_quality_ratio': high_quality,
                 'eval_very_high_quality_ratio': very_high_quality,
                 'eval_excellent_quality_ratio': excellent_quality,
                 'eval_similarity_std': per_image_sim.std().item(),
+                'eval_sphere_violation': sphere_violation,
+                'eval_generated_norm_mean': generated_norms.mean().item(),
+                'eval_generated_norm_std': generated_norms.std().item(),
             }
 
 
-def create_eva_reproduction_loss(
+def create_spherical_flow_loss(
     prediction_type: str = "velocity",
-    flow_type: str = "rectified", 
     loss_weight: float = 1.0,
+    sphere_constraint_weight: float = 0.1,
     debug_mode: bool = False,
     **kwargs
-) -> BLIP3oEVAFlowMatchingLoss:
-    """Factory function for EVA reproduction loss"""
-    return BLIP3oEVAFlowMatchingLoss(
+) -> SphericalFlowMatchingLoss:
+    """Factory function for spherical flow matching loss"""
+    return SphericalFlowMatchingLoss(
         prediction_type=prediction_type,
-        flow_type=flow_type,
         loss_weight=loss_weight,
+        sphere_constraint_weight=sphere_constraint_weight,
         debug_mode=debug_mode,
         **kwargs
     )
