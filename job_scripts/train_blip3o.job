@@ -57,7 +57,7 @@ EVAL_INFERENCE_STEPS=50
 
 # Testing configuration
 OVERFIT_TEST_SIZE=20            # Enable overfitting test to verify architecture
-DEBUG_MODE="--debug_mode"      # Enable debug logging
+DEBUG_MODE=""      # Enable debug logging
 MAX_SHARDS=2                    # Start with fewer shards for testing
 
 # Create output directory

@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
 BLIP3-o DiT Model for CLIP Reproduction from EVA Embeddings
-Key features:
-1. Input: noisy CLIP embeddings [B, N, 1024]
-2. Output: velocity for CLIP embeddings [B, N, 1024] 
-3. Conditioning: EVA embeddings [B, N, 4096]
-4. Proper gradient flow and initialization
+FIXED: Dimension mismatch in sandwich normalization output layers
+
+Key fixes:
+1. Fixed sandwich normalization dimension mismatch in output projection
+2. Proper handling of hidden_size vs clip_embedding_size
+3. Corrected norm layer initialization
 """
 
 import torch
@@ -34,13 +35,19 @@ class BLIP3oCLIPDiTConfig(PretrainedConfig):
         clip_embedding_size: int = 1024,
         num_tokens: int = 256,
         max_position_embeddings: int = 256,
+        # 3D RoPE parameters
+        use_3d_rope: bool = True,
+        rope_theta: float = 10000.0,
+        image_size: int = 224,
+        patch_size: int = 14,
+        # Sandwich normalization
+        use_sandwich_norm: bool = True,
         rms_norm_eps: float = 1e-6,
         dropout_prob: float = 0.0,
         attention_dropout: float = 0.0,
         initializer_range: float = 0.02,
         use_gradient_checkpointing: bool = False,
         training_mode: str = "patch_only",
-        rope_theta: float = 10000.0,
         **kwargs
     ):
         super().__init__(**kwargs)
@@ -53,13 +60,25 @@ class BLIP3oCLIPDiTConfig(PretrainedConfig):
         self.clip_embedding_size = clip_embedding_size
         self.num_tokens = num_tokens
         self.max_position_embeddings = max_position_embeddings
+        
+        # 3D RoPE
+        self.use_3d_rope = use_3d_rope
+        self.rope_theta = rope_theta
+        self.image_size = image_size
+        self.patch_size = patch_size
+        
+        # Sandwich normalization
+        self.use_sandwich_norm = use_sandwich_norm
         self.rms_norm_eps = rms_norm_eps
+        
         self.dropout_prob = dropout_prob
         self.attention_dropout = attention_dropout
         self.initializer_range = initializer_range
         self.use_gradient_checkpointing = use_gradient_checkpointing
         self.training_mode = training_mode
-        self.rope_theta = rope_theta
+        
+        # Calculate grid size for 3D RoPE
+        self.grid_size = image_size // patch_size  # 224 // 14 = 16
 
 
 class RMSNorm(nn.Module):
@@ -77,40 +96,140 @@ class RMSNorm(nn.Module):
         return self.weight * hidden_states.to(input_dtype)
 
 
-class RotaryEmbedding(nn.Module):
-    """Rotary Position Embedding"""
-    def __init__(self, dim: int, max_position_embeddings: int = 256, base: float = 10000):
+class Rotary3DEmbedding(nn.Module):
+    """
+    3D Rotary Position Embedding for BLIP3-o
+    Supports spatial (height, width) and temporal/depth dimensions
+    """
+    def __init__(
+        self, 
+        dim: int, 
+        grid_size: int = 16,
+        max_position_embeddings: int = 256, 
+        base: float = 10000,
+        use_3d: bool = True
+    ):
         super().__init__()
         self.dim = dim
+        self.grid_size = grid_size
         self.max_position_embeddings = max_position_embeddings
         self.base = base
-        inv_freq = 1.0 / (self.base ** (torch.arange(0, self.dim, 2).float() / self.dim))
-        self.register_buffer("inv_freq", inv_freq, persistent=False)
+        self.use_3d = use_3d
+        
+        # Split dimensions for 3D RoPE
+        if use_3d:
+            assert dim % 4 == 0, "Dimension must be divisible by 4 for 3D RoPE"
+            self.dim_h = dim // 4      # Height dimension
+            self.dim_w = dim // 4      # Width dimension  
+            self.dim_d = dim // 2      # Depth dimension
+        else:
+            self.dim_h = dim // 2
+            self.dim_w = dim // 2
+            self.dim_d = 0
+        
+        # Create frequency tensors for each dimension
+        self._create_frequency_tensors()
+
+    def _create_frequency_tensors(self):
+        """Create frequency tensors for each spatial dimension"""
+        if self.use_3d:
+            # Height frequencies
+            inv_freq_h = 1.0 / (self.base ** (torch.arange(0, self.dim_h, 2).float() / self.dim_h))
+            self.register_buffer("inv_freq_h", inv_freq_h, persistent=False)
+            
+            # Width frequencies  
+            inv_freq_w = 1.0 / (self.base ** (torch.arange(0, self.dim_w, 2).float() / self.dim_w))
+            self.register_buffer("inv_freq_w", inv_freq_w, persistent=False)
+            
+            # Depth frequencies
+            inv_freq_d = 1.0 / (self.base ** (torch.arange(0, self.dim_d, 2).float() / self.dim_d))
+            self.register_buffer("inv_freq_d", inv_freq_d, persistent=False)
+        else:
+            # Standard 2D RoPE
+            inv_freq = 1.0 / (self.base ** (torch.arange(0, self.dim, 2).float() / self.dim))
+            self.register_buffer("inv_freq", inv_freq, persistent=False)
 
     def forward(self, x: torch.Tensor, seq_len: Optional[int] = None) -> Tuple[torch.Tensor, torch.Tensor]:
         if seq_len is None:
             seq_len = x.shape[1]
         
-        t = torch.arange(seq_len, device=x.device, dtype=torch.float32)
-        freqs = torch.einsum("i,j->ij", t, self.inv_freq)
-        emb = torch.cat((freqs, freqs), dim=-1)
-        return emb.cos().unsqueeze(0), emb.sin().unsqueeze(0)
+        device = x.device
+        
+        if not self.use_3d:
+            # Standard RoPE
+            t = torch.arange(seq_len, device=device, dtype=torch.float32)
+            freqs = torch.einsum("i,j->ij", t, self.inv_freq)
+            emb = torch.cat((freqs, freqs), dim=-1)
+            return emb.cos().unsqueeze(0), emb.sin().unsqueeze(0)
+        
+        # 3D RoPE for spatial understanding
+        batch_size = x.shape[0]
+        
+        # Handle CLS token if present
+        has_cls = seq_len == self.grid_size * self.grid_size + 1
+        start_idx = 1 if has_cls else 0
+        spatial_len = seq_len - start_idx
+        
+        # Create 3D position embeddings
+        pos_embeddings = []
+        
+        if has_cls:
+            # CLS token gets zero position (or special position)
+            cls_emb = torch.zeros(1, self.dim, device=device)
+            pos_embeddings.append(cls_emb)
+        
+        # Create spatial positions (height, width)
+        grid_h, grid_w = int(math.sqrt(spatial_len)), int(math.sqrt(spatial_len))
+        
+        # Height positions
+        pos_h = torch.arange(grid_h, device=device, dtype=torch.float32)
+        freqs_h = torch.einsum("i,j->ij", pos_h, self.inv_freq_h)
+        
+        # Width positions
+        pos_w = torch.arange(grid_w, device=device, dtype=torch.float32)
+        freqs_w = torch.einsum("i,j->ij", pos_w, self.inv_freq_w)
+        
+        # Depth positions (for multi-scale or hierarchical features)
+        depth_scale = torch.zeros(1, device=device, dtype=torch.float32)  # Can be modified for hierarchical
+        freqs_d = torch.einsum("i,j->ij", depth_scale, self.inv_freq_d)
+        
+        # Combine spatial embeddings
+        for h in range(grid_h):
+            for w in range(grid_w):
+                # Combine height, width, and depth frequencies
+                h_emb = torch.cat((freqs_h[h], freqs_h[h]), dim=-1)  # [dim_h]
+                w_emb = torch.cat((freqs_w[w], freqs_w[w]), dim=-1)  # [dim_w]
+                d_emb = torch.cat((freqs_d[0], freqs_d[0]), dim=-1)  # [dim_d]
+                
+                # Concatenate all dimensions
+                combined_emb = torch.cat([h_emb, w_emb, d_emb], dim=0)  # [dim]
+                pos_embeddings.append(combined_emb)
+        
+        # Stack all position embeddings
+        all_pos_emb = torch.stack(pos_embeddings, dim=0)  # [seq_len, dim]
+        
+        # Convert to cos/sin
+        cos_emb = all_pos_emb.cos().unsqueeze(0)  # [1, seq_len, dim]
+        sin_emb = all_pos_emb.sin().unsqueeze(0)  # [1, seq_len, dim]
+        
+        return cos_emb, sin_emb
 
 
-def apply_rotary_pos_emb(q: torch.Tensor, k: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor):
-    """Apply rotary position embedding"""
+def apply_rotary_pos_emb_3d(q: torch.Tensor, k: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor):
+    """Apply 3D rotary position embedding"""
     def rotate_half(x):
         x1 = x[..., : x.shape[-1] // 2]
         x2 = x[..., x.shape[-1] // 2 :]
         return torch.cat((-x2, x1), dim=-1)
 
+    # Apply rotary embedding
     q_embed = (q * cos) + (rotate_half(q) * sin)
     k_embed = (k * cos) + (rotate_half(k) * sin)
     return q_embed, k_embed
 
 
 class TimestepEmbedder(nn.Module):
-    """Fixed timestep embedding"""
+    """Enhanced timestep embedding for BLIP3-o"""
     def __init__(self, hidden_size: int, frequency_embedding_size: int = 256):
         super().__init__()
         self.hidden_size = hidden_size
@@ -145,8 +264,8 @@ class TimestepEmbedder(nn.Module):
         return self.mlp(t_freq)
 
 
-class Attention(nn.Module):
-    """Multi-head attention with RoPE"""
+class Attention3D(nn.Module):
+    """Multi-head attention with 3D RoPE for BLIP3-o"""
     def __init__(self, config: BLIP3oCLIPDiTConfig):
         super().__init__()
         self.config = config
@@ -163,11 +282,13 @@ class Attention(nn.Module):
         self.v_proj = nn.Linear(self.hidden_size, self.num_key_value_heads * self.head_dim, bias=False)
         self.o_proj = nn.Linear(self.num_heads * self.head_dim, self.hidden_size, bias=False)
         
-        # RoPE
-        self.rotary_emb = RotaryEmbedding(
+        # 3D RoPE
+        self.rotary_emb = Rotary3DEmbedding(
             self.head_dim,
+            grid_size=config.grid_size,
             max_position_embeddings=config.max_position_embeddings,
             base=config.rope_theta,
+            use_3d=config.use_3d_rope,
         )
         
         self.dropout = nn.Dropout(config.attention_dropout)
@@ -208,11 +329,12 @@ class Attention(nn.Module):
         key_states = key_states.view(bsz, kv_seq_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
         value_states = value_states.view(bsz, kv_seq_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
         
-        # Apply RoPE
-        cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
-        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
+        # Apply 3D RoPE only for self-attention (spatial understanding)
+        if key_value_states is None:  # Self-attention
+            cos, sin = self.rotary_emb(hidden_states, seq_len=kv_seq_len)
+            query_states, key_states = apply_rotary_pos_emb_3d(query_states, key_states, cos, sin)
         
-        # Repeat k/v heads if needed
+        # Repeat k/v heads if needed (grouped-query attention)
         key_states = key_states.repeat_interleave(self.num_key_value_groups, dim=1)
         value_states = value_states.repeat_interleave(self.num_key_value_groups, dim=1)
         
@@ -232,7 +354,7 @@ class Attention(nn.Module):
 
 
 class MLP(nn.Module):
-    """Feed-forward network"""
+    """Enhanced MLP with better initialization"""
     def __init__(self, config: BLIP3oCLIPDiTConfig):
         super().__init__()
         self.gate_proj = nn.Linear(config.hidden_size, config.intermediate_size, bias=False)
@@ -253,7 +375,7 @@ class MLP(nn.Module):
 
 
 class AdaLN(nn.Module):
-    """Adaptive Layer Normalization"""
+    """Adaptive Layer Normalization for timestep conditioning"""
     def __init__(self, hidden_size: int, conditioning_size: int, eps: float = 1e-6):
         super().__init__()
         self.norm = RMSNorm(hidden_size, eps)
@@ -282,25 +404,22 @@ class AdaLN(nn.Module):
         return normalized * (1 + scale) + shift
 
 
-class DiTBlock(nn.Module):
-    """DiT transformer block"""
+class DiTBlock3D(nn.Module):
+    """
+    BLIP3-o DiT transformer block with 3D RoPE and Sandwich Normalization
+    
+    FIXED: Proper sandwich normalization pattern without dimension mismatches
+    """
     def __init__(self, config: BLIP3oCLIPDiTConfig):
         super().__init__()
         self.hidden_size = config.hidden_size
+        self.use_sandwich_norm = config.use_sandwich_norm
         
-        # Normalization layers
-        self.norm1 = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
-        self.norm2 = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
-        self.norm3 = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+        # Self-attention
+        self.self_attn = Attention3D(config)
         
-        # Adaptive layer norms with timestep conditioning
-        self.ada_ln1 = AdaLN(config.hidden_size, config.hidden_size)
-        self.ada_ln2 = AdaLN(config.hidden_size, config.hidden_size)
-        self.ada_ln3 = AdaLN(config.hidden_size, config.hidden_size)
-        
-        # Attention layers
-        self.self_attn = Attention(config)
-        self.cross_attn = Attention(config)
+        # Cross-attention
+        self.cross_attn = Attention3D(config)
         
         # MLP
         self.mlp = MLP(config)
@@ -309,6 +428,35 @@ class DiTBlock(nn.Module):
         self.eva_proj = nn.Linear(config.eva_embedding_size, config.hidden_size, bias=True)
         nn.init.xavier_uniform_(self.eva_proj.weight)
         nn.init.zeros_(self.eva_proj.bias)
+        
+        if config.use_sandwich_norm:
+            # Sandwich normalization: Pre + Post norms for each component
+            
+            # Self-attention sandwich norms
+            self.self_attn_pre_norm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+            self.self_attn_post_norm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+            self.self_attn_ada_ln_pre = AdaLN(config.hidden_size, config.hidden_size)
+            self.self_attn_ada_ln_post = AdaLN(config.hidden_size, config.hidden_size)
+            
+            # Cross-attention sandwich norms
+            self.cross_attn_pre_norm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+            self.cross_attn_post_norm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+            self.cross_attn_ada_ln_pre = AdaLN(config.hidden_size, config.hidden_size)
+            self.cross_attn_ada_ln_post = AdaLN(config.hidden_size, config.hidden_size)
+            
+            # MLP sandwich norms
+            self.mlp_pre_norm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+            self.mlp_post_norm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+            self.mlp_ada_ln_pre = AdaLN(config.hidden_size, config.hidden_size)
+            self.mlp_ada_ln_post = AdaLN(config.hidden_size, config.hidden_size)
+        else:
+            # Standard normalization (pre-norm only)
+            self.norm1 = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+            self.norm2 = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+            self.norm3 = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+            self.ada_ln1 = AdaLN(config.hidden_size, config.hidden_size)
+            self.ada_ln2 = AdaLN(config.hidden_size, config.hidden_size)
+            self.ada_ln3 = AdaLN(config.hidden_size, config.hidden_size)
 
     def forward(
         self, 
@@ -316,33 +464,80 @@ class DiTBlock(nn.Module):
         encoder_hidden_states: torch.Tensor,
         timestep_emb: torch.Tensor
     ) -> torch.Tensor:
-        # Self-attention
-        residual = hidden_states
-        hidden_states = self.norm1(hidden_states)
-        hidden_states = self.ada_ln1(hidden_states, timestep_emb)
-        hidden_states = self.self_attn(hidden_states)
-        hidden_states = residual + hidden_states
         
-        # Cross-attention with EVA
-        residual = hidden_states
-        hidden_states = self.norm2(hidden_states)
-        hidden_states = self.ada_ln2(hidden_states, timestep_emb)
-        eva_features = self.eva_proj(encoder_hidden_states)
-        hidden_states = self.cross_attn(hidden_states, key_value_states=eva_features)
-        hidden_states = residual + hidden_states
-        
-        # MLP
-        residual = hidden_states
-        hidden_states = self.norm3(hidden_states)
-        hidden_states = self.ada_ln3(hidden_states, timestep_emb)
-        hidden_states = self.mlp(hidden_states)
-        hidden_states = residual + hidden_states
+        if self.use_sandwich_norm:
+            # Sandwich normalization pattern
+            
+            # Self-attention with sandwich norm
+            residual = hidden_states
+            # Pre-norm
+            hidden_states = self.self_attn_pre_norm(hidden_states)
+            hidden_states = self.self_attn_ada_ln_pre(hidden_states, timestep_emb)
+            # Attention
+            hidden_states = self.self_attn(hidden_states)
+            # Post-norm
+            hidden_states = self.self_attn_post_norm(hidden_states)
+            hidden_states = self.self_attn_ada_ln_post(hidden_states, timestep_emb)
+            # Residual
+            hidden_states = residual + hidden_states
+            
+            # Cross-attention with sandwich norm
+            residual = hidden_states
+            # Pre-norm
+            hidden_states = self.cross_attn_pre_norm(hidden_states)
+            hidden_states = self.cross_attn_ada_ln_pre(hidden_states, timestep_emb)
+            # Cross-attention
+            eva_features = self.eva_proj(encoder_hidden_states)
+            hidden_states = self.cross_attn(hidden_states, key_value_states=eva_features)
+            # Post-norm
+            hidden_states = self.cross_attn_post_norm(hidden_states)
+            hidden_states = self.cross_attn_ada_ln_post(hidden_states, timestep_emb)
+            # Residual
+            hidden_states = residual + hidden_states
+            
+            # MLP with sandwich norm
+            residual = hidden_states
+            # Pre-norm
+            hidden_states = self.mlp_pre_norm(hidden_states)
+            hidden_states = self.mlp_ada_ln_pre(hidden_states, timestep_emb)
+            # MLP
+            hidden_states = self.mlp(hidden_states)
+            # Post-norm
+            hidden_states = self.mlp_post_norm(hidden_states)
+            hidden_states = self.mlp_ada_ln_post(hidden_states, timestep_emb)
+            # Residual
+            hidden_states = residual + hidden_states
+            
+        else:
+            # Standard pre-norm pattern
+            
+            # Self-attention
+            residual = hidden_states
+            hidden_states = self.norm1(hidden_states)
+            hidden_states = self.ada_ln1(hidden_states, timestep_emb)
+            hidden_states = self.self_attn(hidden_states)
+            hidden_states = residual + hidden_states
+            
+            # Cross-attention with EVA
+            residual = hidden_states
+            hidden_states = self.norm2(hidden_states)
+            hidden_states = self.ada_ln2(hidden_states, timestep_emb)
+            eva_features = self.eva_proj(encoder_hidden_states)
+            hidden_states = self.cross_attn(hidden_states, key_value_states=eva_features)
+            hidden_states = residual + hidden_states
+            
+            # MLP
+            residual = hidden_states
+            hidden_states = self.norm3(hidden_states)
+            hidden_states = self.ada_ln3(hidden_states, timestep_emb)
+            hidden_states = self.mlp(hidden_states)
+            hidden_states = residual + hidden_states
         
         return hidden_states
 
 
 class BLIP3oCLIPDiTModel(PreTrainedModel):
-    """BLIP3-o DiT Model for CLIP reproduction"""
+    """BLIP3-o DiT Model with 3D RoPE and Sandwich Normalization - FIXED"""
     
     config_class = BLIP3oCLIPDiTConfig
     supports_gradient_checkpointing = True
@@ -358,23 +553,36 @@ class BLIP3oCLIPDiTModel(PreTrainedModel):
         # Timestep embedding
         self.timestep_embedder = TimestepEmbedder(config.hidden_size)
         
-        # Positional embedding
+        # Positional embedding (fallback for non-3D RoPE)
         self.pos_embed = nn.Parameter(torch.zeros(1, config.max_position_embeddings, config.hidden_size))
         
-        # Transformer blocks
+        # Transformer blocks with 3D capabilities
         self.blocks = nn.ModuleList([
-            DiTBlock(config) for _ in range(config.num_hidden_layers)
+            DiTBlock3D(config) for _ in range(config.num_hidden_layers)
         ])
         
-        # Output layers
-        self.output_norm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
-        self.output_adaln = AdaLN(config.hidden_size, config.hidden_size)
+        # FIXED: Output layers with proper sandwich norm handling
+        if config.use_sandwich_norm:
+            # Only apply pre-norm to hidden states, not post-norm to output
+            self.output_pre_norm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+            self.output_adaln_pre = AdaLN(config.hidden_size, config.hidden_size)
+            # NO post-norm for output projection (would cause dimension mismatch)
+        else:
+            self.output_norm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+            self.output_adaln = AdaLN(config.hidden_size, config.hidden_size)
+        
+        # Output projection: hidden_size -> clip_embedding_size
         self.output_proj = nn.Linear(config.hidden_size, config.clip_embedding_size, bias=True)
         
         # Initialize model
         self._init_weights()
         
         logger.info(f"BLIP3-o CLIP DiT model initialized with {self.get_num_parameters():,} parameters")
+        logger.info(f"  3D RoPE: {config.use_3d_rope}")
+        logger.info(f"  Sandwich Normalization: {config.use_sandwich_norm}")
+        logger.info(f"  Grid size: {config.grid_size}x{config.grid_size}")
+        logger.info(f"  Hidden size: {config.hidden_size}")
+        logger.info(f"  CLIP size: {config.clip_embedding_size}")
 
     def _init_weights(self):
         """Initialize model weights"""
@@ -403,20 +611,20 @@ class BLIP3oCLIPDiTModel(PreTrainedModel):
         return_dict: bool = True,
         **kwargs
     ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
-        """Forward pass"""
+        """Forward pass with 3D RoPE and sandwich normalization - FIXED"""
         batch_size, seq_len, _ = hidden_states.shape
         
         # Project CLIP input to hidden dimension
-        x = self.input_proj(hidden_states)
+        x = self.input_proj(hidden_states)  # [B, N, 1024] -> [B, N, hidden_size]
         
-        # Add positional embeddings
-        if seq_len <= self.config.max_position_embeddings:
+        # Add positional embeddings (fallback for non-spatial positions)
+        if not self.config.use_3d_rope and seq_len <= self.config.max_position_embeddings:
             x = x + self.pos_embed[:, :seq_len, :]
         
         # Get timestep embeddings
         timestep_emb = self.timestep_embedder(timestep)  # [B, hidden_size]
         
-        # Pass through transformer blocks
+        # Pass through transformer blocks with 3D RoPE
         for block in self.blocks:
             if self.gradient_checkpointing and self.training:
                 x = torch.utils.checkpoint.checkpoint(
@@ -425,10 +633,17 @@ class BLIP3oCLIPDiTModel(PreTrainedModel):
             else:
                 x = block(x, encoder_hidden_states, timestep_emb)
         
-        # Output projection
-        x = self.output_norm(x)
-        x = self.output_adaln(x, timestep_emb)
-        velocity_pred = self.output_proj(x)
+        # FIXED: Output projection with proper sandwich norm handling
+        if self.config.use_sandwich_norm:
+            # Pre-norm only (no post-norm to avoid dimension mismatch)
+            x = self.output_pre_norm(x)  # [B, N, hidden_size]
+            x = self.output_adaln_pre(x, timestep_emb)  # [B, N, hidden_size]
+            velocity_pred = self.output_proj(x)  # [B, N, hidden_size] -> [B, N, 1024]
+            # NO post-norm here (would cause 768 vs 1024 mismatch)
+        else:
+            x = self.output_norm(x)
+            x = self.output_adaln(x, timestep_emb)
+            velocity_pred = self.output_proj(x)
         
         if return_dict:
             return {"velocity_prediction": velocity_pred, "hidden_states": x}
@@ -440,9 +655,9 @@ class BLIP3oCLIPDiTModel(PreTrainedModel):
         eva_features: torch.Tensor,
         num_inference_steps: int = 50,
         generator: Optional[torch.Generator] = None,
-        normalize_output: bool = False,  # Changed default to False
+        normalize_output: bool = False,
     ) -> torch.Tensor:
-        """Generate CLIP embeddings using rectified flow"""
+        """Generate CLIP embeddings using rectified flow with 3D spatial understanding"""
         device = eva_features.device
         batch_size, num_tokens, _ = eva_features.shape
         
@@ -451,14 +666,13 @@ class BLIP3oCLIPDiTModel(PreTrainedModel):
             batch_size, num_tokens, self.config.clip_embedding_size,
             device=device, generator=generator, dtype=eva_features.dtype
         )
-        # Don't normalize initial noise
         
         # Forward process (t=0 to t=1)
         dt = 1.0 / num_inference_steps
         
         for i in range(num_inference_steps):
             # Go from t=0 to t=1
-            t = i * dt  # t: 0.0 → 0.98
+            t = i * dt
             t_batch = torch.full((batch_size,), t, device=device, dtype=eva_features.dtype)
             
             # Get velocity prediction
@@ -486,9 +700,11 @@ def create_clip_reproduction_model(
     config: Optional[BLIP3oCLIPDiTConfig] = None,
     training_mode: str = "patch_only",
     model_size: str = "base",
+    use_3d_rope: bool = True,
+    use_sandwich_norm: bool = True,
     **kwargs
 ) -> BLIP3oCLIPDiTModel:
-    """Create CLIP reproduction model"""
+    """Create CLIP reproduction model with 3D RoPE and sandwich normalization - FIXED"""
     
     if config is None:
         # Model size configurations
@@ -506,6 +722,8 @@ def create_clip_reproduction_model(
             "eva_embedding_size": 4096,
             "clip_embedding_size": 1024,
             "intermediate_size": model_config["hidden_size"] * 4,
+            "use_3d_rope": use_3d_rope,
+            "use_sandwich_norm": use_sandwich_norm,
             **kwargs
         })
         

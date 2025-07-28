@@ -1,13 +1,20 @@
 #!/usr/bin/env python3
 """
-CLIP Reproduction Training Script - train_dit.py (FIXED)
+CLIP Reproduction Training Script - train_dit.py (UPDATED)
 Main training script for reproducing CLIP embeddings from EVA embeddings
-Fixed import issues and config handling
+
+UPDATES:
+1. ✅ 3D Rotary Position Embedding for spatial understanding
+2. ✅ Sandwich Normalization (RMSNorm before and after attention/MLP)
+3. ✅ WandB integration with comprehensive metrics logging
+4. ✅ Handles IterableDataset length issues for WandB
+5. ✅ BLIP3-o paper alignment
 
 Key features:
 1. Minimal normalization (only for evaluation similarity)
 2. Raw embedding space training
 3. Comprehensive monitoring and debugging
+4. WandB experiment tracking
 """
 
 import os
@@ -53,6 +60,16 @@ def parse_arguments():
                        choices=["patch_only", "cls_patch"],
                        help="Training mode")
     
+    # NEW: BLIP3-o architecture features
+    parser.add_argument("--use_3d_rope", action="store_true", default=True,
+                       help="Use 3D Rotary Position Embedding")
+    parser.add_argument("--use_sandwich_norm", action="store_true", default=True,
+                       help="Use sandwich normalization (RMSNorm before and after)")
+    parser.add_argument("--no_3d_rope", action="store_true",
+                       help="Disable 3D RoPE (use standard RoPE)")
+    parser.add_argument("--no_sandwich_norm", action="store_true",
+                       help="Disable sandwich normalization")
+    
     # Training hyperparameters
     parser.add_argument("--learning_rate", type=float, default=5e-4,
                        help="Learning rate")
@@ -87,10 +104,22 @@ def parse_arguments():
     parser.add_argument("--num_workers", type=int, default=0,
                        help="Number of dataloader workers")
     
+    # NEW: WandB configuration
+    parser.add_argument("--use_wandb", action="store_true", default=True,
+                       help="Enable WandB logging")
+    parser.add_argument("--no_wandb", action="store_true",
+                       help="Disable WandB logging")
+    parser.add_argument("--wandb_project", type=str, default="blip3o-clip-reproduction",
+                       help="WandB project name")
+    parser.add_argument("--wandb_run_name", type=str, default=None,
+                       help="WandB run name")
+    parser.add_argument("--wandb_tags", type=str, nargs="*", default=None,
+                       help="WandB tags for the run")
+    
     return parser.parse_args()
 
 def setup_device_and_model(args, logger):
-    """Setup device and create model"""
+    """Setup device and create model with BLIP3-o features"""
     # Setup device
     if torch.cuda.is_available():
         device = torch.device("cuda")
@@ -103,14 +132,25 @@ def setup_device_and_model(args, logger):
         device = torch.device("cpu")
         logger.info("Using CPU")
     
+    # Process architecture arguments
+    use_3d_rope = args.use_3d_rope and not args.no_3d_rope
+    use_sandwich_norm = args.use_sandwich_norm and not args.no_sandwich_norm
+    
+    logger.info("🏗️ BLIP3-o Architecture Configuration:")
+    logger.info(f"  3D Rotary Position Embedding: {'✅ Enabled' if use_3d_rope else '❌ Disabled'}")
+    logger.info(f"  Sandwich Normalization: {'✅ Enabled' if use_sandwich_norm else '❌ Disabled'}")
+    
     # Import and create model - try multiple import paths
     model = None
     try:
+        # Try the updated file first
         from blip3o_dit import create_clip_reproduction_model, BLIP3oCLIPDiTConfig
-        logger.info("✅ Imported model from blip3o_dit.py")
+        logger.info("✅ Imported UPDATED model from blip3o_dit.py")
         model = create_clip_reproduction_model(
             model_size=args.model_size,
-            training_mode=args.training_mode
+            training_mode=args.training_mode,
+            use_3d_rope=use_3d_rope,
+            use_sandwich_norm=use_sandwich_norm,
         )
     except ImportError as e:
         logger.warning(f"Failed to import from blip3o_dit.py: {e}")
@@ -120,7 +160,9 @@ def setup_device_and_model(args, logger):
             logger.info("✅ Imported model from src.modules")
             model = create_clip_reproduction_model(
                 model_size=args.model_size,
-                training_mode=args.training_mode
+                training_mode=args.training_mode,
+                use_3d_rope=use_3d_rope,
+                use_sandwich_norm=use_sandwich_norm,
             )
         except ImportError as e2:
             logger.error(f"❌ Could not import model from src.modules: {e2}")
@@ -130,7 +172,9 @@ def setup_device_and_model(args, logger):
                 logger.info("✅ Imported model directly from src.modules.models.blip3o_dit")
                 model = create_clip_reproduction_model(
                     model_size=args.model_size,
-                    training_mode=args.training_mode
+                    training_mode=args.training_mode,
+                    use_3d_rope=use_3d_rope,
+                    use_sandwich_norm=use_sandwich_norm,
                 )
             except ImportError as e3:
                 logger.error(f"❌ Could not import model directly: {e3}")
@@ -145,6 +189,15 @@ def setup_device_and_model(args, logger):
     
     logger.info(f"Model created with {model.get_num_parameters():,} parameters")
     logger.info(f"Model moved to {device}")
+    
+    # Print architecture validation
+    if hasattr(model, 'config'):
+        config = model.config
+        logger.info("🔍 Architecture Validation:")
+        logger.info(f"  3D RoPE: {'✅' if getattr(config, 'use_3d_rope', False) else '❌'}")
+        logger.info(f"  Sandwich Norm: {'✅' if getattr(config, 'use_sandwich_norm', False) else '❌'}")
+        logger.info(f"  Grid Size: {getattr(config, 'grid_size', 16)}x{getattr(config, 'grid_size', 16)}")
+        logger.info(f"  Grouped-Query Attention: {getattr(config, 'num_attention_heads', 12)}/{getattr(config, 'num_key_value_heads', 4)}")
     
     return device, model
 
@@ -269,11 +322,48 @@ def create_dataloaders(args, logger):
     return train_dataloader, eval_dataloader
 
 def create_trainer(model, loss_fn, train_dataloader, eval_dataloader, args, device, logger):
-    """Create trainer"""
+    """Create trainer with WandB integration"""
+    # Process WandB arguments
+    use_wandb = args.use_wandb and not args.no_wandb
+    
+    # Create run name if not provided
+    wandb_run_name = args.wandb_run_name
+    if wandb_run_name is None and use_wandb:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        arch_features = []
+        if getattr(model.config, 'use_3d_rope', False):
+            arch_features.append("3drope")
+        if getattr(model.config, 'use_sandwich_norm', False):
+            arch_features.append("sandwich")
+        arch_str = "_".join(arch_features) if arch_features else "standard"
+        wandb_run_name = f"blip3o_{args.model_size}_{args.training_mode}_{arch_str}_{timestamp}"
+    
+    # WandB configuration
+    wandb_config = {
+        "model_size": args.model_size,
+        "training_mode": args.training_mode,
+        "use_3d_rope": getattr(model.config, 'use_3d_rope', False),
+        "use_sandwich_norm": getattr(model.config, 'use_sandwich_norm', False),
+        "batch_size": args.batch_size,
+        "max_shards": args.max_shards,
+        "experiment_version": "v3_with_blip3o_features",
+    }
+    
+    # Add tags
+    wandb_tags = ["blip3o", "clip_reproduction", "eva_conditioning"]
+    if getattr(model.config, 'use_3d_rope', False):
+        wandb_tags.append("3d_rope")
+    if getattr(model.config, 'use_sandwich_norm', False):
+        wandb_tags.append("sandwich_norm")
+    if args.overfit_test_size:
+        wandb_tags.append("overfit_test")
+    if args.wandb_tags:
+        wandb_tags.extend(args.wandb_tags)
+    
     trainer = None
     try:
         from blip3o_trainer import create_clip_trainer
-        logger.info("✅ Imported trainer from blip3o_trainer.py")
+        logger.info("✅ Imported UPDATED trainer from blip3o_trainer.py")
         trainer = create_clip_trainer(
             model=model,
             loss_fn=loss_fn,
@@ -290,7 +380,12 @@ def create_trainer(model, loss_fn, train_dataloader, eval_dataloader, args, devi
             debug_mode=args.debug_mode,
             overfit_test_size=args.overfit_test_size,
             output_dir=args.output_dir,
-            device=device
+            device=device,
+            # WandB parameters
+            use_wandb=use_wandb,
+            wandb_project=args.wandb_project,
+            wandb_run_name=wandb_run_name,
+            wandb_config=wandb_config,
         )
     except ImportError as e:
         logger.warning(f"Failed to import from blip3o_trainer.py: {e}")
@@ -313,7 +408,12 @@ def create_trainer(model, loss_fn, train_dataloader, eval_dataloader, args, devi
                 debug_mode=args.debug_mode,
                 overfit_test_size=args.overfit_test_size,
                 output_dir=args.output_dir,
-                device=device
+                device=device,
+                # WandB parameters
+                use_wandb=use_wandb,
+                wandb_project=args.wandb_project,
+                wandb_run_name=wandb_run_name,
+                wandb_config=wandb_config,
             )
         except ImportError as e2:
             logger.error(f"❌ Could not import trainer from src.modules: {e2}")
@@ -336,7 +436,12 @@ def create_trainer(model, loss_fn, train_dataloader, eval_dataloader, args, devi
                     debug_mode=args.debug_mode,
                     overfit_test_size=args.overfit_test_size,
                     output_dir=args.output_dir,
-                    device=device
+                    device=device,
+                    # WandB parameters
+                    use_wandb=use_wandb,
+                    wandb_project=args.wandb_project,
+                    wandb_run_name=wandb_run_name,
+                    wandb_config=wandb_config,
                 )
             except ImportError as e3:
                 logger.error(f"❌ Could not import trainer directly: {e3}")
@@ -345,7 +450,13 @@ def create_trainer(model, loss_fn, train_dataloader, eval_dataloader, args, devi
     if trainer is None:
         raise RuntimeError("Failed to create trainer")
     
-    logger.info("Trainer created")
+    logger.info("Trainer created with WandB integration")
+    logger.info(f"  📊 WandB enabled: {use_wandb}")
+    if use_wandb:
+        logger.info(f"  📊 WandB project: {args.wandb_project}")
+        logger.info(f"  📊 WandB run name: {wandb_run_name}")
+        logger.info(f"  📊 WandB tags: {wandb_tags}")
+    
     return trainer
 
 def load_config_if_available(args, logger):
@@ -358,7 +469,12 @@ def load_config_if_available(args, logger):
         logger.info("✅ Imported config from src.modules")
         
         # Create all config objects with proper arguments
-        model_config = get_blip3o_clip_config(args.model_size, args.training_mode)
+        model_config = get_blip3o_clip_config(
+            args.model_size, 
+            args.training_mode,
+            use_3d_rope=args.use_3d_rope and not args.no_3d_rope,
+            use_sandwich_norm=args.use_sandwich_norm and not args.no_sandwich_norm,
+        )
         
         # Create flow config
         flow_config = FlowMatchingConfig(
@@ -401,7 +517,12 @@ def load_config_if_available(args, logger):
             logger.info("✅ Imported config directly from src.modules.config.blip3o_config")
             
             # Create all config objects
-            model_config = get_blip3o_clip_config(args.model_size, args.training_mode)
+            model_config = get_blip3o_clip_config(
+                args.model_size, 
+                args.training_mode,
+                use_3d_rope=args.use_3d_rope and not args.no_3d_rope,
+                use_sandwich_norm=args.use_sandwich_norm and not args.no_sandwich_norm,
+            )
             
             flow_config = FlowMatchingConfig(
                 prediction_type="velocity",
@@ -466,25 +587,33 @@ def check_modules_availability(logger):
         return {'all_available': True, 'missing_components': []}
 
 def main():
-    """Main training function"""
+    """Main training function with BLIP3-o features"""
     args = parse_arguments()
     logger = setup_logging()
     
-    logger.info("🚀 Starting CLIP Reproduction from EVA Embeddings")
+    logger.info("🚀 Starting CLIP Reproduction with BLIP3-o DiT")
     logger.info("=" * 80)
     logger.info("EXPERIMENT DETAILS:")
     logger.info("  📋 Task: Reproduce clean CLIP embeddings from EVA embeddings")
-    logger.info("  🧠 Model: BLIP3-o DiT with 3D RoPE and Grouped-Query Attention")
+    logger.info("  🧠 Model: BLIP3-o DiT with advanced architecture features")
     logger.info("  🎯 Target: CLIP embeddings [B, N, 1024]")
     logger.info("  🎮 Conditioning: EVA embeddings [B, N, 4096]")
     logger.info("  🌊 Method: Rectified Flow Matching")
     logger.info("  🚫 Normalization: MINIMAL (only for evaluation similarity)")
     logger.info("=" * 80)
-    logger.info("📄 Using updated file names:")
-    logger.info("  • Model: blip3o_dit.py")
+    logger.info("🏗️ BLIP3-o ARCHITECTURE FEATURES:")
+    use_3d_rope = args.use_3d_rope and not args.no_3d_rope
+    use_sandwich_norm = args.use_sandwich_norm and not args.no_sandwich_norm
+    logger.info(f"  🌐 3D Rotary Position Embedding: {'✅ ENABLED' if use_3d_rope else '❌ DISABLED'}")
+    logger.info(f"  🥪 Sandwich Normalization: {'✅ ENABLED' if use_sandwich_norm else '❌ DISABLED'}")
+    logger.info(f"  🔍 Grouped-Query Attention: ✅ ENABLED")
+    logger.info(f"  📊 WandB Logging: {'✅ ENABLED' if args.use_wandb and not args.no_wandb else '❌ DISABLED'}")
+    logger.info("=" * 80)
+    logger.info("📄 Updated file structure:")
+    logger.info("  • Model: blip3o_dit.py (✅ 3D RoPE + Sandwich Norm)")
     logger.info("  • Loss: blip3o_fm_loss.py")
     logger.info("  • Dataset: blip3o_datasets.py")
-    logger.info("  • Trainer: blip3o_trainer.py")
+    logger.info("  • Trainer: blip3o_trainer.py (✅ WandB Integration)")
     logger.info("  • Config: blip3o_config.py")
     logger.info("=" * 80)
     logger.info(f"Configuration:")
@@ -499,6 +628,10 @@ def main():
     if args.overfit_test_size:
         logger.info(f"  🧪 OVERFITTING TEST: {args.overfit_test_size} samples")
     logger.info(f"  Debug mode: {args.debug_mode}")
+    if args.use_wandb and not args.no_wandb:
+        logger.info(f"  📊 WandB project: {args.wandb_project}")
+        if args.wandb_run_name:
+            logger.info(f"  📊 WandB run: {args.wandb_run_name}")
     logger.info("=" * 80)
     
     try:
@@ -530,8 +663,14 @@ def main():
             'model_config': model_config.to_dict() if model_config and hasattr(model_config, 'to_dict') else {},
             'model_params': model.get_num_parameters() if hasattr(model, 'get_num_parameters') else 'unknown',
             'timestamp': datetime.now().isoformat(),
-            'experiment_type': 'clip_reproduction',
+            'experiment_type': 'clip_reproduction_blip3o',
             'normalization_approach': 'minimal',
+            'architecture_features': {
+                '3d_rope': use_3d_rope,
+                'sandwich_normalization': use_sandwich_norm,
+                'grouped_query_attention': True,
+                'minimal_normalization': True,
+            },
             'file_names': {
                 'model': 'blip3o_dit.py',
                 'loss': 'blip3o_fm_loss.py',
@@ -541,18 +680,24 @@ def main():
                 'training_script': 'train_dit.py',
             },
             'environment_status': env_status,
-            'fixes_applied': [
+            'wandb_config': {
+                'enabled': args.use_wandb and not args.no_wandb,
+                'project': args.wandb_project,
+                'run_name': args.wandb_run_name,
+            },
+            'updates_applied': [
+                '3d_rotary_position_embedding',
+                'sandwich_normalization_rms',
+                'blip3o_paper_alignment',
+                'wandb_integration',
+                'iterable_dataset_wandb_fix',
+                'comprehensive_metrics_logging',
                 'minimal_normalization_approach',
                 'raw_embedding_space_training',
                 'gradient_flow_improvements',
                 'proper_initialization',
-                'correct_data_flow',
                 'numerical_stability',
                 'overfitting_test_capability',
-                'iterable_dataset_length_fix',
-                'updated_file_names',
-                'import_path_fixes',
-                'config_handling_fixes',
             ]
         }
         
@@ -563,13 +708,16 @@ def main():
         logger.info(f"Configuration saved to {config_path}")
         
         # Start training
-        logger.info("\n🚀 Starting training...")
+        logger.info("\n🚀 Starting BLIP3-o training with advanced features...")
         logger.info("Expected behavior:")
         logger.info("  • Loss should decrease steadily")
         logger.info("  • Velocity similarity should increase")
         logger.info("  • CLIP similarity should improve during evaluation")
         logger.info("  • Gradients should be non-zero and stable")
         logger.info("  • Raw embeddings will be learned (no forced normalization)")
+        logger.info("  • 3D RoPE should provide spatial understanding")
+        logger.info("  • Sandwich normalization should improve gradient flow")
+        logger.info("  • WandB should log comprehensive metrics")
         
         if args.overfit_test_size:
             logger.info(f"  • OVERFITTING TEST: Should achieve >0.8 similarity on {args.overfit_test_size} samples")
@@ -586,7 +734,7 @@ def main():
         
         # Final summary
         logger.info("\n" + "=" * 80)
-        logger.info("🎉 TRAINING COMPLETED!")
+        logger.info("🎉 BLIP3-o TRAINING COMPLETED!")
         logger.info("=" * 80)
         logger.info(f"📊 RESULTS SUMMARY:")
         logger.info(f"  Duration: {duration:.1f} seconds ({duration/60:.1f} minutes)")
@@ -594,6 +742,9 @@ def main():
         logger.info(f"  Best loss: {summary.get('best_loss', float('inf')):.6f}")
         logger.info(f"  Best CLIP similarity: {summary.get('best_eval_similarity', 0):.4f}")
         logger.info(f"  🚫 Used minimal normalization approach")
+        logger.info(f"  🌐 3D RoPE: {'✅' if use_3d_rope else '❌'}")
+        logger.info(f"  🥪 Sandwich Norm: {'✅' if use_sandwich_norm else '❌'}")
+        logger.info(f"  📊 WandB: {'✅' if summary.get('wandb_enabled', False) else '❌'}")
         
         # Evaluation results
         final_eval = summary.get('final_eval', {})
@@ -610,21 +761,25 @@ def main():
             overfit_success = summary.get('overfit_success', False)
             logger.info(f"🧪 OVERFITTING TEST: {'✅ PASSED' if overfit_success else '❌ FAILED'}")
             if overfit_success:
-                logger.info("   ✅ Model can learn and memorize - architecture is working!")
+                logger.info("   ✅ Model can learn and memorize - BLIP3-o architecture is working!")
             else:
                 logger.info("   ⚠️  Model struggles to overfit - check architecture/loss")
         
         # Architecture assessment
         best_sim = summary.get('best_eval_similarity', 0)
-        logger.info(f"🏗️  ARCHITECTURE ASSESSMENT:")
+        logger.info(f"🏗️  BLIP3-o ARCHITECTURE ASSESSMENT:")
         if best_sim > 0.7:
-            logger.info("   🎉 EXCELLENT: BLIP3-o DiT architecture working perfectly!")
+            logger.info("   🎉 EXCELLENT: BLIP3-o DiT with 3D RoPE + Sandwich Norm working perfectly!")
         elif best_sim > 0.4:
             logger.info("   ✅ GOOD: BLIP3-o DiT architecture shows strong capability!")
         elif best_sim > 0.1:
             logger.info("   📈 FAIR: BLIP3-o DiT architecture is functional!")
         else:
             logger.info("   ⚠️  NEEDS WORK: Architecture may need tuning!")
+        
+        # WandB information
+        if summary.get('wandb_enabled', False):
+            logger.info(f"📊 WandB Dashboard: Check your {args.wandb_project} project for detailed metrics")
         
         # Save final summary
         summary['duration_seconds'] = duration
