@@ -52,7 +52,7 @@ MAX_GRAD_NORM=1.0               # Gradient clipping for stability
 
 # Evaluation parameters
 EVAL_EVERY_N_STEPS=50
-EVAL_NUM_SAMPLES=500
+EVAL_NUM_SAMPLES=15
 EVAL_INFERENCE_STEPS=20
 
 # Testing configuration

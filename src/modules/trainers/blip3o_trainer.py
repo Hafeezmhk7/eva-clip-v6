@@ -507,7 +507,7 @@ class BLIP3oCLIPTrainer:
                 all_similarities.append(per_image_similarity.cpu())
                 all_mse_losses.append(mse_loss.cpu())
                 samples_processed += eva_features.shape[0]
-        
+            print("The no samples in evaluation were:", samples_processed)
         self.model.train()
         
         if not all_similarities:
@@ -774,18 +774,18 @@ class BLIP3oCLIPTrainer:
                         if self.global_step % self.save_every_n_steps == 0:
                             self._save_checkpoint()
                         
-                        # Check for early success in overfitting test
-                        if (self.overfit_batch is not None and 
-                            metrics and 
-                            metrics.get('velocity_similarity', 0) > 0.9):
-                            logger.info("🎉 OVERFITTING TEST PASSED! Model can learn effectively.")
-                            if self.use_wandb:
-                                wandb.log({
-                                    "overfit_test/passed": True,
-                                    "overfit_test/final_similarity": metrics['velocity_similarity'],
-                                    "overfit_test/steps_to_pass": self.global_step,
-                                }, step=self.global_step)
-                            break
+                        # # Check for early success in overfitting test
+                        # if (self.overfit_batch is not None and 
+                        #     metrics and 
+                        #     metrics.get('velocity_similarity', 0) > 0.9):
+                        #     logger.info("🎉 OVERFITTING TEST PASSED! Model can learn effectively.")
+                        #     if self.use_wandb:
+                        #         wandb.log({
+                        #             "overfit_test/passed": True,
+                        #             "overfit_test/final_similarity": metrics['velocity_similarity'],
+                        #             "overfit_test/steps_to_pass": self.global_step,
+                        #         }, step=self.global_step)
+                        #     break
                 
                 except Exception as e:
                     logger.error(f"Error during epoch {epoch + 1}: {e}")
@@ -913,7 +913,7 @@ def create_clip_trainer(
     overfit_test_size: Optional[int] = None,
     debug_mode: bool = False,
     # WandB parameters
-    use_wandb: bool = True,
+    use_wandb: bool = False,
     wandb_project: str = "blip3o-clip-reproduction",
     wandb_run_name: Optional[str] = None,
     wandb_config: Optional[Dict] = None,
