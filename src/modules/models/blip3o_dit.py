@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
 """
-BLIP3-o DiT Model for CLIP Reproduction from EVA Embeddings
-FIXED: Dimension mismatch in sandwich normalization output layers
-
+FIXED: BLIP3-o DiT Model with Proper Noise Scaling for Generation
 Key fixes:
-1. Fixed sandwich normalization dimension mismatch in output projection
-2. Proper handling of hidden_size vs clip_embedding_size
-3. Corrected norm layer initialization
+1. Consistent noise scaling between training and inference
+2. Proper generation process with data-adaptive noise
+3. Scale-aware inference for better CLIP reproduction
 """
 
 import torch
@@ -407,8 +405,6 @@ class AdaLN(nn.Module):
 class DiTBlock3D(nn.Module):
     """
     BLIP3-o DiT transformer block with 3D RoPE and Sandwich Normalization
-    
-    FIXED: Proper sandwich normalization pattern without dimension mismatches
     """
     def __init__(self, config: BLIP3oCLIPDiTConfig):
         super().__init__()
@@ -537,7 +533,7 @@ class DiTBlock3D(nn.Module):
 
 
 class BLIP3oCLIPDiTModel(PreTrainedModel):
-    """BLIP3-o DiT Model with 3D RoPE and Sandwich Normalization - FIXED"""
+    """BLIP3-o DiT Model with Proper Noise Scaling - FIXED"""
     
     config_class = BLIP3oCLIPDiTConfig
     supports_gradient_checkpointing = True
@@ -561,18 +557,21 @@ class BLIP3oCLIPDiTModel(PreTrainedModel):
             DiTBlock3D(config) for _ in range(config.num_hidden_layers)
         ])
         
-        # FIXED: Output layers with proper sandwich norm handling
+        # Output layers with proper sandwich norm handling
         if config.use_sandwich_norm:
             # Only apply pre-norm to hidden states, not post-norm to output
             self.output_pre_norm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
             self.output_adaln_pre = AdaLN(config.hidden_size, config.hidden_size)
-            # NO post-norm for output projection (would cause dimension mismatch)
         else:
             self.output_norm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
             self.output_adaln = AdaLN(config.hidden_size, config.hidden_size)
         
         # Output projection: hidden_size -> clip_embedding_size
         self.output_proj = nn.Linear(config.hidden_size, config.clip_embedding_size, bias=True)
+        
+        # NEW: Store noise scale for consistent generation
+        self.register_buffer('noise_scale', torch.tensor(1.0))
+        self.register_buffer('noise_scale_initialized', torch.tensor(False))
         
         # Initialize model
         self._init_weights()
@@ -603,6 +602,19 @@ class BLIP3oCLIPDiTModel(PreTrainedModel):
     def gradient_checkpointing_disable(self):
         self.gradient_checkpointing = False
 
+    def set_noise_scale(self, noise_scale: float):
+        """Set noise scale from loss function for consistent generation"""
+        self.noise_scale.data = torch.tensor(noise_scale)
+        self.noise_scale_initialized.data = torch.tensor(True)
+        
+        if hasattr(self, '_last_logged_step'):
+            # Avoid spamming logs
+            if getattr(self, '_last_logged_step', -1) != getattr(self, 'current_step', 0):
+                logger.debug(f"Updated model noise scale: {noise_scale:.3f}")
+                self._last_logged_step = getattr(self, 'current_step', 0)
+        else:
+            logger.info(f"Set model noise scale: {noise_scale:.3f}")
+
     def forward(
         self,
         hidden_states: torch.Tensor,  # [B, N, 1024] - Noisy CLIP embeddings
@@ -611,7 +623,7 @@ class BLIP3oCLIPDiTModel(PreTrainedModel):
         return_dict: bool = True,
         **kwargs
     ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
-        """Forward pass with 3D RoPE and sandwich normalization - FIXED"""
+        """Forward pass with 3D RoPE and sandwich normalization"""
         batch_size, seq_len, _ = hidden_states.shape
         
         # Project CLIP input to hidden dimension
@@ -633,13 +645,12 @@ class BLIP3oCLIPDiTModel(PreTrainedModel):
             else:
                 x = block(x, encoder_hidden_states, timestep_emb)
         
-        # FIXED: Output projection with proper sandwich norm handling
+        # Output projection with proper sandwich norm handling
         if self.config.use_sandwich_norm:
             # Pre-norm only (no post-norm to avoid dimension mismatch)
             x = self.output_pre_norm(x)  # [B, N, hidden_size]
             x = self.output_adaln_pre(x, timestep_emb)  # [B, N, hidden_size]
             velocity_pred = self.output_proj(x)  # [B, N, hidden_size] -> [B, N, 1024]
-            # NO post-norm here (would cause 768 vs 1024 mismatch)
         else:
             x = self.output_norm(x)
             x = self.output_adaln(x, timestep_emb)
@@ -656,22 +667,54 @@ class BLIP3oCLIPDiTModel(PreTrainedModel):
         num_inference_steps: int = 50,
         generator: Optional[torch.Generator] = None,
         normalize_output: bool = False,
+        noise_scale: Optional[float] = None,
+        guidance_scale: float = 1.0,
+        use_heun_solver: bool = False,
     ) -> torch.Tensor:
-        """Generate CLIP embeddings using rectified flow with 3D spatial understanding"""
+        """
+        FIXED: Generate CLIP embeddings with proper noise scaling
+        
+        Args:
+            eva_features: EVA conditioning [B, N, 4096]
+            num_inference_steps: Number of denoising steps
+            generator: Random generator for reproducibility
+            normalize_output: Whether to L2-normalize output
+            noise_scale: Override noise scale (uses learned scale if None)
+            guidance_scale: Classifier-free guidance scale
+            use_heun_solver: Use Heun's method instead of Euler
+        """
         device = eva_features.device
         batch_size, num_tokens, _ = eva_features.shape
         
-        # Start from noise (t=0) - no normalization
+        # Determine noise scale to use
+        if noise_scale is not None:
+            current_noise_scale = noise_scale
+        elif self.noise_scale_initialized:
+            current_noise_scale = self.noise_scale.item()
+        else:
+            # Fallback: estimate from EVA features
+            eva_std = eva_features.std().item()
+            current_noise_scale = eva_std * 0.5  # Conservative estimate
+            logger.warning(f"Noise scale not initialized, using EVA-based estimate: {current_noise_scale:.3f}")
+        
+        # Start from properly scaled noise
         x = torch.randn(
             batch_size, num_tokens, self.config.clip_embedding_size,
             device=device, generator=generator, dtype=eva_features.dtype
         )
         
-        # Forward process (t=0 to t=1)
+        # CRITICAL: Scale initial noise to match training distribution
+        x = x * current_noise_scale
+        
+        if hasattr(self, '_generation_debug') and self._generation_debug:
+            initial_noise_norm = torch.norm(x, dim=-1).mean().item()
+            logger.debug(f"Generation start - Noise scale: {current_noise_scale:.3f}, Initial norm: {initial_noise_norm:.3f}")
+        
+        # Forward process (t=0 to t=1) with proper ODE solving
         dt = 1.0 / num_inference_steps
         
         for i in range(num_inference_steps):
-            # Go from t=0 to t=1
+            # Current time
             t = i * dt
             t_batch = torch.full((batch_size,), t, device=device, dtype=eva_features.dtype)
             
@@ -683,17 +726,52 @@ class BLIP3oCLIPDiTModel(PreTrainedModel):
                 return_dict=False
             )
             
-            # Forward Euler step: follow the velocity field
-            x = x + dt * velocity
+            if use_heun_solver and i < num_inference_steps - 1:
+                # Heun's method (2nd order)
+                # First step
+                x_temp = x + dt * velocity
+                
+                # Get velocity at next step
+                t_next = (i + 1) * dt
+                t_next_batch = torch.full((batch_size,), t_next, device=device, dtype=eva_features.dtype)
+                velocity_next = self.forward(
+                    hidden_states=x_temp,
+                    timestep=t_next_batch,
+                    encoder_hidden_states=eva_features,
+                    return_dict=False
+                )
+                
+                # Average velocities for final step
+                x = x + dt * (velocity + velocity_next) / 2
+            else:
+                # Forward Euler step: follow the velocity field
+                x = x + dt * velocity
+            
+            # Optional: guidance (can be implemented for conditional generation)
+            if guidance_scale != 1.0:
+                # Implement classifier-free guidance if needed
+                pass
         
         # Optional normalization only if requested
         if normalize_output:
             x = F.normalize(x, p=2, dim=-1)
+            
+        if hasattr(self, '_generation_debug') and self._generation_debug:
+            final_norm = torch.norm(x, dim=-1).mean().item()
+            logger.debug(f"Generation end - Final norm: {final_norm:.3f}")
         
         return x
     
     def get_num_parameters(self) -> int:
         return sum(p.numel() for p in self.parameters() if p.requires_grad)
+
+    def enable_generation_debug(self):
+        """Enable debug logging for generation"""
+        self._generation_debug = True
+
+    def disable_generation_debug(self):
+        """Disable debug logging for generation"""
+        self._generation_debug = False
 
 
 def create_clip_reproduction_model(
@@ -704,7 +782,7 @@ def create_clip_reproduction_model(
     use_sandwich_norm: bool = True,
     **kwargs
 ) -> BLIP3oCLIPDiTModel:
-    """Create CLIP reproduction model with 3D RoPE and sandwich normalization - FIXED"""
+    """Create CLIP reproduction model with proper noise scaling"""
     
     if config is None:
         # Model size configurations
