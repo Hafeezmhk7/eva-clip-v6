@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-CLIP Reproduction Training Script - train_dit.py
+CLIP Reproduction Training Script - train_dit.py (FIXED)
 Main training script for reproducing CLIP embeddings from EVA embeddings
-Updated for new file names: blip3o_dit.py, blip3o_fm_loss.py, blip3o_datasets.py, blip3o_trainer.py, blip3o_config.py
+Fixed import issues and config handling
 
 Key features:
 1. Minimal normalization (only for evaluation similarity)
@@ -103,25 +103,43 @@ def setup_device_and_model(args, logger):
         device = torch.device("cpu")
         logger.info("Using CPU")
     
-    # Import and create model using updated file names
+    # Import and create model - try multiple import paths
+    model = None
     try:
         from blip3o_dit import create_clip_reproduction_model, BLIP3oCLIPDiTConfig
         logger.info("✅ Imported model from blip3o_dit.py")
-    except ImportError:
+        model = create_clip_reproduction_model(
+            model_size=args.model_size,
+            training_mode=args.training_mode
+        )
+    except ImportError as e:
+        logger.warning(f"Failed to import from blip3o_dit.py: {e}")
         try:
             # Try using the modules init
             from src.modules import create_clip_reproduction_model, BLIP3oCLIPDiTConfig
             logger.info("✅ Imported model from src.modules")
-        except ImportError:
-            logger.error("❌ Could not import model. Ensure blip3o_dit.py is available or src/modules/__init__.py is properly set up.")
-            raise
+            model = create_clip_reproduction_model(
+                model_size=args.model_size,
+                training_mode=args.training_mode
+            )
+        except ImportError as e2:
+            logger.error(f"❌ Could not import model from src.modules: {e2}")
+            try:
+                # Direct import from the actual file
+                from src.modules.models.blip3o_dit import create_clip_reproduction_model, BLIP3oCLIPDiTConfig
+                logger.info("✅ Imported model directly from src.modules.models.blip3o_dit")
+                model = create_clip_reproduction_model(
+                    model_size=args.model_size,
+                    training_mode=args.training_mode
+                )
+            except ImportError as e3:
+                logger.error(f"❌ Could not import model directly: {e3}")
+                raise ImportError("Could not import model from any path")
+    
+    if model is None:
+        raise RuntimeError("Failed to create model")
     
     logger.info(f"Creating {args.model_size} model for {args.training_mode} mode...")
-    
-    model = create_clip_reproduction_model(
-        model_size=args.model_size,
-        training_mode=args.training_mode
-    )
     
     model = model.to(device)
     
@@ -132,25 +150,44 @@ def setup_device_and_model(args, logger):
 
 def create_loss_function(args, logger):
     """Create loss function"""
+    loss_fn = None
     try:
         from blip3o_fm_loss import create_clip_reproduction_loss
         logger.info("✅ Imported loss from blip3o_fm_loss.py")
-    except ImportError:
+        loss_fn = create_clip_reproduction_loss(
+            prediction_type="velocity",
+            flow_type="rectified",
+            loss_weight=1.0,
+            debug_mode=args.debug_mode
+        )
+    except ImportError as e:
+        logger.warning(f"Failed to import from blip3o_fm_loss.py: {e}")
         try:
             from src.modules import create_clip_reproduction_loss
             logger.info("✅ Imported loss from src.modules")
-        except ImportError:
-            logger.error("❌ Could not import loss. Ensure blip3o_fm_loss.py is available.")
-            raise
+            loss_fn = create_clip_reproduction_loss(
+                prediction_type="velocity",
+                flow_type="rectified",
+                loss_weight=1.0,
+                debug_mode=args.debug_mode
+            )
+        except ImportError as e2:
+            logger.error(f"❌ Could not import loss from src.modules: {e2}")
+            try:
+                from src.modules.losses.blip3o_fm_loss import create_clip_reproduction_loss
+                logger.info("✅ Imported loss directly from src.modules.losses.blip3o_fm_loss")
+                loss_fn = create_clip_reproduction_loss(
+                    prediction_type="velocity",
+                    flow_type="rectified",
+                    loss_weight=1.0,
+                    debug_mode=args.debug_mode
+                )
+            except ImportError as e3:
+                logger.error(f"❌ Could not import loss directly: {e3}")
+                raise ImportError("Could not import loss from any path")
     
-    logger.info("Creating flow matching loss...")
-    
-    loss_fn = create_clip_reproduction_loss(
-        prediction_type="velocity",
-        flow_type="rectified",
-        loss_weight=1.0,
-        debug_mode=args.debug_mode
-    )
+    if loss_fn is None:
+        raise RuntimeError("Failed to create loss function")
     
     logger.info("Flow matching loss created")
     return loss_fn
@@ -169,28 +206,53 @@ def get_dataloader_length_safe(dataloader):
 
 def create_dataloaders(args, logger):
     """Create data loaders"""
+    train_dataloader, eval_dataloader = None, None
     try:
         from blip3o_datasets import create_clip_reproduction_dataloaders
         logger.info("✅ Imported dataset from blip3o_datasets.py")
-    except ImportError:
+        train_dataloader, eval_dataloader = create_clip_reproduction_dataloaders(
+            chunked_embeddings_dir=args.chunked_embeddings_dir,
+            batch_size=args.batch_size,
+            training_mode=args.training_mode,
+            max_shards=args.max_shards,
+            normalize_embeddings=False,  # Disable normalization
+            num_workers=args.num_workers,
+            pin_memory=torch.cuda.is_available()
+        )
+    except ImportError as e:
+        logger.warning(f"Failed to import from blip3o_datasets.py: {e}")
         try:
             from src.modules import create_clip_reproduction_dataloaders
             logger.info("✅ Imported dataset from src.modules")
-        except ImportError:
-            logger.error("❌ Could not import dataset. Ensure blip3o_datasets.py is available.")
-            raise
+            train_dataloader, eval_dataloader = create_clip_reproduction_dataloaders(
+                chunked_embeddings_dir=args.chunked_embeddings_dir,
+                batch_size=args.batch_size,
+                training_mode=args.training_mode,
+                max_shards=args.max_shards,
+                normalize_embeddings=False,  # Disable normalization
+                num_workers=args.num_workers,
+                pin_memory=torch.cuda.is_available()
+            )
+        except ImportError as e2:
+            logger.error(f"❌ Could not import dataset from src.modules: {e2}")
+            try:
+                from src.modules.datasets.blip3o_dataset import create_clip_reproduction_dataloaders
+                logger.info("✅ Imported dataset directly from src.modules.datasets.blip3o_dataset")
+                train_dataloader, eval_dataloader = create_clip_reproduction_dataloaders(
+                    chunked_embeddings_dir=args.chunked_embeddings_dir,
+                    batch_size=args.batch_size,
+                    training_mode=args.training_mode,
+                    max_shards=args.max_shards,
+                    normalize_embeddings=False,  # Disable normalization
+                    num_workers=args.num_workers,
+                    pin_memory=torch.cuda.is_available()
+                )
+            except ImportError as e3:
+                logger.error(f"❌ Could not import dataset directly: {e3}")
+                raise ImportError("Could not import dataset from any path")
     
-    logger.info("Creating dataloaders...")
-    
-    train_dataloader, eval_dataloader = create_clip_reproduction_dataloaders(
-        chunked_embeddings_dir=args.chunked_embeddings_dir,
-        batch_size=args.batch_size,
-        training_mode=args.training_mode,
-        max_shards=args.max_shards,
-        normalize_embeddings=False,  # Disable normalization
-        num_workers=args.num_workers,
-        pin_memory=torch.cuda.is_available()
-    )
+    if train_dataloader is None:
+        raise RuntimeError("Failed to create dataloaders")
     
     logger.info(f"Dataloaders created")
     
@@ -208,64 +270,178 @@ def create_dataloaders(args, logger):
 
 def create_trainer(model, loss_fn, train_dataloader, eval_dataloader, args, device, logger):
     """Create trainer"""
+    trainer = None
     try:
         from blip3o_trainer import create_clip_trainer
         logger.info("✅ Imported trainer from blip3o_trainer.py")
-    except ImportError:
+        trainer = create_clip_trainer(
+            model=model,
+            loss_fn=loss_fn,
+            train_dataloader=train_dataloader,
+            eval_dataloader=eval_dataloader,
+            learning_rate=args.learning_rate,
+            weight_decay=args.weight_decay,
+            num_epochs=args.num_epochs,
+            warmup_steps=args.warmup_steps,
+            max_grad_norm=args.max_grad_norm,
+            fp16=args.fp16,
+            eval_every_n_steps=args.eval_every_n_steps,
+            eval_num_samples=args.eval_num_samples,
+            debug_mode=args.debug_mode,
+            overfit_test_size=args.overfit_test_size,
+            output_dir=args.output_dir,
+            device=device
+        )
+    except ImportError as e:
+        logger.warning(f"Failed to import from blip3o_trainer.py: {e}")
         try:
             from src.modules import create_clip_trainer
             logger.info("✅ Imported trainer from src.modules")
-        except ImportError:
-            logger.error("❌ Could not import trainer. Ensure blip3o_trainer.py is available.")
-            raise
+            trainer = create_clip_trainer(
+                model=model,
+                loss_fn=loss_fn,
+                train_dataloader=train_dataloader,
+                eval_dataloader=eval_dataloader,
+                learning_rate=args.learning_rate,
+                weight_decay=args.weight_decay,
+                num_epochs=args.num_epochs,
+                warmup_steps=args.warmup_steps,
+                max_grad_norm=args.max_grad_norm,
+                fp16=args.fp16,
+                eval_every_n_steps=args.eval_every_n_steps,
+                eval_num_samples=args.eval_num_samples,
+                debug_mode=args.debug_mode,
+                overfit_test_size=args.overfit_test_size,
+                output_dir=args.output_dir,
+                device=device
+            )
+        except ImportError as e2:
+            logger.error(f"❌ Could not import trainer from src.modules: {e2}")
+            try:
+                from src.modules.trainers.blip3o_trainer import create_clip_trainer
+                logger.info("✅ Imported trainer directly from src.modules.trainers.blip3o_trainer")
+                trainer = create_clip_trainer(
+                    model=model,
+                    loss_fn=loss_fn,
+                    train_dataloader=train_dataloader,
+                    eval_dataloader=eval_dataloader,
+                    learning_rate=args.learning_rate,
+                    weight_decay=args.weight_decay,
+                    num_epochs=args.num_epochs,
+                    warmup_steps=args.warmup_steps,
+                    max_grad_norm=args.max_grad_norm,
+                    fp16=args.fp16,
+                    eval_every_n_steps=args.eval_every_n_steps,
+                    eval_num_samples=args.eval_num_samples,
+                    debug_mode=args.debug_mode,
+                    overfit_test_size=args.overfit_test_size,
+                    output_dir=args.output_dir,
+                    device=device
+                )
+            except ImportError as e3:
+                logger.error(f"❌ Could not import trainer directly: {e3}")
+                raise ImportError("Could not import trainer from any path")
     
-    logger.info("Creating trainer...")
-    
-    trainer = create_clip_trainer(
-        model=model,
-        loss_fn=loss_fn,
-        train_dataloader=train_dataloader,
-        eval_dataloader=eval_dataloader,
-        learning_rate=args.learning_rate,
-        weight_decay=args.weight_decay,
-        num_epochs=args.num_epochs,
-        warmup_steps=args.warmup_steps,
-        max_grad_norm=args.max_grad_norm,
-        fp16=args.fp16,
-        eval_every_n_steps=args.eval_every_n_steps,
-        eval_num_samples=args.eval_num_samples,
-        debug_mode=args.debug_mode,
-        overfit_test_size=args.overfit_test_size,
-        output_dir=args.output_dir,
-        device=device
-    )
+    if trainer is None:
+        raise RuntimeError("Failed to create trainer")
     
     logger.info("Trainer created")
     return trainer
 
 def load_config_if_available(args, logger):
     """Load configuration if available"""
+    model_config = None
+    
+    # Try multiple import paths for config
     try:
-        from blip3o_config import get_blip3o_clip_config, print_config_summary
-        logger.info("✅ Imported config from blip3o_config.py")
+        from src.modules import get_blip3o_clip_config, print_config_summary, FlowMatchingConfig, TrainingConfig, EvaluationConfig
+        logger.info("✅ Imported config from src.modules")
         
-        # Create and print config summary
+        # Create all config objects with proper arguments
         model_config = get_blip3o_clip_config(args.model_size, args.training_mode)
-        print_config_summary(model_config, None, None, None)
+        
+        # Create flow config
+        flow_config = FlowMatchingConfig(
+            prediction_type="velocity",
+            normalize_targets=True,
+            flow_type="rectified",
+            loss_scale=1.0,
+        )
+        
+        # Create training config  
+        training_config = TrainingConfig(
+            num_epochs=args.num_epochs,
+            batch_size=args.batch_size,
+            learning_rate=args.learning_rate,
+            weight_decay=args.weight_decay,
+            warmup_steps=args.warmup_steps,
+            debug_mode=args.debug_mode,
+            overfit_test_size=args.overfit_test_size,
+            eval_every_n_steps=args.eval_every_n_steps,
+            eval_num_samples=args.eval_num_samples,
+        )
+        
+        # Create evaluation config
+        eval_config = EvaluationConfig(
+            eval_every_n_steps=args.eval_every_n_steps,
+            eval_num_samples=args.eval_num_samples,
+            eval_inference_steps=50,
+        )
+        
+        # Print config summary with all real objects
+        print_config_summary(model_config, flow_config, training_config, eval_config)
         
         return model_config
-    except ImportError:
+        
+    except ImportError as e:
+        logger.warning(f"Failed to import config from src.modules: {e}")
         try:
-            from src.modules import get_blip3o_clip_config, print_config_summary
-            logger.info("✅ Imported config from src.modules")
+            # Try direct import from the actual file
+            from src.modules.config.blip3o_config import get_blip3o_clip_config, print_config_summary, FlowMatchingConfig, TrainingConfig, EvaluationConfig
+            logger.info("✅ Imported config directly from src.modules.config.blip3o_config")
             
+            # Create all config objects
             model_config = get_blip3o_clip_config(args.model_size, args.training_mode)
-            print_config_summary(model_config, None, None, None)
+            
+            flow_config = FlowMatchingConfig(
+                prediction_type="velocity",
+                normalize_targets=True,
+                flow_type="rectified",
+                loss_scale=1.0,
+            )
+            
+            training_config = TrainingConfig(
+                num_epochs=args.num_epochs,
+                batch_size=args.batch_size,
+                learning_rate=args.learning_rate,
+                weight_decay=args.weight_decay,
+                warmup_steps=args.warmup_steps,
+                debug_mode=args.debug_mode,
+                overfit_test_size=args.overfit_test_size,
+                eval_every_n_steps=args.eval_every_n_steps,
+                eval_num_samples=args.eval_num_samples,
+            )
+            
+            eval_config = EvaluationConfig(
+                eval_every_n_steps=args.eval_every_n_steps,
+                eval_num_samples=args.eval_num_samples,
+                eval_inference_steps=50,
+            )
+            
+            print_config_summary(model_config, flow_config, training_config, eval_config)
             
             return model_config
-        except ImportError:
-            logger.warning("⚠️ Could not import config. Continuing without config summary.")
+            
+        except ImportError as e2:
+            logger.warning(f"⚠️ Could not import config from any path: {e2}")
+            logger.warning("⚠️ Continuing without config summary.")
             return None
+            
+    except Exception as e:
+        logger.error(f"Error creating config objects: {e}")
+        logger.error(f"Error details: {type(e).__name__}: {str(e)}")
+        # Return the model_config even if printing fails
+        return model_config
 
 def check_modules_availability(logger):
     """Check which modules are available"""
@@ -375,7 +551,8 @@ def main():
                 'overfitting_test_capability',
                 'iterable_dataset_length_fix',
                 'updated_file_names',
-                'single_modules_init',
+                'import_path_fixes',
+                'config_handling_fixes',
             ]
         }
         

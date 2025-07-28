@@ -44,7 +44,7 @@ MODEL_SIZE="base"
 
 # Optimized hyperparameters for CLIP reproduction
 NUM_EPOCHS=10                    # Conservative epochs for initial testing
-BATCH_SIZE=8                     # Smaller batch size for stability
+BATCH_SIZE=16                   # Smaller batch size for stability
 LEARNING_RATE=5e-4              # Conservative learning rate
 WEIGHT_DECAY=0.01               # Standard regularization
 WARMUP_STEPS=100                # Shorter warmup for testing

@@ -1,51 +1,728 @@
-2025-07-28 03:06:46,537 - INFO - 🚀 Starting CLIP Reproduction from EVA Embeddings
-2025-07-28 03:06:46,539 - INFO - ================================================================================
-2025-07-28 03:06:46,539 - INFO - EXPERIMENT DETAILS:
-2025-07-28 03:06:46,539 - INFO -   📋 Task: Reproduce clean CLIP embeddings from EVA embeddings
-2025-07-28 03:06:46,539 - INFO -   🧠 Model: BLIP3-o DiT with 3D RoPE and Grouped-Query Attention
-2025-07-28 03:06:46,540 - INFO -   🎯 Target: CLIP embeddings [B, N, 1024]
-2025-07-28 03:06:46,540 - INFO -   🎮 Conditioning: EVA embeddings [B, N, 4096]
-2025-07-28 03:06:46,540 - INFO -   🌊 Method: Rectified Flow Matching
-2025-07-28 03:06:46,540 - INFO -   🚫 Normalization: MINIMAL (only for evaluation similarity)
-2025-07-28 03:06:46,540 - INFO - ================================================================================
-2025-07-28 03:06:46,540 - INFO - 📄 Using updated file names:
-2025-07-28 03:06:46,540 - INFO -   • Model: blip3o_dit.py
-2025-07-28 03:06:46,540 - INFO -   • Loss: blip3o_fm_loss.py
-2025-07-28 03:06:46,540 - INFO -   • Dataset: blip3o_datasets.py
-2025-07-28 03:06:46,540 - INFO -   • Trainer: blip3o_trainer.py
-2025-07-28 03:06:46,540 - INFO -   • Config: blip3o_config.py
-2025-07-28 03:06:46,540 - INFO - ================================================================================
-2025-07-28 03:06:46,540 - INFO - Configuration:
-2025-07-28 03:06:46,540 - INFO -   Model size: base
-2025-07-28 03:06:46,540 - INFO -   Training mode: patch_only
-2025-07-28 03:06:46,540 - INFO -   Embeddings dir: /scratch-shared/azadaianchuk1/blip3o_workspace/embeddings/patch_only_256_tokens
-2025-07-28 03:06:46,540 - INFO -   Output dir: ./checkpoints/clip_repro_20250728_030644
-2025-07-28 03:06:46,540 - INFO -   Learning rate: 0.0005
-2025-07-28 03:06:46,541 - INFO -   Batch size: 8
-2025-07-28 03:06:46,541 - INFO -   Epochs: 10
-2025-07-28 03:06:46,541 - INFO -   Max shards: 2
-2025-07-28 03:06:46,541 - INFO -   🧪 OVERFITTING TEST: 20 samples
-2025-07-28 03:06:46,541 - INFO -   Debug mode: True
-2025-07-28 03:06:46,541 - INFO - ================================================================================
-2025-07-28 03:06:46,541 - INFO - 🔍 Checking module availability...
-2025-07-28 03:06:46,542 - WARNING - ⚠️ Failed to import from blip3o_dit.py: No module named 'blip3o_dit'
-2025-07-28 03:06:46,542 - ERROR - ❌ Fallback import also failed: No module named 'blip3o_dit'
-2025-07-28 03:06:46,542 - WARNING - ⚠️ Failed to import from blip3o_fm_loss.py: No module named 'blip3o_fm_loss'
-2025-07-28 03:06:46,542 - ERROR - ❌ Loss fallback import failed: No module named 'blip3o_fm_loss'
-2025-07-28 03:06:46,543 - WARNING - ⚠️ Failed to import from blip3o_trainer.py: No module named 'blip3o_trainer'
-2025-07-28 03:06:46,543 - ERROR - ❌ Trainer fallback import failed: No module named 'blip3o_trainer'
-2025-07-28 03:06:46,543 - WARNING - ⚠️ Failed to import from blip3o_datasets.py: No module named 'blip3o_datasets'
-2025-07-28 03:06:46,543 - ERROR - ❌ Dataset fallback import failed: No module named 'blip3o_datasets'
-2025-07-28 03:06:46,543 - WARNING - ⚠️ Failed to import from blip3o_config.py: No module named 'blip3o_config'
-2025-07-28 03:06:46,543 - ERROR - ❌ Config fallback import failed: No module named 'blip3o_config'
-2025-07-28 03:06:46,543 - WARNING - ⚠️ Missing components: ['model', 'loss', 'trainer', 'dataset', 'config']
-2025-07-28 03:06:46,543 - WARNING - ⚠️ Partial initialization. Missing: ['model', 'loss', 'trainer', 'dataset', 'config']
-2025-07-28 03:06:46,543 - INFO - ✅ Using comprehensive modules system
-2025-07-28 03:06:46,543 - WARNING - ⚠️ Missing components: ['model', 'loss', 'trainer', 'dataset', 'config']
-2025-07-28 03:06:46,543 - WARNING - ⚠️ Missing components: ['model', 'loss', 'trainer', 'dataset', 'config']
-2025-07-28 03:06:46,543 - WARNING - ⚠️ Some modules not available: ['model', 'loss', 'trainer', 'dataset', 'config']
-2025-07-28 03:06:46,544 - WARNING - ⚠️ Could not import config. Continuing without config summary.
-2025-07-28 03:06:46,782 - INFO - Using GPU: NVIDIA H100
-2025-07-28 03:06:46,782 - INFO - GPU Memory: 100.0 GB
-2025-07-28 03:06:46,782 - ERROR - ❌ Could not import model. Ensure blip3o_dit.py is available or src/modules/__init__.py is properly set up.
-2025-07-28 03:06:46,782 - ERROR - ❌ Training failed with error: cannot import name 'create_clip_reproduction_model' from 'src.modules' (/gpfs/home4/azadaianchuk1/eva-clip-v6/src/modules/__init__.py)
+2025-07-28 04:03:22,828 - INFO - 🚀 Starting CLIP Reproduction from EVA Embeddings
+2025-07-28 04:03:22,829 - INFO - ================================================================================
+2025-07-28 04:03:22,829 - INFO - EXPERIMENT DETAILS:
+2025-07-28 04:03:22,829 - INFO -   📋 Task: Reproduce clean CLIP embeddings from EVA embeddings
+2025-07-28 04:03:22,829 - INFO -   🧠 Model: BLIP3-o DiT with 3D RoPE and Grouped-Query Attention
+2025-07-28 04:03:22,829 - INFO -   🎯 Target: CLIP embeddings [B, N, 1024]
+2025-07-28 04:03:22,829 - INFO -   🎮 Conditioning: EVA embeddings [B, N, 4096]
+2025-07-28 04:03:22,829 - INFO -   🌊 Method: Rectified Flow Matching
+2025-07-28 04:03:22,829 - INFO -   🚫 Normalization: MINIMAL (only for evaluation similarity)
+2025-07-28 04:03:22,829 - INFO - ================================================================================
+2025-07-28 04:03:22,829 - INFO - 📄 Using updated file names:
+2025-07-28 04:03:22,830 - INFO -   • Model: blip3o_dit.py
+2025-07-28 04:03:22,830 - INFO -   • Loss: blip3o_fm_loss.py
+2025-07-28 04:03:22,830 - INFO -   • Dataset: blip3o_datasets.py
+2025-07-28 04:03:22,830 - INFO -   • Trainer: blip3o_trainer.py
+2025-07-28 04:03:22,830 - INFO -   • Config: blip3o_config.py
+2025-07-28 04:03:22,830 - INFO - ================================================================================
+2025-07-28 04:03:22,830 - INFO - Configuration:
+2025-07-28 04:03:22,830 - INFO -   Model size: base
+2025-07-28 04:03:22,830 - INFO -   Training mode: patch_only
+2025-07-28 04:03:22,830 - INFO -   Embeddings dir: /scratch-shared/azadaianchuk1/blip3o_workspace/embeddings/patch_only_256_tokens
+2025-07-28 04:03:22,830 - INFO -   Output dir: ./checkpoints/clip_repro_20250728_040319
+2025-07-28 04:03:22,830 - INFO -   Learning rate: 0.0005
+2025-07-28 04:03:22,831 - INFO -   Batch size: 16
+2025-07-28 04:03:22,831 - INFO -   Epochs: 10
+2025-07-28 04:03:22,831 - INFO -   Max shards: 2
+2025-07-28 04:03:22,831 - INFO -   🧪 OVERFITTING TEST: 20 samples
+2025-07-28 04:03:22,831 - INFO -   Debug mode: True
+2025-07-28 04:03:22,831 - INFO - ================================================================================
+2025-07-28 04:03:22,831 - INFO - 🔍 Checking module availability...
+2025-07-28 04:03:29,661 - INFO - ✅ CLIP DiT model loaded from src/modules/models/blip3o_dit.py
+2025-07-28 04:03:29,664 - INFO - ✅ Flow matching loss loaded from src/modules/losses/blip3o_fm_loss.py
+2025-07-28 04:03:29,668 - INFO - ✅ CLIP trainer loaded from src/modules/trainers/blip3o_trainer.py
+2025-07-28 04:03:29,670 - INFO - ✅ CLIP datasets loaded from src/modules/datasets/blip3o_dataset.py
+2025-07-28 04:03:29,674 - INFO - ✅ Configuration loaded from src/modules/config/blip3o_config.py
+2025-07-28 04:03:29,674 - INFO - 🎉 All CLIP reproduction components loaded successfully!
+2025-07-28 04:03:29,674 - INFO - 🎉 BLIP3-o CLIP reproduction modules fully initialized!
+2025-07-28 04:03:29,674 - INFO - 🚫 Using minimal normalization approach
+2025-07-28 04:03:29,674 - INFO - 🎯 Ready for EVA → CLIP reproduction training
+2025-07-28 04:03:29,674 - INFO - ✅ Using comprehensive modules system
+2025-07-28 04:03:29,674 - INFO - 🎉 All CLIP reproduction components loaded successfully!
+2025-07-28 04:03:29,674 - INFO - 🎉 All CLIP reproduction components loaded successfully!
+2025-07-28 04:03:29,674 - INFO - ✅ Imported config from src.modules
+2025-07-28 04:03:30,146 - INFO - Using GPU: NVIDIA H100
+2025-07-28 04:03:30,146 - INFO - GPU Memory: 100.0 GB
+2025-07-28 04:03:30,146 - WARNING - Failed to import from blip3o_dit.py: No module named 'blip3o_dit'
+2025-07-28 04:03:30,146 - INFO - ✅ Imported model from src.modules
+2025-07-28 04:03:31,947 - INFO - BLIP3-o CLIP DiT model initialized with 206,761,216 parameters
+2025-07-28 04:03:31,947 - INFO - Creating base model for patch_only mode...
+2025-07-28 04:03:32,189 - INFO - Model created with 206,761,216 parameters
+2025-07-28 04:03:32,190 - INFO - Model moved to cuda
+2025-07-28 04:03:32,190 - WARNING - Failed to import from blip3o_fm_loss.py: No module named 'blip3o_fm_loss'
+2025-07-28 04:03:32,190 - INFO - ✅ Imported loss from src.modules
+2025-07-28 04:03:32,190 - INFO - CLIP Flow Matching Loss initialized:
+2025-07-28 04:03:32,190 - INFO -   Prediction type: velocity
+2025-07-28 04:03:32,190 - INFO -   Flow type: rectified
+2025-07-28 04:03:32,190 - INFO -   Loss weight: 1.0
+2025-07-28 04:03:32,190 - INFO -   Debug mode: True
+2025-07-28 04:03:32,191 - INFO - Flow matching loss created
+2025-07-28 04:03:32,191 - WARNING - Failed to import from blip3o_datasets.py: No module named 'blip3o_datasets'
+2025-07-28 04:03:32,191 - INFO - ✅ Imported dataset from src.modules
+2025-07-28 04:03:32,191 - INFO - Creating CLIP reproduction dataloaders:
+2025-07-28 04:03:32,191 - INFO -   Target: CLIP embeddings [B, N, 1024]
+2025-07-28 04:03:32,191 - INFO -   Conditioning: EVA embeddings [B, N, 4096]
+2025-07-28 04:03:32,191 - INFO -   Normalize: False
+2025-07-28 04:03:32,216 - INFO - Loaded manifest: 35 shards, 91,333 samples
+2025-07-28 04:03:32,217 - INFO - Found 35 files with pattern: embeddings_shard_*_patch_only.pkl
+2025-07-28 04:03:32,218 - INFO - Prepared 2 shard files
+2025-07-28 04:03:32,218 - INFO - Using manifest for length estimation: 5,219 samples
+2025-07-28 04:03:32,218 - INFO - CLIP Reproduction Dataset initialized:
+2025-07-28 04:03:32,218 - INFO -   Directory: /scratch-shared/azadaianchuk1/blip3o_workspace/embeddings/patch_only_256_tokens
+2025-07-28 04:03:32,218 - INFO -   Mode: patch_only (256 tokens)
+2025-07-28 04:03:32,218 - INFO -   TARGET: CLIP embeddings [B, N, 1024]
+2025-07-28 04:03:32,218 - INFO -   CONDITIONING: EVA embeddings [B, N, 4096]
+2025-07-28 04:03:32,218 - INFO -   Normalize: False
+2025-07-28 04:03:32,218 - INFO -   Shards: 2
+2025-07-28 04:03:32,218 - INFO -   Estimated samples: 5,219
+2025-07-28 04:03:32,218 - INFO - Loaded manifest: 35 shards, 91,333 samples
+2025-07-28 04:03:32,218 - INFO - Found 35 files with pattern: embeddings_shard_*_patch_only.pkl
+2025-07-28 04:03:32,219 - INFO - Prepared 2 shard files
+2025-07-28 04:03:32,219 - INFO - Using manifest for length estimation: 5,219 samples
+2025-07-28 04:03:32,219 - INFO - CLIP Reproduction Dataset initialized:
+2025-07-28 04:03:32,219 - INFO -   Directory: /scratch-shared/azadaianchuk1/blip3o_workspace/embeddings/patch_only_256_tokens
+2025-07-28 04:03:32,219 - INFO -   Mode: patch_only (256 tokens)
+2025-07-28 04:03:32,219 - INFO -   TARGET: CLIP embeddings [B, N, 1024]
+2025-07-28 04:03:32,219 - INFO -   CONDITIONING: EVA embeddings [B, N, 4096]
+2025-07-28 04:03:32,219 - INFO -   Normalize: False
+2025-07-28 04:03:32,219 - INFO -   Shards: 2
+2025-07-28 04:03:32,219 - INFO -   Estimated samples: 5,219
+2025-07-28 04:03:32,219 - INFO - CLIP reproduction dataloaders created successfully
+2025-07-28 04:03:32,219 - INFO -   Training dataset length: 5,219
+2025-07-28 04:03:32,219 - INFO -   Evaluation dataset length: 5,219
+2025-07-28 04:03:32,219 - INFO - Dataloaders created
+2025-07-28 04:03:32,219 - INFO -   Training batches: 326
+2025-07-28 04:03:32,219 - INFO -   Evaluation available: True
+2025-07-28 04:03:32,219 - INFO -   🚫 Normalization disabled in dataloaders
+2025-07-28 04:03:32,219 - WARNING - Failed to import from blip3o_trainer.py: No module named 'blip3o_trainer'
+2025-07-28 04:03:32,219 - INFO - ✅ Imported trainer from src.modules
+2025-07-28 04:03:32,222 - INFO - Optimizer and scheduler setup complete
+2025-07-28 04:03:32,222 - INFO -   Total estimated steps: 3260
+2025-07-28 04:03:32,222 - INFO -   Warmup steps: 100
+2025-07-28 04:03:32,224 - INFO - Preparing overfitting test with 20 samples...
+2025-07-28 04:03:36,517 - INFO - Loaded shard 1/2: 2601 samples
+2025-07-28 04:03:36,633 - INFO - Overfitting test prepared with 16 samples
+2025-07-28 04:03:36,633 - INFO - BLIP3-o CLIP Trainer initialized
+2025-07-28 04:03:36,633 - INFO -   Device: cuda
+2025-07-28 04:03:36,633 - INFO -   Learning rate: 0.0005
+2025-07-28 04:03:36,633 - INFO -   Epochs: 10
+2025-07-28 04:03:36,633 - INFO -   Estimated steps per epoch: 326
+2025-07-28 04:03:36,633 - INFO -   Overfit test: 20
+2025-07-28 04:03:36,633 - INFO -   Mixed precision: True
+2025-07-28 04:03:36,633 - INFO -   🚫 Minimal normalization: Only for evaluation similarity
+2025-07-28 04:03:36,634 - INFO - Trainer created
+2025-07-28 04:03:36,638 - INFO - Configuration saved to checkpoints/clip_repro_20250728_040319/experiment_config.json
+2025-07-28 04:03:36,638 - INFO - 
+🚀 Starting training...
+2025-07-28 04:03:36,638 - INFO - Expected behavior:
+2025-07-28 04:03:36,638 - INFO -   • Loss should decrease steadily
+2025-07-28 04:03:36,638 - INFO -   • Velocity similarity should increase
+2025-07-28 04:03:36,638 - INFO -   • CLIP similarity should improve during evaluation
+2025-07-28 04:03:36,638 - INFO -   • Gradients should be non-zero and stable
+2025-07-28 04:03:36,638 - INFO -   • Raw embeddings will be learned (no forced normalization)
+2025-07-28 04:03:36,638 - INFO -   • OVERFITTING TEST: Should achieve >0.8 similarity on 20 samples
+2025-07-28 04:03:36,638 - INFO - 
+2025-07-28 04:03:36,638 - INFO - Starting CLIP reproduction training...
+2025-07-28 04:03:36,639 - INFO -   Model parameters: 206,761,216
+2025-07-28 04:03:36,639 - INFO -   Estimated training steps per epoch: 326
+2025-07-28 04:03:36,639 - INFO -   Total estimated training steps: 3260
+2025-07-28 04:03:36,639 - INFO -   🚫 Minimal normalization: Only for evaluation similarity
+2025-07-28 04:03:36,639 - INFO -   OVERFITTING TEST MODE: Using 16 samples
+2025-07-28 04:03:36,640 - INFO - Starting epoch 1/10
+2025-07-28 04:03:40,724 - INFO - Loaded shard 1/2: 2601 samples
+2025-07-28 04:03:42,855 - INFO - Step 10: Loss=1.904411, VelSim=0.3524 (fair), GradNorm=22435.879, LR=9.50e-05, PredNorm=13.027, TargetNorm=42.452 [OVERFIT TEST]
+2025-07-28 04:03:42,855 - INFO -   Detailed metrics:
+2025-07-28 04:03:42,855 - INFO -     loss: 1.904411
+2025-07-28 04:03:42,855 - INFO -     total_loss: 1.904411
+2025-07-28 04:03:42,855 - INFO -     reg_loss: 0.000000
+2025-07-28 04:03:42,855 - INFO -     velocity_similarity: 0.352383
+2025-07-28 04:03:42,855 - INFO -     velocity_similarity_std: 0.037584
+2025-07-28 04:03:42,855 - INFO -     pred_norm: 13.026912
+2025-07-28 04:03:42,855 - INFO -     target_norm: 42.452431
+2025-07-28 04:03:42,855 - INFO -     clip_norm: 26.853107
+2025-07-28 04:03:42,855 - INFO -     noise_norm: 31.976971
+2025-07-28 04:03:42,855 - INFO -     eva_norm: 43.746700
+2025-07-28 04:03:42,856 - INFO -     error_norm: 39.820717
+2025-07-28 04:03:42,856 - INFO -     relative_error: 0.938008
+2025-07-28 04:03:42,856 - INFO -     step_count: 10.000000
+2025-07-28 04:03:42,856 - INFO -     loss_ema: 2.435055
+2025-07-28 04:03:42,856 - INFO -     similarity_ema: 0.026780
+2025-07-28 04:03:42,856 - INFO -     timestep_mean: 0.326473
+2025-07-28 04:03:42,856 - INFO -     timestep_std: 0.244177
+2025-07-28 04:03:42,856 - INFO -     interpolation_weight: 0.326416
+2025-07-28 04:03:42,856 - INFO -     pred_min: -5.949219
+2025-07-28 04:03:42,856 - INFO -     pred_max: 4.667969
+2025-07-28 04:03:42,856 - INFO -     target_min: -35.447006
+2025-07-28 04:03:42,856 - INFO -     target_max: 220.149185
+2025-07-28 04:03:44,462 - INFO - Step 20: Loss=1.852713, VelSim=0.3789 (fair), GradNorm=12729.806, LR=1.40e-04, PredNorm=16.991, TargetNorm=42.452 [OVERFIT TEST]
+2025-07-28 04:03:44,462 - INFO -   Detailed metrics:
+2025-07-28 04:03:44,462 - INFO -     loss: 1.852713
+2025-07-28 04:03:44,462 - INFO -     total_loss: 1.852713
+2025-07-28 04:03:44,462 - INFO -     reg_loss: 0.000000
+2025-07-28 04:03:44,462 - INFO -     velocity_similarity: 0.378905
+2025-07-28 04:03:44,462 - INFO -     velocity_similarity_std: 0.038968
+2025-07-28 04:03:44,462 - INFO -     pred_norm: 16.990906
+2025-07-28 04:03:44,462 - INFO -     target_norm: 42.452431
+2025-07-28 04:03:44,462 - INFO -     clip_norm: 26.853107
+2025-07-28 04:03:44,462 - INFO -     noise_norm: 31.976971
+2025-07-28 04:03:44,462 - INFO -     eva_norm: 43.746700
+2025-07-28 04:03:44,462 - INFO -     error_norm: 39.360321
+2025-07-28 04:03:44,462 - INFO -     relative_error: 0.927163
+2025-07-28 04:03:44,462 - INFO -     step_count: 20.000000
+2025-07-28 04:03:44,462 - INFO -     loss_ema: 2.381135
+2025-07-28 04:03:44,462 - INFO -     similarity_ema: 0.059715
+2025-07-28 04:03:44,462 - INFO -     timestep_mean: 0.326473
+2025-07-28 04:03:44,462 - INFO -     timestep_std: 0.244177
+2025-07-28 04:03:44,463 - INFO -     interpolation_weight: 0.326416
+2025-07-28 04:03:44,463 - INFO -     pred_min: -7.968750
+2025-07-28 04:03:44,463 - INFO -     pred_max: 9.726562
+2025-07-28 04:03:44,463 - INFO -     target_min: -35.447006
+2025-07-28 04:03:44,463 - INFO -     target_max: 220.149185
+2025-07-28 04:03:45,926 - INFO - Step 30: Loss=1.771237, VelSim=0.4020 (fair), GradNorm=19362.918, LR=1.85e-04, PredNorm=16.376, TargetNorm=42.452 [OVERFIT TEST]
+2025-07-28 04:03:45,926 - INFO -   Detailed metrics:
+2025-07-28 04:03:45,926 - INFO -     loss: 1.771237
+2025-07-28 04:03:45,926 - INFO -     total_loss: 1.771237
+2025-07-28 04:03:45,926 - INFO -     reg_loss: 0.000000
+2025-07-28 04:03:45,926 - INFO -     velocity_similarity: 0.401974
+2025-07-28 04:03:45,926 - INFO -     velocity_similarity_std: 0.041104
+2025-07-28 04:03:45,926 - INFO -     pred_norm: 16.375954
+2025-07-28 04:03:45,926 - INFO -     target_norm: 42.452431
+2025-07-28 04:03:45,926 - INFO -     clip_norm: 26.853107
+2025-07-28 04:03:45,926 - INFO -     noise_norm: 31.976971
+2025-07-28 04:03:45,926 - INFO -     eva_norm: 43.746700
+2025-07-28 04:03:45,926 - INFO -     error_norm: 38.682877
+2025-07-28 04:03:45,926 - INFO -     relative_error: 0.911205
+2025-07-28 04:03:45,926 - INFO -     step_count: 30.000000
+2025-07-28 04:03:45,926 - INFO -     loss_ema: 2.326415
+2025-07-28 04:03:45,926 - INFO -     similarity_ema: 0.091467
+2025-07-28 04:03:45,926 - INFO -     timestep_mean: 0.326473
+2025-07-28 04:03:45,926 - INFO -     timestep_std: 0.244177
+2025-07-28 04:03:45,926 - INFO -     interpolation_weight: 0.326416
+2025-07-28 04:03:45,926 - INFO -     pred_min: -8.101562
+2025-07-28 04:03:45,926 - INFO -     pred_max: 16.781250
+2025-07-28 04:03:45,926 - INFO -     target_min: -35.447006
+2025-07-28 04:03:45,926 - INFO -     target_max: 220.149185
+2025-07-28 04:03:47,411 - INFO - Step 40: Loss=1.656035, VelSim=0.4220 (fair), GradNorm=24355.082, LR=2.30e-04, PredNorm=18.845, TargetNorm=42.452 [OVERFIT TEST]
+2025-07-28 04:03:47,411 - INFO -   Detailed metrics:
+2025-07-28 04:03:47,412 - INFO -     loss: 1.656035
+2025-07-28 04:03:47,412 - INFO -     total_loss: 1.656035
+2025-07-28 04:03:47,412 - INFO -     reg_loss: 0.000000
+2025-07-28 04:03:47,412 - INFO -     velocity_similarity: 0.421987
+2025-07-28 04:03:47,412 - INFO -     velocity_similarity_std: 0.043979
+2025-07-28 04:03:47,412 - INFO -     pred_norm: 18.844519
+2025-07-28 04:03:47,412 - INFO -     target_norm: 42.452431
+2025-07-28 04:03:47,412 - INFO -     clip_norm: 26.853107
+2025-07-28 04:03:47,412 - INFO -     noise_norm: 31.976971
+2025-07-28 04:03:47,412 - INFO -     eva_norm: 43.746700
+2025-07-28 04:03:47,412 - INFO -     error_norm: 37.796124
+2025-07-28 04:03:47,412 - INFO -     relative_error: 0.890317
+2025-07-28 04:03:47,412 - INFO -     step_count: 40.000000
+2025-07-28 04:03:47,412 - INFO -     loss_ema: 2.267905
+2025-07-28 04:03:47,412 - INFO -     similarity_ema: 0.122132
+2025-07-28 04:03:47,412 - INFO -     timestep_mean: 0.326473
+2025-07-28 04:03:47,412 - INFO -     timestep_std: 0.244177
+2025-07-28 04:03:47,412 - INFO -     interpolation_weight: 0.326416
+2025-07-28 04:03:47,412 - INFO -     pred_min: -9.757812
+2025-07-28 04:03:47,412 - INFO -     pred_max: 32.593750
+2025-07-28 04:03:47,412 - INFO -     target_min: -35.447006
+2025-07-28 04:03:47,412 - INFO -     target_max: 220.149185
+2025-07-28 04:03:48,839 - INFO - [Step 50] CLIP Flow Matching Debug:
+2025-07-28 04:03:48,840 - INFO -   Loss: 1.485818 (quality: fair)
+2025-07-28 04:03:48,840 - INFO -   Velocity Sim: 0.4135
+2025-07-28 04:03:48,840 - INFO -   Norms - Pred: 18.806, Target: 42.452
+2025-07-28 04:03:48,840 - INFO -   Error: 37.265 (relative: 0.878)
+2025-07-28 04:03:48,840 - INFO -   Timesteps: 0.326 ± 0.244
+2025-07-28 04:03:48,912 - INFO - Step 50: Loss=1.485818, VelSim=0.4135 (fair), GradNorm=69130.246, LR=2.75e-04, PredNorm=18.806, TargetNorm=42.452 [OVERFIT TEST]
+2025-07-28 04:03:48,913 - INFO -   Detailed metrics:
+2025-07-28 04:03:48,913 - INFO -     loss: 1.485818
+2025-07-28 04:03:48,913 - INFO -     total_loss: 1.485818
+2025-07-28 04:03:48,913 - INFO -     reg_loss: 0.000000
+2025-07-28 04:03:48,913 - INFO -     velocity_similarity: 0.413489
+2025-07-28 04:03:48,913 - INFO -     velocity_similarity_std: 0.043935
+2025-07-28 04:03:48,913 - INFO -     pred_norm: 18.806156
+2025-07-28 04:03:48,913 - INFO -     target_norm: 42.452431
+2025-07-28 04:03:48,914 - INFO -     clip_norm: 26.853107
+2025-07-28 04:03:48,914 - INFO -     noise_norm: 31.976971
+2025-07-28 04:03:48,914 - INFO -     eva_norm: 43.746700
+2025-07-28 04:03:48,914 - INFO -     error_norm: 37.264832
+2025-07-28 04:03:48,914 - INFO -     relative_error: 0.877802
+2025-07-28 04:03:48,914 - INFO -     step_count: 50.000000
+2025-07-28 04:03:48,914 - INFO -     loss_ema: 2.200856
+2025-07-28 04:03:48,914 - INFO -     similarity_ema: 0.150337
+2025-07-28 04:03:48,914 - INFO -     timestep_mean: 0.326473
+2025-07-28 04:03:48,914 - INFO -     timestep_std: 0.244177
+2025-07-28 04:03:48,914 - INFO -     interpolation_weight: 0.326416
+2025-07-28 04:03:48,914 - INFO -     pred_min: -25.218750
+2025-07-28 04:03:48,914 - INFO -     pred_max: 107.375000
+2025-07-28 04:03:48,914 - INFO -     target_min: -35.447006
+2025-07-28 04:03:48,914 - INFO -     target_max: 220.149185
+2025-07-28 04:03:48,914 - INFO - Running evaluation at step 50...
+2025-07-28 04:03:53,217 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 04:05:11,616 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 04:05:11,616 - INFO -   eval_clip_similarity: 0.2565
+2025-07-28 04:05:11,616 - INFO -   eval_clip_similarity_std: 0.0259
+2025-07-28 04:05:11,616 - INFO -   eval_high_quality: 0.0000
+2025-07-28 04:05:11,616 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 04:05:11,616 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 04:05:11,616 - INFO -   eval_samples: 512.0000
+2025-07-28 04:05:13,071 - INFO - Step 60: Loss=1.445533, VelSim=0.4074 (fair), GradNorm=102656.112, LR=3.20e-04, PredNorm=21.909, TargetNorm=42.452 [OVERFIT TEST]
+2025-07-28 04:05:13,072 - INFO -   Detailed metrics:
+2025-07-28 04:05:13,072 - INFO -     loss: 1.445533
+2025-07-28 04:05:13,072 - INFO -     total_loss: 1.445533
+2025-07-28 04:05:13,072 - INFO -     reg_loss: 0.000000
+2025-07-28 04:05:13,072 - INFO -     velocity_similarity: 0.407377
+2025-07-28 04:05:13,072 - INFO -     velocity_similarity_std: 0.044203
+2025-07-28 04:05:13,072 - INFO -     pred_norm: 21.909012
+2025-07-28 04:05:13,072 - INFO -     target_norm: 42.452431
+2025-07-28 04:05:13,072 - INFO -     clip_norm: 26.853107
+2025-07-28 04:05:13,072 - INFO -     noise_norm: 31.976971
+2025-07-28 04:05:13,072 - INFO -     eva_norm: 43.746700
+2025-07-28 04:05:13,072 - INFO -     error_norm: 37.109299
+2025-07-28 04:05:13,072 - INFO -     relative_error: 0.874138
+2025-07-28 04:05:13,072 - INFO -     step_count: 60.000000
+2025-07-28 04:05:13,072 - INFO -     loss_ema: 2.129591
+2025-07-28 04:05:13,072 - INFO -     similarity_ema: 0.174891
+2025-07-28 04:05:13,072 - INFO -     timestep_mean: 0.326473
+2025-07-28 04:05:13,072 - INFO -     timestep_std: 0.244177
+2025-07-28 04:05:13,072 - INFO -     interpolation_weight: 0.326416
+2025-07-28 04:05:13,072 - INFO -     pred_min: -27.375000
+2025-07-28 04:05:13,072 - INFO -     pred_max: 170.125000
+2025-07-28 04:05:13,072 - INFO -     target_min: -35.447006
+2025-07-28 04:05:13,072 - INFO -     target_max: 220.149185
+2025-07-28 04:05:14,514 - INFO - Step 70: Loss=1.401177, VelSim=0.4331 (fair), GradNorm=63730.628, LR=3.65e-04, PredNorm=18.404, TargetNorm=42.452 [OVERFIT TEST]
+2025-07-28 04:05:14,514 - INFO -   Detailed metrics:
+2025-07-28 04:05:14,514 - INFO -     loss: 1.401177
+2025-07-28 04:05:14,515 - INFO -     total_loss: 1.401177
+2025-07-28 04:05:14,515 - INFO -     reg_loss: 0.000000
+2025-07-28 04:05:14,515 - INFO -     velocity_similarity: 0.433093
+2025-07-28 04:05:14,515 - INFO -     velocity_similarity_std: 0.042976
+2025-07-28 04:05:14,515 - INFO -     pred_norm: 18.403845
+2025-07-28 04:05:14,515 - INFO -     target_norm: 42.452431
+2025-07-28 04:05:14,515 - INFO -     clip_norm: 26.853107
+2025-07-28 04:05:14,515 - INFO -     noise_norm: 31.976971
+2025-07-28 04:05:14,516 - INFO -     eva_norm: 43.746700
+2025-07-28 04:05:14,516 - INFO -     error_norm: 36.535538
+2025-07-28 04:05:14,516 - INFO -     relative_error: 0.860623
+2025-07-28 04:05:14,516 - INFO -     step_count: 70.000000
+2025-07-28 04:05:14,516 - INFO -     loss_ema: 2.060907
+2025-07-28 04:05:14,516 - INFO -     similarity_ema: 0.198909
+2025-07-28 04:05:14,516 - INFO -     timestep_mean: 0.326473
+2025-07-28 04:05:14,516 - INFO -     timestep_std: 0.244177
+2025-07-28 04:05:14,516 - INFO -     interpolation_weight: 0.326416
+2025-07-28 04:05:14,516 - INFO -     pred_min: -22.703125
+2025-07-28 04:05:14,516 - INFO -     pred_max: 154.500000
+2025-07-28 04:05:14,516 - INFO -     target_min: -35.447006
+2025-07-28 04:05:14,516 - INFO -     target_max: 220.149185
+2025-07-28 04:05:15,964 - INFO - Step 80: Loss=1.312679, VelSim=0.4824 (fair), GradNorm=40398.000, LR=4.10e-04, PredNorm=22.053, TargetNorm=42.452 [OVERFIT TEST]
+2025-07-28 04:05:15,965 - INFO -   Detailed metrics:
+2025-07-28 04:05:15,965 - INFO -     loss: 1.312679
+2025-07-28 04:05:15,965 - INFO -     total_loss: 1.312679
+2025-07-28 04:05:15,965 - INFO -     reg_loss: 0.000000
+2025-07-28 04:05:15,965 - INFO -     velocity_similarity: 0.482408
+2025-07-28 04:05:15,965 - INFO -     velocity_similarity_std: 0.035272
+2025-07-28 04:05:15,965 - INFO -     pred_norm: 22.053398
+2025-07-28 04:05:15,965 - INFO -     target_norm: 42.452431
+2025-07-28 04:05:15,965 - INFO -     clip_norm: 26.853107
+2025-07-28 04:05:15,965 - INFO -     noise_norm: 31.976971
+2025-07-28 04:05:15,965 - INFO -     eva_norm: 43.746700
+2025-07-28 04:05:15,965 - INFO -     error_norm: 35.410126
+2025-07-28 04:05:15,965 - INFO -     relative_error: 0.834113
+2025-07-28 04:05:15,965 - INFO -     step_count: 80.000000
+2025-07-28 04:05:15,965 - INFO -     loss_ema: 1.992963
+2025-07-28 04:05:15,965 - INFO -     similarity_ema: 0.223896
+2025-07-28 04:05:15,965 - INFO -     timestep_mean: 0.326473
+2025-07-28 04:05:15,965 - INFO -     timestep_std: 0.244177
+2025-07-28 04:05:15,965 - INFO -     interpolation_weight: 0.326416
+2025-07-28 04:05:15,965 - INFO -     pred_min: -27.000000
+2025-07-28 04:05:15,965 - INFO -     pred_max: 179.500000
+2025-07-28 04:05:15,965 - INFO -     target_min: -35.447006
+2025-07-28 04:05:15,965 - INFO -     target_max: 220.149185
+2025-07-28 04:05:17,415 - INFO - Step 90: Loss=1.195797, VelSim=0.5464 (good), GradNorm=57335.853, LR=4.55e-04, PredNorm=25.270, TargetNorm=42.452 [OVERFIT TEST]
+2025-07-28 04:05:17,416 - INFO -   Detailed metrics:
+2025-07-28 04:05:17,416 - INFO -     loss: 1.195797
+2025-07-28 04:05:17,416 - INFO -     total_loss: 1.195797
+2025-07-28 04:05:17,416 - INFO -     reg_loss: 0.000000
+2025-07-28 04:05:17,416 - INFO -     velocity_similarity: 0.546445
+2025-07-28 04:05:17,416 - INFO -     velocity_similarity_std: 0.030643
+2025-07-28 04:05:17,416 - INFO -     pred_norm: 25.269844
+2025-07-28 04:05:17,416 - INFO -     target_norm: 42.452431
+2025-07-28 04:05:17,416 - INFO -     clip_norm: 26.853107
+2025-07-28 04:05:17,416 - INFO -     noise_norm: 31.976971
+2025-07-28 04:05:17,416 - INFO -     eva_norm: 43.746700
+2025-07-28 04:05:17,416 - INFO -     error_norm: 33.829704
+2025-07-28 04:05:17,416 - INFO -     relative_error: 0.796885
+2025-07-28 04:05:17,416 - INFO -     step_count: 90.000000
+2025-07-28 04:05:17,416 - INFO -     loss_ema: 1.922077
+2025-07-28 04:05:17,416 - INFO -     similarity_ema: 0.251754
+2025-07-28 04:05:17,416 - INFO -     timestep_mean: 0.326473
+2025-07-28 04:05:17,416 - INFO -     timestep_std: 0.244177
+2025-07-28 04:05:17,416 - INFO -     interpolation_weight: 0.326416
+2025-07-28 04:05:17,416 - INFO -     pred_min: -26.703125
+2025-07-28 04:05:17,416 - INFO -     pred_max: 187.000000
+2025-07-28 04:05:17,416 - INFO -     target_min: -35.447006
+2025-07-28 04:05:17,416 - INFO -     target_max: 220.149185
+2025-07-28 04:05:18,800 - INFO - [Step 100] CLIP Flow Matching Debug:
+2025-07-28 04:05:18,800 - INFO -   Loss: 1.057376 (quality: good)
+2025-07-28 04:05:18,800 - INFO -   Velocity Sim: 0.6161
+2025-07-28 04:05:18,800 - INFO -   Norms - Pred: 26.890, Target: 42.452
+2025-07-28 04:05:18,801 - INFO -   Error: 31.822 (relative: 0.750)
+2025-07-28 04:05:18,801 - INFO -   Timesteps: 0.326 ± 0.244
+2025-07-28 04:05:18,871 - INFO - Step 100: Loss=1.057376, VelSim=0.6161 (good), GradNorm=56681.174, LR=5.00e-04, PredNorm=26.890, TargetNorm=42.452 [OVERFIT TEST]
+2025-07-28 04:05:18,871 - INFO -   Detailed metrics:
+2025-07-28 04:05:18,871 - INFO -     loss: 1.057376
+2025-07-28 04:05:18,871 - INFO -     total_loss: 1.057376
+2025-07-28 04:05:18,871 - INFO -     reg_loss: 0.000000
+2025-07-28 04:05:18,871 - INFO -     velocity_similarity: 0.616067
+2025-07-28 04:05:18,871 - INFO -     velocity_similarity_std: 0.036646
+2025-07-28 04:05:18,872 - INFO -     pred_norm: 26.889759
+2025-07-28 04:05:18,872 - INFO -     target_norm: 42.452431
+2025-07-28 04:05:18,872 - INFO -     clip_norm: 26.853107
+2025-07-28 04:05:18,872 - INFO -     noise_norm: 31.976971
+2025-07-28 04:05:18,872 - INFO -     eva_norm: 43.746700
+2025-07-28 04:05:18,872 - INFO -     error_norm: 31.822094
+2025-07-28 04:05:18,872 - INFO -     relative_error: 0.749594
+2025-07-28 04:05:18,872 - INFO -     step_count: 100.000000
+2025-07-28 04:05:18,872 - INFO -     loss_ema: 1.846065
+2025-07-28 04:05:18,872 - INFO -     similarity_ema: 0.283273
+2025-07-28 04:05:18,872 - INFO -     timestep_mean: 0.326473
+2025-07-28 04:05:18,872 - INFO -     timestep_std: 0.244177
+2025-07-28 04:05:18,872 - INFO -     interpolation_weight: 0.326416
+2025-07-28 04:05:18,872 - INFO -     pred_min: -29.718750
+2025-07-28 04:05:18,872 - INFO -     pred_max: 192.625000
+2025-07-28 04:05:18,872 - INFO -     target_min: -35.447006
+2025-07-28 04:05:18,872 - INFO -     target_max: 220.149185
+2025-07-28 04:05:18,872 - INFO - Running evaluation at step 100...
+2025-07-28 04:05:23,202 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 04:06:41,542 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 04:06:41,543 - INFO -   eval_clip_similarity: 0.2546
+2025-07-28 04:06:41,543 - INFO -   eval_clip_similarity_std: 0.0250
+2025-07-28 04:06:41,543 - INFO -   eval_high_quality: 0.0000
+2025-07-28 04:06:41,543 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 04:06:41,543 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 04:06:41,543 - INFO -   eval_samples: 512.0000
+2025-07-28 04:06:42,997 - INFO - Step 110: Loss=0.925649, VelSim=0.6760 (good), GradNorm=67450.351, LR=5.00e-04, PredNorm=29.298, TargetNorm=42.452 [OVERFIT TEST]
+2025-07-28 04:06:42,997 - INFO -   Detailed metrics:
+2025-07-28 04:06:42,997 - INFO -     loss: 0.925649
+2025-07-28 04:06:42,998 - INFO -     total_loss: 0.925649
+2025-07-28 04:06:42,998 - INFO -     reg_loss: 0.000000
+2025-07-28 04:06:42,998 - INFO -     velocity_similarity: 0.676004
+2025-07-28 04:06:42,998 - INFO -     velocity_similarity_std: 0.043541
+2025-07-28 04:06:42,998 - INFO -     pred_norm: 29.298157
+2025-07-28 04:06:42,998 - INFO -     target_norm: 42.452431
+2025-07-28 04:06:42,998 - INFO -     clip_norm: 26.853107
+2025-07-28 04:06:42,998 - INFO -     noise_norm: 31.976971
+2025-07-28 04:06:42,998 - INFO -     eva_norm: 43.746700
+2025-07-28 04:06:42,998 - INFO -     error_norm: 29.771618
+2025-07-28 04:06:42,998 - INFO -     relative_error: 0.701294
+2025-07-28 04:06:42,998 - INFO -     step_count: 110.000000
+2025-07-28 04:06:42,998 - INFO -     loss_ema: 1.764099
+2025-07-28 04:06:42,998 - INFO -     similarity_ema: 0.318184
+2025-07-28 04:06:42,998 - INFO -     timestep_mean: 0.326473
+2025-07-28 04:06:42,998 - INFO -     timestep_std: 0.244177
+2025-07-28 04:06:42,998 - INFO -     interpolation_weight: 0.326416
+2025-07-28 04:06:42,998 - INFO -     pred_min: -30.234375
+2025-07-28 04:06:42,998 - INFO -     pred_max: 196.500000
+2025-07-28 04:06:42,998 - INFO -     target_min: -35.447006
+2025-07-28 04:06:42,998 - INFO -     target_max: 220.149185
+2025-07-28 04:06:44,447 - INFO - Step 120: Loss=0.787510, VelSim=0.7342 (good), GradNorm=63098.997, LR=5.00e-04, PredNorm=32.658, TargetNorm=42.452 [OVERFIT TEST]
+2025-07-28 04:06:44,448 - INFO -   Detailed metrics:
+2025-07-28 04:06:44,448 - INFO -     loss: 0.787510
+2025-07-28 04:06:44,448 - INFO -     total_loss: 0.787510
+2025-07-28 04:06:44,449 - INFO -     reg_loss: 0.000000
+2025-07-28 04:06:44,449 - INFO -     velocity_similarity: 0.734238
+2025-07-28 04:06:44,449 - INFO -     velocity_similarity_std: 0.046946
+2025-07-28 04:06:44,449 - INFO -     pred_norm: 32.658009
+2025-07-28 04:06:44,449 - INFO -     target_norm: 42.452431
+2025-07-28 04:06:44,449 - INFO -     clip_norm: 26.853107
+2025-07-28 04:06:44,449 - INFO -     noise_norm: 31.976971
+2025-07-28 04:06:44,449 - INFO -     eva_norm: 43.746700
+2025-07-28 04:06:44,449 - INFO -     error_norm: 27.445808
+2025-07-28 04:06:44,449 - INFO -     relative_error: 0.646507
+2025-07-28 04:06:44,449 - INFO -     step_count: 120.000000
+2025-07-28 04:06:44,449 - INFO -     loss_ema: 1.676283
+2025-07-28 04:06:44,449 - INFO -     similarity_ema: 0.355654
+2025-07-28 04:06:44,449 - INFO -     timestep_mean: 0.326473
+2025-07-28 04:06:44,449 - INFO -     timestep_std: 0.244177
+2025-07-28 04:06:44,449 - INFO -     interpolation_weight: 0.326416
+2025-07-28 04:06:44,449 - INFO -     pred_min: -32.343750
+2025-07-28 04:06:44,449 - INFO -     pred_max: 204.125000
+2025-07-28 04:06:44,449 - INFO -     target_min: -35.447006
+2025-07-28 04:06:44,449 - INFO -     target_max: 220.149185
+2025-07-28 04:06:45,885 - INFO - Step 130: Loss=0.679899, VelSim=0.7764 (good), GradNorm=73124.747, LR=5.00e-04, PredNorm=33.636, TargetNorm=42.452 [OVERFIT TEST]
+2025-07-28 04:06:45,886 - INFO -   Detailed metrics:
+2025-07-28 04:06:45,886 - INFO -     loss: 0.679899
+2025-07-28 04:06:45,886 - INFO -     total_loss: 0.679899
+2025-07-28 04:06:45,886 - INFO -     reg_loss: 0.000000
+2025-07-28 04:06:45,886 - INFO -     velocity_similarity: 0.776354
+2025-07-28 04:06:45,886 - INFO -     velocity_similarity_std: 0.046770
+2025-07-28 04:06:45,886 - INFO -     pred_norm: 33.636070
+2025-07-28 04:06:45,886 - INFO -     target_norm: 42.452431
+2025-07-28 04:06:45,886 - INFO -     clip_norm: 26.853107
+2025-07-28 04:06:45,886 - INFO -     noise_norm: 31.976971
+2025-07-28 04:06:45,886 - INFO -     eva_norm: 43.746700
+2025-07-28 04:06:45,886 - INFO -     error_norm: 25.480322
+2025-07-28 04:06:45,886 - INFO -     relative_error: 0.600209
+2025-07-28 04:06:45,886 - INFO -     step_count: 130.000000
+2025-07-28 04:06:45,886 - INFO -     loss_ema: 1.585775
+2025-07-28 04:06:45,886 - INFO -     similarity_ema: 0.394050
+2025-07-28 04:06:45,886 - INFO -     timestep_mean: 0.326473
+2025-07-28 04:06:45,886 - INFO -     timestep_std: 0.244177
+2025-07-28 04:06:45,886 - INFO -     interpolation_weight: 0.326416
+2025-07-28 04:06:45,886 - INFO -     pred_min: -31.281250
+2025-07-28 04:06:45,886 - INFO -     pred_max: 203.125000
+2025-07-28 04:06:45,886 - INFO -     target_min: -35.447006
+2025-07-28 04:06:45,886 - INFO -     target_max: 220.149185
+2025-07-28 04:06:47,344 - INFO - Step 140: Loss=0.579490, VelSim=0.8138 (excellent), GradNorm=70255.642, LR=5.00e-04, PredNorm=35.361, TargetNorm=42.452 [OVERFIT TEST]
+2025-07-28 04:06:47,344 - INFO -   Detailed metrics:
+2025-07-28 04:06:47,344 - INFO -     loss: 0.579490
+2025-07-28 04:06:47,344 - INFO -     total_loss: 0.579490
+2025-07-28 04:06:47,344 - INFO -     reg_loss: 0.000000
+2025-07-28 04:06:47,344 - INFO -     velocity_similarity: 0.813841
+2025-07-28 04:06:47,344 - INFO -     velocity_similarity_std: 0.042936
+2025-07-28 04:06:47,344 - INFO -     pred_norm: 35.361046
+2025-07-28 04:06:47,344 - INFO -     target_norm: 42.452431
+2025-07-28 04:06:47,344 - INFO -     clip_norm: 26.853107
+2025-07-28 04:06:47,344 - INFO -     noise_norm: 31.976971
+2025-07-28 04:06:47,344 - INFO -     eva_norm: 43.746700
+2025-07-28 04:06:47,344 - INFO -     error_norm: 23.505486
+2025-07-28 04:06:47,344 - INFO -     relative_error: 0.553690
+2025-07-28 04:06:47,344 - INFO -     step_count: 140.000000
+2025-07-28 04:06:47,344 - INFO -     loss_ema: 1.493856
+2025-07-28 04:06:47,344 - INFO -     similarity_ema: 0.432628
+2025-07-28 04:06:47,344 - INFO -     timestep_mean: 0.326473
+2025-07-28 04:06:47,345 - INFO -     timestep_std: 0.244177
+2025-07-28 04:06:47,345 - INFO -     interpolation_weight: 0.326416
+2025-07-28 04:06:47,346 - INFO -     pred_min: -32.156250
+2025-07-28 04:06:47,346 - INFO -     pred_max: 204.750000
+2025-07-28 04:06:47,346 - INFO -     target_min: -35.447006
+2025-07-28 04:06:47,346 - INFO -     target_max: 220.149185
+2025-07-28 04:06:48,725 - INFO - [Step 150] CLIP Flow Matching Debug:
+2025-07-28 04:06:48,726 - INFO -   Loss: 0.483538 (quality: excellent)
+2025-07-28 04:06:48,726 - INFO -   Velocity Sim: 0.8483
+2025-07-28 04:06:48,726 - INFO -   Norms - Pred: 36.149, Target: 42.452
+2025-07-28 04:06:48,726 - INFO -   Error: 21.459 (relative: 0.505)
+2025-07-28 04:06:48,726 - INFO -   Timesteps: 0.326 ± 0.244
+2025-07-28 04:06:48,796 - INFO - Step 150: Loss=0.483538, VelSim=0.8483 (excellent), GradNorm=69019.392, LR=5.00e-04, PredNorm=36.149, TargetNorm=42.452 [OVERFIT TEST]
+2025-07-28 04:06:48,796 - INFO -   Detailed metrics:
+2025-07-28 04:06:48,796 - INFO -     loss: 0.483538
+2025-07-28 04:06:48,796 - INFO -     total_loss: 0.483538
+2025-07-28 04:06:48,796 - INFO -     reg_loss: 0.000000
+2025-07-28 04:06:48,796 - INFO -     velocity_similarity: 0.848264
+2025-07-28 04:06:48,796 - INFO -     velocity_similarity_std: 0.034808
+2025-07-28 04:06:48,796 - INFO -     pred_norm: 36.148594
+2025-07-28 04:06:48,796 - INFO -     target_norm: 42.452431
+2025-07-28 04:06:48,796 - INFO -     clip_norm: 26.853107
+2025-07-28 04:06:48,796 - INFO -     noise_norm: 31.976971
+2025-07-28 04:06:48,796 - INFO -     eva_norm: 43.746700
+2025-07-28 04:06:48,796 - INFO -     error_norm: 21.459152
+2025-07-28 04:06:48,796 - INFO -     relative_error: 0.505487
+2025-07-28 04:06:48,796 - INFO -     step_count: 150.000000
+2025-07-28 04:06:48,796 - INFO -     loss_ema: 1.401665
+2025-07-28 04:06:48,796 - INFO -     similarity_ema: 0.470825
+2025-07-28 04:06:48,796 - INFO -     timestep_mean: 0.326473
+2025-07-28 04:06:48,796 - INFO -     timestep_std: 0.244177
+2025-07-28 04:06:48,796 - INFO -     interpolation_weight: 0.326416
+2025-07-28 04:06:48,796 - INFO -     pred_min: -31.781250
+2025-07-28 04:06:48,796 - INFO -     pred_max: 203.250000
+2025-07-28 04:06:48,796 - INFO -     target_min: -35.447006
+2025-07-28 04:06:48,796 - INFO -     target_max: 220.149185
+2025-07-28 04:06:48,796 - INFO - Running evaluation at step 150...
+2025-07-28 04:06:53,146 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 04:08:11,126 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 04:08:11,128 - INFO -   eval_clip_similarity: 0.2574
+2025-07-28 04:08:11,129 - INFO -   eval_clip_similarity_std: 0.0249
+2025-07-28 04:08:11,129 - INFO -   eval_high_quality: 0.0000
+2025-07-28 04:08:11,129 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 04:08:11,129 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 04:08:11,129 - INFO -   eval_samples: 512.0000
+2025-07-28 04:08:12,574 - INFO - Step 160: Loss=0.407938, VelSim=0.8744 (excellent), GradNorm=72110.236, LR=5.00e-04, PredNorm=37.210, TargetNorm=42.452 [OVERFIT TEST]
+2025-07-28 04:08:12,575 - INFO -   Detailed metrics:
+2025-07-28 04:08:12,575 - INFO -     loss: 0.407938
+2025-07-28 04:08:12,575 - INFO -     total_loss: 0.407938
+2025-07-28 04:08:12,575 - INFO -     reg_loss: 0.000000
+2025-07-28 04:08:12,575 - INFO -     velocity_similarity: 0.874436
+2025-07-28 04:08:12,575 - INFO -     velocity_similarity_std: 0.024418
+2025-07-28 04:08:12,575 - INFO -     pred_norm: 37.209652
+2025-07-28 04:08:12,575 - INFO -     target_norm: 42.452431
+2025-07-28 04:08:12,575 - INFO -     clip_norm: 26.853107
+2025-07-28 04:08:12,575 - INFO -     noise_norm: 31.976971
+2025-07-28 04:08:12,575 - INFO -     eva_norm: 43.746700
+2025-07-28 04:08:12,575 - INFO -     error_norm: 19.716528
+2025-07-28 04:08:12,575 - INFO -     relative_error: 0.464438
+2025-07-28 04:08:12,575 - INFO -     step_count: 160.000000
+2025-07-28 04:08:12,575 - INFO -     loss_ema: 1.310050
+2025-07-28 04:08:12,575 - INFO -     similarity_ema: 0.508266
+2025-07-28 04:08:12,575 - INFO -     timestep_mean: 0.326473
+2025-07-28 04:08:12,576 - INFO -     timestep_std: 0.244177
+2025-07-28 04:08:12,576 - INFO -     interpolation_weight: 0.326416
+2025-07-28 04:08:12,576 - INFO -     pred_min: -31.640625
+2025-07-28 04:08:12,576 - INFO -     pred_max: 203.750000
+2025-07-28 04:08:12,576 - INFO -     target_min: -35.447006
+2025-07-28 04:08:12,576 - INFO -     target_max: 220.149185
+2025-07-28 04:08:17,368 - INFO - Loaded shard 2/2: 2646 samples
+2025-07-28 04:08:18,543 - INFO - Step 170: Loss=0.341281, VelSim=0.8970 (excellent), GradNorm=60299.600, LR=4.99e-04, PredNorm=39.157, TargetNorm=42.452 [OVERFIT TEST]
+2025-07-28 04:08:18,544 - INFO -   Detailed metrics:
+2025-07-28 04:08:18,544 - INFO -     loss: 0.341281
+2025-07-28 04:08:18,544 - INFO -     total_loss: 0.341281
+2025-07-28 04:08:18,544 - INFO -     reg_loss: 0.000000
+2025-07-28 04:08:18,544 - INFO -     velocity_similarity: 0.897043
+2025-07-28 04:08:18,544 - INFO -     velocity_similarity_std: 0.015242
+2025-07-28 04:08:18,544 - INFO -     pred_norm: 39.157158
+2025-07-28 04:08:18,544 - INFO -     target_norm: 42.452431
+2025-07-28 04:08:18,544 - INFO -     clip_norm: 26.853107
+2025-07-28 04:08:18,544 - INFO -     noise_norm: 31.976971
+2025-07-28 04:08:18,544 - INFO -     eva_norm: 43.746700
+2025-07-28 04:08:18,544 - INFO -     error_norm: 18.040497
+2025-07-28 04:08:18,544 - INFO -     relative_error: 0.424958
+2025-07-28 04:08:18,544 - INFO -     step_count: 170.000000
+2025-07-28 04:08:18,544 - INFO -     loss_ema: 1.220369
+2025-07-28 04:08:18,544 - INFO -     similarity_ema: 0.544505
+2025-07-28 04:08:18,544 - INFO -     timestep_mean: 0.326473
+2025-07-28 04:08:18,544 - INFO -     timestep_std: 0.244177
+2025-07-28 04:08:18,544 - INFO -     interpolation_weight: 0.326416
+2025-07-28 04:08:18,544 - INFO -     pred_min: -32.406250
+2025-07-28 04:08:18,544 - INFO -     pred_max: 201.625000
+2025-07-28 04:08:18,544 - INFO -     target_min: -35.447006
+2025-07-28 04:08:18,544 - INFO -     target_max: 220.149185
+2025-07-28 04:08:18,982 - INFO - 🎉 OVERFITTING TEST PASSED! Model can learn effectively.
+2025-07-28 04:08:18,982 - INFO - Epoch 1 completed:
+2025-07-28 04:08:18,982 - INFO -   Average loss: 1.171182
+2025-07-28 04:08:18,982 - INFO -   Best loss: 0.330507
+2025-07-28 04:08:18,982 - INFO -   Best similarity: 0.9007
+2025-07-28 04:08:18,982 - INFO -   Steps in epoch: 173
+2025-07-28 04:08:18,982 - INFO - Starting epoch 2/10
+2025-07-28 04:08:23,278 - INFO - Loaded shard 1/2: 2601 samples
+2025-07-28 04:08:23,426 - INFO - 🎉 OVERFITTING TEST PASSED! Model can learn effectively.
+2025-07-28 04:08:23,427 - INFO - Epoch 2 completed:
+2025-07-28 04:08:23,427 - INFO -   Average loss: 0.323229
+2025-07-28 04:08:23,427 - INFO -   Best loss: 0.323229
+2025-07-28 04:08:23,427 - INFO -   Best similarity: 0.9027
+2025-07-28 04:08:23,427 - INFO -   Steps in epoch: 1
+2025-07-28 04:08:23,427 - INFO - Starting epoch 3/10
+2025-07-28 04:08:27,547 - INFO - Loaded shard 1/2: 2601 samples
+2025-07-28 04:08:27,691 - INFO - 🎉 OVERFITTING TEST PASSED! Model can learn effectively.
+2025-07-28 04:08:27,692 - INFO - Epoch 3 completed:
+2025-07-28 04:08:27,692 - INFO -   Average loss: 0.313164
+2025-07-28 04:08:27,692 - INFO -   Best loss: 0.313164
+2025-07-28 04:08:27,692 - INFO -   Best similarity: 0.9058
+2025-07-28 04:08:27,692 - INFO -   Steps in epoch: 1
+2025-07-28 04:08:27,692 - INFO - Starting epoch 4/10
+2025-07-28 04:08:31,681 - INFO - Loaded shard 1/2: 2601 samples
+2025-07-28 04:08:31,825 - INFO - 🎉 OVERFITTING TEST PASSED! Model can learn effectively.
+2025-07-28 04:08:31,825 - INFO - Epoch 4 completed:
+2025-07-28 04:08:31,825 - INFO -   Average loss: 0.306535
+2025-07-28 04:08:31,825 - INFO -   Best loss: 0.306535
+2025-07-28 04:08:31,825 - INFO -   Best similarity: 0.9079
+2025-07-28 04:08:31,825 - INFO -   Steps in epoch: 1
+2025-07-28 04:08:31,825 - INFO - Starting epoch 5/10
+2025-07-28 04:08:35,901 - INFO - Loaded shard 1/2: 2601 samples
+2025-07-28 04:08:36,048 - INFO - 🎉 OVERFITTING TEST PASSED! Model can learn effectively.
+2025-07-28 04:08:36,048 - INFO - Epoch 5 completed:
+2025-07-28 04:08:36,048 - INFO -   Average loss: 0.300326
+2025-07-28 04:08:36,048 - INFO -   Best loss: 0.300326
+2025-07-28 04:08:36,049 - INFO -   Best similarity: 0.9098
+2025-07-28 04:08:36,049 - INFO -   Steps in epoch: 1
+2025-07-28 04:08:36,049 - INFO - Starting epoch 6/10
+2025-07-28 04:08:40,081 - INFO - Loaded shard 1/2: 2601 samples
+2025-07-28 04:08:40,230 - INFO - 🎉 OVERFITTING TEST PASSED! Model can learn effectively.
+2025-07-28 04:08:40,231 - INFO - Epoch 6 completed:
+2025-07-28 04:08:40,231 - INFO -   Average loss: 0.293489
+2025-07-28 04:08:40,231 - INFO -   Best loss: 0.293489
+2025-07-28 04:08:40,231 - INFO -   Best similarity: 0.9120
+2025-07-28 04:08:40,231 - INFO -   Steps in epoch: 1
+2025-07-28 04:08:40,231 - INFO - Starting epoch 7/10
+2025-07-28 04:08:44,325 - INFO - Loaded shard 1/2: 2601 samples
+2025-07-28 04:08:44,474 - INFO - 🎉 OVERFITTING TEST PASSED! Model can learn effectively.
+2025-07-28 04:08:44,474 - INFO - Epoch 7 completed:
+2025-07-28 04:08:44,474 - INFO -   Average loss: 0.287128
+2025-07-28 04:08:44,474 - INFO -   Best loss: 0.287128
+2025-07-28 04:08:44,474 - INFO -   Best similarity: 0.9139
+2025-07-28 04:08:44,474 - INFO -   Steps in epoch: 1
+2025-07-28 04:08:44,474 - INFO - Starting epoch 8/10
+2025-07-28 04:08:48,654 - INFO - Loaded shard 1/2: 2601 samples
+2025-07-28 04:08:48,797 - INFO - Step 180: Loss=0.280928, VelSim=0.9159 (excellent), GradNorm=25996.533, LR=4.99e-04, PredNorm=39.170, TargetNorm=42.452 [OVERFIT TEST]
+2025-07-28 04:08:48,797 - INFO -   Detailed metrics:
+2025-07-28 04:08:48,797 - INFO -     loss: 0.280928
+2025-07-28 04:08:48,797 - INFO -     total_loss: 0.280928
+2025-07-28 04:08:48,797 - INFO -     reg_loss: 0.000000
+2025-07-28 04:08:48,797 - INFO -     velocity_similarity: 0.915852
+2025-07-28 04:08:48,797 - INFO -     velocity_similarity_std: 0.008258
+2025-07-28 04:08:48,797 - INFO -     pred_norm: 39.170250
+2025-07-28 04:08:48,797 - INFO -     target_norm: 42.452431
+2025-07-28 04:08:48,797 - INFO -     clip_norm: 26.853107
+2025-07-28 04:08:48,797 - INFO -     noise_norm: 31.976971
+2025-07-28 04:08:48,797 - INFO -     eva_norm: 43.746700
+2025-07-28 04:08:48,797 - INFO -     error_norm: 16.379740
+2025-07-28 04:08:48,797 - INFO -     relative_error: 0.385838
+2025-07-28 04:08:48,797 - INFO -     step_count: 180.000000
+2025-07-28 04:08:48,797 - INFO -     loss_ema: 1.133345
+2025-07-28 04:08:48,797 - INFO -     similarity_ema: 0.579148
+2025-07-28 04:08:48,797 - INFO -     timestep_mean: 0.326473
+2025-07-28 04:08:48,797 - INFO -     timestep_std: 0.244177
+2025-07-28 04:08:48,797 - INFO -     interpolation_weight: 0.326416
+2025-07-28 04:08:48,797 - INFO -     pred_min: -32.218750
+2025-07-28 04:08:48,797 - INFO -     pred_max: 207.500000
+2025-07-28 04:08:48,797 - INFO -     target_min: -35.447006
+2025-07-28 04:08:48,797 - INFO -     target_max: 220.149185
+2025-07-28 04:08:48,797 - INFO - 🎉 OVERFITTING TEST PASSED! Model can learn effectively.
+2025-07-28 04:08:48,797 - INFO - Epoch 8 completed:
+2025-07-28 04:08:48,797 - INFO -   Average loss: 0.280928
+2025-07-28 04:08:48,798 - INFO -   Best loss: 0.280928
+2025-07-28 04:08:48,798 - INFO -   Best similarity: 0.9159
+2025-07-28 04:08:48,798 - INFO -   Steps in epoch: 1
+2025-07-28 04:08:48,798 - INFO - Starting epoch 9/10
+2025-07-28 04:08:52,829 - INFO - Loaded shard 1/2: 2601 samples
+2025-07-28 04:08:52,975 - INFO - 🎉 OVERFITTING TEST PASSED! Model can learn effectively.
+2025-07-28 04:08:52,975 - INFO - Epoch 9 completed:
+2025-07-28 04:08:52,976 - INFO -   Average loss: 0.276088
+2025-07-28 04:08:52,976 - INFO -   Best loss: 0.276088
+2025-07-28 04:08:52,976 - INFO -   Best similarity: 0.9173
+2025-07-28 04:08:52,976 - INFO -   Steps in epoch: 1
+2025-07-28 04:08:52,976 - INFO - Starting epoch 10/10
+2025-07-28 04:08:57,016 - INFO - Loaded shard 1/2: 2601 samples
+2025-07-28 04:08:57,163 - INFO - 🎉 OVERFITTING TEST PASSED! Model can learn effectively.
+2025-07-28 04:08:57,163 - INFO - Epoch 10 completed:
+2025-07-28 04:08:57,163 - INFO -   Average loss: 0.270786
+2025-07-28 04:08:57,163 - INFO -   Best loss: 0.270786
+2025-07-28 04:08:57,163 - INFO -   Best similarity: 0.9190
+2025-07-28 04:08:57,164 - INFO -   Steps in epoch: 1
+2025-07-28 04:08:58,912 - INFO - Checkpoint saved: checkpoints/clip_repro_20250728_040319/checkpoint_step_182.pt
+2025-07-28 04:08:58,913 - INFO - Running final evaluation...
+2025-07-28 04:09:03,219 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 04:11:36,684 - INFO - Training completed!
+2025-07-28 04:11:36,686 - INFO -   Total time: 480.0 seconds
+2025-07-28 04:11:36,686 - INFO -   Total steps: 182
+2025-07-28 04:11:36,686 - INFO -   Best loss: 0.270786
+2025-07-28 04:11:36,686 - INFO -   Best CLIP similarity: 0.9190
+2025-07-28 04:11:36,686 - INFO -   🚫 Used minimal normalization approach
+2025-07-28 04:11:36,686 - INFO -   Final evaluation:
+2025-07-28 04:11:36,686 - INFO -     eval_clip_similarity: 0.2612
+2025-07-28 04:11:36,686 - INFO -     eval_clip_similarity_std: 0.0236
+2025-07-28 04:11:36,686 - INFO -     eval_high_quality: 0.0000
+2025-07-28 04:11:36,686 - INFO -     eval_very_high_quality: 0.0000
+2025-07-28 04:11:36,687 - INFO -     eval_excellent_quality: 0.0000
+2025-07-28 04:11:36,687 - INFO -     eval_samples: 1008.0000
+2025-07-28 04:11:36,687 - INFO -   Overfitting test: ✅ PASSED
+2025-07-28 04:11:36,690 - INFO - 
+================================================================================
+2025-07-28 04:11:36,691 - INFO - 🎉 TRAINING COMPLETED!
+2025-07-28 04:11:36,691 - INFO - ================================================================================
+2025-07-28 04:11:36,691 - INFO - 📊 RESULTS SUMMARY:
+2025-07-28 04:11:36,691 - INFO -   Duration: 480.1 seconds (8.0 minutes)
+2025-07-28 04:11:36,691 - INFO -   Total steps: 182
+2025-07-28 04:11:36,691 - INFO -   Best loss: 0.270786
+2025-07-28 04:11:36,691 - INFO -   Best CLIP similarity: 0.9190
+2025-07-28 04:11:36,691 - INFO -   🚫 Used minimal normalization approach
+2025-07-28 04:11:36,691 - INFO - 📊 FINAL EVALUATION:
+2025-07-28 04:11:36,691 - INFO -   CLIP similarity: 0.2612
+2025-07-28 04:11:36,691 - INFO -   High quality (>0.7): 0.0%
+2025-07-28 04:11:36,691 - INFO -   Very high quality (>0.8): 0.0%
+2025-07-28 04:11:36,691 - INFO -   Excellent quality (>0.9): 0.0%
+2025-07-28 04:11:36,691 - INFO -   Samples evaluated: 1008
+2025-07-28 04:11:36,691 - INFO - 🧪 OVERFITTING TEST: ✅ PASSED
+2025-07-28 04:11:36,691 - INFO -    ✅ Model can learn and memorize - architecture is working!
+2025-07-28 04:11:36,691 - INFO - 🏗️  ARCHITECTURE ASSESSMENT:
+2025-07-28 04:11:36,691 - INFO -    🎉 EXCELLENT: BLIP3-o DiT architecture working perfectly!
+2025-07-28 04:11:36,693 - INFO - 📁 Final summary saved to checkpoints/clip_repro_20250728_040319/final_summary.json
+2025-07-28 04:11:36,693 - INFO - 📁 Model checkpoints saved to checkpoints/clip_repro_20250728_040319
+2025-07-28 04:11:36,693 - INFO - ================================================================================

@@ -536,12 +536,12 @@ class BLIP3oCLIPTrainer:
                 logger.info(f"  Best similarity: {self.best_eval_similarity:.4f}")
                 logger.info(f"  Steps in epoch: {epoch_steps}")
                 
-                # Early stopping for overfitting test
-                if (self.overfit_batch is not None and 
-                    len(self.similarity_history) > 0 and 
-                    self.similarity_history[-1] > 0.9):
-                    logger.info("Overfitting test completed successfully!")
-                    break
+                # # Early stopping for overfitting test
+                # if (self.overfit_batch is not None and 
+                #     len(self.similarity_history) > 0 and 
+                #     self.similarity_history[-1] > 0.9):
+                #     logger.info("Overfitting test completed successfully!")
+                #     break
         
         except KeyboardInterrupt:
             logger.info("Training interrupted by user")
