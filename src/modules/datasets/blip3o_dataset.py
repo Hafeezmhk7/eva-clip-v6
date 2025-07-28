@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """
-Fixed BLIP3-o Dataset for EVA-CLIP Reproduction
-Key fixes:
-1. Added __len__ method for IterableDataset
-2. Proper data loading and validation
-3. Correct collate function for flow matching
-4. Better error handling and normalization
-5. Clear input/output handling
+BLIP3-o Dataset for CLIP Reproduction from EVA Embeddings
+Key features:
+1. EVA embeddings [B, N, 4096] as conditioning
+2. CLIP embeddings [B, N, 1024] as targets
+3. Proper data loading and validation
+4. Flow matching setup for CLIP generation
 """
 
 import torch
@@ -25,13 +24,13 @@ import torch.nn.functional as F
 logger = logging.getLogger(__name__)
 
 
-class BLIP3oEVAReproductionDataset(IterableDataset):
+class BLIP3oCLIPReproductionDataset(IterableDataset):
     """
-    Fixed dataset for EVA-CLIP reproduction with proper data handling
+    Dataset for CLIP reproduction with EVA conditioning
     
     This dataset loads:
-    - EVA embeddings [B, N, 4096] as TARGET (what we want to reproduce)
-    - CLIP embeddings [B, N, 1024] as CONDITIONING (guidance)
+    - CLIP embeddings [B, N, 1024] as TARGET (what we want to reproduce)
+    - EVA embeddings [B, N, 4096] as CONDITIONING (guidance)
     """
     
     def __init__(
@@ -84,11 +83,11 @@ class BLIP3oEVAReproductionDataset(IterableDataset):
         # Calculate estimated length for __len__ method
         self._estimate_length()
         
-        logger.info(f"EVA Reproduction Dataset initialized:")
+        logger.info(f"CLIP Reproduction Dataset initialized:")
         logger.info(f"  Directory: {self.chunked_embeddings_dir}")
         logger.info(f"  Mode: {self.training_mode} ({self.expected_tokens} tokens)")
-        logger.info(f"  TARGET: EVA embeddings [B, N, 4096]")
-        logger.info(f"  CONDITIONING: CLIP embeddings [B, N, 1024]")
+        logger.info(f"  TARGET: CLIP embeddings [B, N, 1024]")
+        logger.info(f"  CONDITIONING: EVA embeddings [B, N, 4096]")
         logger.info(f"  Normalize: {self.normalize_embeddings}")
         logger.info(f"  Shards: {len(self.shard_files)}")
         logger.info(f"  Estimated samples: {self.estimated_length:,}")
@@ -369,10 +368,10 @@ class BLIP3oEVAReproductionDataset(IterableDataset):
                         else:
                             raise ValueError("NaN detected in embeddings")
                     
-                    # Create sample item for EVA reproduction
+                    # Create sample item for CLIP reproduction
                     item = {
-                        'clip_embeddings': clip_emb,  # [N, 1024] - CONDITIONING
-                        'eva_embeddings': eva_emb,    # [N, 4096] - TARGET to reproduce
+                        'eva_embeddings': eva_emb,      # [N, 4096] - CONDITIONING
+                        'clip_embeddings': clip_emb,    # [N, 1024] - TARGET to reproduce
                         'caption': caption,
                         'key': f"shard_{self.current_shard_idx-1}_sample_{sample_idx}",
                         'sample_idx': sample_idx,
@@ -400,14 +399,14 @@ class BLIP3oEVAReproductionDataset(IterableDataset):
         logger.info(f"Iteration completed: {self.total_samples_processed} samples processed")
 
 
-def eva_reproduction_collate_fn(batch: List[Dict[str, Any]]) -> Dict[str, Any]:
+def clip_reproduction_collate_fn(batch: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
-    Collate function for EVA reproduction with proper flow matching setup
+    Collate function for CLIP reproduction with proper flow matching setup
     
     This function:
-    1. Takes clean EVA embeddings as targets
+    1. Takes clean CLIP embeddings as targets
     2. Creates noisy versions for input
-    3. Uses CLIP embeddings for conditioning
+    3. Uses EVA embeddings for conditioning
     4. Sets up flow matching with proper timesteps
     """
     if not batch:
@@ -420,58 +419,56 @@ def eva_reproduction_collate_fn(batch: List[Dict[str, Any]]) -> Dict[str, Any]:
     
     try:
         # Stack embeddings
-        clip_embeddings = torch.stack([item['clip_embeddings'] for item in valid_batch])  # [B, N, 1024]
-        eva_embeddings = torch.stack([item['eva_embeddings'] for item in valid_batch])    # [B, N, 4096]
+        eva_embeddings = torch.stack([item['eva_embeddings'] for item in valid_batch])     # [B, N, 4096]
+        clip_embeddings = torch.stack([item['clip_embeddings'] for item in valid_batch])   # [B, N, 1024]
         
         # Collect metadata
         captions = [item['caption'] for item in valid_batch]
         keys = [item['key'] for item in valid_batch]
         
-        batch_size, seq_len, eva_dim = eva_embeddings.shape
-        device = eva_embeddings.device
-        dtype = eva_embeddings.dtype
+        batch_size, seq_len, clip_dim = clip_embeddings.shape
+        device = clip_embeddings.device
+        dtype = clip_embeddings.dtype
         
         # Ensure float32 for stability
-        clip_embeddings = clip_embeddings.float()
         eva_embeddings = eva_embeddings.float()
+        clip_embeddings = clip_embeddings.float()
         
-        # Apply final normalization to ensure L2 norm = 1
-        eps = 1e-8
-        clip_embeddings = F.normalize(clip_embeddings + eps, p=2, dim=-1)
-        eva_embeddings = F.normalize(eva_embeddings + eps, p=2, dim=-1)
+        # NO NORMALIZATION during training - let the model learn raw embeddings
+        # Only normalize for cosine similarity computation in evaluation
         
-        # FLOW MATCHING SETUP for EVA reproduction
+        # FLOW MATCHING SETUP for CLIP reproduction (without normalization)
         # Sample random timesteps for each sample in batch
         timesteps = torch.rand(batch_size, device=device, dtype=dtype)
         
-        # Create noise (source distribution) - same dimension as EVA
-        noise = torch.randn_like(eva_embeddings, device=device, dtype=dtype)
-        noise = F.normalize(noise + eps, p=2, dim=-1)  # Normalize noise
+        # Create noise (source distribution) - same dimension as CLIP
+        noise = torch.randn_like(clip_embeddings, device=device, dtype=dtype)
+        # NO normalization of noise - let model learn with raw noise distribution
         
-        # Linear interpolation for rectified flow: x_t = (1-t) * noise + t * eva_clean
+        # Linear interpolation for rectified flow: x_t = (1-t) * noise + t * clip_clean
         t_expanded = timesteps.view(batch_size, 1, 1)  # [B, 1, 1]
-        noisy_eva = (1 - t_expanded) * noise + t_expanded * eva_embeddings
+        noisy_clip = (1 - t_expanded) * noise + t_expanded * clip_embeddings
         
-        # Velocity target: v = eva_clean - noise (for rectified flow)
-        velocity_target = eva_embeddings - noise
+        # Velocity target: v = clip_clean - noise (for rectified flow)
+        velocity_target = clip_embeddings - noise
         
         # Validation
-        assert clip_embeddings.shape == (batch_size, seq_len, 1024), f"CLIP shape: {clip_embeddings.shape}"
         assert eva_embeddings.shape == (batch_size, seq_len, 4096), f"EVA shape: {eva_embeddings.shape}"
-        assert noisy_eva.shape == (batch_size, seq_len, 4096), f"Noisy EVA shape: {noisy_eva.shape}"
-        assert velocity_target.shape == (batch_size, seq_len, 4096), f"Velocity target shape: {velocity_target.shape}"
+        assert clip_embeddings.shape == (batch_size, seq_len, 1024), f"CLIP shape: {clip_embeddings.shape}"
+        assert noisy_clip.shape == (batch_size, seq_len, 1024), f"Noisy CLIP shape: {noisy_clip.shape}"
+        assert velocity_target.shape == (batch_size, seq_len, 1024), f"Velocity target shape: {velocity_target.shape}"
         assert timesteps.shape == (batch_size,), f"Timesteps shape: {timesteps.shape}"
         
         return {
             # Model inputs
-            'encoder_hidden_states': clip_embeddings,    # [B, N, 1024] - CLIP conditioning
-            'hidden_states': noisy_eva,                  # [B, N, 4096] - Noisy EVA input
+            'encoder_hidden_states': eva_embeddings,     # [B, N, 4096] - EVA conditioning
+            'hidden_states': noisy_clip,                 # [B, N, 1024] - Noisy CLIP input
             'timestep': timesteps,                       # [B] - Flow matching timesteps
             
             # Training targets
-            'eva_embeddings': eva_embeddings,            # [B, N, 4096] - Clean EVA (target)
-            'velocity_target': velocity_target,          # [B, N, 4096] - Velocity for flow matching
-            'noise': noise,                              # [B, N, 4096] - Original noise
+            'clip_embeddings': clip_embeddings,          # [B, N, 1024] - Clean CLIP (target)
+            'velocity_target': velocity_target,          # [B, N, 1024] - Velocity for flow matching
+            'noise': noise,                              # [B, N, 1024] - Original noise
             
             # Metadata
             'captions': captions,
@@ -482,10 +479,10 @@ def eva_reproduction_collate_fn(batch: List[Dict[str, Any]]) -> Dict[str, Any]:
             'seq_len': seq_len,
             
             # Normalization status
-            'clip_embeddings_normalized': True,
-            'eva_embeddings_normalized': True,
-            'clip_norm_mean': torch.norm(clip_embeddings, dim=-1).mean().item(),
+            'eva_embeddings_normalized': False,  # No normalization during training
+            'clip_embeddings_normalized': False,  # No normalization during training
             'eva_norm_mean': torch.norm(eva_embeddings, dim=-1).mean().item(),
+            'clip_norm_mean': torch.norm(clip_embeddings, dim=-1).mean().item(),
         }
         
     except Exception as e:
@@ -502,7 +499,7 @@ def eva_reproduction_collate_fn(batch: List[Dict[str, Any]]) -> Dict[str, Any]:
         raise
 
 
-def create_eva_reproduction_dataloaders(
+def create_clip_reproduction_dataloaders(
     chunked_embeddings_dir: Union[str, Path],
     batch_size: int = 16,
     eval_batch_size: Optional[int] = None,
@@ -513,18 +510,18 @@ def create_eva_reproduction_dataloaders(
     pin_memory: bool = False,
     **kwargs
 ) -> Tuple[DataLoader, Optional[DataLoader]]:
-    """Create dataloaders for EVA reproduction"""
+    """Create dataloaders for CLIP reproduction"""
     
     if eval_batch_size is None:
         eval_batch_size = batch_size
     
-    logger.info(f"Creating EVA reproduction dataloaders:")
-    logger.info(f"  Target: EVA embeddings [B, N, 4096]")
-    logger.info(f"  Conditioning: CLIP embeddings [B, N, 1024]")
+    logger.info(f"Creating CLIP reproduction dataloaders:")
+    logger.info(f"  Target: CLIP embeddings [B, N, 1024]")
+    logger.info(f"  Conditioning: EVA embeddings [B, N, 4096]")
     logger.info(f"  Normalize: {normalize_embeddings}")
     
     # Create training dataset
-    train_dataset = BLIP3oEVAReproductionDataset(
+    train_dataset = BLIP3oCLIPReproductionDataset(
         chunked_embeddings_dir=chunked_embeddings_dir,
         split="train",
         training_mode=training_mode,
@@ -540,14 +537,14 @@ def create_eva_reproduction_dataloaders(
         train_dataset,
         batch_size=batch_size,
         num_workers=num_workers,
-        collate_fn=eva_reproduction_collate_fn,
+        collate_fn=clip_reproduction_collate_fn,
         pin_memory=pin_memory,
         drop_last=True,
         persistent_workers=num_workers > 0,
     )
     
     # Create evaluation dataset (same data for now)
-    eval_dataset = BLIP3oEVAReproductionDataset(
+    eval_dataset = BLIP3oCLIPReproductionDataset(
         chunked_embeddings_dir=chunked_embeddings_dir,
         split="eval",
         training_mode=training_mode,
@@ -562,13 +559,13 @@ def create_eva_reproduction_dataloaders(
         eval_dataset,
         batch_size=eval_batch_size,
         num_workers=min(num_workers, 1),
-        collate_fn=eva_reproduction_collate_fn,
+        collate_fn=clip_reproduction_collate_fn,
         pin_memory=pin_memory,
         drop_last=False,
         persistent_workers=min(num_workers, 1) > 0,
     )
     
-    logger.info(f"EVA reproduction dataloaders created successfully")
+    logger.info(f"CLIP reproduction dataloaders created successfully")
     logger.info(f"  Training dataset length: {len(train_dataset):,}")
     logger.info(f"  Evaluation dataset length: {len(eval_dataset):,}")
     

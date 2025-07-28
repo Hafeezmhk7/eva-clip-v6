@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
-Fixed BLIP3-o Trainer for EVA-CLIP Reproduction
-Key fixes:
+BLIP3-o Trainer for CLIP Reproduction from EVA Embeddings
+Key features:
 1. Proper gradient flow and monitoring
 2. Better learning rate scheduling
 3. Overfitting test capability
 4. Comprehensive debugging and metrics
 5. Handles IterableDataset properly
+6. Minimal normalization (only for evaluation similarity)
 """
 
 import torch
@@ -26,9 +27,9 @@ import math
 logger = logging.getLogger(__name__)
 
 
-class BLIP3oEVATrainer:
+class BLIP3oCLIPTrainer:
     """
-    Fixed trainer for EVA reproduction with comprehensive monitoring
+    Trainer for CLIP reproduction with minimal normalization approach
     """
     
     def __init__(
@@ -119,13 +120,14 @@ class BLIP3oEVATrainer:
         if self.overfit_test_size:
             self._prepare_overfit_test()
         
-        logger.info("BLIP3-o EVA Trainer initialized")
+        logger.info("BLIP3-o CLIP Trainer initialized")
         logger.info(f"  Device: {self.device}")
         logger.info(f"  Learning rate: {self.learning_rate}")
         logger.info(f"  Epochs: {self.num_epochs}")
         logger.info(f"  Estimated steps per epoch: {self.estimated_steps_per_epoch}")
         logger.info(f"  Overfit test: {self.overfit_test_size if self.overfit_test_size else 'Disabled'}")
         logger.info(f"  Mixed precision: {self.fp16}")
+        logger.info(f"  🚫 Minimal normalization: Only for evaluation similarity")
 
     def _estimate_steps_per_epoch(self) -> int:
         """Estimate steps per epoch for IterableDataset"""
@@ -235,11 +237,11 @@ class BLIP3oEVATrainer:
                     batch[key] = value
         
         # Extract inputs
-        hidden_states = batch['hidden_states']          # [B, N, 4096] - Noisy EVA
+        hidden_states = batch['hidden_states']          # [B, N, 1024] - Noisy CLIP
         timestep = batch['timestep']                    # [B] - Timesteps
-        encoder_hidden_states = batch['encoder_hidden_states']  # [B, N, 1024] - CLIP
-        eva_embeddings = batch['eva_embeddings']        # [B, N, 4096] - Clean EVA (target)
-        noise = batch.get('noise')                      # [B, N, 4096] - Noise
+        encoder_hidden_states = batch['encoder_hidden_states']  # [B, N, 4096] - EVA
+        clip_embeddings = batch['clip_embeddings']      # [B, N, 1024] - Clean CLIP (target)
+        noise = batch.get('noise')                      # [B, N, 1024] - Noise
         
         # Forward pass
         if self.fp16:
@@ -254,9 +256,9 @@ class BLIP3oEVATrainer:
                 # Compute loss
                 loss, metrics = self.loss_fn(
                     model_output=model_output,
-                    target_samples=eva_embeddings,
+                    target_samples=clip_embeddings,
                     timesteps=timestep,
-                    clip_conditioning=encoder_hidden_states,
+                    eva_conditioning=encoder_hidden_states,
                     noise=noise,
                     return_metrics=True
                 )
@@ -270,9 +272,9 @@ class BLIP3oEVATrainer:
             
             loss, metrics = self.loss_fn(
                 model_output=model_output,
-                target_samples=eva_embeddings,
+                target_samples=clip_embeddings,
                 timesteps=timestep,
-                clip_conditioning=encoder_hidden_states,
+                eva_conditioning=encoder_hidden_states,
                 noise=noise,
                 return_metrics=True
             )
@@ -315,7 +317,7 @@ class BLIP3oEVATrainer:
         return grad_norm
 
     def _evaluate(self, num_samples: Optional[int] = None) -> Dict[str, float]:
-        """Run evaluation"""
+        """Run evaluation (normalize only for similarity)"""
         if self.eval_dataloader is None:
             return {}
         
@@ -333,23 +335,24 @@ class BLIP3oEVATrainer:
                     break
                 
                 # Move to device
-                clip_features = batch['encoder_hidden_states'].to(self.device)
-                target_eva = batch['eva_embeddings'].to(self.device)
+                eva_features = batch['encoder_hidden_states'].to(self.device)
+                target_clip = batch['clip_embeddings'].to(self.device)
                 
-                # Generate EVA embeddings
-                generated_eva = self.model.generate(
-                    clip_features=clip_features,
+                # Generate CLIP embeddings (no normalization during generation)
+                generated_clip = self.model.generate(
+                    eva_features=eva_features,
                     num_inference_steps=self.eval_inference_steps,
-                    normalize_output=True
+                    normalize_output=False  # No normalization during generation
                 )
                 
-                # Compute similarity
-                target_norm = F.normalize(target_eva, p=2, dim=-1)
-                similarity = F.cosine_similarity(generated_eva, target_norm, dim=-1)
+                # Compute similarity (normalize ONLY for similarity computation)
+                target_norm = F.normalize(target_clip, p=2, dim=-1)
+                generated_norm = F.normalize(generated_clip, p=2, dim=-1)
+                similarity = F.cosine_similarity(generated_norm, target_norm, dim=-1)
                 per_image_similarity = similarity.mean(dim=1)
                 
                 all_similarities.append(per_image_similarity.cpu())
-                samples_processed += clip_features.shape[0]
+                samples_processed += eva_features.shape[0]
         
         self.model.train()
         
@@ -359,8 +362,8 @@ class BLIP3oEVATrainer:
         all_sims = torch.cat(all_similarities)
         
         return {
-            'eval_eva_similarity': all_sims.mean().item(),
-            'eval_eva_similarity_std': all_sims.std().item(),
+            'eval_clip_similarity': all_sims.mean().item(),
+            'eval_clip_similarity_std': all_sims.std().item(),
             'eval_high_quality': (all_sims > 0.7).float().mean().item(),
             'eval_very_high_quality': (all_sims > 0.8).float().mean().item(),
             'eval_excellent_quality': (all_sims > 0.9).float().mean().item(),
@@ -395,6 +398,10 @@ class BLIP3oEVATrainer:
             
             log_msg += f", GradNorm={grad_norm:.3f}"
             log_msg += f", LR={self.optimizer.param_groups[0]['lr']:.2e}"
+            
+            # Show raw norms (no normalization applied)
+            if 'pred_norm' in metrics and 'target_norm' in metrics:
+                log_msg += f", PredNorm={metrics['pred_norm']:.3f}, TargetNorm={metrics['target_norm']:.3f}"
             
             if self.overfit_batch is not None:
                 log_msg += " [OVERFIT TEST]"
@@ -432,10 +439,11 @@ class BLIP3oEVATrainer:
 
     def train(self) -> Dict[str, Any]:
         """Main training loop"""
-        logger.info("Starting EVA reproduction training...")
+        logger.info("Starting CLIP reproduction training...")
         logger.info(f"  Model parameters: {sum(p.numel() for p in self.model.parameters()):,}")
         logger.info(f"  Estimated training steps per epoch: {self.estimated_steps_per_epoch}")
         logger.info(f"  Total estimated training steps: {self.estimated_steps_per_epoch * self.num_epochs}")
+        logger.info(f"  🚫 Minimal normalization: Only for evaluation similarity")
         
         if self.overfit_batch is not None:
             logger.info(f"  OVERFITTING TEST MODE: Using {self.overfit_batch['batch_size']} samples")
@@ -495,14 +503,14 @@ class BLIP3oEVATrainer:
                             eval_metrics = self._evaluate()
                             
                             if eval_metrics:
-                                logger.info(f"Evaluation results:")
+                                logger.info(f"Evaluation results (similarity uses normalization):")
                                 for key, value in eval_metrics.items():
                                     logger.info(f"  {key}: {value:.4f}")
                                 
                                 # Update best eval similarity
-                                if eval_metrics.get('eval_eva_similarity', 0) > self.best_eval_similarity:
-                                    self.best_eval_similarity = eval_metrics['eval_eva_similarity']
-                                    logger.info(f"New best EVA similarity: {self.best_eval_similarity:.4f}")
+                                if eval_metrics.get('eval_clip_similarity', 0) > self.best_eval_similarity:
+                                    self.best_eval_similarity = eval_metrics['eval_clip_similarity']
+                                    logger.info(f"New best CLIP similarity: {self.best_eval_similarity:.4f}")
                         
                         # Save checkpoint
                         if self.global_step % self.save_every_n_steps == 0:
@@ -569,6 +577,7 @@ class BLIP3oEVATrainer:
                 'lr_history': list(self.lr_history),
                 'grad_norm_history': list(self.grad_norm_history),
                 'estimated_steps_per_epoch': self.estimated_steps_per_epoch,
+                'minimal_normalization': True,
             }
             
             # Save training summary
@@ -580,7 +589,8 @@ class BLIP3oEVATrainer:
             logger.info(f"  Total time: {total_time:.1f} seconds")
             logger.info(f"  Total steps: {self.global_step}")
             logger.info(f"  Best loss: {self.best_loss:.6f}")
-            logger.info(f"  Best EVA similarity: {self.best_eval_similarity:.4f}")
+            logger.info(f"  Best CLIP similarity: {self.best_eval_similarity:.4f}")
+            logger.info(f"  🚫 Used minimal normalization approach")
             
             if final_eval:
                 logger.info(f"  Final evaluation:")
@@ -594,7 +604,7 @@ class BLIP3oEVATrainer:
             return summary
 
 
-def create_eva_trainer(
+def create_clip_trainer(
     model,
     loss_fn,
     train_dataloader,
@@ -605,10 +615,10 @@ def create_eva_trainer(
     overfit_test_size: Optional[int] = None,
     debug_mode: bool = False,
     **kwargs
-) -> BLIP3oEVATrainer:
-    """Factory function to create EVA trainer"""
+) -> BLIP3oCLIPTrainer:
+    """Factory function to create CLIP trainer"""
     
-    return BLIP3oEVATrainer(
+    return BLIP3oCLIPTrainer(
         model=model,
         loss_fn=loss_fn,
         train_dataloader=train_dataloader,

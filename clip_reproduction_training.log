@@ -1,0 +1,51 @@
+2025-07-28 02:55:10,779 - INFO - 🚀 Starting CLIP Reproduction from EVA Embeddings
+2025-07-28 02:55:10,779 - INFO - ================================================================================
+2025-07-28 02:55:10,779 - INFO - EXPERIMENT DETAILS:
+2025-07-28 02:55:10,779 - INFO -   📋 Task: Reproduce clean CLIP embeddings from EVA embeddings
+2025-07-28 02:55:10,779 - INFO -   🧠 Model: BLIP3-o DiT with 3D RoPE and Grouped-Query Attention
+2025-07-28 02:55:10,779 - INFO -   🎯 Target: CLIP embeddings [B, N, 1024]
+2025-07-28 02:55:10,779 - INFO -   🎮 Conditioning: EVA embeddings [B, N, 4096]
+2025-07-28 02:55:10,780 - INFO -   🌊 Method: Rectified Flow Matching
+2025-07-28 02:55:10,780 - INFO -   🚫 Normalization: MINIMAL (only for evaluation similarity)
+2025-07-28 02:55:10,780 - INFO - ================================================================================
+2025-07-28 02:55:10,780 - INFO - 📄 Using updated file names:
+2025-07-28 02:55:10,780 - INFO -   • Model: blip3o_dit.py
+2025-07-28 02:55:10,780 - INFO -   • Loss: blip3o_fm_loss.py
+2025-07-28 02:55:10,780 - INFO -   • Dataset: blip3o_datasets.py
+2025-07-28 02:55:10,780 - INFO -   • Trainer: blip3o_trainer.py
+2025-07-28 02:55:10,780 - INFO -   • Config: blip3o_config.py
+2025-07-28 02:55:10,780 - INFO - ================================================================================
+2025-07-28 02:55:10,780 - INFO - Configuration:
+2025-07-28 02:55:10,780 - INFO -   Model size: base
+2025-07-28 02:55:10,780 - INFO -   Training mode: patch_only
+2025-07-28 02:55:10,780 - INFO -   Embeddings dir: /scratch-shared/azadaianchuk1/blip3o_workspace/embeddings/patch_only_256_tokens
+2025-07-28 02:55:10,780 - INFO -   Output dir: ./checkpoints/clip_repro_20250728_025509
+2025-07-28 02:55:10,780 - INFO -   Learning rate: 0.0005
+2025-07-28 02:55:10,781 - INFO -   Batch size: 8
+2025-07-28 02:55:10,781 - INFO -   Epochs: 10
+2025-07-28 02:55:10,781 - INFO -   Max shards: 2
+2025-07-28 02:55:10,781 - INFO -   🧪 OVERFITTING TEST: 20 samples
+2025-07-28 02:55:10,781 - INFO -   Debug mode: True
+2025-07-28 02:55:10,781 - INFO - ================================================================================
+2025-07-28 02:55:10,781 - INFO - 🔍 Checking module availability...
+2025-07-28 02:55:10,792 - WARNING - ⚠️ Failed to import from blip3o_dit.py: No module named 'blip3o_dit'
+2025-07-28 02:55:10,792 - ERROR - ❌ Fallback import also failed: No module named 'blip3o_dit'
+2025-07-28 02:55:10,792 - WARNING - ⚠️ Failed to import from blip3o_fm_loss.py: No module named 'blip3o_fm_loss'
+2025-07-28 02:55:10,792 - ERROR - ❌ Loss fallback import failed: No module named 'blip3o_fm_loss'
+2025-07-28 02:55:10,793 - WARNING - ⚠️ Failed to import from blip3o_trainer.py: No module named 'blip3o_trainer'
+2025-07-28 02:55:10,793 - ERROR - ❌ Trainer fallback import failed: No module named 'blip3o_trainer'
+2025-07-28 02:55:10,793 - WARNING - ⚠️ Failed to import from blip3o_datasets.py: No module named 'blip3o_datasets'
+2025-07-28 02:55:10,793 - ERROR - ❌ Dataset fallback import failed: No module named 'blip3o_datasets'
+2025-07-28 02:55:10,793 - WARNING - ⚠️ Failed to import from blip3o_config.py: No module named 'blip3o_config'
+2025-07-28 02:55:10,793 - ERROR - ❌ Config fallback import failed: No module named 'blip3o_config'
+2025-07-28 02:55:10,793 - WARNING - ⚠️ Missing components: ['model', 'loss', 'trainer', 'dataset', 'config']
+2025-07-28 02:55:10,793 - WARNING - ⚠️ Partial initialization. Missing: ['model', 'loss', 'trainer', 'dataset', 'config']
+2025-07-28 02:55:10,793 - INFO - ✅ Using comprehensive modules system
+2025-07-28 02:55:10,793 - WARNING - ⚠️ Missing components: ['model', 'loss', 'trainer', 'dataset', 'config']
+2025-07-28 02:55:10,793 - WARNING - ⚠️ Missing components: ['model', 'loss', 'trainer', 'dataset', 'config']
+2025-07-28 02:55:10,793 - WARNING - ⚠️ Some modules not available: ['model', 'loss', 'trainer', 'dataset', 'config']
+2025-07-28 02:55:10,794 - WARNING - ⚠️ Could not import config. Continuing without config summary.
+2025-07-28 02:55:11,038 - INFO - Using GPU: NVIDIA H100
+2025-07-28 02:55:11,038 - INFO - GPU Memory: 100.0 GB
+2025-07-28 02:55:11,038 - ERROR - ❌ Could not import model. Ensure blip3o_dit.py is available or src/modules/__init__.py is properly set up.
+2025-07-28 02:55:11,038 - ERROR - ❌ Training failed with error: cannot import name 'create_clip_reproduction_model' from 'src.modules' (/gpfs/home4/azadaianchuk1/eva-clip-v6/src/modules/__init__.py)

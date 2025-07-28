@@ -1330,3 +1330,1912 @@
 2025-07-28 02:09:04,589 - INFO -     target_max: 0.579655
 2025-07-28 02:09:04,589 - INFO - Running evaluation at step 450...
 2025-07-28 02:09:11,311 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 02:10:34,492 - INFO - Evaluation results:
+2025-07-28 02:10:34,494 - INFO -   eval_eva_similarity: 0.0760
+2025-07-28 02:10:34,494 - INFO -   eval_eva_similarity_std: 0.0123
+2025-07-28 02:10:34,494 - INFO -   eval_high_quality: 0.0000
+2025-07-28 02:10:34,494 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 02:10:34,494 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 02:10:34,494 - INFO -   eval_samples: 504.0000
+2025-07-28 02:10:36,307 - INFO - Step 460: Loss=0.000520, VelSim=0.2008 (fair), GradNorm=513.411, LR=4.96e-04 [OVERFIT TEST]
+2025-07-28 02:10:36,308 - INFO -   Detailed metrics:
+2025-07-28 02:10:36,308 - INFO -     loss: 0.000520
+2025-07-28 02:10:36,308 - INFO -     total_loss: 0.000520
+2025-07-28 02:10:36,308 - INFO -     reg_loss: 0.000000
+2025-07-28 02:10:36,308 - INFO -     velocity_similarity: 0.200814
+2025-07-28 02:10:36,308 - INFO -     velocity_similarity_std: 0.019415
+2025-07-28 02:10:36,308 - INFO -     pred_norm: 0.587751
+2025-07-28 02:10:36,308 - INFO -     target_norm: 1.414245
+2025-07-28 02:10:36,308 - INFO -     eva_norm: 1.000000
+2025-07-28 02:10:36,308 - INFO -     noise_norm: 1.000000
+2025-07-28 02:10:36,308 - INFO -     clip_norm: 1.000000
+2025-07-28 02:10:36,308 - INFO -     error_norm: 1.417872
+2025-07-28 02:10:36,308 - INFO -     relative_error: 1.002565
+2025-07-28 02:10:36,308 - INFO -     step_count: 460.000000
+2025-07-28 02:10:36,308 - INFO -     loss_ema: 0.003864
+2025-07-28 02:10:36,308 - INFO -     similarity_ema: 0.262608
+2025-07-28 02:10:36,308 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:10:36,309 - INFO -     timestep_std: 0.215460
+2025-07-28 02:10:36,309 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:10:36,309 - INFO -     pred_min: -0.069580
+2025-07-28 02:10:36,309 - INFO -     pred_max: 0.039581
+2025-07-28 02:10:36,309 - INFO -     target_min: -0.887084
+2025-07-28 02:10:36,309 - INFO -     target_max: 0.579655
+2025-07-28 02:10:38,129 - INFO - Step 470: Loss=0.000484, VelSim=0.2586 (fair), GradNorm=267.424, LR=4.96e-04 [OVERFIT TEST]
+2025-07-28 02:10:38,129 - INFO -   Detailed metrics:
+2025-07-28 02:10:38,129 - INFO -     loss: 0.000484
+2025-07-28 02:10:38,129 - INFO -     total_loss: 0.000484
+2025-07-28 02:10:38,129 - INFO -     reg_loss: 0.000000
+2025-07-28 02:10:38,129 - INFO -     velocity_similarity: 0.258579
+2025-07-28 02:10:38,129 - INFO -     velocity_similarity_std: 0.022164
+2025-07-28 02:10:38,129 - INFO -     pred_norm: 0.455693
+2025-07-28 02:10:38,129 - INFO -     target_norm: 1.414245
+2025-07-28 02:10:38,129 - INFO -     eva_norm: 1.000000
+2025-07-28 02:10:38,129 - INFO -     noise_norm: 1.000000
+2025-07-28 02:10:38,130 - INFO -     clip_norm: 1.000000
+2025-07-28 02:10:38,130 - INFO -     error_norm: 1.368727
+2025-07-28 02:10:38,130 - INFO -     relative_error: 0.967815
+2025-07-28 02:10:38,130 - INFO -     step_count: 470.000000
+2025-07-28 02:10:38,130 - INFO -     loss_ema: 0.003544
+2025-07-28 02:10:38,130 - INFO -     similarity_ema: 0.257722
+2025-07-28 02:10:38,130 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:10:38,130 - INFO -     timestep_std: 0.215460
+2025-07-28 02:10:38,130 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:10:38,130 - INFO -     pred_min: -0.057617
+2025-07-28 02:10:38,130 - INFO -     pred_max: 0.027679
+2025-07-28 02:10:38,130 - INFO -     target_min: -0.887084
+2025-07-28 02:10:38,130 - INFO -     target_max: 0.579655
+2025-07-28 02:10:39,937 - INFO - Step 480: Loss=0.000475, VelSim=0.2849 (fair), GradNorm=151.144, LR=4.96e-04 [OVERFIT TEST]
+2025-07-28 02:10:39,937 - INFO -   Detailed metrics:
+2025-07-28 02:10:39,937 - INFO -     loss: 0.000475
+2025-07-28 02:10:39,937 - INFO -     total_loss: 0.000475
+2025-07-28 02:10:39,937 - INFO -     reg_loss: 0.000000
+2025-07-28 02:10:39,938 - INFO -     velocity_similarity: 0.284901
+2025-07-28 02:10:39,938 - INFO -     velocity_similarity_std: 0.023841
+2025-07-28 02:10:39,938 - INFO -     pred_norm: 0.418645
+2025-07-28 02:10:39,938 - INFO -     target_norm: 1.414245
+2025-07-28 02:10:39,938 - INFO -     eva_norm: 1.000000
+2025-07-28 02:10:39,938 - INFO -     noise_norm: 1.000000
+2025-07-28 02:10:39,938 - INFO -     clip_norm: 1.000000
+2025-07-28 02:10:39,938 - INFO -     error_norm: 1.355241
+2025-07-28 02:10:39,938 - INFO -     relative_error: 0.958279
+2025-07-28 02:10:39,938 - INFO -     step_count: 480.000000
+2025-07-28 02:10:39,938 - INFO -     loss_ema: 0.003251
+2025-07-28 02:10:39,938 - INFO -     similarity_ema: 0.258797
+2025-07-28 02:10:39,938 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:10:39,938 - INFO -     timestep_std: 0.215460
+2025-07-28 02:10:39,938 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:10:39,938 - INFO -     pred_min: -0.062683
+2025-07-28 02:10:39,938 - INFO -     pred_max: 0.031830
+2025-07-28 02:10:39,938 - INFO -     target_min: -0.887084
+2025-07-28 02:10:39,938 - INFO -     target_max: 0.579655
+2025-07-28 02:10:41,759 - INFO - Step 490: Loss=0.000472, VelSim=0.2943 (fair), GradNorm=93.099, LR=4.96e-04 [OVERFIT TEST]
+2025-07-28 02:10:41,760 - INFO -   Detailed metrics:
+2025-07-28 02:10:41,760 - INFO -     loss: 0.000472
+2025-07-28 02:10:41,760 - INFO -     total_loss: 0.000472
+2025-07-28 02:10:41,760 - INFO -     reg_loss: 0.000000
+2025-07-28 02:10:41,760 - INFO -     velocity_similarity: 0.294258
+2025-07-28 02:10:41,761 - INFO -     velocity_similarity_std: 0.024446
+2025-07-28 02:10:41,761 - INFO -     pred_norm: 0.410435
+2025-07-28 02:10:41,761 - INFO -     target_norm: 1.414245
+2025-07-28 02:10:41,761 - INFO -     eva_norm: 1.000000
+2025-07-28 02:10:41,761 - INFO -     noise_norm: 1.000000
+2025-07-28 02:10:41,761 - INFO -     clip_norm: 1.000000
+2025-07-28 02:10:41,761 - INFO -     error_norm: 1.351110
+2025-07-28 02:10:41,761 - INFO -     relative_error: 0.955358
+2025-07-28 02:10:41,761 - INFO -     step_count: 490.000000
+2025-07-28 02:10:41,761 - INFO -     loss_ema: 0.002985
+2025-07-28 02:10:41,761 - INFO -     similarity_ema: 0.261661
+2025-07-28 02:10:41,761 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:10:41,761 - INFO -     timestep_std: 0.215460
+2025-07-28 02:10:41,761 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:10:41,761 - INFO -     pred_min: -0.065857
+2025-07-28 02:10:41,761 - INFO -     pred_max: 0.031372
+2025-07-28 02:10:41,761 - INFO -     target_min: -0.887084
+2025-07-28 02:10:41,761 - INFO -     target_max: 0.579655
+2025-07-28 02:10:43,507 - INFO - [Step 500] Flow Matching Debug:
+2025-07-28 02:10:43,507 - INFO -   Loss: 0.000470 (quality: fair)
+2025-07-28 02:10:43,507 - INFO -   Velocity Sim: 0.2995
+2025-07-28 02:10:43,507 - INFO -   Norms - Pred: 0.408, Target: 1.414
+2025-07-28 02:10:43,508 - INFO -   Error: 1.349 (relative: 0.954)
+2025-07-28 02:10:43,508 - INFO -   Timesteps: 0.421 ± 0.215
+2025-07-28 02:10:43,579 - INFO - Step 500: Loss=0.000470, VelSim=0.2995 (fair), GradNorm=56.658, LR=4.95e-04 [OVERFIT TEST]
+2025-07-28 02:10:43,580 - INFO -   Detailed metrics:
+2025-07-28 02:10:43,580 - INFO -     loss: 0.000470
+2025-07-28 02:10:43,580 - INFO -     total_loss: 0.000470
+2025-07-28 02:10:43,580 - INFO -     reg_loss: 0.000000
+2025-07-28 02:10:43,580 - INFO -     velocity_similarity: 0.299484
+2025-07-28 02:10:43,580 - INFO -     velocity_similarity_std: 0.024603
+2025-07-28 02:10:43,580 - INFO -     pred_norm: 0.407747
+2025-07-28 02:10:43,580 - INFO -     target_norm: 1.414245
+2025-07-28 02:10:43,580 - INFO -     eva_norm: 1.000000
+2025-07-28 02:10:43,580 - INFO -     noise_norm: 1.000000
+2025-07-28 02:10:43,580 - INFO -     clip_norm: 1.000000
+2025-07-28 02:10:43,580 - INFO -     error_norm: 1.348891
+2025-07-28 02:10:43,580 - INFO -     relative_error: 0.953789
+2025-07-28 02:10:43,580 - INFO -     step_count: 500.000000
+2025-07-28 02:10:43,580 - INFO -     loss_ema: 0.002745
+2025-07-28 02:10:43,580 - INFO -     similarity_ema: 0.265023
+2025-07-28 02:10:43,580 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:10:43,580 - INFO -     timestep_std: 0.215460
+2025-07-28 02:10:43,580 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:10:43,580 - INFO -     pred_min: -0.066589
+2025-07-28 02:10:43,580 - INFO -     pred_max: 0.032623
+2025-07-28 02:10:43,580 - INFO -     target_min: -0.887084
+2025-07-28 02:10:43,580 - INFO -     target_max: 0.579655
+2025-07-28 02:10:43,580 - INFO - Running evaluation at step 500...
+2025-07-28 02:10:50,351 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 02:12:14,080 - INFO - Evaluation results:
+2025-07-28 02:12:14,086 - INFO -   eval_eva_similarity: 0.0799
+2025-07-28 02:12:14,086 - INFO -   eval_eva_similarity_std: 0.0126
+2025-07-28 02:12:14,086 - INFO -   eval_high_quality: 0.0000
+2025-07-28 02:12:14,086 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 02:12:14,086 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 02:12:14,086 - INFO -   eval_samples: 504.0000
+2025-07-28 02:12:15,577 - INFO - Checkpoint saved: checkpoints/eva_repro_fixed_20250728_015509/checkpoint_step_500.pt
+2025-07-28 02:12:17,404 - INFO - Step 510: Loss=0.000470, VelSim=0.3020 (fair), GradNorm=42.448, LR=4.95e-04 [OVERFIT TEST]
+2025-07-28 02:12:17,404 - INFO -   Detailed metrics:
+2025-07-28 02:12:17,404 - INFO -     loss: 0.000470
+2025-07-28 02:12:17,404 - INFO -     total_loss: 0.000470
+2025-07-28 02:12:17,404 - INFO -     reg_loss: 0.000000
+2025-07-28 02:12:17,404 - INFO -     velocity_similarity: 0.302003
+2025-07-28 02:12:17,404 - INFO -     velocity_similarity_std: 0.024663
+2025-07-28 02:12:17,404 - INFO -     pred_norm: 0.408947
+2025-07-28 02:12:17,404 - INFO -     target_norm: 1.414245
+2025-07-28 02:12:17,404 - INFO -     eva_norm: 1.000000
+2025-07-28 02:12:17,404 - INFO -     noise_norm: 1.000000
+2025-07-28 02:12:17,404 - INFO -     clip_norm: 1.000000
+2025-07-28 02:12:17,405 - INFO -     error_norm: 1.347794
+2025-07-28 02:12:17,405 - INFO -     relative_error: 0.953014
+2025-07-28 02:12:17,405 - INFO -     step_count: 510.000000
+2025-07-28 02:12:17,405 - INFO -     loss_ema: 0.002527
+2025-07-28 02:12:17,405 - INFO -     similarity_ema: 0.268432
+2025-07-28 02:12:17,405 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:12:17,405 - INFO -     timestep_std: 0.215460
+2025-07-28 02:12:17,405 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:12:17,405 - INFO -     pred_min: -0.066040
+2025-07-28 02:12:17,405 - INFO -     pred_max: 0.032471
+2025-07-28 02:12:17,405 - INFO -     target_min: -0.887084
+2025-07-28 02:12:17,405 - INFO -     target_max: 0.579655
+2025-07-28 02:12:19,218 - INFO - Step 520: Loss=0.000469, VelSim=0.3040 (fair), GradNorm=32.256, LR=4.95e-04 [OVERFIT TEST]
+2025-07-28 02:12:19,218 - INFO -   Detailed metrics:
+2025-07-28 02:12:19,218 - INFO -     loss: 0.000469
+2025-07-28 02:12:19,218 - INFO -     total_loss: 0.000469
+2025-07-28 02:12:19,218 - INFO -     reg_loss: 0.000000
+2025-07-28 02:12:19,218 - INFO -     velocity_similarity: 0.303959
+2025-07-28 02:12:19,218 - INFO -     velocity_similarity_std: 0.024567
+2025-07-28 02:12:19,218 - INFO -     pred_norm: 0.411977
+2025-07-28 02:12:19,218 - INFO -     target_norm: 1.414245
+2025-07-28 02:12:19,218 - INFO -     eva_norm: 1.000000
+2025-07-28 02:12:19,218 - INFO -     noise_norm: 1.000000
+2025-07-28 02:12:19,218 - INFO -     clip_norm: 1.000000
+2025-07-28 02:12:19,218 - INFO -     error_norm: 1.346886
+2025-07-28 02:12:19,218 - INFO -     relative_error: 0.952371
+2025-07-28 02:12:19,218 - INFO -     step_count: 520.000000
+2025-07-28 02:12:19,218 - INFO -     loss_ema: 0.002331
+2025-07-28 02:12:19,218 - INFO -     similarity_ema: 0.271746
+2025-07-28 02:12:19,218 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:12:19,219 - INFO -     timestep_std: 0.215460
+2025-07-28 02:12:19,219 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:12:19,219 - INFO -     pred_min: -0.067322
+2025-07-28 02:12:19,219 - INFO -     pred_max: 0.032837
+2025-07-28 02:12:19,219 - INFO -     target_min: -0.887084
+2025-07-28 02:12:19,219 - INFO -     target_max: 0.579655
+2025-07-28 02:12:21,010 - INFO - Step 530: Loss=0.000469, VelSim=0.3053 (fair), GradNorm=33.552, LR=4.95e-04 [OVERFIT TEST]
+2025-07-28 02:12:21,011 - INFO -   Detailed metrics:
+2025-07-28 02:12:21,011 - INFO -     loss: 0.000469
+2025-07-28 02:12:21,011 - INFO -     total_loss: 0.000469
+2025-07-28 02:12:21,011 - INFO -     reg_loss: 0.000000
+2025-07-28 02:12:21,011 - INFO -     velocity_similarity: 0.305323
+2025-07-28 02:12:21,011 - INFO -     velocity_similarity_std: 0.024492
+2025-07-28 02:12:21,011 - INFO -     pred_norm: 0.415477
+2025-07-28 02:12:21,011 - INFO -     target_norm: 1.414245
+2025-07-28 02:12:21,011 - INFO -     eva_norm: 1.000000
+2025-07-28 02:12:21,011 - INFO -     noise_norm: 1.000000
+2025-07-28 02:12:21,011 - INFO -     clip_norm: 1.000000
+2025-07-28 02:12:21,011 - INFO -     error_norm: 1.346230
+2025-07-28 02:12:21,011 - INFO -     relative_error: 0.951907
+2025-07-28 02:12:21,011 - INFO -     step_count: 530.000000
+2025-07-28 02:12:21,012 - INFO -     loss_ema: 0.002153
+2025-07-28 02:12:21,012 - INFO -     similarity_ema: 0.274893
+2025-07-28 02:12:21,012 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:12:21,012 - INFO -     timestep_std: 0.215460
+2025-07-28 02:12:21,012 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:12:21,012 - INFO -     pred_min: -0.068237
+2025-07-28 02:12:21,012 - INFO -     pred_max: 0.033783
+2025-07-28 02:12:21,012 - INFO -     target_min: -0.887084
+2025-07-28 02:12:21,012 - INFO -     target_max: 0.579655
+2025-07-28 02:12:22,801 - INFO - Step 540: Loss=0.000470, VelSim=0.3003 (fair), GradNorm=109.808, LR=4.94e-04 [OVERFIT TEST]
+2025-07-28 02:12:22,801 - INFO -   Detailed metrics:
+2025-07-28 02:12:22,801 - INFO -     loss: 0.000470
+2025-07-28 02:12:22,801 - INFO -     total_loss: 0.000470
+2025-07-28 02:12:22,801 - INFO -     reg_loss: 0.000000
+2025-07-28 02:12:22,801 - INFO -     velocity_similarity: 0.300273
+2025-07-28 02:12:22,802 - INFO -     velocity_similarity_std: 0.024335
+2025-07-28 02:12:22,802 - INFO -     pred_norm: 0.426678
+2025-07-28 02:12:22,802 - INFO -     target_norm: 1.414245
+2025-07-28 02:12:22,802 - INFO -     eva_norm: 1.000000
+2025-07-28 02:12:22,802 - INFO -     noise_norm: 1.000000
+2025-07-28 02:12:22,802 - INFO -     clip_norm: 1.000000
+2025-07-28 02:12:22,802 - INFO -     error_norm: 1.348377
+2025-07-28 02:12:22,802 - INFO -     relative_error: 0.953426
+2025-07-28 02:12:22,802 - INFO -     step_count: 540.000000
+2025-07-28 02:12:22,802 - INFO -     loss_ema: 0.001992
+2025-07-28 02:12:22,802 - INFO -     similarity_ema: 0.277695
+2025-07-28 02:12:22,802 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:12:22,802 - INFO -     timestep_std: 0.215460
+2025-07-28 02:12:22,802 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:12:22,802 - INFO -     pred_min: -0.068115
+2025-07-28 02:12:22,802 - INFO -     pred_max: 0.034637
+2025-07-28 02:12:22,802 - INFO -     target_min: -0.887084
+2025-07-28 02:12:22,802 - INFO -     target_max: 0.579655
+2025-07-28 02:12:24,529 - INFO - [Step 550] Flow Matching Debug:
+2025-07-28 02:12:24,529 - INFO -   Loss: 0.000546 (quality: poor)
+2025-07-28 02:12:24,529 - INFO -   Velocity Sim: 0.1858
+2025-07-28 02:12:24,529 - INFO -   Norms - Pred: 0.692, Target: 1.414
+2025-07-28 02:12:24,529 - INFO -   Error: 1.454 (relative: 1.028)
+2025-07-28 02:12:24,530 - INFO -   Timesteps: 0.421 ± 0.215
+2025-07-28 02:12:24,601 - INFO - Step 550: Loss=0.000546, VelSim=0.1858 (poor), GradNorm=656.325, LR=4.94e-04 [OVERFIT TEST]
+2025-07-28 02:12:24,601 - INFO -   Detailed metrics:
+2025-07-28 02:12:24,601 - INFO -     loss: 0.000546
+2025-07-28 02:12:24,601 - INFO -     total_loss: 0.000546
+2025-07-28 02:12:24,601 - INFO -     reg_loss: 0.000000
+2025-07-28 02:12:24,601 - INFO -     velocity_similarity: 0.185832
+2025-07-28 02:12:24,601 - INFO -     velocity_similarity_std: 0.019082
+2025-07-28 02:12:24,601 - INFO -     pred_norm: 0.691682
+2025-07-28 02:12:24,601 - INFO -     target_norm: 1.414245
+2025-07-28 02:12:24,601 - INFO -     eva_norm: 1.000000
+2025-07-28 02:12:24,601 - INFO -     noise_norm: 1.000000
+2025-07-28 02:12:24,601 - INFO -     clip_norm: 1.000000
+2025-07-28 02:12:24,602 - INFO -     error_norm: 1.453750
+2025-07-28 02:12:24,602 - INFO -     relative_error: 1.027934
+2025-07-28 02:12:24,602 - INFO -     step_count: 550.000000
+2025-07-28 02:12:24,602 - INFO -     loss_ema: 0.001849
+2025-07-28 02:12:24,602 - INFO -     similarity_ema: 0.274714
+2025-07-28 02:12:24,602 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:12:24,602 - INFO -     timestep_std: 0.215460
+2025-07-28 02:12:24,602 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:12:24,602 - INFO -     pred_min: -0.064453
+2025-07-28 02:12:24,602 - INFO -     pred_max: 0.044281
+2025-07-28 02:12:24,602 - INFO -     target_min: -0.887084
+2025-07-28 02:12:24,602 - INFO -     target_max: 0.579655
+2025-07-28 02:12:24,602 - INFO - Running evaluation at step 550...
+2025-07-28 02:12:31,281 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 02:13:54,493 - INFO - Evaluation results:
+2025-07-28 02:13:54,495 - INFO -   eval_eva_similarity: 0.0718
+2025-07-28 02:13:54,495 - INFO -   eval_eva_similarity_std: 0.0117
+2025-07-28 02:13:54,495 - INFO -   eval_high_quality: 0.0000
+2025-07-28 02:13:54,495 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 02:13:54,495 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 02:13:54,495 - INFO -   eval_samples: 504.0000
+2025-07-28 02:13:56,297 - INFO - Step 560: Loss=0.000473, VelSim=0.2908 (fair), GradNorm=182.194, LR=4.94e-04 [OVERFIT TEST]
+2025-07-28 02:13:56,297 - INFO -   Detailed metrics:
+2025-07-28 02:13:56,297 - INFO -     loss: 0.000473
+2025-07-28 02:13:56,297 - INFO -     total_loss: 0.000473
+2025-07-28 02:13:56,297 - INFO -     reg_loss: 0.000000
+2025-07-28 02:13:56,297 - INFO -     velocity_similarity: 0.290775
+2025-07-28 02:13:56,297 - INFO -     velocity_similarity_std: 0.023768
+2025-07-28 02:13:56,297 - INFO -     pred_norm: 0.451758
+2025-07-28 02:13:56,297 - INFO -     target_norm: 1.414245
+2025-07-28 02:13:56,298 - INFO -     eva_norm: 1.000000
+2025-07-28 02:13:56,298 - INFO -     noise_norm: 1.000000
+2025-07-28 02:13:56,298 - INFO -     clip_norm: 1.000000
+2025-07-28 02:13:56,298 - INFO -     error_norm: 1.353159
+2025-07-28 02:13:56,298 - INFO -     relative_error: 0.956807
+2025-07-28 02:13:56,298 - INFO -     step_count: 560.000000
+2025-07-28 02:13:56,298 - INFO -     loss_ema: 0.001720
+2025-07-28 02:13:56,298 - INFO -     similarity_ema: 0.272103
+2025-07-28 02:13:56,298 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:13:56,298 - INFO -     timestep_std: 0.215460
+2025-07-28 02:13:56,298 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:13:56,298 - INFO -     pred_min: -0.067993
+2025-07-28 02:13:56,298 - INFO -     pred_max: 0.038849
+2025-07-28 02:13:56,298 - INFO -     target_min: -0.887084
+2025-07-28 02:13:56,298 - INFO -     target_max: 0.579655
+2025-07-28 02:13:58,114 - INFO - Step 570: Loss=0.000468, VelSim=0.3055 (fair), GradNorm=98.511, LR=4.93e-04 [OVERFIT TEST]
+2025-07-28 02:13:58,115 - INFO -   Detailed metrics:
+2025-07-28 02:13:58,115 - INFO -     loss: 0.000468
+2025-07-28 02:13:58,115 - INFO -     total_loss: 0.000468
+2025-07-28 02:13:58,115 - INFO -     reg_loss: 0.000000
+2025-07-28 02:13:58,115 - INFO -     velocity_similarity: 0.305549
+2025-07-28 02:13:58,115 - INFO -     velocity_similarity_std: 0.024278
+2025-07-28 02:13:58,115 - INFO -     pred_norm: 0.432910
+2025-07-28 02:13:58,115 - INFO -     target_norm: 1.414245
+2025-07-28 02:13:58,115 - INFO -     eva_norm: 1.000000
+2025-07-28 02:13:58,115 - INFO -     noise_norm: 1.000000
+2025-07-28 02:13:58,115 - INFO -     clip_norm: 1.000000
+2025-07-28 02:13:58,115 - INFO -     error_norm: 1.345977
+2025-07-28 02:13:58,115 - INFO -     relative_error: 0.951728
+2025-07-28 02:13:58,115 - INFO -     step_count: 570.000000
+2025-07-28 02:13:58,115 - INFO -     loss_ema: 0.001600
+2025-07-28 02:13:58,115 - INFO -     similarity_ema: 0.273920
+2025-07-28 02:13:58,115 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:13:58,115 - INFO -     timestep_std: 0.215460
+2025-07-28 02:13:58,115 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:13:58,115 - INFO -     pred_min: -0.070618
+2025-07-28 02:13:58,115 - INFO -     pred_max: 0.034546
+2025-07-28 02:13:58,116 - INFO -     target_min: -0.887084
+2025-07-28 02:13:58,116 - INFO -     target_max: 0.579655
+2025-07-28 02:13:59,930 - INFO - Step 580: Loss=0.000467, VelSim=0.3092 (fair), GradNorm=78.968, LR=4.93e-04 [OVERFIT TEST]
+2025-07-28 02:13:59,931 - INFO -   Detailed metrics:
+2025-07-28 02:13:59,931 - INFO -     loss: 0.000467
+2025-07-28 02:13:59,931 - INFO -     total_loss: 0.000467
+2025-07-28 02:13:59,931 - INFO -     reg_loss: 0.000000
+2025-07-28 02:13:59,931 - INFO -     velocity_similarity: 0.309240
+2025-07-28 02:13:59,931 - INFO -     velocity_similarity_std: 0.024461
+2025-07-28 02:13:59,931 - INFO -     pred_norm: 0.431735
+2025-07-28 02:13:59,931 - INFO -     target_norm: 1.414245
+2025-07-28 02:13:59,931 - INFO -     eva_norm: 1.000000
+2025-07-28 02:13:59,931 - INFO -     noise_norm: 1.000000
+2025-07-28 02:13:59,931 - INFO -     clip_norm: 1.000000
+2025-07-28 02:13:59,931 - INFO -     error_norm: 1.344275
+2025-07-28 02:13:59,931 - INFO -     relative_error: 0.950525
+2025-07-28 02:13:59,931 - INFO -     step_count: 580.000000
+2025-07-28 02:13:59,931 - INFO -     loss_ema: 0.001492
+2025-07-28 02:13:59,931 - INFO -     similarity_ema: 0.276882
+2025-07-28 02:13:59,931 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:13:59,931 - INFO -     timestep_std: 0.215460
+2025-07-28 02:13:59,931 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:13:59,931 - INFO -     pred_min: -0.071289
+2025-07-28 02:13:59,931 - INFO -     pred_max: 0.034149
+2025-07-28 02:13:59,931 - INFO -     target_min: -0.887084
+2025-07-28 02:13:59,931 - INFO -     target_max: 0.579655
+2025-07-28 02:14:01,745 - INFO - Step 590: Loss=0.000466, VelSim=0.3126 (fair), GradNorm=61.456, LR=4.93e-04 [OVERFIT TEST]
+2025-07-28 02:14:01,746 - INFO -   Detailed metrics:
+2025-07-28 02:14:01,746 - INFO -     loss: 0.000466
+2025-07-28 02:14:01,746 - INFO -     total_loss: 0.000466
+2025-07-28 02:14:01,746 - INFO -     reg_loss: 0.000000
+2025-07-28 02:14:01,746 - INFO -     velocity_similarity: 0.312609
+2025-07-28 02:14:01,746 - INFO -     velocity_similarity_std: 0.024462
+2025-07-28 02:14:01,746 - INFO -     pred_norm: 0.432747
+2025-07-28 02:14:01,746 - INFO -     target_norm: 1.414245
+2025-07-28 02:14:01,746 - INFO -     eva_norm: 1.000000
+2025-07-28 02:14:01,746 - INFO -     noise_norm: 1.000000
+2025-07-28 02:14:01,747 - INFO -     clip_norm: 1.000000
+2025-07-28 02:14:01,747 - INFO -     error_norm: 1.342710
+2025-07-28 02:14:01,747 - INFO -     relative_error: 0.949419
+2025-07-28 02:14:01,747 - INFO -     step_count: 590.000000
+2025-07-28 02:14:01,747 - INFO -     loss_ema: 0.001394
+2025-07-28 02:14:01,747 - INFO -     similarity_ema: 0.280176
+2025-07-28 02:14:01,747 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:14:01,747 - INFO -     timestep_std: 0.215460
+2025-07-28 02:14:01,747 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:14:01,747 - INFO -     pred_min: -0.070984
+2025-07-28 02:14:01,747 - INFO -     pred_max: 0.035034
+2025-07-28 02:14:01,747 - INFO -     target_min: -0.887084
+2025-07-28 02:14:01,747 - INFO -     target_max: 0.579655
+2025-07-28 02:14:03,472 - INFO - [Step 600] Flow Matching Debug:
+2025-07-28 02:14:03,472 - INFO -   Loss: 0.000466 (quality: fair)
+2025-07-28 02:14:03,472 - INFO -   Velocity Sim: 0.3144
+2025-07-28 02:14:03,473 - INFO -   Norms - Pred: 0.435, Target: 1.414
+2025-07-28 02:14:03,473 - INFO -   Error: 1.342 (relative: 0.949)
+2025-07-28 02:14:03,473 - INFO -   Timesteps: 0.421 ± 0.215
+2025-07-28 02:14:03,544 - INFO - Step 600: Loss=0.000466, VelSim=0.3144 (fair), GradNorm=58.381, LR=4.93e-04 [OVERFIT TEST]
+2025-07-28 02:14:03,545 - INFO -   Detailed metrics:
+2025-07-28 02:14:03,545 - INFO -     loss: 0.000466
+2025-07-28 02:14:03,545 - INFO -     total_loss: 0.000466
+2025-07-28 02:14:03,545 - INFO -     reg_loss: 0.000000
+2025-07-28 02:14:03,545 - INFO -     velocity_similarity: 0.314411
+2025-07-28 02:14:03,545 - INFO -     velocity_similarity_std: 0.024449
+2025-07-28 02:14:03,545 - INFO -     pred_norm: 0.435073
+2025-07-28 02:14:03,545 - INFO -     target_norm: 1.414245
+2025-07-28 02:14:03,545 - INFO -     eva_norm: 1.000000
+2025-07-28 02:14:03,545 - INFO -     noise_norm: 1.000000
+2025-07-28 02:14:03,545 - INFO -     clip_norm: 1.000000
+2025-07-28 02:14:03,545 - INFO -     error_norm: 1.341874
+2025-07-28 02:14:03,545 - INFO -     relative_error: 0.948827
+2025-07-28 02:14:03,545 - INFO -     step_count: 600.000000
+2025-07-28 02:14:03,545 - INFO -     loss_ema: 0.001305
+2025-07-28 02:14:03,545 - INFO -     similarity_ema: 0.283395
+2025-07-28 02:14:03,545 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:14:03,545 - INFO -     timestep_std: 0.215460
+2025-07-28 02:14:03,545 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:14:03,546 - INFO -     pred_min: -0.070557
+2025-07-28 02:14:03,546 - INFO -     pred_max: 0.035858
+2025-07-28 02:14:03,546 - INFO -     target_min: -0.887084
+2025-07-28 02:14:03,546 - INFO -     target_max: 0.579655
+2025-07-28 02:14:03,546 - INFO - Running evaluation at step 600...
+2025-07-28 02:14:10,329 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 02:15:33,641 - INFO - Evaluation results:
+2025-07-28 02:15:33,642 - INFO -   eval_eva_similarity: 0.0805
+2025-07-28 02:15:33,642 - INFO -   eval_eva_similarity_std: 0.0128
+2025-07-28 02:15:33,642 - INFO -   eval_high_quality: 0.0000
+2025-07-28 02:15:33,643 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 02:15:33,643 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 02:15:33,643 - INFO -   eval_samples: 504.0000
+2025-07-28 02:15:35,469 - INFO - Step 610: Loss=0.000477, VelSim=0.2837 (fair), GradNorm=250.091, LR=4.92e-04 [OVERFIT TEST]
+2025-07-28 02:15:35,469 - INFO -   Detailed metrics:
+2025-07-28 02:15:35,469 - INFO -     loss: 0.000477
+2025-07-28 02:15:35,469 - INFO -     total_loss: 0.000477
+2025-07-28 02:15:35,469 - INFO -     reg_loss: 0.000000
+2025-07-28 02:15:35,469 - INFO -     velocity_similarity: 0.283679
+2025-07-28 02:15:35,470 - INFO -     velocity_similarity_std: 0.023292
+2025-07-28 02:15:35,470 - INFO -     pred_norm: 0.486716
+2025-07-28 02:15:35,470 - INFO -     target_norm: 1.414245
+2025-07-28 02:15:35,470 - INFO -     eva_norm: 1.000000
+2025-07-28 02:15:35,470 - INFO -     noise_norm: 1.000000
+2025-07-28 02:15:35,470 - INFO -     clip_norm: 1.000000
+2025-07-28 02:15:35,470 - INFO -     error_norm: 1.358176
+2025-07-28 02:15:35,470 - INFO -     relative_error: 0.960354
+2025-07-28 02:15:35,470 - INFO -     step_count: 610.000000
+2025-07-28 02:15:35,470 - INFO -     loss_ema: 0.001225
+2025-07-28 02:15:35,470 - INFO -     similarity_ema: 0.285495
+2025-07-28 02:15:35,470 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:15:35,470 - INFO -     timestep_std: 0.215460
+2025-07-28 02:15:35,470 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:15:35,470 - INFO -     pred_min: -0.068970
+2025-07-28 02:15:35,470 - INFO -     pred_max: 0.037903
+2025-07-28 02:15:35,470 - INFO -     target_min: -0.887084
+2025-07-28 02:15:35,470 - INFO -     target_max: 0.579655
+2025-07-28 02:15:37,286 - INFO - Step 620: Loss=0.000496, VelSim=0.2483 (fair), GradNorm=391.922, LR=4.92e-04 [OVERFIT TEST]
+2025-07-28 02:15:37,287 - INFO -   Detailed metrics:
+2025-07-28 02:15:37,287 - INFO -     loss: 0.000496
+2025-07-28 02:15:37,287 - INFO -     total_loss: 0.000496
+2025-07-28 02:15:37,287 - INFO -     reg_loss: 0.000000
+2025-07-28 02:15:37,287 - INFO -     velocity_similarity: 0.248333
+2025-07-28 02:15:37,287 - INFO -     velocity_similarity_std: 0.022897
+2025-07-28 02:15:37,287 - INFO -     pred_norm: 0.563620
+2025-07-28 02:15:37,287 - INFO -     target_norm: 1.414245
+2025-07-28 02:15:37,287 - INFO -     eva_norm: 1.000000
+2025-07-28 02:15:37,287 - INFO -     noise_norm: 1.000000
+2025-07-28 02:15:37,287 - INFO -     clip_norm: 1.000000
+2025-07-28 02:15:37,287 - INFO -     error_norm: 1.385593
+2025-07-28 02:15:37,287 - INFO -     relative_error: 0.979740
+2025-07-28 02:15:37,287 - INFO -     step_count: 620.000000
+2025-07-28 02:15:37,287 - INFO -     loss_ema: 0.001159
+2025-07-28 02:15:37,287 - INFO -     similarity_ema: 0.278883
+2025-07-28 02:15:37,287 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:15:37,287 - INFO -     timestep_std: 0.215460
+2025-07-28 02:15:37,288 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:15:37,288 - INFO -     pred_min: -0.075500
+2025-07-28 02:15:37,288 - INFO -     pred_max: 0.037872
+2025-07-28 02:15:37,288 - INFO -     target_min: -0.887084
+2025-07-28 02:15:37,288 - INFO -     target_max: 0.579655
+2025-07-28 02:15:39,102 - INFO - Step 630: Loss=0.000468, VelSim=0.3059 (fair), GradNorm=152.416, LR=4.92e-04 [OVERFIT TEST]
+2025-07-28 02:15:39,102 - INFO -   Detailed metrics:
+2025-07-28 02:15:39,102 - INFO -     loss: 0.000468
+2025-07-28 02:15:39,102 - INFO -     total_loss: 0.000468
+2025-07-28 02:15:39,102 - INFO -     reg_loss: 0.000000
+2025-07-28 02:15:39,102 - INFO -     velocity_similarity: 0.305865
+2025-07-28 02:15:39,102 - INFO -     velocity_similarity_std: 0.024528
+2025-07-28 02:15:39,102 - INFO -     pred_norm: 0.460700
+2025-07-28 02:15:39,102 - INFO -     target_norm: 1.414245
+2025-07-28 02:15:39,102 - INFO -     eva_norm: 1.000000
+2025-07-28 02:15:39,102 - INFO -     noise_norm: 1.000000
+2025-07-28 02:15:39,102 - INFO -     clip_norm: 1.000000
+2025-07-28 02:15:39,102 - INFO -     error_norm: 1.346011
+2025-07-28 02:15:39,102 - INFO -     relative_error: 0.951753
+2025-07-28 02:15:39,102 - INFO -     step_count: 630.000000
+2025-07-28 02:15:39,102 - INFO -     loss_ema: 0.001094
+2025-07-28 02:15:39,102 - INFO -     similarity_ema: 0.278130
+2025-07-28 02:15:39,102 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:15:39,102 - INFO -     timestep_std: 0.215460
+2025-07-28 02:15:39,102 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:15:39,102 - INFO -     pred_min: -0.074036
+2025-07-28 02:15:39,102 - INFO -     pred_max: 0.037018
+2025-07-28 02:15:39,102 - INFO -     target_min: -0.887084
+2025-07-28 02:15:39,102 - INFO -     target_max: 0.579655
+2025-07-28 02:15:40,914 - INFO - Step 640: Loss=0.000467, VelSim=0.3091 (fair), GradNorm=138.656, LR=4.91e-04 [OVERFIT TEST]
+2025-07-28 02:15:40,914 - INFO -   Detailed metrics:
+2025-07-28 02:15:40,914 - INFO -     loss: 0.000467
+2025-07-28 02:15:40,914 - INFO -     total_loss: 0.000467
+2025-07-28 02:15:40,914 - INFO -     reg_loss: 0.000000
+2025-07-28 02:15:40,915 - INFO -     velocity_similarity: 0.309074
+2025-07-28 02:15:40,915 - INFO -     velocity_similarity_std: 0.024592
+2025-07-28 02:15:40,915 - INFO -     pred_norm: 0.462227
+2025-07-28 02:15:40,915 - INFO -     target_norm: 1.414245
+2025-07-28 02:15:40,915 - INFO -     eva_norm: 1.000000
+2025-07-28 02:15:40,915 - INFO -     noise_norm: 1.000000
+2025-07-28 02:15:40,915 - INFO -     clip_norm: 1.000000
+2025-07-28 02:15:40,915 - INFO -     error_norm: 1.344437
+2025-07-28 02:15:40,915 - INFO -     relative_error: 0.950640
+2025-07-28 02:15:40,915 - INFO -     step_count: 640.000000
+2025-07-28 02:15:40,915 - INFO -     loss_ema: 0.001035
+2025-07-28 02:15:40,915 - INFO -     similarity_ema: 0.280742
+2025-07-28 02:15:40,915 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:15:40,915 - INFO -     timestep_std: 0.215460
+2025-07-28 02:15:40,915 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:15:40,915 - INFO -     pred_min: -0.075500
+2025-07-28 02:15:40,915 - INFO -     pred_max: 0.035645
+2025-07-28 02:15:40,915 - INFO -     target_min: -0.887084
+2025-07-28 02:15:40,915 - INFO -     target_max: 0.579655
+2025-07-28 02:15:42,663 - INFO - [Step 650] Flow Matching Debug:
+2025-07-28 02:15:42,663 - INFO -   Loss: 0.000463 (quality: fair)
+2025-07-28 02:15:42,663 - INFO -   Velocity Sim: 0.3217
+2025-07-28 02:15:42,663 - INFO -   Norms - Pred: 0.448, Target: 1.414
+2025-07-28 02:15:42,663 - INFO -   Error: 1.338 (relative: 0.946)
+2025-07-28 02:15:42,663 - INFO -   Timesteps: 0.421 ± 0.215
+2025-07-28 02:15:42,735 - INFO - Step 650: Loss=0.000463, VelSim=0.3217 (fair), GradNorm=60.783, LR=4.91e-04 [OVERFIT TEST]
+2025-07-28 02:15:42,735 - INFO -   Detailed metrics:
+2025-07-28 02:15:42,735 - INFO -     loss: 0.000463
+2025-07-28 02:15:42,735 - INFO -     total_loss: 0.000463
+2025-07-28 02:15:42,735 - INFO -     reg_loss: 0.000000
+2025-07-28 02:15:42,735 - INFO -     velocity_similarity: 0.321709
+2025-07-28 02:15:42,736 - INFO -     velocity_similarity_std: 0.024820
+2025-07-28 02:15:42,736 - INFO -     pred_norm: 0.448409
+2025-07-28 02:15:42,736 - INFO -     target_norm: 1.414245
+2025-07-28 02:15:42,736 - INFO -     eva_norm: 1.000000
+2025-07-28 02:15:42,736 - INFO -     noise_norm: 1.000000
+2025-07-28 02:15:42,736 - INFO -     clip_norm: 1.000000
+2025-07-28 02:15:42,736 - INFO -     error_norm: 1.338286
+2025-07-28 02:15:42,736 - INFO -     relative_error: 0.946291
+2025-07-28 02:15:42,736 - INFO -     step_count: 650.000000
+2025-07-28 02:15:42,736 - INFO -     loss_ema: 0.000980
+2025-07-28 02:15:42,736 - INFO -     similarity_ema: 0.284231
+2025-07-28 02:15:42,736 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:15:42,736 - INFO -     timestep_std: 0.215460
+2025-07-28 02:15:42,736 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:15:42,736 - INFO -     pred_min: -0.073608
+2025-07-28 02:15:42,736 - INFO -     pred_max: 0.035461
+2025-07-28 02:15:42,736 - INFO -     target_min: -0.887084
+2025-07-28 02:15:42,736 - INFO -     target_max: 0.579655
+2025-07-28 02:15:42,736 - INFO - Running evaluation at step 650...
+2025-07-28 02:15:49,450 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 02:17:12,614 - INFO - Evaluation results:
+2025-07-28 02:17:12,615 - INFO -   eval_eva_similarity: 0.0804
+2025-07-28 02:17:12,615 - INFO -   eval_eva_similarity_std: 0.0128
+2025-07-28 02:17:12,615 - INFO -   eval_high_quality: 0.0000
+2025-07-28 02:17:12,615 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 02:17:12,615 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 02:17:12,615 - INFO -   eval_samples: 504.0000
+2025-07-28 02:17:13,663 - INFO - Iteration completed: 5247 samples processed
+2025-07-28 02:17:13,663 - INFO - Epoch 1 completed: 655 batches processed
+2025-07-28 02:17:13,678 - INFO - Epoch 1 completed:
+2025-07-28 02:17:13,678 - INFO -   Average loss: 0.002890
+2025-07-28 02:17:13,679 - INFO -   Best loss: 0.000463
+2025-07-28 02:17:13,679 - INFO -   Best similarity: 0.3226
+2025-07-28 02:17:13,679 - INFO -   Steps in epoch: 655
+2025-07-28 02:17:13,679 - INFO - Starting epoch 2/10
+2025-07-28 02:17:20,453 - INFO - Loaded shard 1/2: 2601 samples
+2025-07-28 02:17:21,368 - INFO - Step 660: Loss=0.000462, VelSim=0.3240 (fair), GradNorm=52.726, LR=4.91e-04 [OVERFIT TEST]
+2025-07-28 02:17:21,368 - INFO -   Detailed metrics:
+2025-07-28 02:17:21,368 - INFO -     loss: 0.000462
+2025-07-28 02:17:21,368 - INFO -     total_loss: 0.000462
+2025-07-28 02:17:21,368 - INFO -     reg_loss: 0.000000
+2025-07-28 02:17:21,368 - INFO -     velocity_similarity: 0.323985
+2025-07-28 02:17:21,368 - INFO -     velocity_similarity_std: 0.024922
+2025-07-28 02:17:21,368 - INFO -     pred_norm: 0.450574
+2025-07-28 02:17:21,368 - INFO -     target_norm: 1.414245
+2025-07-28 02:17:21,368 - INFO -     eva_norm: 1.000000
+2025-07-28 02:17:21,368 - INFO -     noise_norm: 1.000000
+2025-07-28 02:17:21,368 - INFO -     clip_norm: 1.000000
+2025-07-28 02:17:21,368 - INFO -     error_norm: 1.337180
+2025-07-28 02:17:21,368 - INFO -     relative_error: 0.945509
+2025-07-28 02:17:21,368 - INFO -     step_count: 660.000000
+2025-07-28 02:17:21,368 - INFO -     loss_ema: 0.000931
+2025-07-28 02:17:21,368 - INFO -     similarity_ema: 0.287852
+2025-07-28 02:17:21,368 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:17:21,368 - INFO -     timestep_std: 0.215460
+2025-07-28 02:17:21,368 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:17:21,368 - INFO -     pred_min: -0.073792
+2025-07-28 02:17:21,368 - INFO -     pred_max: 0.036011
+2025-07-28 02:17:21,368 - INFO -     target_min: -0.887084
+2025-07-28 02:17:21,368 - INFO -     target_max: 0.579655
+2025-07-28 02:17:23,177 - INFO - Step 670: Loss=0.000462, VelSim=0.3264 (fair), GradNorm=39.836, LR=4.90e-04 [OVERFIT TEST]
+2025-07-28 02:17:23,178 - INFO -   Detailed metrics:
+2025-07-28 02:17:23,178 - INFO -     loss: 0.000462
+2025-07-28 02:17:23,178 - INFO -     total_loss: 0.000462
+2025-07-28 02:17:23,178 - INFO -     reg_loss: 0.000000
+2025-07-28 02:17:23,178 - INFO -     velocity_similarity: 0.326368
+2025-07-28 02:17:23,178 - INFO -     velocity_similarity_std: 0.025007
+2025-07-28 02:17:23,178 - INFO -     pred_norm: 0.452739
+2025-07-28 02:17:23,178 - INFO -     target_norm: 1.414245
+2025-07-28 02:17:23,178 - INFO -     eva_norm: 1.000000
+2025-07-28 02:17:23,178 - INFO -     noise_norm: 1.000000
+2025-07-28 02:17:23,178 - INFO -     clip_norm: 1.000000
+2025-07-28 02:17:23,178 - INFO -     error_norm: 1.335977
+2025-07-28 02:17:23,178 - INFO -     relative_error: 0.944657
+2025-07-28 02:17:23,179 - INFO -     step_count: 670.000000
+2025-07-28 02:17:23,179 - INFO -     loss_ema: 0.000886
+2025-07-28 02:17:23,179 - INFO -     similarity_ema: 0.291463
+2025-07-28 02:17:23,179 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:17:23,179 - INFO -     timestep_std: 0.215460
+2025-07-28 02:17:23,179 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:17:23,179 - INFO -     pred_min: -0.076721
+2025-07-28 02:17:23,179 - INFO -     pred_max: 0.036560
+2025-07-28 02:17:23,179 - INFO -     target_min: -0.887084
+2025-07-28 02:17:23,179 - INFO -     target_max: 0.579655
+2025-07-28 02:17:25,003 - INFO - Step 680: Loss=0.000461, VelSim=0.3287 (fair), GradNorm=25.557, LR=4.90e-04 [OVERFIT TEST]
+2025-07-28 02:17:25,004 - INFO -   Detailed metrics:
+2025-07-28 02:17:25,004 - INFO -     loss: 0.000461
+2025-07-28 02:17:25,004 - INFO -     total_loss: 0.000461
+2025-07-28 02:17:25,005 - INFO -     reg_loss: 0.000000
+2025-07-28 02:17:25,005 - INFO -     velocity_similarity: 0.328688
+2025-07-28 02:17:25,005 - INFO -     velocity_similarity_std: 0.025134
+2025-07-28 02:17:25,005 - INFO -     pred_norm: 0.454544
+2025-07-28 02:17:25,005 - INFO -     target_norm: 1.414245
+2025-07-28 02:17:25,005 - INFO -     eva_norm: 1.000000
+2025-07-28 02:17:25,005 - INFO -     noise_norm: 1.000000
+2025-07-28 02:17:25,005 - INFO -     clip_norm: 1.000000
+2025-07-28 02:17:25,005 - INFO -     error_norm: 1.334845
+2025-07-28 02:17:25,005 - INFO -     relative_error: 0.943857
+2025-07-28 02:17:25,005 - INFO -     step_count: 680.000000
+2025-07-28 02:17:25,005 - INFO -     loss_ema: 0.000845
+2025-07-28 02:17:25,005 - INFO -     similarity_ema: 0.294944
+2025-07-28 02:17:25,005 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:17:25,005 - INFO -     timestep_std: 0.215460
+2025-07-28 02:17:25,005 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:17:25,005 - INFO -     pred_min: -0.076416
+2025-07-28 02:17:25,005 - INFO -     pred_max: 0.036224
+2025-07-28 02:17:25,005 - INFO -     target_min: -0.887084
+2025-07-28 02:17:25,005 - INFO -     target_max: 0.579655
+2025-07-28 02:17:26,824 - INFO - Step 690: Loss=0.000463, VelSim=0.3228 (fair), GradNorm=115.434, LR=4.90e-04 [OVERFIT TEST]
+2025-07-28 02:17:26,825 - INFO -   Detailed metrics:
+2025-07-28 02:17:26,825 - INFO -     loss: 0.000463
+2025-07-28 02:17:26,825 - INFO -     total_loss: 0.000463
+2025-07-28 02:17:26,825 - INFO -     reg_loss: 0.000000
+2025-07-28 02:17:26,825 - INFO -     velocity_similarity: 0.322848
+2025-07-28 02:17:26,825 - INFO -     velocity_similarity_std: 0.025269
+2025-07-28 02:17:26,825 - INFO -     pred_norm: 0.468402
+2025-07-28 02:17:26,825 - INFO -     target_norm: 1.414245
+2025-07-28 02:17:26,825 - INFO -     eva_norm: 1.000000
+2025-07-28 02:17:26,825 - INFO -     noise_norm: 1.000000
+2025-07-28 02:17:26,825 - INFO -     clip_norm: 1.000000
+2025-07-28 02:17:26,825 - INFO -     error_norm: 1.337695
+2025-07-28 02:17:26,825 - INFO -     relative_error: 0.945873
+2025-07-28 02:17:26,825 - INFO -     step_count: 690.000000
+2025-07-28 02:17:26,825 - INFO -     loss_ema: 0.000808
+2025-07-28 02:17:26,825 - INFO -     similarity_ema: 0.298062
+2025-07-28 02:17:26,825 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:17:26,825 - INFO -     timestep_std: 0.215460
+2025-07-28 02:17:26,825 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:17:26,825 - INFO -     pred_min: -0.075317
+2025-07-28 02:17:26,825 - INFO -     pred_max: 0.037506
+2025-07-28 02:17:26,825 - INFO -     target_min: -0.887084
+2025-07-28 02:17:26,825 - INFO -     target_max: 0.579655
+2025-07-28 02:17:28,551 - INFO - [Step 700] Flow Matching Debug:
+2025-07-28 02:17:28,551 - INFO -   Loss: 0.000610 (quality: poor)
+2025-07-28 02:17:28,551 - INFO -   Velocity Sim: 0.1712
+2025-07-28 02:17:28,551 - INFO -   Norms - Pred: 0.891, Target: 1.414
+2025-07-28 02:17:28,551 - INFO -   Error: 1.536 (relative: 1.086)
+2025-07-28 02:17:28,551 - INFO -   Timesteps: 0.421 ± 0.215
+2025-07-28 02:17:28,623 - INFO - Step 700: Loss=0.000610, VelSim=0.1712 (poor), GradNorm=848.814, LR=4.89e-04 [OVERFIT TEST]
+2025-07-28 02:17:28,623 - INFO -   Detailed metrics:
+2025-07-28 02:17:28,623 - INFO -     loss: 0.000610
+2025-07-28 02:17:28,623 - INFO -     total_loss: 0.000610
+2025-07-28 02:17:28,623 - INFO -     reg_loss: 0.000000
+2025-07-28 02:17:28,623 - INFO -     velocity_similarity: 0.171151
+2025-07-28 02:17:28,623 - INFO -     velocity_similarity_std: 0.019363
+2025-07-28 02:17:28,623 - INFO -     pred_norm: 0.890698
+2025-07-28 02:17:28,623 - INFO -     target_norm: 1.414245
+2025-07-28 02:17:28,623 - INFO -     eva_norm: 1.000000
+2025-07-28 02:17:28,623 - INFO -     noise_norm: 1.000000
+2025-07-28 02:17:28,623 - INFO -     clip_norm: 1.000000
+2025-07-28 02:17:28,623 - INFO -     error_norm: 1.536386
+2025-07-28 02:17:28,623 - INFO -     relative_error: 1.086365
+2025-07-28 02:17:28,623 - INFO -     step_count: 700.000000
+2025-07-28 02:17:28,623 - INFO -     loss_ema: 0.000781
+2025-07-28 02:17:28,623 - INFO -     similarity_ema: 0.293071
+2025-07-28 02:17:28,623 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:17:28,623 - INFO -     timestep_std: 0.215460
+2025-07-28 02:17:28,623 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:17:28,623 - INFO -     pred_min: -0.069153
+2025-07-28 02:17:28,624 - INFO -     pred_max: 0.059631
+2025-07-28 02:17:28,624 - INFO -     target_min: -0.887084
+2025-07-28 02:17:28,624 - INFO -     target_max: 0.579655
+2025-07-28 02:17:28,624 - INFO - Running evaluation at step 700...
+2025-07-28 02:17:35,470 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 02:18:58,827 - INFO - Evaluation results:
+2025-07-28 02:18:58,827 - INFO -   eval_eva_similarity: 0.0674
+2025-07-28 02:18:58,827 - INFO -   eval_eva_similarity_std: 0.0116
+2025-07-28 02:18:58,827 - INFO -   eval_high_quality: 0.0000
+2025-07-28 02:18:58,827 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 02:18:58,827 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 02:18:58,827 - INFO -   eval_samples: 504.0000
+2025-07-28 02:19:00,643 - INFO - Step 710: Loss=0.000501, VelSim=0.2511 (fair), GradNorm=431.265, LR=4.89e-04 [OVERFIT TEST]
+2025-07-28 02:19:00,644 - INFO -   Detailed metrics:
+2025-07-28 02:19:00,644 - INFO -     loss: 0.000501
+2025-07-28 02:19:00,644 - INFO -     total_loss: 0.000501
+2025-07-28 02:19:00,644 - INFO -     reg_loss: 0.000000
+2025-07-28 02:19:00,644 - INFO -     velocity_similarity: 0.251119
+2025-07-28 02:19:00,644 - INFO -     velocity_similarity_std: 0.024242
+2025-07-28 02:19:00,644 - INFO -     pred_norm: 0.609876
+2025-07-28 02:19:00,644 - INFO -     target_norm: 1.414245
+2025-07-28 02:19:00,644 - INFO -     eva_norm: 1.000000
+2025-07-28 02:19:00,644 - INFO -     noise_norm: 1.000000
+2025-07-28 02:19:00,644 - INFO -     clip_norm: 1.000000
+2025-07-28 02:19:00,644 - INFO -     error_norm: 1.391592
+2025-07-28 02:19:00,644 - INFO -     relative_error: 0.983982
+2025-07-28 02:19:00,644 - INFO -     step_count: 710.000000
+2025-07-28 02:19:00,644 - INFO -     loss_ema: 0.000756
+2025-07-28 02:19:00,644 - INFO -     similarity_ema: 0.287537
+2025-07-28 02:19:00,644 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:19:00,644 - INFO -     timestep_std: 0.215460
+2025-07-28 02:19:00,644 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:19:00,644 - INFO -     pred_min: -0.066833
+2025-07-28 02:19:00,644 - INFO -     pred_max: 0.039154
+2025-07-28 02:19:00,644 - INFO -     target_min: -0.887084
+2025-07-28 02:19:00,644 - INFO -     target_max: 0.579655
+2025-07-28 02:19:02,460 - INFO - Step 720: Loss=0.000468, VelSim=0.3102 (fair), GradNorm=199.561, LR=4.89e-04 [OVERFIT TEST]
+2025-07-28 02:19:02,460 - INFO -   Detailed metrics:
+2025-07-28 02:19:02,460 - INFO -     loss: 0.000468
+2025-07-28 02:19:02,461 - INFO -     total_loss: 0.000468
+2025-07-28 02:19:02,461 - INFO -     reg_loss: 0.000000
+2025-07-28 02:19:02,461 - INFO -     velocity_similarity: 0.310238
+2025-07-28 02:19:02,461 - INFO -     velocity_similarity_std: 0.026119
+2025-07-28 02:19:02,461 - INFO -     pred_norm: 0.497610
+2025-07-28 02:19:02,461 - INFO -     target_norm: 1.414245
+2025-07-28 02:19:02,461 - INFO -     eva_norm: 1.000000
+2025-07-28 02:19:02,461 - INFO -     noise_norm: 1.000000
+2025-07-28 02:19:02,461 - INFO -     clip_norm: 1.000000
+2025-07-28 02:19:02,461 - INFO -     error_norm: 1.344766
+2025-07-28 02:19:02,461 - INFO -     relative_error: 0.950872
+2025-07-28 02:19:02,461 - INFO -     step_count: 720.000000
+2025-07-28 02:19:02,461 - INFO -     loss_ema: 0.000729
+2025-07-28 02:19:02,461 - INFO -     similarity_ema: 0.288727
+2025-07-28 02:19:02,461 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:19:02,461 - INFO -     timestep_std: 0.215460
+2025-07-28 02:19:02,461 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:19:02,461 - INFO -     pred_min: -0.076355
+2025-07-28 02:19:02,461 - INFO -     pred_max: 0.037170
+2025-07-28 02:19:02,461 - INFO -     target_min: -0.887084
+2025-07-28 02:19:02,461 - INFO -     target_max: 0.579655
+2025-07-28 02:19:04,271 - INFO - Step 730: Loss=0.000461, VelSim=0.3276 (fair), GradNorm=119.208, LR=4.88e-04 [OVERFIT TEST]
+2025-07-28 02:19:04,271 - INFO -   Detailed metrics:
+2025-07-28 02:19:04,271 - INFO -     loss: 0.000461
+2025-07-28 02:19:04,271 - INFO -     total_loss: 0.000461
+2025-07-28 02:19:04,271 - INFO -     reg_loss: 0.000000
+2025-07-28 02:19:04,271 - INFO -     velocity_similarity: 0.327553
+2025-07-28 02:19:04,271 - INFO -     velocity_similarity_std: 0.026104
+2025-07-28 02:19:04,271 - INFO -     pred_norm: 0.478143
+2025-07-28 02:19:04,271 - INFO -     target_norm: 1.414245
+2025-07-28 02:19:04,271 - INFO -     eva_norm: 1.000000
+2025-07-28 02:19:04,272 - INFO -     noise_norm: 1.000000
+2025-07-28 02:19:04,272 - INFO -     clip_norm: 1.000000
+2025-07-28 02:19:04,272 - INFO -     error_norm: 1.335307
+2025-07-28 02:19:04,272 - INFO -     relative_error: 0.944184
+2025-07-28 02:19:04,272 - INFO -     step_count: 730.000000
+2025-07-28 02:19:04,272 - INFO -     loss_ema: 0.000703
+2025-07-28 02:19:04,272 - INFO -     similarity_ema: 0.291984
+2025-07-28 02:19:04,272 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:19:04,272 - INFO -     timestep_std: 0.215460
+2025-07-28 02:19:04,272 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:19:04,272 - INFO -     pred_min: -0.078857
+2025-07-28 02:19:04,272 - INFO -     pred_max: 0.038116
+2025-07-28 02:19:04,272 - INFO -     target_min: -0.887084
+2025-07-28 02:19:04,272 - INFO -     target_max: 0.579655
+2025-07-28 02:19:06,079 - INFO - Step 740: Loss=0.000459, VelSim=0.3347 (fair), GradNorm=79.235, LR=4.88e-04 [OVERFIT TEST]
+2025-07-28 02:19:06,079 - INFO -   Detailed metrics:
+2025-07-28 02:19:06,079 - INFO -     loss: 0.000459
+2025-07-28 02:19:06,079 - INFO -     total_loss: 0.000459
+2025-07-28 02:19:06,079 - INFO -     reg_loss: 0.000000
+2025-07-28 02:19:06,079 - INFO -     velocity_similarity: 0.334672
+2025-07-28 02:19:06,079 - INFO -     velocity_similarity_std: 0.026225
+2025-07-28 02:19:06,079 - INFO -     pred_norm: 0.473602
+2025-07-28 02:19:06,079 - INFO -     target_norm: 1.414245
+2025-07-28 02:19:06,079 - INFO -     eva_norm: 1.000000
+2025-07-28 02:19:06,079 - INFO -     noise_norm: 1.000000
+2025-07-28 02:19:06,079 - INFO -     clip_norm: 1.000000
+2025-07-28 02:19:06,079 - INFO -     error_norm: 1.331677
+2025-07-28 02:19:06,079 - INFO -     relative_error: 0.941617
+2025-07-28 02:19:06,079 - INFO -     step_count: 740.000000
+2025-07-28 02:19:06,079 - INFO -     loss_ema: 0.000680
+2025-07-28 02:19:06,079 - INFO -     similarity_ema: 0.295950
+2025-07-28 02:19:06,079 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:19:06,079 - INFO -     timestep_std: 0.215460
+2025-07-28 02:19:06,079 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:19:06,079 - INFO -     pred_min: -0.079834
+2025-07-28 02:19:06,079 - INFO -     pred_max: 0.036774
+2025-07-28 02:19:06,080 - INFO -     target_min: -0.887084
+2025-07-28 02:19:06,080 - INFO -     target_max: 0.579655
+2025-07-28 02:19:07,807 - INFO - [Step 750] Flow Matching Debug:
+2025-07-28 02:19:07,807 - INFO -   Loss: 0.000457 (quality: fair)
+2025-07-28 02:19:07,807 - INFO -   Velocity Sim: 0.3393
+2025-07-28 02:19:07,807 - INFO -   Norms - Pred: 0.473, Target: 1.414
+2025-07-28 02:19:07,807 - INFO -   Error: 1.329 (relative: 0.940)
+2025-07-28 02:19:07,807 - INFO -   Timesteps: 0.421 ± 0.215
+2025-07-28 02:19:07,879 - INFO - Step 750: Loss=0.000457, VelSim=0.3393 (fair), GradNorm=46.833, LR=4.88e-04 [OVERFIT TEST]
+2025-07-28 02:19:07,879 - INFO -   Detailed metrics:
+2025-07-28 02:19:07,879 - INFO -     loss: 0.000457
+2025-07-28 02:19:07,879 - INFO -     total_loss: 0.000457
+2025-07-28 02:19:07,879 - INFO -     reg_loss: 0.000000
+2025-07-28 02:19:07,879 - INFO -     velocity_similarity: 0.339280
+2025-07-28 02:19:07,879 - INFO -     velocity_similarity_std: 0.026422
+2025-07-28 02:19:07,879 - INFO -     pred_norm: 0.473125
+2025-07-28 02:19:07,879 - INFO -     target_norm: 1.414245
+2025-07-28 02:19:07,879 - INFO -     eva_norm: 1.000000
+2025-07-28 02:19:07,879 - INFO -     noise_norm: 1.000000
+2025-07-28 02:19:07,879 - INFO -     clip_norm: 1.000000
+2025-07-28 02:19:07,879 - INFO -     error_norm: 1.329324
+2025-07-28 02:19:07,879 - INFO -     relative_error: 0.939953
+2025-07-28 02:19:07,879 - INFO -     step_count: 750.000000
+2025-07-28 02:19:07,879 - INFO -     loss_ema: 0.000659
+2025-07-28 02:19:07,879 - INFO -     similarity_ema: 0.299983
+2025-07-28 02:19:07,879 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:19:07,879 - INFO -     timestep_std: 0.215460
+2025-07-28 02:19:07,879 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:19:07,879 - INFO -     pred_min: -0.079834
+2025-07-28 02:19:07,879 - INFO -     pred_max: 0.037109
+2025-07-28 02:19:07,880 - INFO -     target_min: -0.887084
+2025-07-28 02:19:07,880 - INFO -     target_max: 0.579655
+2025-07-28 02:19:07,880 - INFO - Running evaluation at step 750...
+2025-07-28 02:19:14,605 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 02:20:37,996 - INFO - Evaluation results:
+2025-07-28 02:20:37,997 - INFO -   eval_eva_similarity: 0.0809
+2025-07-28 02:20:37,997 - INFO -   eval_eva_similarity_std: 0.0131
+2025-07-28 02:20:37,997 - INFO -   eval_high_quality: 0.0000
+2025-07-28 02:20:37,997 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 02:20:37,997 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 02:20:37,997 - INFO -   eval_samples: 504.0000
+2025-07-28 02:20:39,808 - INFO - Step 760: Loss=0.000456, VelSim=0.3419 (fair), GradNorm=33.878, LR=4.87e-04 [OVERFIT TEST]
+2025-07-28 02:20:39,808 - INFO -   Detailed metrics:
+2025-07-28 02:20:39,808 - INFO -     loss: 0.000456
+2025-07-28 02:20:39,808 - INFO -     total_loss: 0.000456
+2025-07-28 02:20:39,808 - INFO -     reg_loss: 0.000000
+2025-07-28 02:20:39,808 - INFO -     velocity_similarity: 0.341858
+2025-07-28 02:20:39,808 - INFO -     velocity_similarity_std: 0.026630
+2025-07-28 02:20:39,808 - INFO -     pred_norm: 0.476072
+2025-07-28 02:20:39,808 - INFO -     target_norm: 1.414245
+2025-07-28 02:20:39,808 - INFO -     eva_norm: 1.000000
+2025-07-28 02:20:39,808 - INFO -     noise_norm: 1.000000
+2025-07-28 02:20:39,808 - INFO -     clip_norm: 1.000000
+2025-07-28 02:20:39,808 - INFO -     error_norm: 1.327971
+2025-07-28 02:20:39,808 - INFO -     relative_error: 0.938997
+2025-07-28 02:20:39,808 - INFO -     step_count: 760.000000
+2025-07-28 02:20:39,808 - INFO -     loss_ema: 0.000639
+2025-07-28 02:20:39,808 - INFO -     similarity_ema: 0.303903
+2025-07-28 02:20:39,808 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:20:39,808 - INFO -     timestep_std: 0.215460
+2025-07-28 02:20:39,808 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:20:39,808 - INFO -     pred_min: -0.081238
+2025-07-28 02:20:39,808 - INFO -     pred_max: 0.037201
+2025-07-28 02:20:39,808 - INFO -     target_min: -0.887084
+2025-07-28 02:20:39,808 - INFO -     target_max: 0.579655
+2025-07-28 02:20:41,620 - INFO - Step 770: Loss=0.000455, VelSim=0.3441 (fair), GradNorm=21.559, LR=4.87e-04 [OVERFIT TEST]
+2025-07-28 02:20:41,621 - INFO -   Detailed metrics:
+2025-07-28 02:20:41,621 - INFO -     loss: 0.000455
+2025-07-28 02:20:41,621 - INFO -     total_loss: 0.000455
+2025-07-28 02:20:41,621 - INFO -     reg_loss: 0.000000
+2025-07-28 02:20:41,621 - INFO -     velocity_similarity: 0.344115
+2025-07-28 02:20:41,621 - INFO -     velocity_similarity_std: 0.026851
+2025-07-28 02:20:41,621 - INFO -     pred_norm: 0.478928
+2025-07-28 02:20:41,621 - INFO -     target_norm: 1.414245
+2025-07-28 02:20:41,621 - INFO -     eva_norm: 1.000000
+2025-07-28 02:20:41,621 - INFO -     noise_norm: 1.000000
+2025-07-28 02:20:41,621 - INFO -     clip_norm: 1.000000
+2025-07-28 02:20:41,621 - INFO -     error_norm: 1.326772
+2025-07-28 02:20:41,621 - INFO -     relative_error: 0.938149
+2025-07-28 02:20:41,621 - INFO -     step_count: 770.000000
+2025-07-28 02:20:41,621 - INFO -     loss_ema: 0.000622
+2025-07-28 02:20:41,622 - INFO -     similarity_ema: 0.307661
+2025-07-28 02:20:41,622 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:20:41,622 - INFO -     timestep_std: 0.215460
+2025-07-28 02:20:41,622 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:20:41,622 - INFO -     pred_min: -0.081421
+2025-07-28 02:20:41,622 - INFO -     pred_max: 0.038177
+2025-07-28 02:20:41,622 - INFO -     target_min: -0.887084
+2025-07-28 02:20:41,622 - INFO -     target_max: 0.579655
+2025-07-28 02:20:43,419 - INFO - Step 780: Loss=0.000455, VelSim=0.3460 (fair), GradNorm=20.078, LR=4.86e-04 [OVERFIT TEST]
+2025-07-28 02:20:43,419 - INFO -   Detailed metrics:
+2025-07-28 02:20:43,419 - INFO -     loss: 0.000455
+2025-07-28 02:20:43,419 - INFO -     total_loss: 0.000455
+2025-07-28 02:20:43,419 - INFO -     reg_loss: 0.000000
+2025-07-28 02:20:43,419 - INFO -     velocity_similarity: 0.346002
+2025-07-28 02:20:43,419 - INFO -     velocity_similarity_std: 0.027069
+2025-07-28 02:20:43,420 - INFO -     pred_norm: 0.482389
+2025-07-28 02:20:43,420 - INFO -     target_norm: 1.414245
+2025-07-28 02:20:43,420 - INFO -     eva_norm: 1.000000
+2025-07-28 02:20:43,420 - INFO -     noise_norm: 1.000000
+2025-07-28 02:20:43,420 - INFO -     clip_norm: 1.000000
+2025-07-28 02:20:43,420 - INFO -     error_norm: 1.325757
+2025-07-28 02:20:43,420 - INFO -     relative_error: 0.937431
+2025-07-28 02:20:43,420 - INFO -     step_count: 780.000000
+2025-07-28 02:20:43,420 - INFO -     loss_ema: 0.000606
+2025-07-28 02:20:43,420 - INFO -     similarity_ema: 0.311245
+2025-07-28 02:20:43,420 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:20:43,420 - INFO -     timestep_std: 0.215460
+2025-07-28 02:20:43,420 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:20:43,420 - INFO -     pred_min: -0.082947
+2025-07-28 02:20:43,420 - INFO -     pred_max: 0.038635
+2025-07-28 02:20:43,420 - INFO -     target_min: -0.887084
+2025-07-28 02:20:43,420 - INFO -     target_max: 0.579655
+2025-07-28 02:20:45,256 - INFO - Step 790: Loss=0.000454, VelSim=0.3476 (fair), GradNorm=28.858, LR=4.86e-04 [OVERFIT TEST]
+2025-07-28 02:20:45,257 - INFO -   Detailed metrics:
+2025-07-28 02:20:45,257 - INFO -     loss: 0.000454
+2025-07-28 02:20:45,257 - INFO -     total_loss: 0.000454
+2025-07-28 02:20:45,257 - INFO -     reg_loss: 0.000000
+2025-07-28 02:20:45,257 - INFO -     velocity_similarity: 0.347610
+2025-07-28 02:20:45,257 - INFO -     velocity_similarity_std: 0.027349
+2025-07-28 02:20:45,257 - INFO -     pred_norm: 0.485993
+2025-07-28 02:20:45,257 - INFO -     target_norm: 1.414245
+2025-07-28 02:20:45,257 - INFO -     eva_norm: 1.000000
+2025-07-28 02:20:45,257 - INFO -     noise_norm: 1.000000
+2025-07-28 02:20:45,257 - INFO -     clip_norm: 1.000000
+2025-07-28 02:20:45,257 - INFO -     error_norm: 1.324871
+2025-07-28 02:20:45,257 - INFO -     relative_error: 0.936805
+2025-07-28 02:20:45,257 - INFO -     step_count: 790.000000
+2025-07-28 02:20:45,257 - INFO -     loss_ema: 0.000591
+2025-07-28 02:20:45,257 - INFO -     similarity_ema: 0.314660
+2025-07-28 02:20:45,257 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:20:45,257 - INFO -     timestep_std: 0.215460
+2025-07-28 02:20:45,258 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:20:45,258 - INFO -     pred_min: -0.083374
+2025-07-28 02:20:45,258 - INFO -     pred_max: 0.038605
+2025-07-28 02:20:45,258 - INFO -     target_min: -0.887084
+2025-07-28 02:20:45,258 - INFO -     target_max: 0.579655
+2025-07-28 02:20:47,006 - INFO - [Step 800] Flow Matching Debug:
+2025-07-28 02:20:47,007 - INFO -   Loss: 0.000454 (quality: fair)
+2025-07-28 02:20:47,007 - INFO -   Velocity Sim: 0.3485
+2025-07-28 02:20:47,007 - INFO -   Norms - Pred: 0.491, Target: 1.414
+2025-07-28 02:20:47,007 - INFO -   Error: 1.324 (relative: 0.936)
+2025-07-28 02:20:47,007 - INFO -   Timesteps: 0.421 ± 0.215
+2025-07-28 02:20:47,078 - INFO - Step 800: Loss=0.000454, VelSim=0.3485 (fair), GradNorm=49.213, LR=4.86e-04 [OVERFIT TEST]
+2025-07-28 02:20:47,078 - INFO -   Detailed metrics:
+2025-07-28 02:20:47,079 - INFO -     loss: 0.000454
+2025-07-28 02:20:47,079 - INFO -     total_loss: 0.000454
+2025-07-28 02:20:47,079 - INFO -     reg_loss: 0.000000
+2025-07-28 02:20:47,079 - INFO -     velocity_similarity: 0.348512
+2025-07-28 02:20:47,079 - INFO -     velocity_similarity_std: 0.027665
+2025-07-28 02:20:47,079 - INFO -     pred_norm: 0.490796
+2025-07-28 02:20:47,079 - INFO -     target_norm: 1.414245
+2025-07-28 02:20:47,079 - INFO -     eva_norm: 1.000000
+2025-07-28 02:20:47,079 - INFO -     noise_norm: 1.000000
+2025-07-28 02:20:47,079 - INFO -     clip_norm: 1.000000
+2025-07-28 02:20:47,079 - INFO -     error_norm: 1.324326
+2025-07-28 02:20:47,079 - INFO -     relative_error: 0.936419
+2025-07-28 02:20:47,079 - INFO -     step_count: 800.000000
+2025-07-28 02:20:47,079 - INFO -     loss_ema: 0.000578
+2025-07-28 02:20:47,079 - INFO -     similarity_ema: 0.317880
+2025-07-28 02:20:47,079 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:20:47,079 - INFO -     timestep_std: 0.215460
+2025-07-28 02:20:47,079 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:20:47,079 - INFO -     pred_min: -0.085693
+2025-07-28 02:20:47,079 - INFO -     pred_max: 0.038757
+2025-07-28 02:20:47,079 - INFO -     target_min: -0.887084
+2025-07-28 02:20:47,079 - INFO -     target_max: 0.579655
+2025-07-28 02:20:47,079 - INFO - Running evaluation at step 800...
+2025-07-28 02:20:53,844 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 02:22:17,228 - INFO - Evaluation results:
+2025-07-28 02:22:17,229 - INFO -   eval_eva_similarity: 0.0808
+2025-07-28 02:22:17,229 - INFO -   eval_eva_similarity_std: 0.0129
+2025-07-28 02:22:17,229 - INFO -   eval_high_quality: 0.0000
+2025-07-28 02:22:17,229 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 02:22:17,229 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 02:22:17,229 - INFO -   eval_samples: 504.0000
+2025-07-28 02:22:19,039 - INFO - Step 810: Loss=0.000459, VelSim=0.3346 (fair), GradNorm=175.909, LR=4.85e-04 [OVERFIT TEST]
+2025-07-28 02:22:19,039 - INFO -   Detailed metrics:
+2025-07-28 02:22:19,039 - INFO -     loss: 0.000459
+2025-07-28 02:22:19,039 - INFO -     total_loss: 0.000459
+2025-07-28 02:22:19,039 - INFO -     reg_loss: 0.000000
+2025-07-28 02:22:19,039 - INFO -     velocity_similarity: 0.334643
+2025-07-28 02:22:19,039 - INFO -     velocity_similarity_std: 0.028583
+2025-07-28 02:22:19,039 - INFO -     pred_norm: 0.520402
+2025-07-28 02:22:19,039 - INFO -     target_norm: 1.414245
+2025-07-28 02:22:19,039 - INFO -     eva_norm: 1.000000
+2025-07-28 02:22:19,039 - INFO -     noise_norm: 1.000000
+2025-07-28 02:22:19,039 - INFO -     clip_norm: 1.000000
+2025-07-28 02:22:19,039 - INFO -     error_norm: 1.332192
+2025-07-28 02:22:19,039 - INFO -     relative_error: 0.941981
+2025-07-28 02:22:19,040 - INFO -     step_count: 810.000000
+2025-07-28 02:22:19,040 - INFO -     loss_ema: 0.000566
+2025-07-28 02:22:19,040 - INFO -     similarity_ema: 0.320440
+2025-07-28 02:22:19,040 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:22:19,040 - INFO -     timestep_std: 0.215460
+2025-07-28 02:22:19,040 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:22:19,040 - INFO -     pred_min: -0.090088
+2025-07-28 02:22:19,040 - INFO -     pred_max: 0.038208
+2025-07-28 02:22:19,040 - INFO -     target_min: -0.887084
+2025-07-28 02:22:19,040 - INFO -     target_max: 0.579655
+2025-07-28 02:22:20,842 - INFO - Step 820: Loss=0.000511, VelSim=0.2557 (fair), GradNorm=525.152, LR=4.85e-04 [OVERFIT TEST]
+2025-07-28 02:22:20,842 - INFO -   Detailed metrics:
+2025-07-28 02:22:20,842 - INFO -     loss: 0.000511
+2025-07-28 02:22:20,842 - INFO -     total_loss: 0.000511
+2025-07-28 02:22:20,842 - INFO -     reg_loss: 0.000000
+2025-07-28 02:22:20,842 - INFO -     velocity_similarity: 0.255717
+2025-07-28 02:22:20,842 - INFO -     velocity_similarity_std: 0.030531
+2025-07-28 02:22:20,843 - INFO -     pred_norm: 0.695476
+2025-07-28 02:22:20,843 - INFO -     target_norm: 1.414245
+2025-07-28 02:22:20,843 - INFO -     eva_norm: 1.000000
+2025-07-28 02:22:20,843 - INFO -     noise_norm: 1.000000
+2025-07-28 02:22:20,843 - INFO -     clip_norm: 1.000000
+2025-07-28 02:22:20,843 - INFO -     error_norm: 1.406084
+2025-07-28 02:22:20,843 - INFO -     relative_error: 0.994230
+2025-07-28 02:22:20,843 - INFO -     step_count: 820.000000
+2025-07-28 02:22:20,843 - INFO -     loss_ema: 0.000560
+2025-07-28 02:22:20,843 - INFO -     similarity_ema: 0.316228
+2025-07-28 02:22:20,843 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:22:20,843 - INFO -     timestep_std: 0.215460
+2025-07-28 02:22:20,843 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:22:20,843 - INFO -     pred_min: -0.101440
+2025-07-28 02:22:20,843 - INFO -     pred_max: 0.045990
+2025-07-28 02:22:20,843 - INFO -     target_min: -0.887084
+2025-07-28 02:22:20,843 - INFO -     target_max: 0.579655
+2025-07-28 02:22:22,650 - INFO - Step 830: Loss=0.000469, VelSim=0.3134 (fair), GradNorm=280.010, LR=4.84e-04 [OVERFIT TEST]
+2025-07-28 02:22:22,650 - INFO -   Detailed metrics:
+2025-07-28 02:22:22,650 - INFO -     loss: 0.000469
+2025-07-28 02:22:22,650 - INFO -     total_loss: 0.000469
+2025-07-28 02:22:22,651 - INFO -     reg_loss: 0.000000
+2025-07-28 02:22:22,651 - INFO -     velocity_similarity: 0.313443
+2025-07-28 02:22:22,651 - INFO -     velocity_similarity_std: 0.030322
+2025-07-28 02:22:22,651 - INFO -     pred_norm: 0.563004
+2025-07-28 02:22:22,651 - INFO -     target_norm: 1.414245
+2025-07-28 02:22:22,651 - INFO -     eva_norm: 1.000000
+2025-07-28 02:22:22,651 - INFO -     noise_norm: 1.000000
+2025-07-28 02:22:22,651 - INFO -     clip_norm: 1.000000
+2025-07-28 02:22:22,651 - INFO -     error_norm: 1.346901
+2025-07-28 02:22:22,651 - INFO -     relative_error: 0.952382
+2025-07-28 02:22:22,651 - INFO -     step_count: 830.000000
+2025-07-28 02:22:22,651 - INFO -     loss_ema: 0.000551
+2025-07-28 02:22:22,651 - INFO -     similarity_ema: 0.315316
+2025-07-28 02:22:22,651 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:22:22,651 - INFO -     timestep_std: 0.215460
+2025-07-28 02:22:22,651 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:22:22,651 - INFO -     pred_min: -0.088745
+2025-07-28 02:22:22,651 - INFO -     pred_max: 0.036530
+2025-07-28 02:22:22,651 - INFO -     target_min: -0.887084
+2025-07-28 02:22:22,651 - INFO -     target_max: 0.579655
+2025-07-28 02:22:24,468 - INFO - Step 840: Loss=0.000455, VelSim=0.3448 (fair), GradNorm=142.124, LR=4.84e-04 [OVERFIT TEST]
+2025-07-28 02:22:24,468 - INFO -   Detailed metrics:
+2025-07-28 02:22:24,469 - INFO -     loss: 0.000455
+2025-07-28 02:22:24,469 - INFO -     total_loss: 0.000455
+2025-07-28 02:22:24,469 - INFO -     reg_loss: 0.000000
+2025-07-28 02:22:24,469 - INFO -     velocity_similarity: 0.344835
+2025-07-28 02:22:24,469 - INFO -     velocity_similarity_std: 0.029289
+2025-07-28 02:22:24,469 - INFO -     pred_norm: 0.516368
+2025-07-28 02:22:24,469 - INFO -     target_norm: 1.414245
+2025-07-28 02:22:24,469 - INFO -     eva_norm: 1.000000
+2025-07-28 02:22:24,469 - INFO -     noise_norm: 1.000000
+2025-07-28 02:22:24,469 - INFO -     clip_norm: 1.000000
+2025-07-28 02:22:24,469 - INFO -     error_norm: 1.326427
+2025-07-28 02:22:24,469 - INFO -     relative_error: 0.937905
+2025-07-28 02:22:24,469 - INFO -     step_count: 840.000000
+2025-07-28 02:22:24,469 - INFO -     loss_ema: 0.000543
+2025-07-28 02:22:24,469 - INFO -     similarity_ema: 0.317245
+2025-07-28 02:22:24,469 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:22:24,469 - INFO -     timestep_std: 0.215460
+2025-07-28 02:22:24,469 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:22:24,469 - INFO -     pred_min: -0.088440
+2025-07-28 02:22:24,469 - INFO -     pred_max: 0.037811
+2025-07-28 02:22:24,469 - INFO -     target_min: -0.887084
+2025-07-28 02:22:24,469 - INFO -     target_max: 0.579655
+2025-07-28 02:22:26,212 - INFO - [Step 850] Flow Matching Debug:
+2025-07-28 02:22:26,212 - INFO -   Loss: 0.000451 (quality: fair)
+2025-07-28 02:22:26,212 - INFO -   Velocity Sim: 0.3549
+2025-07-28 02:22:26,213 - INFO -   Norms - Pred: 0.507, Target: 1.414
+2025-07-28 02:22:26,213 - INFO -   Error: 1.321 (relative: 0.934)
+2025-07-28 02:22:26,213 - INFO -   Timesteps: 0.421 ± 0.215
+2025-07-28 02:22:26,284 - INFO - Step 850: Loss=0.000451, VelSim=0.3549 (fair), GradNorm=82.779, LR=4.84e-04 [OVERFIT TEST]
+2025-07-28 02:22:26,284 - INFO -   Detailed metrics:
+2025-07-28 02:22:26,284 - INFO -     loss: 0.000451
+2025-07-28 02:22:26,284 - INFO -     total_loss: 0.000451
+2025-07-28 02:22:26,284 - INFO -     reg_loss: 0.000000
+2025-07-28 02:22:26,284 - INFO -     velocity_similarity: 0.354941
+2025-07-28 02:22:26,284 - INFO -     velocity_similarity_std: 0.029333
+2025-07-28 02:22:26,284 - INFO -     pred_norm: 0.506515
+2025-07-28 02:22:26,284 - INFO -     target_norm: 1.414245
+2025-07-28 02:22:26,284 - INFO -     eva_norm: 1.000000
+2025-07-28 02:22:26,284 - INFO -     noise_norm: 1.000000
+2025-07-28 02:22:26,284 - INFO -     clip_norm: 1.000000
+2025-07-28 02:22:26,284 - INFO -     error_norm: 1.320728
+2025-07-28 02:22:26,284 - INFO -     relative_error: 0.933875
+2025-07-28 02:22:26,284 - INFO -     step_count: 850.000000
+2025-07-28 02:22:26,285 - INFO -     loss_ema: 0.000534
+2025-07-28 02:22:26,285 - INFO -     similarity_ema: 0.320529
+2025-07-28 02:22:26,285 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:22:26,285 - INFO -     timestep_std: 0.215460
+2025-07-28 02:22:26,285 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:22:26,285 - INFO -     pred_min: -0.089233
+2025-07-28 02:22:26,285 - INFO -     pred_max: 0.037872
+2025-07-28 02:22:26,285 - INFO -     target_min: -0.887084
+2025-07-28 02:22:26,285 - INFO -     target_max: 0.579655
+2025-07-28 02:22:26,285 - INFO - Running evaluation at step 850...
+2025-07-28 02:22:33,017 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 02:23:56,363 - INFO - Evaluation results:
+2025-07-28 02:23:56,364 - INFO -   eval_eva_similarity: 0.0806
+2025-07-28 02:23:56,364 - INFO -   eval_eva_similarity_std: 0.0130
+2025-07-28 02:23:56,364 - INFO -   eval_high_quality: 0.0000
+2025-07-28 02:23:56,364 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 02:23:56,364 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 02:23:56,364 - INFO -   eval_samples: 504.0000
+2025-07-28 02:23:58,176 - INFO - Step 860: Loss=0.000449, VelSim=0.3604 (fair), GradNorm=38.926, LR=4.83e-04 [OVERFIT TEST]
+2025-07-28 02:23:58,177 - INFO -   Detailed metrics:
+2025-07-28 02:23:58,177 - INFO -     loss: 0.000449
+2025-07-28 02:23:58,177 - INFO -     total_loss: 0.000449
+2025-07-28 02:23:58,177 - INFO -     reg_loss: 0.000000
+2025-07-28 02:23:58,177 - INFO -     velocity_similarity: 0.360428
+2025-07-28 02:23:58,177 - INFO -     velocity_similarity_std: 0.029423
+2025-07-28 02:23:58,177 - INFO -     pred_norm: 0.504557
+2025-07-28 02:23:58,177 - INFO -     target_norm: 1.414245
+2025-07-28 02:23:58,177 - INFO -     eva_norm: 1.000000
+2025-07-28 02:23:58,177 - INFO -     noise_norm: 1.000000
+2025-07-28 02:23:58,177 - INFO -     clip_norm: 1.000000
+2025-07-28 02:23:58,177 - INFO -     error_norm: 1.317743
+2025-07-28 02:23:58,177 - INFO -     relative_error: 0.931764
+2025-07-28 02:23:58,177 - INFO -     step_count: 860.000000
+2025-07-28 02:23:58,177 - INFO -     loss_ema: 0.000526
+2025-07-28 02:23:58,177 - INFO -     similarity_ema: 0.324095
+2025-07-28 02:23:58,177 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:23:58,177 - INFO -     timestep_std: 0.215460
+2025-07-28 02:23:58,177 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:23:58,177 - INFO -     pred_min: -0.088806
+2025-07-28 02:23:58,177 - INFO -     pred_max: 0.039764
+2025-07-28 02:23:58,178 - INFO -     target_min: -0.887084
+2025-07-28 02:23:58,178 - INFO -     target_max: 0.579655
+2025-07-28 02:23:59,983 - INFO - Step 870: Loss=0.000448, VelSim=0.3626 (fair), GradNorm=34.340, LR=4.83e-04 [OVERFIT TEST]
+2025-07-28 02:23:59,984 - INFO -   Detailed metrics:
+2025-07-28 02:23:59,984 - INFO -     loss: 0.000448
+2025-07-28 02:23:59,984 - INFO -     total_loss: 0.000448
+2025-07-28 02:23:59,984 - INFO -     reg_loss: 0.000000
+2025-07-28 02:23:59,984 - INFO -     velocity_similarity: 0.362648
+2025-07-28 02:23:59,984 - INFO -     velocity_similarity_std: 0.029716
+2025-07-28 02:23:59,984 - INFO -     pred_norm: 0.508024
+2025-07-28 02:23:59,984 - INFO -     target_norm: 1.414245
+2025-07-28 02:23:59,984 - INFO -     eva_norm: 1.000000
+2025-07-28 02:23:59,984 - INFO -     noise_norm: 1.000000
+2025-07-28 02:23:59,984 - INFO -     clip_norm: 1.000000
+2025-07-28 02:23:59,984 - INFO -     error_norm: 1.316479
+2025-07-28 02:23:59,984 - INFO -     relative_error: 0.930871
+2025-07-28 02:23:59,984 - INFO -     step_count: 870.000000
+2025-07-28 02:23:59,984 - INFO -     loss_ema: 0.000519
+2025-07-28 02:23:59,984 - INFO -     similarity_ema: 0.327647
+2025-07-28 02:23:59,984 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:23:59,984 - INFO -     timestep_std: 0.215460
+2025-07-28 02:23:59,984 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:23:59,984 - INFO -     pred_min: -0.090088
+2025-07-28 02:23:59,984 - INFO -     pred_max: 0.039581
+2025-07-28 02:23:59,984 - INFO -     target_min: -0.887084
+2025-07-28 02:23:59,984 - INFO -     target_max: 0.579655
+2025-07-28 02:24:01,799 - INFO - Step 880: Loss=0.000448, VelSim=0.3644 (fair), GradNorm=39.498, LR=4.82e-04 [OVERFIT TEST]
+2025-07-28 02:24:01,800 - INFO -   Detailed metrics:
+2025-07-28 02:24:01,800 - INFO -     loss: 0.000448
+2025-07-28 02:24:01,800 - INFO -     total_loss: 0.000448
+2025-07-28 02:24:01,800 - INFO -     reg_loss: 0.000000
+2025-07-28 02:24:01,800 - INFO -     velocity_similarity: 0.364410
+2025-07-28 02:24:01,800 - INFO -     velocity_similarity_std: 0.030006
+2025-07-28 02:24:01,800 - INFO -     pred_norm: 0.512299
+2025-07-28 02:24:01,800 - INFO -     target_norm: 1.414245
+2025-07-28 02:24:01,800 - INFO -     eva_norm: 1.000000
+2025-07-28 02:24:01,800 - INFO -     noise_norm: 1.000000
+2025-07-28 02:24:01,801 - INFO -     clip_norm: 1.000000
+2025-07-28 02:24:01,801 - INFO -     error_norm: 1.315456
+2025-07-28 02:24:01,801 - INFO -     relative_error: 0.930147
+2025-07-28 02:24:01,801 - INFO -     step_count: 880.000000
+2025-07-28 02:24:01,801 - INFO -     loss_ema: 0.000512
+2025-07-28 02:24:01,801 - INFO -     similarity_ema: 0.331099
+2025-07-28 02:24:01,801 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:24:01,801 - INFO -     timestep_std: 0.215460
+2025-07-28 02:24:01,801 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:24:01,801 - INFO -     pred_min: -0.091064
+2025-07-28 02:24:01,801 - INFO -     pred_max: 0.039886
+2025-07-28 02:24:01,801 - INFO -     target_min: -0.887084
+2025-07-28 02:24:01,801 - INFO -     target_max: 0.579655
+2025-07-28 02:24:03,607 - INFO - Step 890: Loss=0.000449, VelSim=0.3602 (fair), GradNorm=112.424, LR=4.82e-04 [OVERFIT TEST]
+2025-07-28 02:24:03,607 - INFO -   Detailed metrics:
+2025-07-28 02:24:03,607 - INFO -     loss: 0.000449
+2025-07-28 02:24:03,608 - INFO -     total_loss: 0.000449
+2025-07-28 02:24:03,608 - INFO -     reg_loss: 0.000000
+2025-07-28 02:24:03,608 - INFO -     velocity_similarity: 0.360201
+2025-07-28 02:24:03,608 - INFO -     velocity_similarity_std: 0.030609
+2025-07-28 02:24:03,608 - INFO -     pred_norm: 0.524190
+2025-07-28 02:24:03,608 - INFO -     target_norm: 1.414245
+2025-07-28 02:24:03,608 - INFO -     eva_norm: 1.000000
+2025-07-28 02:24:03,608 - INFO -     noise_norm: 1.000000
+2025-07-28 02:24:03,608 - INFO -     clip_norm: 1.000000
+2025-07-28 02:24:03,608 - INFO -     error_norm: 1.317771
+2025-07-28 02:24:03,608 - INFO -     relative_error: 0.931784
+2025-07-28 02:24:03,608 - INFO -     step_count: 890.000000
+2025-07-28 02:24:03,608 - INFO -     loss_ema: 0.000506
+2025-07-28 02:24:03,608 - INFO -     similarity_ema: 0.334205
+2025-07-28 02:24:03,608 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:24:03,608 - INFO -     timestep_std: 0.215460
+2025-07-28 02:24:03,608 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:24:03,608 - INFO -     pred_min: -0.095276
+2025-07-28 02:24:03,608 - INFO -     pred_max: 0.037720
+2025-07-28 02:24:03,609 - INFO -     target_min: -0.887084
+2025-07-28 02:24:03,609 - INFO -     target_max: 0.579655
+2025-07-28 02:24:05,348 - INFO - [Step 900] Flow Matching Debug:
+2025-07-28 02:24:05,348 - INFO -   Loss: 0.000531 (quality: fair)
+2025-07-28 02:24:05,349 - INFO -   Velocity Sim: 0.2467
+2025-07-28 02:24:05,349 - INFO -   Norms - Pred: 0.773, Target: 1.414
+2025-07-28 02:24:05,349 - INFO -   Error: 1.433 (relative: 1.013)
+2025-07-28 02:24:05,349 - INFO -   Timesteps: 0.421 ± 0.215
+2025-07-28 02:24:05,420 - INFO - Step 900: Loss=0.000531, VelSim=0.2467 (fair), GradNorm=628.154, LR=4.81e-04 [OVERFIT TEST]
+2025-07-28 02:24:05,420 - INFO -   Detailed metrics:
+2025-07-28 02:24:05,420 - INFO -     loss: 0.000531
+2025-07-28 02:24:05,421 - INFO -     total_loss: 0.000531
+2025-07-28 02:24:05,421 - INFO -     reg_loss: 0.000000
+2025-07-28 02:24:05,421 - INFO -     velocity_similarity: 0.246736
+2025-07-28 02:24:05,421 - INFO -     velocity_similarity_std: 0.029484
+2025-07-28 02:24:05,421 - INFO -     pred_norm: 0.773191
+2025-07-28 02:24:05,421 - INFO -     target_norm: 1.414245
+2025-07-28 02:24:05,421 - INFO -     eva_norm: 1.000000
+2025-07-28 02:24:05,421 - INFO -     noise_norm: 1.000000
+2025-07-28 02:24:05,421 - INFO -     clip_norm: 1.000000
+2025-07-28 02:24:05,421 - INFO -     error_norm: 1.433317
+2025-07-28 02:24:05,421 - INFO -     relative_error: 1.013486
+2025-07-28 02:24:05,421 - INFO -     step_count: 900.000000
+2025-07-28 02:24:05,421 - INFO -     loss_ema: 0.000503
+2025-07-28 02:24:05,421 - INFO -     similarity_ema: 0.331849
+2025-07-28 02:24:05,421 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:24:05,421 - INFO -     timestep_std: 0.215460
+2025-07-28 02:24:05,421 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:24:05,421 - INFO -     pred_min: -0.114075
+2025-07-28 02:24:05,421 - INFO -     pred_max: 0.046997
+2025-07-28 02:24:05,421 - INFO -     target_min: -0.887084
+2025-07-28 02:24:05,422 - INFO -     target_max: 0.579655
+2025-07-28 02:24:05,422 - INFO - Running evaluation at step 900...
+2025-07-28 02:24:12,132 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 02:25:35,433 - INFO - Evaluation results:
+2025-07-28 02:25:35,436 - INFO -   eval_eva_similarity: 0.0691
+2025-07-28 02:25:35,436 - INFO -   eval_eva_similarity_std: 0.0125
+2025-07-28 02:25:35,436 - INFO -   eval_high_quality: 0.0000
+2025-07-28 02:25:35,436 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 02:25:35,436 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 02:25:35,436 - INFO -   eval_samples: 504.0000
+2025-07-28 02:25:37,238 - INFO - Step 910: Loss=0.000450, VelSim=0.3594 (fair), GradNorm=140.131, LR=4.81e-04 [OVERFIT TEST]
+2025-07-28 02:25:37,239 - INFO -   Detailed metrics:
+2025-07-28 02:25:37,239 - INFO -     loss: 0.000450
+2025-07-28 02:25:37,239 - INFO -     total_loss: 0.000450
+2025-07-28 02:25:37,239 - INFO -     reg_loss: 0.000000
+2025-07-28 02:25:37,239 - INFO -     velocity_similarity: 0.359446
+2025-07-28 02:25:37,239 - INFO -     velocity_similarity_std: 0.031339
+2025-07-28 02:25:37,239 - INFO -     pred_norm: 0.532261
+2025-07-28 02:25:37,239 - INFO -     target_norm: 1.414245
+2025-07-28 02:25:37,239 - INFO -     eva_norm: 1.000000
+2025-07-28 02:25:37,239 - INFO -     noise_norm: 1.000000
+2025-07-28 02:25:37,239 - INFO -     clip_norm: 1.000000
+2025-07-28 02:25:37,239 - INFO -     error_norm: 1.318276
+2025-07-28 02:25:37,239 - INFO -     relative_error: 0.932142
+2025-07-28 02:25:37,239 - INFO -     step_count: 910.000000
+2025-07-28 02:25:37,239 - INFO -     loss_ema: 0.000501
+2025-07-28 02:25:37,240 - INFO -     similarity_ema: 0.330154
+2025-07-28 02:25:37,240 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:25:37,240 - INFO -     timestep_std: 0.215460
+2025-07-28 02:25:37,240 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:25:37,240 - INFO -     pred_min: -0.090332
+2025-07-28 02:25:37,240 - INFO -     pred_max: 0.038330
+2025-07-28 02:25:37,240 - INFO -     target_min: -0.887084
+2025-07-28 02:25:37,240 - INFO -     target_max: 0.579655
+2025-07-28 02:25:39,058 - INFO - Step 920: Loss=0.000448, VelSim=0.3631 (fair), GradNorm=123.556, LR=4.80e-04 [OVERFIT TEST]
+2025-07-28 02:25:39,058 - INFO -   Detailed metrics:
+2025-07-28 02:25:39,058 - INFO -     loss: 0.000448
+2025-07-28 02:25:39,058 - INFO -     total_loss: 0.000448
+2025-07-28 02:25:39,058 - INFO -     reg_loss: 0.000000
+2025-07-28 02:25:39,058 - INFO -     velocity_similarity: 0.363146
+2025-07-28 02:25:39,058 - INFO -     velocity_similarity_std: 0.031606
+2025-07-28 02:25:39,058 - INFO -     pred_norm: 0.531243
+2025-07-28 02:25:39,058 - INFO -     target_norm: 1.414245
+2025-07-28 02:25:39,058 - INFO -     eva_norm: 1.000000
+2025-07-28 02:25:39,058 - INFO -     noise_norm: 1.000000
+2025-07-28 02:25:39,058 - INFO -     clip_norm: 1.000000
+2025-07-28 02:25:39,058 - INFO -     error_norm: 1.316082
+2025-07-28 02:25:39,058 - INFO -     relative_error: 0.930590
+2025-07-28 02:25:39,058 - INFO -     step_count: 920.000000
+2025-07-28 02:25:39,058 - INFO -     loss_ema: 0.000496
+2025-07-28 02:25:39,058 - INFO -     similarity_ema: 0.332632
+2025-07-28 02:25:39,058 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:25:39,058 - INFO -     timestep_std: 0.215460
+2025-07-28 02:25:39,059 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:25:39,059 - INFO -     pred_min: -0.095642
+2025-07-28 02:25:39,059 - INFO -     pred_max: 0.038910
+2025-07-28 02:25:39,059 - INFO -     target_min: -0.887084
+2025-07-28 02:25:39,059 - INFO -     target_max: 0.579655
+2025-07-28 02:25:40,875 - INFO - Step 930: Loss=0.000445, VelSim=0.3720 (fair), GradNorm=68.965, LR=4.80e-04 [OVERFIT TEST]
+2025-07-28 02:25:40,875 - INFO -   Detailed metrics:
+2025-07-28 02:25:40,875 - INFO -     loss: 0.000445
+2025-07-28 02:25:40,875 - INFO -     total_loss: 0.000445
+2025-07-28 02:25:40,875 - INFO -     reg_loss: 0.000000
+2025-07-28 02:25:40,875 - INFO -     velocity_similarity: 0.372041
+2025-07-28 02:25:40,875 - INFO -     velocity_similarity_std: 0.031597
+2025-07-28 02:25:40,875 - INFO -     pred_norm: 0.525250
+2025-07-28 02:25:40,875 - INFO -     target_norm: 1.414245
+2025-07-28 02:25:40,875 - INFO -     eva_norm: 1.000000
+2025-07-28 02:25:40,875 - INFO -     noise_norm: 1.000000
+2025-07-28 02:25:40,875 - INFO -     clip_norm: 1.000000
+2025-07-28 02:25:40,875 - INFO -     error_norm: 1.310968
+2025-07-28 02:25:40,875 - INFO -     relative_error: 0.926974
+2025-07-28 02:25:40,875 - INFO -     step_count: 930.000000
+2025-07-28 02:25:40,875 - INFO -     loss_ema: 0.000491
+2025-07-28 02:25:40,875 - INFO -     similarity_ema: 0.336058
+2025-07-28 02:25:40,875 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:25:40,876 - INFO -     timestep_std: 0.215460
+2025-07-28 02:25:40,876 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:25:40,876 - INFO -     pred_min: -0.095642
+2025-07-28 02:25:40,876 - INFO -     pred_max: 0.038605
+2025-07-28 02:25:40,876 - INFO -     target_min: -0.887084
+2025-07-28 02:25:40,876 - INFO -     target_max: 0.579655
+2025-07-28 02:25:42,684 - INFO - Step 940: Loss=0.000444, VelSim=0.3755 (fair), GradNorm=50.703, LR=4.79e-04 [OVERFIT TEST]
+2025-07-28 02:25:42,685 - INFO -   Detailed metrics:
+2025-07-28 02:25:42,685 - INFO -     loss: 0.000444
+2025-07-28 02:25:42,685 - INFO -     total_loss: 0.000444
+2025-07-28 02:25:42,685 - INFO -     reg_loss: 0.000000
+2025-07-28 02:25:42,685 - INFO -     velocity_similarity: 0.375514
+2025-07-28 02:25:42,685 - INFO -     velocity_similarity_std: 0.031749
+2025-07-28 02:25:42,685 - INFO -     pred_norm: 0.529726
+2025-07-28 02:25:42,685 - INFO -     target_norm: 1.414245
+2025-07-28 02:25:42,685 - INFO -     eva_norm: 1.000000
+2025-07-28 02:25:42,685 - INFO -     noise_norm: 1.000000
+2025-07-28 02:25:42,685 - INFO -     clip_norm: 1.000000
+2025-07-28 02:25:42,685 - INFO -     error_norm: 1.308949
+2025-07-28 02:25:42,685 - INFO -     relative_error: 0.925547
+2025-07-28 02:25:42,685 - INFO -     step_count: 940.000000
+2025-07-28 02:25:42,685 - INFO -     loss_ema: 0.000487
+2025-07-28 02:25:42,685 - INFO -     similarity_ema: 0.339712
+2025-07-28 02:25:42,686 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:25:42,686 - INFO -     timestep_std: 0.215460
+2025-07-28 02:25:42,686 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:25:42,686 - INFO -     pred_min: -0.095337
+2025-07-28 02:25:42,686 - INFO -     pred_max: 0.039734
+2025-07-28 02:25:42,686 - INFO -     target_min: -0.887084
+2025-07-28 02:25:42,686 - INFO -     target_max: 0.579655
+2025-07-28 02:25:44,413 - INFO - [Step 950] Flow Matching Debug:
+2025-07-28 02:25:44,413 - INFO -   Loss: 0.000444 (quality: fair)
+2025-07-28 02:25:44,413 - INFO -   Velocity Sim: 0.3744
+2025-07-28 02:25:44,413 - INFO -   Norms - Pred: 0.539, Target: 1.414
+2025-07-28 02:25:44,413 - INFO -   Error: 1.310 (relative: 0.926)
+2025-07-28 02:25:44,414 - INFO -   Timesteps: 0.421 ± 0.215
+2025-07-28 02:25:44,485 - INFO - Step 950: Loss=0.000444, VelSim=0.3744 (fair), GradNorm=87.301, LR=4.79e-04 [OVERFIT TEST]
+2025-07-28 02:25:44,485 - INFO -   Detailed metrics:
+2025-07-28 02:25:44,485 - INFO -     loss: 0.000444
+2025-07-28 02:25:44,485 - INFO -     total_loss: 0.000444
+2025-07-28 02:25:44,485 - INFO -     reg_loss: 0.000000
+2025-07-28 02:25:44,485 - INFO -     velocity_similarity: 0.374407
+2025-07-28 02:25:44,485 - INFO -     velocity_similarity_std: 0.032182
+2025-07-28 02:25:44,486 - INFO -     pred_norm: 0.539199
+2025-07-28 02:25:44,486 - INFO -     target_norm: 1.414245
+2025-07-28 02:25:44,486 - INFO -     eva_norm: 1.000000
+2025-07-28 02:25:44,486 - INFO -     noise_norm: 1.000000
+2025-07-28 02:25:44,486 - INFO -     clip_norm: 1.000000
+2025-07-28 02:25:44,486 - INFO -     error_norm: 1.309561
+2025-07-28 02:25:44,486 - INFO -     relative_error: 0.925979
+2025-07-28 02:25:44,486 - INFO -     step_count: 950.000000
+2025-07-28 02:25:44,486 - INFO -     loss_ema: 0.000483
+2025-07-28 02:25:44,486 - INFO -     similarity_ema: 0.343167
+2025-07-28 02:25:44,486 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:25:44,486 - INFO -     timestep_std: 0.215460
+2025-07-28 02:25:44,486 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:25:44,486 - INFO -     pred_min: -0.098083
+2025-07-28 02:25:44,486 - INFO -     pred_max: 0.040253
+2025-07-28 02:25:44,486 - INFO -     target_min: -0.887084
+2025-07-28 02:25:44,486 - INFO -     target_max: 0.579655
+2025-07-28 02:25:44,486 - INFO - Running evaluation at step 950...
+2025-07-28 02:25:51,251 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 02:27:14,560 - INFO - Evaluation results:
+2025-07-28 02:27:14,561 - INFO -   eval_eva_similarity: 0.0804
+2025-07-28 02:27:14,561 - INFO -   eval_eva_similarity_std: 0.0132
+2025-07-28 02:27:14,561 - INFO -   eval_high_quality: 0.0000
+2025-07-28 02:27:14,561 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 02:27:14,561 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 02:27:14,561 - INFO -   eval_samples: 504.0000
+2025-07-28 02:27:16,356 - INFO - Step 960: Loss=0.000504, VelSim=0.2809 (fair), GradNorm=503.099, LR=4.78e-04 [OVERFIT TEST]
+2025-07-28 02:27:16,357 - INFO -   Detailed metrics:
+2025-07-28 02:27:16,357 - INFO -     loss: 0.000504
+2025-07-28 02:27:16,357 - INFO -     total_loss: 0.000504
+2025-07-28 02:27:16,357 - INFO -     reg_loss: 0.000000
+2025-07-28 02:27:16,357 - INFO -     velocity_similarity: 0.280894
+2025-07-28 02:27:16,357 - INFO -     velocity_similarity_std: 0.034217
+2025-07-28 02:27:16,357 - INFO -     pred_norm: 0.731394
+2025-07-28 02:27:16,357 - INFO -     target_norm: 1.414245
+2025-07-28 02:27:16,357 - INFO -     eva_norm: 1.000000
+2025-07-28 02:27:16,357 - INFO -     noise_norm: 1.000000
+2025-07-28 02:27:16,357 - INFO -     clip_norm: 1.000000
+2025-07-28 02:27:16,357 - INFO -     error_norm: 1.396142
+2025-07-28 02:27:16,358 - INFO -     relative_error: 0.987200
+2025-07-28 02:27:16,358 - INFO -     step_count: 960.000000
+2025-07-28 02:27:16,358 - INFO -     loss_ema: 0.000481
+2025-07-28 02:27:16,358 - INFO -     similarity_ema: 0.342670
+2025-07-28 02:27:16,358 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:27:16,358 - INFO -     timestep_std: 0.215460
+2025-07-28 02:27:16,358 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:27:16,358 - INFO -     pred_min: -0.110046
+2025-07-28 02:27:16,358 - INFO -     pred_max: 0.046997
+2025-07-28 02:27:16,358 - INFO -     target_min: -0.887084
+2025-07-28 02:27:16,358 - INFO -     target_max: 0.579655
+2025-07-28 02:27:18,179 - INFO - Step 970: Loss=0.000453, VelSim=0.3540 (fair), GradNorm=217.427, LR=4.78e-04 [OVERFIT TEST]
+2025-07-28 02:27:18,180 - INFO -   Detailed metrics:
+2025-07-28 02:27:18,180 - INFO -     loss: 0.000453
+2025-07-28 02:27:18,180 - INFO -     total_loss: 0.000453
+2025-07-28 02:27:18,180 - INFO -     reg_loss: 0.000000
+2025-07-28 02:27:18,180 - INFO -     velocity_similarity: 0.354014
+2025-07-28 02:27:18,180 - INFO -     velocity_similarity_std: 0.033721
+2025-07-28 02:27:18,180 - INFO -     pred_norm: 0.577509
+2025-07-28 02:27:18,180 - INFO -     target_norm: 1.414245
+2025-07-28 02:27:18,180 - INFO -     eva_norm: 1.000000
+2025-07-28 02:27:18,180 - INFO -     noise_norm: 1.000000
+2025-07-28 02:27:18,180 - INFO -     clip_norm: 1.000000
+2025-07-28 02:27:18,180 - INFO -     error_norm: 1.322967
+2025-07-28 02:27:18,180 - INFO -     relative_error: 0.935458
+2025-07-28 02:27:18,180 - INFO -     step_count: 970.000000
+2025-07-28 02:27:18,180 - INFO -     loss_ema: 0.000481
+2025-07-28 02:27:18,180 - INFO -     similarity_ema: 0.340472
+2025-07-28 02:27:18,180 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:27:18,180 - INFO -     timestep_std: 0.215460
+2025-07-28 02:27:18,181 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:27:18,181 - INFO -     pred_min: -0.093445
+2025-07-28 02:27:18,181 - INFO -     pred_max: 0.040466
+2025-07-28 02:27:18,181 - INFO -     target_min: -0.887084
+2025-07-28 02:27:18,181 - INFO -     target_max: 0.579655
+2025-07-28 02:27:19,986 - INFO - Step 980: Loss=0.000442, VelSim=0.3798 (fair), GradNorm=84.148, LR=4.77e-04 [OVERFIT TEST]
+2025-07-28 02:27:19,986 - INFO -   Detailed metrics:
+2025-07-28 02:27:19,986 - INFO -     loss: 0.000442
+2025-07-28 02:27:19,986 - INFO -     total_loss: 0.000442
+2025-07-28 02:27:19,986 - INFO -     reg_loss: 0.000000
+2025-07-28 02:27:19,986 - INFO -     velocity_similarity: 0.379807
+2025-07-28 02:27:19,986 - INFO -     velocity_similarity_std: 0.032966
+2025-07-28 02:27:19,986 - INFO -     pred_norm: 0.545270
+2025-07-28 02:27:19,986 - INFO -     target_norm: 1.414245
+2025-07-28 02:27:19,986 - INFO -     eva_norm: 1.000000
+2025-07-28 02:27:19,987 - INFO -     noise_norm: 1.000000
+2025-07-28 02:27:19,987 - INFO -     clip_norm: 1.000000
+2025-07-28 02:27:19,987 - INFO -     error_norm: 1.306312
+2025-07-28 02:27:19,987 - INFO -     relative_error: 0.923682
+2025-07-28 02:27:19,987 - INFO -     step_count: 980.000000
+2025-07-28 02:27:19,987 - INFO -     loss_ema: 0.000477
+2025-07-28 02:27:19,987 - INFO -     similarity_ema: 0.343483
+2025-07-28 02:27:19,987 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:27:19,987 - INFO -     timestep_std: 0.215460
+2025-07-28 02:27:19,987 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:27:19,987 - INFO -     pred_min: -0.099854
+2025-07-28 02:27:19,987 - INFO -     pred_max: 0.038971
+2025-07-28 02:27:19,987 - INFO -     target_min: -0.887084
+2025-07-28 02:27:19,987 - INFO -     target_max: 0.579655
+2025-07-28 02:27:26,797 - INFO - Loaded shard 2/2: 2646 samples
+2025-07-28 02:27:28,609 - INFO - Step 990: Loss=0.000440, VelSim=0.3854 (fair), GradNorm=52.081, LR=4.77e-04 [OVERFIT TEST]
+2025-07-28 02:27:28,609 - INFO -   Detailed metrics:
+2025-07-28 02:27:28,609 - INFO -     loss: 0.000440
+2025-07-28 02:27:28,609 - INFO -     total_loss: 0.000440
+2025-07-28 02:27:28,609 - INFO -     reg_loss: 0.000000
+2025-07-28 02:27:28,609 - INFO -     velocity_similarity: 0.385419
+2025-07-28 02:27:28,610 - INFO -     velocity_similarity_std: 0.033032
+2025-07-28 02:27:28,610 - INFO -     pred_norm: 0.542819
+2025-07-28 02:27:28,610 - INFO -     target_norm: 1.414245
+2025-07-28 02:27:28,610 - INFO -     eva_norm: 1.000000
+2025-07-28 02:27:28,610 - INFO -     noise_norm: 1.000000
+2025-07-28 02:27:28,610 - INFO -     clip_norm: 1.000000
+2025-07-28 02:27:28,610 - INFO -     error_norm: 1.302970
+2025-07-28 02:27:28,610 - INFO -     relative_error: 0.921319
+2025-07-28 02:27:28,610 - INFO -     step_count: 990.000000
+2025-07-28 02:27:28,610 - INFO -     loss_ema: 0.000474
+2025-07-28 02:27:28,610 - INFO -     similarity_ema: 0.347082
+2025-07-28 02:27:28,610 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:27:28,610 - INFO -     timestep_std: 0.215460
+2025-07-28 02:27:28,610 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:27:28,610 - INFO -     pred_min: -0.095886
+2025-07-28 02:27:28,610 - INFO -     pred_max: 0.039276
+2025-07-28 02:27:28,610 - INFO -     target_min: -0.887084
+2025-07-28 02:27:28,610 - INFO -     target_max: 0.579655
+2025-07-28 02:27:30,331 - INFO - [Step 1000] Flow Matching Debug:
+2025-07-28 02:27:30,331 - INFO -   Loss: 0.000439 (quality: fair)
+2025-07-28 02:27:30,331 - INFO -   Velocity Sim: 0.3879
+2025-07-28 02:27:30,331 - INFO -   Norms - Pred: 0.547, Target: 1.414
+2025-07-28 02:27:30,331 - INFO -   Error: 1.301 (relative: 0.920)
+2025-07-28 02:27:30,332 - INFO -   Timesteps: 0.421 ± 0.215
+2025-07-28 02:27:30,403 - INFO - Step 1000: Loss=0.000439, VelSim=0.3879 (fair), GradNorm=43.003, LR=4.76e-04 [OVERFIT TEST]
+2025-07-28 02:27:30,403 - INFO -   Detailed metrics:
+2025-07-28 02:27:30,403 - INFO -     loss: 0.000439
+2025-07-28 02:27:30,403 - INFO -     total_loss: 0.000439
+2025-07-28 02:27:30,403 - INFO -     reg_loss: 0.000000
+2025-07-28 02:27:30,403 - INFO -     velocity_similarity: 0.387880
+2025-07-28 02:27:30,404 - INFO -     velocity_similarity_std: 0.033255
+2025-07-28 02:27:30,404 - INFO -     pred_norm: 0.547406
+2025-07-28 02:27:30,404 - INFO -     target_norm: 1.414245
+2025-07-28 02:27:30,404 - INFO -     eva_norm: 1.000000
+2025-07-28 02:27:30,404 - INFO -     noise_norm: 1.000000
+2025-07-28 02:27:30,404 - INFO -     clip_norm: 1.000000
+2025-07-28 02:27:30,404 - INFO -     error_norm: 1.301443
+2025-07-28 02:27:30,404 - INFO -     relative_error: 0.920239
+2025-07-28 02:27:30,404 - INFO -     step_count: 1000.000000
+2025-07-28 02:27:30,404 - INFO -     loss_ema: 0.000470
+2025-07-28 02:27:30,404 - INFO -     similarity_ema: 0.350836
+2025-07-28 02:27:30,404 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:27:30,404 - INFO -     timestep_std: 0.215460
+2025-07-28 02:27:30,404 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:27:30,404 - INFO -     pred_min: -0.097717
+2025-07-28 02:27:30,404 - INFO -     pred_max: 0.038727
+2025-07-28 02:27:30,404 - INFO -     target_min: -0.887084
+2025-07-28 02:27:30,404 - INFO -     target_max: 0.579655
+2025-07-28 02:27:30,404 - INFO - Running evaluation at step 1000...
+2025-07-28 02:27:37,093 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 02:29:00,670 - INFO - Evaluation results:
+2025-07-28 02:29:00,671 - INFO -   eval_eva_similarity: 0.0815
+2025-07-28 02:29:00,671 - INFO -   eval_eva_similarity_std: 0.0137
+2025-07-28 02:29:00,671 - INFO -   eval_high_quality: 0.0000
+2025-07-28 02:29:00,671 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 02:29:00,671 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 02:29:00,671 - INFO -   eval_samples: 504.0000
+2025-07-28 02:29:01,884 - INFO - Checkpoint saved: checkpoints/eva_repro_fixed_20250728_015509/checkpoint_step_1000.pt
+2025-07-28 02:29:03,700 - INFO - Step 1010: Loss=0.000438, VelSim=0.3901 (fair), GradNorm=39.953, LR=4.76e-04 [OVERFIT TEST]
+2025-07-28 02:29:03,700 - INFO -   Detailed metrics:
+2025-07-28 02:29:03,701 - INFO -     loss: 0.000438
+2025-07-28 02:29:03,701 - INFO -     total_loss: 0.000438
+2025-07-28 02:29:03,701 - INFO -     reg_loss: 0.000000
+2025-07-28 02:29:03,701 - INFO -     velocity_similarity: 0.390064
+2025-07-28 02:29:03,701 - INFO -     velocity_similarity_std: 0.033391
+2025-07-28 02:29:03,701 - INFO -     pred_norm: 0.550779
+2025-07-28 02:29:03,701 - INFO -     target_norm: 1.414245
+2025-07-28 02:29:03,701 - INFO -     eva_norm: 1.000000
+2025-07-28 02:29:03,701 - INFO -     noise_norm: 1.000000
+2025-07-28 02:29:03,701 - INFO -     clip_norm: 1.000000
+2025-07-28 02:29:03,701 - INFO -     error_norm: 1.300095
+2025-07-28 02:29:03,701 - INFO -     relative_error: 0.919285
+2025-07-28 02:29:03,701 - INFO -     step_count: 1010.000000
+2025-07-28 02:29:03,701 - INFO -     loss_ema: 0.000467
+2025-07-28 02:29:03,701 - INFO -     similarity_ema: 0.354514
+2025-07-28 02:29:03,701 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:29:03,701 - INFO -     timestep_std: 0.215460
+2025-07-28 02:29:03,701 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:29:03,701 - INFO -     pred_min: -0.100159
+2025-07-28 02:29:03,701 - INFO -     pred_max: 0.039703
+2025-07-28 02:29:03,701 - INFO -     target_min: -0.887084
+2025-07-28 02:29:03,701 - INFO -     target_max: 0.579655
+2025-07-28 02:29:05,487 - INFO - Step 1020: Loss=0.000438, VelSim=0.3895 (fair), GradNorm=81.378, LR=4.75e-04 [OVERFIT TEST]
+2025-07-28 02:29:05,487 - INFO -   Detailed metrics:
+2025-07-28 02:29:05,487 - INFO -     loss: 0.000438
+2025-07-28 02:29:05,487 - INFO -     total_loss: 0.000438
+2025-07-28 02:29:05,487 - INFO -     reg_loss: 0.000000
+2025-07-28 02:29:05,487 - INFO -     velocity_similarity: 0.389462
+2025-07-28 02:29:05,487 - INFO -     velocity_similarity_std: 0.033794
+2025-07-28 02:29:05,487 - INFO -     pred_norm: 0.557733
+2025-07-28 02:29:05,487 - INFO -     target_norm: 1.414245
+2025-07-28 02:29:05,487 - INFO -     eva_norm: 1.000000
+2025-07-28 02:29:05,487 - INFO -     noise_norm: 1.000000
+2025-07-28 02:29:05,487 - INFO -     clip_norm: 1.000000
+2025-07-28 02:29:05,487 - INFO -     error_norm: 1.300415
+2025-07-28 02:29:05,487 - INFO -     relative_error: 0.919512
+2025-07-28 02:29:05,488 - INFO -     step_count: 1020.000000
+2025-07-28 02:29:05,488 - INFO -     loss_ema: 0.000465
+2025-07-28 02:29:05,488 - INFO -     similarity_ema: 0.357955
+2025-07-28 02:29:05,488 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:29:05,488 - INFO -     timestep_std: 0.215460
+2025-07-28 02:29:05,488 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:29:05,488 - INFO -     pred_min: -0.099915
+2025-07-28 02:29:05,488 - INFO -     pred_max: 0.039368
+2025-07-28 02:29:05,488 - INFO -     target_min: -0.887084
+2025-07-28 02:29:05,488 - INFO -     target_max: 0.579655
+2025-07-28 02:29:07,288 - INFO - Step 1030: Loss=0.000473, VelSim=0.3258 (fair), GradNorm=413.007, LR=4.75e-04 [OVERFIT TEST]
+2025-07-28 02:29:07,289 - INFO -   Detailed metrics:
+2025-07-28 02:29:07,289 - INFO -     loss: 0.000473
+2025-07-28 02:29:07,289 - INFO -     total_loss: 0.000473
+2025-07-28 02:29:07,289 - INFO -     reg_loss: 0.000000
+2025-07-28 02:29:07,289 - INFO -     velocity_similarity: 0.325766
+2025-07-28 02:29:07,289 - INFO -     velocity_similarity_std: 0.036395
+2025-07-28 02:29:07,289 - INFO -     pred_norm: 0.671426
+2025-07-28 02:29:07,289 - INFO -     target_norm: 1.414245
+2025-07-28 02:29:07,289 - INFO -     eva_norm: 1.000000
+2025-07-28 02:29:07,289 - INFO -     noise_norm: 1.000000
+2025-07-28 02:29:07,289 - INFO -     clip_norm: 1.000000
+2025-07-28 02:29:07,289 - INFO -     error_norm: 1.351486
+2025-07-28 02:29:07,289 - INFO -     relative_error: 0.955624
+2025-07-28 02:29:07,289 - INFO -     step_count: 1030.000000
+2025-07-28 02:29:07,289 - INFO -     loss_ema: 0.000463
+2025-07-28 02:29:07,289 - INFO -     similarity_ema: 0.358789
+2025-07-28 02:29:07,289 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:29:07,289 - INFO -     timestep_std: 0.215460
+2025-07-28 02:29:07,289 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:29:07,289 - INFO -     pred_min: -0.098877
+2025-07-28 02:29:07,289 - INFO -     pred_max: 0.047791
+2025-07-28 02:29:07,289 - INFO -     target_min: -0.887084
+2025-07-28 02:29:07,289 - INFO -     target_max: 0.579655
+2025-07-28 02:29:09,132 - INFO - Step 1040: Loss=0.000452, VelSim=0.3600 (fair), GradNorm=272.622, LR=4.74e-04 [OVERFIT TEST]
+2025-07-28 02:29:09,133 - INFO -   Detailed metrics:
+2025-07-28 02:29:09,133 - INFO -     loss: 0.000452
+2025-07-28 02:29:09,133 - INFO -     total_loss: 0.000452
+2025-07-28 02:29:09,133 - INFO -     reg_loss: 0.000000
+2025-07-28 02:29:09,133 - INFO -     velocity_similarity: 0.359959
+2025-07-28 02:29:09,133 - INFO -     velocity_similarity_std: 0.035552
+2025-07-28 02:29:09,133 - INFO -     pred_norm: 0.612517
+2025-07-28 02:29:09,133 - INFO -     target_norm: 1.414245
+2025-07-28 02:29:09,133 - INFO -     eva_norm: 1.000000
+2025-07-28 02:29:09,133 - INFO -     noise_norm: 1.000000
+2025-07-28 02:29:09,133 - INFO -     clip_norm: 1.000000
+2025-07-28 02:29:09,133 - INFO -     error_norm: 1.321298
+2025-07-28 02:29:09,133 - INFO -     relative_error: 0.934278
+2025-07-28 02:29:09,133 - INFO -     step_count: 1040.000000
+2025-07-28 02:29:09,133 - INFO -     loss_ema: 0.000464
+2025-07-28 02:29:09,133 - INFO -     similarity_ema: 0.356616
+2025-07-28 02:29:09,133 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:29:09,133 - INFO -     timestep_std: 0.215460
+2025-07-28 02:29:09,133 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:29:09,133 - INFO -     pred_min: -0.102600
+2025-07-28 02:29:09,133 - INFO -     pred_max: 0.048248
+2025-07-28 02:29:09,133 - INFO -     target_min: -0.887084
+2025-07-28 02:29:09,133 - INFO -     target_max: 0.579655
+2025-07-28 02:29:10,872 - INFO - [Step 1050] Flow Matching Debug:
+2025-07-28 02:29:10,872 - INFO -   Loss: 0.000437 (quality: fair)
+2025-07-28 02:29:10,872 - INFO -   Velocity Sim: 0.3925
+2025-07-28 02:29:10,872 - INFO -   Norms - Pred: 0.566, Target: 1.414
+2025-07-28 02:29:10,872 - INFO -   Error: 1.299 (relative: 0.918)
+2025-07-28 02:29:10,872 - INFO -   Timesteps: 0.421 ± 0.215
+2025-07-28 02:29:10,943 - INFO - Step 1050: Loss=0.000437, VelSim=0.3925 (fair), GradNorm=99.808, LR=4.74e-04 [OVERFIT TEST]
+2025-07-28 02:29:10,944 - INFO -   Detailed metrics:
+2025-07-28 02:29:10,944 - INFO -     loss: 0.000437
+2025-07-28 02:29:10,944 - INFO -     total_loss: 0.000437
+2025-07-28 02:29:10,944 - INFO -     reg_loss: 0.000000
+2025-07-28 02:29:10,944 - INFO -     velocity_similarity: 0.392462
+2025-07-28 02:29:10,944 - INFO -     velocity_similarity_std: 0.034323
+2025-07-28 02:29:10,944 - INFO -     pred_norm: 0.566494
+2025-07-28 02:29:10,944 - INFO -     target_norm: 1.414245
+2025-07-28 02:29:10,944 - INFO -     eva_norm: 1.000000
+2025-07-28 02:29:10,944 - INFO -     noise_norm: 1.000000
+2025-07-28 02:29:10,944 - INFO -     clip_norm: 1.000000
+2025-07-28 02:29:10,944 - INFO -     error_norm: 1.298537
+2025-07-28 02:29:10,944 - INFO -     relative_error: 0.918184
+2025-07-28 02:29:10,944 - INFO -     step_count: 1050.000000
+2025-07-28 02:29:10,944 - INFO -     loss_ema: 0.000462
+2025-07-28 02:29:10,944 - INFO -     similarity_ema: 0.358906
+2025-07-28 02:29:10,944 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:29:10,944 - INFO -     timestep_std: 0.215460
+2025-07-28 02:29:10,944 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:29:10,944 - INFO -     pred_min: -0.102051
+2025-07-28 02:29:10,944 - INFO -     pred_max: 0.039520
+2025-07-28 02:29:10,944 - INFO -     target_min: -0.887084
+2025-07-28 02:29:10,945 - INFO -     target_max: 0.579655
+2025-07-28 02:29:10,945 - INFO - Running evaluation at step 1050...
+2025-07-28 02:29:17,647 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 02:30:41,085 - INFO - Evaluation results:
+2025-07-28 02:30:41,086 - INFO -   eval_eva_similarity: 0.0810
+2025-07-28 02:30:41,086 - INFO -   eval_eva_similarity_std: 0.0136
+2025-07-28 02:30:41,086 - INFO -   eval_high_quality: 0.0000
+2025-07-28 02:30:41,086 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 02:30:41,086 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 02:30:41,086 - INFO -   eval_samples: 504.0000
+2025-07-28 02:30:42,893 - INFO - Step 1060: Loss=0.000435, VelSim=0.3974 (fair), GradNorm=71.001, LR=4.73e-04 [OVERFIT TEST]
+2025-07-28 02:30:42,894 - INFO -   Detailed metrics:
+2025-07-28 02:30:42,894 - INFO -     loss: 0.000435
+2025-07-28 02:30:42,895 - INFO -     total_loss: 0.000435
+2025-07-28 02:30:42,895 - INFO -     reg_loss: 0.000000
+2025-07-28 02:30:42,895 - INFO -     velocity_similarity: 0.397442
+2025-07-28 02:30:42,895 - INFO -     velocity_similarity_std: 0.034322
+2025-07-28 02:30:42,895 - INFO -     pred_norm: 0.565915
+2025-07-28 02:30:42,895 - INFO -     target_norm: 1.414245
+2025-07-28 02:30:42,895 - INFO -     eva_norm: 1.000000
+2025-07-28 02:30:42,895 - INFO -     noise_norm: 1.000000
+2025-07-28 02:30:42,895 - INFO -     clip_norm: 1.000000
+2025-07-28 02:30:42,895 - INFO -     error_norm: 1.295407
+2025-07-28 02:30:42,895 - INFO -     relative_error: 0.915971
+2025-07-28 02:30:42,895 - INFO -     step_count: 1060.000000
+2025-07-28 02:30:42,895 - INFO -     loss_ema: 0.000459
+2025-07-28 02:30:42,895 - INFO -     similarity_ema: 0.362245
+2025-07-28 02:30:42,895 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:30:42,895 - INFO -     timestep_std: 0.215460
+2025-07-28 02:30:42,895 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:30:42,895 - INFO -     pred_min: -0.101746
+2025-07-28 02:30:42,895 - INFO -     pred_max: 0.040405
+2025-07-28 02:30:42,895 - INFO -     target_min: -0.887084
+2025-07-28 02:30:42,895 - INFO -     target_max: 0.579655
+2025-07-28 02:30:44,699 - INFO - Step 1070: Loss=0.000433, VelSim=0.4008 (fair), GradNorm=52.366, LR=4.73e-04 [OVERFIT TEST]
+2025-07-28 02:30:44,699 - INFO -   Detailed metrics:
+2025-07-28 02:30:44,699 - INFO -     loss: 0.000433
+2025-07-28 02:30:44,699 - INFO -     total_loss: 0.000433
+2025-07-28 02:30:44,699 - INFO -     reg_loss: 0.000000
+2025-07-28 02:30:44,699 - INFO -     velocity_similarity: 0.400798
+2025-07-28 02:30:44,699 - INFO -     velocity_similarity_std: 0.034348
+2025-07-28 02:30:44,699 - INFO -     pred_norm: 0.568463
+2025-07-28 02:30:44,700 - INFO -     target_norm: 1.414245
+2025-07-28 02:30:44,700 - INFO -     eva_norm: 1.000000
+2025-07-28 02:30:44,700 - INFO -     noise_norm: 1.000000
+2025-07-28 02:30:44,700 - INFO -     clip_norm: 1.000000
+2025-07-28 02:30:44,700 - INFO -     error_norm: 1.293286
+2025-07-28 02:30:44,700 - INFO -     relative_error: 0.914471
+2025-07-28 02:30:44,700 - INFO -     step_count: 1070.000000
+2025-07-28 02:30:44,700 - INFO -     loss_ema: 0.000457
+2025-07-28 02:30:44,700 - INFO -     similarity_ema: 0.365804
+2025-07-28 02:30:44,700 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:30:44,700 - INFO -     timestep_std: 0.215460
+2025-07-28 02:30:44,700 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:30:44,700 - INFO -     pred_min: -0.103882
+2025-07-28 02:30:44,700 - INFO -     pred_max: 0.039398
+2025-07-28 02:30:44,700 - INFO -     target_min: -0.887084
+2025-07-28 02:30:44,700 - INFO -     target_max: 0.579655
+2025-07-28 02:30:46,495 - INFO - Step 1080: Loss=0.000432, VelSim=0.4035 (fair), GradNorm=35.553, LR=4.72e-04 [OVERFIT TEST]
+2025-07-28 02:30:46,496 - INFO -   Detailed metrics:
+2025-07-28 02:30:46,496 - INFO -     loss: 0.000432
+2025-07-28 02:30:46,496 - INFO -     total_loss: 0.000432
+2025-07-28 02:30:46,496 - INFO -     reg_loss: 0.000000
+2025-07-28 02:30:46,496 - INFO -     velocity_similarity: 0.403526
+2025-07-28 02:30:46,496 - INFO -     velocity_similarity_std: 0.034380
+2025-07-28 02:30:46,496 - INFO -     pred_norm: 0.570341
+2025-07-28 02:30:46,496 - INFO -     target_norm: 1.414245
+2025-07-28 02:30:46,496 - INFO -     eva_norm: 1.000000
+2025-07-28 02:30:46,496 - INFO -     noise_norm: 1.000000
+2025-07-28 02:30:46,496 - INFO -     clip_norm: 1.000000
+2025-07-28 02:30:46,496 - INFO -     error_norm: 1.291550
+2025-07-28 02:30:46,496 - INFO -     relative_error: 0.913244
+2025-07-28 02:30:46,496 - INFO -     step_count: 1080.000000
+2025-07-28 02:30:46,496 - INFO -     loss_ema: 0.000454
+2025-07-28 02:30:46,496 - INFO -     similarity_ema: 0.369310
+2025-07-28 02:30:46,496 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:30:46,496 - INFO -     timestep_std: 0.215460
+2025-07-28 02:30:46,496 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:30:46,496 - INFO -     pred_min: -0.104858
+2025-07-28 02:30:46,496 - INFO -     pred_max: 0.039612
+2025-07-28 02:30:46,497 - INFO -     target_min: -0.887084
+2025-07-28 02:30:46,497 - INFO -     target_max: 0.579655
+2025-07-28 02:30:48,301 - INFO - Step 1090: Loss=0.000431, VelSim=0.4051 (fair), GradNorm=41.854, LR=4.72e-04 [OVERFIT TEST]
+2025-07-28 02:30:48,302 - INFO -   Detailed metrics:
+2025-07-28 02:30:48,302 - INFO -     loss: 0.000431
+2025-07-28 02:30:48,302 - INFO -     total_loss: 0.000431
+2025-07-28 02:30:48,302 - INFO -     reg_loss: 0.000000
+2025-07-28 02:30:48,302 - INFO -     velocity_similarity: 0.405119
+2025-07-28 02:30:48,302 - INFO -     velocity_similarity_std: 0.034458
+2025-07-28 02:30:48,302 - INFO -     pred_norm: 0.573614
+2025-07-28 02:30:48,302 - INFO -     target_norm: 1.414245
+2025-07-28 02:30:48,302 - INFO -     eva_norm: 1.000000
+2025-07-28 02:30:48,302 - INFO -     noise_norm: 1.000000
+2025-07-28 02:30:48,302 - INFO -     clip_norm: 1.000000
+2025-07-28 02:30:48,302 - INFO -     error_norm: 1.290513
+2025-07-28 02:30:48,302 - INFO -     relative_error: 0.912510
+2025-07-28 02:30:48,302 - INFO -     step_count: 1090.000000
+2025-07-28 02:30:48,302 - INFO -     loss_ema: 0.000452
+2025-07-28 02:30:48,302 - INFO -     similarity_ema: 0.372679
+2025-07-28 02:30:48,302 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:30:48,302 - INFO -     timestep_std: 0.215460
+2025-07-28 02:30:48,302 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:30:48,302 - INFO -     pred_min: -0.105225
+2025-07-28 02:30:48,302 - INFO -     pred_max: 0.039581
+2025-07-28 02:30:48,302 - INFO -     target_min: -0.887084
+2025-07-28 02:30:48,302 - INFO -     target_max: 0.579655
+2025-07-28 02:30:50,036 - INFO - [Step 1100] Flow Matching Debug:
+2025-07-28 02:30:50,036 - INFO -   Loss: 0.000436 (quality: fair)
+2025-07-28 02:30:50,036 - INFO -   Velocity Sim: 0.3954
+2025-07-28 02:30:50,036 - INFO -   Norms - Pred: 0.594, Target: 1.414
+2025-07-28 02:30:50,037 - INFO -   Error: 1.297 (relative: 0.917)
+2025-07-28 02:30:50,037 - INFO -   Timesteps: 0.421 ± 0.215
+2025-07-28 02:30:50,108 - INFO - Step 1100: Loss=0.000436, VelSim=0.3954 (fair), GradNorm=152.900, LR=4.71e-04 [OVERFIT TEST]
+2025-07-28 02:30:50,108 - INFO -   Detailed metrics:
+2025-07-28 02:30:50,108 - INFO -     loss: 0.000436
+2025-07-28 02:30:50,108 - INFO -     total_loss: 0.000436
+2025-07-28 02:30:50,108 - INFO -     reg_loss: 0.000000
+2025-07-28 02:30:50,108 - INFO -     velocity_similarity: 0.395383
+2025-07-28 02:30:50,108 - INFO -     velocity_similarity_std: 0.035352
+2025-07-28 02:30:50,108 - INFO -     pred_norm: 0.593668
+2025-07-28 02:30:50,108 - INFO -     target_norm: 1.414245
+2025-07-28 02:30:50,108 - INFO -     eva_norm: 1.000000
+2025-07-28 02:30:50,108 - INFO -     noise_norm: 1.000000
+2025-07-28 02:30:50,108 - INFO -     clip_norm: 1.000000
+2025-07-28 02:30:50,108 - INFO -     error_norm: 1.296951
+2025-07-28 02:30:50,108 - INFO -     relative_error: 0.917062
+2025-07-28 02:30:50,108 - INFO -     step_count: 1100.000000
+2025-07-28 02:30:50,108 - INFO -     loss_ema: 0.000450
+2025-07-28 02:30:50,108 - INFO -     similarity_ema: 0.375516
+2025-07-28 02:30:50,108 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:30:50,109 - INFO -     timestep_std: 0.215460
+2025-07-28 02:30:50,109 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:30:50,109 - INFO -     pred_min: -0.102905
+2025-07-28 02:30:50,109 - INFO -     pred_max: 0.041199
+2025-07-28 02:30:50,109 - INFO -     target_min: -0.887084
+2025-07-28 02:30:50,109 - INFO -     target_max: 0.579655
+2025-07-28 02:30:50,109 - INFO - Running evaluation at step 1100...
+2025-07-28 02:30:56,873 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 02:32:20,208 - INFO - Evaluation results:
+2025-07-28 02:32:20,209 - INFO -   eval_eva_similarity: 0.0807
+2025-07-28 02:32:20,209 - INFO -   eval_eva_similarity_std: 0.0137
+2025-07-28 02:32:20,209 - INFO -   eval_high_quality: 0.0000
+2025-07-28 02:32:20,209 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 02:32:20,209 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 02:32:20,209 - INFO -   eval_samples: 504.0000
+2025-07-28 02:32:22,025 - INFO - Step 1110: Loss=0.000468, VelSim=0.3405 (fair), GradNorm=402.029, LR=4.70e-04 [OVERFIT TEST]
+2025-07-28 02:32:22,026 - INFO -   Detailed metrics:
+2025-07-28 02:32:22,026 - INFO -     loss: 0.000468
+2025-07-28 02:32:22,026 - INFO -     total_loss: 0.000468
+2025-07-28 02:32:22,026 - INFO -     reg_loss: 0.000000
+2025-07-28 02:32:22,026 - INFO -     velocity_similarity: 0.340495
+2025-07-28 02:32:22,026 - INFO -     velocity_similarity_std: 0.037667
+2025-07-28 02:32:22,026 - INFO -     pred_norm: 0.694462
+2025-07-28 02:32:22,026 - INFO -     target_norm: 1.414245
+2025-07-28 02:32:22,026 - INFO -     eva_norm: 1.000000
+2025-07-28 02:32:22,026 - INFO -     noise_norm: 1.000000
+2025-07-28 02:32:22,026 - INFO -     clip_norm: 1.000000
+2025-07-28 02:32:22,026 - INFO -     error_norm: 1.344254
+2025-07-28 02:32:22,026 - INFO -     relative_error: 0.950510
+2025-07-28 02:32:22,026 - INFO -     step_count: 1110.000000
+2025-07-28 02:32:22,026 - INFO -     loss_ema: 0.000451
+2025-07-28 02:32:22,026 - INFO -     similarity_ema: 0.373819
+2025-07-28 02:32:22,026 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:32:22,026 - INFO -     timestep_std: 0.215460
+2025-07-28 02:32:22,026 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:32:22,026 - INFO -     pred_min: -0.096802
+2025-07-28 02:32:22,026 - INFO -     pred_max: 0.049042
+2025-07-28 02:32:22,026 - INFO -     target_min: -0.887084
+2025-07-28 02:32:22,026 - INFO -     target_max: 0.579655
+2025-07-28 02:32:23,835 - INFO - Step 1120: Loss=0.000434, VelSim=0.3997 (fair), GradNorm=140.224, LR=4.70e-04 [OVERFIT TEST]
+2025-07-28 02:32:23,835 - INFO -   Detailed metrics:
+2025-07-28 02:32:23,835 - INFO -     loss: 0.000434
+2025-07-28 02:32:23,835 - INFO -     total_loss: 0.000434
+2025-07-28 02:32:23,835 - INFO -     reg_loss: 0.000000
+2025-07-28 02:32:23,835 - INFO -     velocity_similarity: 0.399726
+2025-07-28 02:32:23,836 - INFO -     velocity_similarity_std: 0.035299
+2025-07-28 02:32:23,836 - INFO -     pred_norm: 0.591473
+2025-07-28 02:32:23,836 - INFO -     target_norm: 1.414245
+2025-07-28 02:32:23,836 - INFO -     eva_norm: 1.000000
+2025-07-28 02:32:23,836 - INFO -     noise_norm: 1.000000
+2025-07-28 02:32:23,836 - INFO -     clip_norm: 1.000000
+2025-07-28 02:32:23,836 - INFO -     error_norm: 1.294022
+2025-07-28 02:32:23,836 - INFO -     relative_error: 0.914992
+2025-07-28 02:32:23,836 - INFO -     step_count: 1120.000000
+2025-07-28 02:32:23,836 - INFO -     loss_ema: 0.000450
+2025-07-28 02:32:23,836 - INFO -     similarity_ema: 0.374845
+2025-07-28 02:32:23,836 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:32:23,836 - INFO -     timestep_std: 0.215460
+2025-07-28 02:32:23,836 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:32:23,836 - INFO -     pred_min: -0.106628
+2025-07-28 02:32:23,836 - INFO -     pred_max: 0.039581
+2025-07-28 02:32:23,836 - INFO -     target_min: -0.887084
+2025-07-28 02:32:23,836 - INFO -     target_max: 0.579655
+2025-07-28 02:32:25,647 - INFO - Step 1130: Loss=0.000430, VelSim=0.4088 (fair), GradNorm=84.857, LR=4.69e-04 [OVERFIT TEST]
+2025-07-28 02:32:25,647 - INFO -   Detailed metrics:
+2025-07-28 02:32:25,647 - INFO -     loss: 0.000430
+2025-07-28 02:32:25,647 - INFO -     total_loss: 0.000430
+2025-07-28 02:32:25,647 - INFO -     reg_loss: 0.000000
+2025-07-28 02:32:25,647 - INFO -     velocity_similarity: 0.408791
+2025-07-28 02:32:25,647 - INFO -     velocity_similarity_std: 0.034804
+2025-07-28 02:32:25,647 - INFO -     pred_norm: 0.584809
+2025-07-28 02:32:25,647 - INFO -     target_norm: 1.414245
+2025-07-28 02:32:25,647 - INFO -     eva_norm: 1.000000
+2025-07-28 02:32:25,647 - INFO -     noise_norm: 1.000000
+2025-07-28 02:32:25,647 - INFO -     clip_norm: 1.000000
+2025-07-28 02:32:25,647 - INFO -     error_norm: 1.288081
+2025-07-28 02:32:25,647 - INFO -     relative_error: 0.910791
+2025-07-28 02:32:25,647 - INFO -     step_count: 1130.000000
+2025-07-28 02:32:25,647 - INFO -     loss_ema: 0.000448
+2025-07-28 02:32:25,647 - INFO -     similarity_ema: 0.377522
+2025-07-28 02:32:25,647 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:32:25,647 - INFO -     timestep_std: 0.215460
+2025-07-28 02:32:25,648 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:32:25,648 - INFO -     pred_min: -0.111023
+2025-07-28 02:32:25,648 - INFO -     pred_max: 0.041626
+2025-07-28 02:32:25,648 - INFO -     target_min: -0.887084
+2025-07-28 02:32:25,648 - INFO -     target_max: 0.579655
+2025-07-28 02:32:27,449 - INFO - Step 1140: Loss=0.000428, VelSim=0.4125 (fair), GradNorm=61.608, LR=4.69e-04 [OVERFIT TEST]
+2025-07-28 02:32:27,449 - INFO -   Detailed metrics:
+2025-07-28 02:32:27,449 - INFO -     loss: 0.000428
+2025-07-28 02:32:27,449 - INFO -     total_loss: 0.000428
+2025-07-28 02:32:27,449 - INFO -     reg_loss: 0.000000
+2025-07-28 02:32:27,449 - INFO -     velocity_similarity: 0.412476
+2025-07-28 02:32:27,449 - INFO -     velocity_similarity_std: 0.034681
+2025-07-28 02:32:27,449 - INFO -     pred_norm: 0.587365
+2025-07-28 02:32:27,449 - INFO -     target_norm: 1.414245
+2025-07-28 02:32:27,449 - INFO -     eva_norm: 1.000000
+2025-07-28 02:32:27,449 - INFO -     noise_norm: 1.000000
+2025-07-28 02:32:27,449 - INFO -     clip_norm: 1.000000
+2025-07-28 02:32:27,449 - INFO -     error_norm: 1.285673
+2025-07-28 02:32:27,449 - INFO -     relative_error: 0.909088
+2025-07-28 02:32:27,449 - INFO -     step_count: 1140.000000
+2025-07-28 02:32:27,449 - INFO -     loss_ema: 0.000447
+2025-07-28 02:32:27,449 - INFO -     similarity_ema: 0.380751
+2025-07-28 02:32:27,449 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:32:27,449 - INFO -     timestep_std: 0.215460
+2025-07-28 02:32:27,450 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:32:27,450 - INFO -     pred_min: -0.112000
+2025-07-28 02:32:27,450 - INFO -     pred_max: 0.042297
+2025-07-28 02:32:27,450 - INFO -     target_min: -0.887084
+2025-07-28 02:32:27,450 - INFO -     target_max: 0.579655
+2025-07-28 02:32:29,172 - INFO - [Step 1150] Flow Matching Debug:
+2025-07-28 02:32:29,174 - INFO -   Loss: 0.000427 (quality: fair)
+2025-07-28 02:32:29,174 - INFO -   Velocity Sim: 0.4156
+2025-07-28 02:32:29,174 - INFO -   Norms - Pred: 0.588, Target: 1.414
+2025-07-28 02:32:29,174 - INFO -   Error: 1.284 (relative: 0.908)
+2025-07-28 02:32:29,174 - INFO -   Timesteps: 0.421 ± 0.215
+2025-07-28 02:32:29,245 - INFO - Step 1150: Loss=0.000427, VelSim=0.4156 (fair), GradNorm=35.556, LR=4.68e-04 [OVERFIT TEST]
+2025-07-28 02:32:29,245 - INFO -   Detailed metrics:
+2025-07-28 02:32:29,245 - INFO -     loss: 0.000427
+2025-07-28 02:32:29,245 - INFO -     total_loss: 0.000427
+2025-07-28 02:32:29,245 - INFO -     reg_loss: 0.000000
+2025-07-28 02:32:29,245 - INFO -     velocity_similarity: 0.415603
+2025-07-28 02:32:29,245 - INFO -     velocity_similarity_std: 0.034576
+2025-07-28 02:32:29,245 - INFO -     pred_norm: 0.588015
+2025-07-28 02:32:29,245 - INFO -     target_norm: 1.414245
+2025-07-28 02:32:29,245 - INFO -     eva_norm: 1.000000
+2025-07-28 02:32:29,245 - INFO -     noise_norm: 1.000000
+2025-07-28 02:32:29,245 - INFO -     clip_norm: 1.000000
+2025-07-28 02:32:29,245 - INFO -     error_norm: 1.283613
+2025-07-28 02:32:29,245 - INFO -     relative_error: 0.907631
+2025-07-28 02:32:29,246 - INFO -     step_count: 1150.000000
+2025-07-28 02:32:29,246 - INFO -     loss_ema: 0.000445
+2025-07-28 02:32:29,246 - INFO -     similarity_ema: 0.383976
+2025-07-28 02:32:29,246 - INFO -     timestep_mean: 0.420945
+2025-07-28 02:32:29,246 - INFO -     timestep_std: 0.215460
+2025-07-28 02:32:29,246 - INFO -     interpolation_weight: 0.420898
+2025-07-28 02:32:29,246 - INFO -     pred_min: -0.111938
+2025-07-28 02:32:29,246 - INFO -     pred_max: 0.041901
+2025-07-28 02:32:29,246 - INFO -     target_min: -0.887084
+2025-07-28 02:32:29,246 - INFO -     target_max: 0.579655
+2025-07-28 02:32:29,246 - INFO - Running evaluation at step 1150...
+2025-07-28 02:32:36,045 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 02:33:59,355 - INFO - Evaluation results:
+2025-07-28 02:33:59,357 - INFO -   eval_eva_similarity: 0.0818
+2025-07-28 02:33:59,357 - INFO -   eval_eva_similarity_std: 0.0139
+2025-07-28 02:33:59,357 - INFO -   eval_high_quality: 0.0000
+2025-07-28 02:33:59,357 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 02:33:59,357 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 02:33:59,357 - INFO -   eval_samples: 504.0000

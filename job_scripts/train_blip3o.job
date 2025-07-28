@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=eva_repro_fixed
+#SBATCH --job-name=clip_repro_training
 #SBATCH --partition=gpu_h100
 #SBATCH --nodes=1
 #SBATCH --gpus=1
@@ -7,21 +7,22 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --time=15:00:00
 #SBATCH --mem=64G
-#SBATCH --output=./slurm_out/eva_repro_fixed_%j.out
-#SBATCH --error=./slurm_out/eva_repro_fixed_%j.err
+#SBATCH --output=./slurm_out/clip_repro_%j.out
+#SBATCH --error=./slurm_out/clip_repro_%j.err
 
 # =============================================================================
-# Fixed EVA-CLIP Reproduction Training with BLIP3-o DiT
-# Uses fixed implementation with proper gradient flow and architecture
+# CLIP Reproduction Training with BLIP3-o DiT
+# Task: Reproduce CLIP embeddings [B, N, 1024] from EVA embeddings [B, N, 4096]
+# Key Feature: Minimal normalization approach (only for evaluation similarity)
 # =============================================================================
 
-echo "🚀 Fixed EVA-CLIP Reproduction Training with BLIP3-o DiT"
-echo "=========================================================="
+echo "🚀 CLIP Reproduction Training with BLIP3-o DiT"
+echo "==============================================="
 echo "Job ID: ${SLURM_JOB_ID}"
 echo "Node: $(hostname)"
 echo "Time: $(date)"
 echo "GPUs: $(nvidia-smi --query-gpu=name --format=csv,noheader,nounits | tr '\n' ', ')"
-echo "=========================================================="
+echo "==============================================="
 
 cd $SLURM_SUBMIT_DIR
 
@@ -37,11 +38,11 @@ source activate eva_clip_env
 
 # Configuration
 EMBEDDINGS_DIR="/scratch-shared/azadaianchuk1/blip3o_workspace/embeddings/patch_only_256_tokens"
-OUTPUT_DIR="./checkpoints/eva_repro_fixed_$(date +%Y%m%d_%H%M%S)"
+OUTPUT_DIR="./checkpoints/clip_repro_$(date +%Y%m%d_%H%M%S)"
 TRAINING_MODE="patch_only"
 MODEL_SIZE="base"
 
-# Fixed hyperparameters optimized for stable training
+# Optimized hyperparameters for CLIP reproduction
 NUM_EPOCHS=10                    # Conservative epochs for initial testing
 BATCH_SIZE=8                     # Smaller batch size for stability
 LEARNING_RATE=5e-4              # Conservative learning rate
@@ -64,12 +65,13 @@ mkdir -p "${OUTPUT_DIR}"
 mkdir -p ./slurm_out
 
 echo ""
-echo "⚙️ Fixed EVA Reproduction Configuration:"
-echo "========================================"
-echo "Task: Reproduce clean EVA embeddings from noisy EVA embeddings"
-echo "Conditioning: CLIP embeddings [B, N, 1024]"
-echo "Target: EVA embeddings [B, N, 4096]"
+echo "⚙️ CLIP Reproduction Configuration:"
+echo "=================================="
+echo "Task: Reproduce clean CLIP embeddings from EVA embeddings"
+echo "Conditioning: EVA embeddings [B, N, 4096]"
+echo "Target: CLIP embeddings [B, N, 1024]"
 echo "Method: Rectified Flow Matching with BLIP3-o DiT"
+echo "Normalization: MINIMAL (only for evaluation similarity)"
 echo ""
 echo "Embeddings: $EMBEDDINGS_DIR"
 echo "Output: $OUTPUT_DIR"
@@ -90,6 +92,12 @@ echo "🔍 Evaluation Configuration:"
 echo "  Eval every: $EVAL_EVERY_N_STEPS steps"
 echo "  Eval samples: $EVAL_NUM_SAMPLES"
 echo "  Inference steps: $EVAL_INFERENCE_STEPS"
+echo ""
+echo "🚫 MINIMAL NORMALIZATION APPROACH:"
+echo "  • No normalization during training"
+echo "  • Raw embedding space learning"
+echo "  • Normalization ONLY for cosine similarity in evaluation"
+echo "  • Let model learn natural embedding distributions"
 echo ""
 
 # Verify embeddings exist
@@ -117,36 +125,32 @@ if [ $SHARD_COUNT -lt $MAX_SHARDS ]; then
     echo "   Adjusted to use $MAX_SHARDS shards"
 fi
 
-# Verify fixed training script exists
-if [ ! -f "train_eva_repro.py" ]; then
-    echo "❌ Fixed training script not found: train_eva_reproduction.py"
-    echo "Available Python files:"
-    ls -la *.py 2>/dev/null || echo "No Python files found"
-    exit 1
-fi
 
-echo "✅ Fixed training script found"
+
+echo "✅ Training script found"
 
 echo ""
-echo "🚀 Starting Fixed EVA Reproduction Training..."
-echo "=============================================="
-echo "🧪 EXPECTED BEHAVIOR WITH FIXES:"
+echo "🚀 Starting CLIP Reproduction Training..."
+echo "========================================"
+echo "🧪 EXPECTED BEHAVIOR WITH MINIMAL NORMALIZATION:"
 echo "  ✅ Non-zero gradients from first step"
 echo "  ✅ Decreasing loss within first few epochs"
 echo "  ✅ Velocity similarity increasing from ~0.01 to >0.1"
-echo "  ✅ EVA similarity during evaluation >0.1 (good), >0.4 (excellent)"
+echo "  ✅ CLIP similarity during evaluation >0.1 (good), >0.4 (excellent)"
 echo "  ✅ Overfitting test should achieve >0.8 similarity"
 echo "  ✅ No NaN/Inf issues or tensor shape mismatches"
+echo "  ✅ Raw embedding norms will vary naturally"
 echo ""
 echo "🏗️ ARCHITECTURE VALIDATION:"
 echo "  • BLIP3-o DiT with 3D RoPE and Grouped-Query Attention"
 echo "  • Sandwich Normalization (RMSNorm)"
 echo "  • Rectified Flow Matching"
 echo "  • Proper gradient flow and initialization"
+echo "  • EVA [4096] → CLIP [1024] mapping"
 echo ""
 
-# Launch fixed EVA reproduction training
-python train_eva_repro.py \
+# Launch CLIP reproduction training
+python train_dit.py \
     --chunked_embeddings_dir "$EMBEDDINGS_DIR" \
     --output_dir "$OUTPUT_DIR" \
     --model_size "$MODEL_SIZE" \
@@ -168,11 +172,11 @@ TRAINING_EXIT_CODE=$?
 
 echo ""
 echo "========================================"
-echo "📊 Fixed EVA Reproduction Results"
+echo "📊 CLIP Reproduction Results"
 echo "========================================"
 
 if [ $TRAINING_EXIT_CODE -eq 0 ]; then
-    echo "✅ Fixed EVA reproduction training completed successfully!"
+    echo "✅ CLIP reproduction training completed successfully!"
     
     echo ""
     echo "📋 Training Summary:"
@@ -196,9 +200,10 @@ try:
         data = json.load(f)
     
     print(f'🎯 Best Loss: {data.get(\"best_loss\", float(\"inf\")):.6f}')
-    print(f'🎯 Best EVA Similarity: {data.get(\"best_eval_similarity\", 0):.4f}')
+    print(f'🎯 Best CLIP Similarity: {data.get(\"best_eval_similarity\", 0):.4f}')
     print(f'📊 Total Steps: {data.get(\"total_steps\", 0):,}')
     print(f'⏱️ Training Time: {data.get(\"total_time_seconds\", 0):.1f} seconds')
+    print(f'🚫 Minimal Normalization: {data.get(\"minimal_normalization\", False)}')
     
     # Overfitting test results
     if data.get('overfit_test', False):
@@ -214,21 +219,21 @@ try:
     if final_eval:
         print(f'')
         print(f'🔍 Final Evaluation:')
-        eva_sim = final_eval.get('eval_eva_similarity', 0)
+        clip_sim = final_eval.get('eval_clip_similarity', 0)
         high_qual = final_eval.get('eval_high_quality', 0) * 100
         very_high_qual = final_eval.get('eval_very_high_quality', 0) * 100
         
-        print(f'   Overall EVA Similarity: {eva_sim:.4f}')
+        print(f'   Overall CLIP Similarity: {clip_sim:.4f}')
         print(f'   High Quality (>0.7): {high_qual:.1f}%')
         print(f'   Very High Quality (>0.8): {very_high_qual:.1f}%')
         print(f'   Samples Evaluated: {final_eval.get(\"eval_samples\", 0):,}')
         
         # Assessment
-        if eva_sim > 0.7:
-            print(f'   🎉 EXCELLENT: Outstanding EVA reproduction!')
-        elif eva_sim > 0.4:
-            print(f'   ✅ GOOD: Strong EVA reproduction capability!')
-        elif eva_sim > 0.1:
+        if clip_sim > 0.7:
+            print(f'   🎉 EXCELLENT: Outstanding CLIP reproduction!')
+        elif clip_sim > 0.4:
+            print(f'   ✅ GOOD: Strong CLIP reproduction capability!')
+        elif clip_sim > 0.1:
             print(f'   📈 FAIR: Decent reproduction, shows learning!')
         else:
             print(f'   ⚠️  NEEDS WORK: Low similarity, check hyperparameters')
@@ -260,30 +265,31 @@ except Exception as e:
     echo "   • Increase MAX_SHARDS to use more data" 
     echo "   • Increase NUM_EPOCHS for longer training"
     echo "   • Adjust BATCH_SIZE based on memory usage"
-    echo "3. Run comprehensive evaluation:"
-    echo "   python evaluate_model.py --model_path $OUTPUT_DIR --embeddings_dir $EMBEDDINGS_DIR --output_dir ./evaluation"
+    echo "3. Compare with normalized approach if needed"
+    echo "4. Run comprehensive evaluation on test set"
     echo ""
     echo "🔍 SUCCESS INDICATORS:"
     echo "  ✅ Non-zero gradients throughout training"
     echo "  ✅ Decreasing loss trend"
     echo "  ✅ Increasing similarity metrics"
     echo "  ✅ Overfitting test achieves >0.8 similarity"
-    echo "  ✅ Final EVA similarity >0.1 (good), >0.4 (excellent)"
+    echo "  ✅ Final CLIP similarity >0.1 (good), >0.4 (excellent)"
+    echo "  ✅ Natural embedding norm variation (not forced to 1.0)"
     
     echo ""
-    echo "✅ SUCCESS: Fixed EVA reproduction training completed!"
+    echo "✅ SUCCESS: CLIP reproduction training completed!"
     
 else
     echo "❌ FAILED: Training exit code $TRAINING_EXIT_CODE"
     echo ""
-    echo "💡 Troubleshooting the Fixed Implementation:"
+    echo "💡 Troubleshooting:"
     echo "  • Check log files in ./slurm_out/ for detailed error messages"
-    echo "  • Verify all fixed Python files are present:"
-    echo "    - train_eva_reproduction.py (main script)"
-    echo "    - fixed_model.py (BLIP3-o DiT)"
-    echo "    - fixed_loss.py (flow matching loss)"
-    echo "    - fixed_dataset.py (data loading)"
-    echo "    - fixed_trainer.py (training loop)"
+    echo "  • Verify all required Python files are present:"
+    echo "    - train_clip_reproduction.py (main script)"
+    echo "    - blip3o_clip_dit.py (BLIP3-o DiT model)"
+    echo "    - blip3o_clip_loss.py (flow matching loss)"
+    echo "    - blip3o_clip_dataset.py (data loading)"
+    echo "    - blip3o_clip_trainer.py (training loop)"
     echo "  • Check embeddings directory structure and file formats"
     echo "  • Monitor GPU memory usage with nvidia-smi"
     echo "  • Try reducing batch_size if out-of-memory errors"
@@ -304,9 +310,10 @@ echo ""
 echo "🏁 Job completed at $(date)"
 echo "Total job time: $(echo "scale=2; ($(date +%s) - $SECONDS) / 3600" | bc -l) hours"
 echo ""
-echo "📚 ARCHITECTURE VALIDATION SUMMARY:"
-echo "This job tests BLIP3-o DiT architecture by reproducing clean EVA embeddings."
-echo "Success indicates the architecture is correctly implemented and ready for your main task."
-echo "========================================"
+echo "📚 CLIP REPRODUCTION SUMMARY:"
+echo "This job tests BLIP3-o DiT architecture by reproducing CLIP embeddings from EVA embeddings."
+echo "Success indicates the architecture can perform cross-modal embedding translation effectively."
+echo "The minimal normalization approach tests if raw embedding spaces can be learned naturally."
+echo "==============================================="
 
 exit $TRAINING_EXIT_CODE

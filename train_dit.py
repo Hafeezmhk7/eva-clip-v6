@@ -1,7 +1,13 @@
 #!/usr/bin/env python3
 """
-Fixed EVA-CLIP Reproduction Training Script
-Main training script with comprehensive fixes for gradient flow and architecture issues
+CLIP Reproduction Training Script - train_dit.py
+Main training script for reproducing CLIP embeddings from EVA embeddings
+Updated for new file names: blip3o_dit.py, blip3o_fm_loss.py, blip3o_datasets.py, blip3o_trainer.py, blip3o_config.py
+
+Key features:
+1. Minimal normalization (only for evaluation similarity)
+2. Raw embedding space training
+3. Comprehensive monitoring and debugging
 """
 
 import os
@@ -24,14 +30,14 @@ def setup_logging():
         format='%(asctime)s - %(levelname)s - %(message)s',
         handlers=[
             logging.StreamHandler(sys.stdout),
-            logging.FileHandler('eva_reproduction_training.log', mode='w')
+            logging.FileHandler('clip_reproduction_training.log', mode='w')
         ]
     )
     return logging.getLogger(__name__)
 
 def parse_arguments():
     """Parse command line arguments"""
-    parser = argparse.ArgumentParser(description="EVA-CLIP Reproduction with BLIP3-o DiT")
+    parser = argparse.ArgumentParser(description="CLIP Reproduction from EVA Embeddings with BLIP3-o DiT")
     
     # Required arguments
     parser.add_argument("--chunked_embeddings_dir", type=str, required=True,
@@ -97,16 +103,22 @@ def setup_device_and_model(args, logger):
         device = torch.device("cpu")
         logger.info("Using CPU")
     
-    # Import and create model
+    # Import and create model using updated file names
     try:
-        from src.modules.models.blip3o_eva_dit import create_eva_reproduction_model, BLIP3oEVADiTConfig
+        from blip3o_dit import create_clip_reproduction_model, BLIP3oCLIPDiTConfig
+        logger.info("✅ Imported model from blip3o_dit.py")
     except ImportError:
-        logger.error("Could not import fixed model. Make sure fixed_model.py is in the same directory.")
-        raise
+        try:
+            # Try using the modules init
+            from src.modules import create_clip_reproduction_model, BLIP3oCLIPDiTConfig
+            logger.info("✅ Imported model from src.modules")
+        except ImportError:
+            logger.error("❌ Could not import model. Ensure blip3o_dit.py is available or src/modules/__init__.py is properly set up.")
+            raise
     
     logger.info(f"Creating {args.model_size} model for {args.training_mode} mode...")
     
-    model = create_eva_reproduction_model(
+    model = create_clip_reproduction_model(
         model_size=args.model_size,
         training_mode=args.training_mode
     )
@@ -121,14 +133,19 @@ def setup_device_and_model(args, logger):
 def create_loss_function(args, logger):
     """Create loss function"""
     try:
-        from src.modules.losses.blip3o_eva_loss import create_eva_reproduction_loss
+        from blip3o_fm_loss import create_clip_reproduction_loss
+        logger.info("✅ Imported loss from blip3o_fm_loss.py")
     except ImportError:
-        logger.error("Could not import fixed loss. Make sure fixed_loss.py is in the same directory.")
-        raise
+        try:
+            from src.modules import create_clip_reproduction_loss
+            logger.info("✅ Imported loss from src.modules")
+        except ImportError:
+            logger.error("❌ Could not import loss. Ensure blip3o_fm_loss.py is available.")
+            raise
     
     logger.info("Creating flow matching loss...")
     
-    loss_fn = create_eva_reproduction_loss(
+    loss_fn = create_clip_reproduction_loss(
         prediction_type="velocity",
         flow_type="rectified",
         loss_weight=1.0,
@@ -153,19 +170,24 @@ def get_dataloader_length_safe(dataloader):
 def create_dataloaders(args, logger):
     """Create data loaders"""
     try:
-        from src.modules.datasets.blip3o_eva_dataset import create_eva_reproduction_dataloaders
+        from blip3o_datasets import create_clip_reproduction_dataloaders
+        logger.info("✅ Imported dataset from blip3o_datasets.py")
     except ImportError:
-        logger.error("Could not import fixed dataset. Make sure fixed_dataset.py is in the same directory.")
-        raise
+        try:
+            from src.modules import create_clip_reproduction_dataloaders
+            logger.info("✅ Imported dataset from src.modules")
+        except ImportError:
+            logger.error("❌ Could not import dataset. Ensure blip3o_datasets.py is available.")
+            raise
     
     logger.info("Creating dataloaders...")
     
-    train_dataloader, eval_dataloader = create_eva_reproduction_dataloaders(
+    train_dataloader, eval_dataloader = create_clip_reproduction_dataloaders(
         chunked_embeddings_dir=args.chunked_embeddings_dir,
         batch_size=args.batch_size,
         training_mode=args.training_mode,
         max_shards=args.max_shards,
-        normalize_embeddings=True,
+        normalize_embeddings=False,  # Disable normalization
         num_workers=args.num_workers,
         pin_memory=torch.cuda.is_available()
     )
@@ -180,20 +202,26 @@ def create_dataloaders(args, logger):
         logger.info(f"  Training batches: Estimated from IterableDataset")
     
     logger.info(f"  Evaluation available: {eval_dataloader is not None}")
+    logger.info(f"  🚫 Normalization disabled in dataloaders")
     
     return train_dataloader, eval_dataloader
 
 def create_trainer(model, loss_fn, train_dataloader, eval_dataloader, args, device, logger):
     """Create trainer"""
     try:
-        from src.modules.trainers.blip3o_eva_trainer import create_eva_trainer
+        from blip3o_trainer import create_clip_trainer
+        logger.info("✅ Imported trainer from blip3o_trainer.py")
     except ImportError:
-        logger.error("Could not import fixed trainer. Make sure fixed_trainer.py is in the same directory.")
-        raise
+        try:
+            from src.modules import create_clip_trainer
+            logger.info("✅ Imported trainer from src.modules")
+        except ImportError:
+            logger.error("❌ Could not import trainer. Ensure blip3o_trainer.py is available.")
+            raise
     
     logger.info("Creating trainer...")
     
-    trainer = create_eva_trainer(
+    trainer = create_clip_trainer(
         model=model,
         loss_fn=loss_fn,
         train_dataloader=train_dataloader,
@@ -215,19 +243,73 @@ def create_trainer(model, loss_fn, train_dataloader, eval_dataloader, args, devi
     logger.info("Trainer created")
     return trainer
 
+def load_config_if_available(args, logger):
+    """Load configuration if available"""
+    try:
+        from blip3o_config import get_blip3o_clip_config, print_config_summary
+        logger.info("✅ Imported config from blip3o_config.py")
+        
+        # Create and print config summary
+        model_config = get_blip3o_clip_config(args.model_size, args.training_mode)
+        print_config_summary(model_config, None, None, None)
+        
+        return model_config
+    except ImportError:
+        try:
+            from src.modules import get_blip3o_clip_config, print_config_summary
+            logger.info("✅ Imported config from src.modules")
+            
+            model_config = get_blip3o_clip_config(args.model_size, args.training_mode)
+            print_config_summary(model_config, None, None, None)
+            
+            return model_config
+        except ImportError:
+            logger.warning("⚠️ Could not import config. Continuing without config summary.")
+            return None
+
+def check_modules_availability(logger):
+    """Check which modules are available"""
+    logger.info("🔍 Checking module availability...")
+    
+    # Try to use the comprehensive modules init
+    try:
+        from src.modules import check_environment, print_environment_status
+        logger.info("✅ Using comprehensive modules system")
+        
+        # Print environment status
+        print_environment_status()
+        
+        # Check environment
+        env_status = check_environment()
+        if not env_status['all_available']:
+            logger.warning(f"⚠️ Some modules not available: {env_status['missing_components']}")
+        
+        return env_status
+    except ImportError:
+        logger.info("📁 Using individual file imports")
+        return {'all_available': True, 'missing_components': []}
+
 def main():
     """Main training function"""
     args = parse_arguments()
     logger = setup_logging()
     
-    logger.info("🚀 Starting EVA-CLIP Reproduction with Fixed BLIP3-o DiT")
+    logger.info("🚀 Starting CLIP Reproduction from EVA Embeddings")
     logger.info("=" * 80)
     logger.info("EXPERIMENT DETAILS:")
-    logger.info("  📋 Task: Reproduce clean EVA embeddings from noisy EVA embeddings")
+    logger.info("  📋 Task: Reproduce clean CLIP embeddings from EVA embeddings")
     logger.info("  🧠 Model: BLIP3-o DiT with 3D RoPE and Grouped-Query Attention")
-    logger.info("  🎯 Target: EVA embeddings [B, N, 4096]")
-    logger.info("  🎮 Conditioning: CLIP embeddings [B, N, 1024]")
+    logger.info("  🎯 Target: CLIP embeddings [B, N, 1024]")
+    logger.info("  🎮 Conditioning: EVA embeddings [B, N, 4096]")
     logger.info("  🌊 Method: Rectified Flow Matching")
+    logger.info("  🚫 Normalization: MINIMAL (only for evaluation similarity)")
+    logger.info("=" * 80)
+    logger.info("📄 Using updated file names:")
+    logger.info("  • Model: blip3o_dit.py")
+    logger.info("  • Loss: blip3o_fm_loss.py")
+    logger.info("  • Dataset: blip3o_datasets.py")
+    logger.info("  • Trainer: blip3o_trainer.py")
+    logger.info("  • Config: blip3o_config.py")
     logger.info("=" * 80)
     logger.info(f"Configuration:")
     logger.info(f"  Model size: {args.model_size}")
@@ -244,9 +326,15 @@ def main():
     logger.info("=" * 80)
     
     try:
+        # Check module availability
+        env_status = check_modules_availability(logger)
+        
         # Create output directory
         output_dir = Path(args.output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Load config if available
+        model_config = load_config_if_available(args, logger)
         
         # Setup device and model
         device, model = setup_device_and_model(args, logger)
@@ -263,16 +351,31 @@ def main():
         # Save configuration
         config = {
             'args': vars(args),
-            'model_config': model.config.to_dict() if hasattr(model, 'config') else {},
+            'model_config': model_config.to_dict() if model_config and hasattr(model_config, 'to_dict') else {},
+            'model_params': model.get_num_parameters() if hasattr(model, 'get_num_parameters') else 'unknown',
             'timestamp': datetime.now().isoformat(),
-            'experiment_type': 'eva_reproduction',
+            'experiment_type': 'clip_reproduction',
+            'normalization_approach': 'minimal',
+            'file_names': {
+                'model': 'blip3o_dit.py',
+                'loss': 'blip3o_fm_loss.py',
+                'dataset': 'blip3o_datasets.py',
+                'trainer': 'blip3o_trainer.py',
+                'config': 'blip3o_config.py',
+                'training_script': 'train_dit.py',
+            },
+            'environment_status': env_status,
             'fixes_applied': [
+                'minimal_normalization_approach',
+                'raw_embedding_space_training',
                 'gradient_flow_improvements',
                 'proper_initialization',
                 'correct_data_flow',
                 'numerical_stability',
                 'overfitting_test_capability',
-                'iterable_dataset_length_fix'
+                'iterable_dataset_length_fix',
+                'updated_file_names',
+                'single_modules_init',
             ]
         }
         
@@ -287,8 +390,9 @@ def main():
         logger.info("Expected behavior:")
         logger.info("  • Loss should decrease steadily")
         logger.info("  • Velocity similarity should increase")
-        logger.info("  • EVA similarity should improve during evaluation")
+        logger.info("  • CLIP similarity should improve during evaluation")
         logger.info("  • Gradients should be non-zero and stable")
+        logger.info("  • Raw embeddings will be learned (no forced normalization)")
         
         if args.overfit_test_size:
             logger.info(f"  • OVERFITTING TEST: Should achieve >0.8 similarity on {args.overfit_test_size} samples")
@@ -311,13 +415,14 @@ def main():
         logger.info(f"  Duration: {duration:.1f} seconds ({duration/60:.1f} minutes)")
         logger.info(f"  Total steps: {summary.get('total_steps', 0)}")
         logger.info(f"  Best loss: {summary.get('best_loss', float('inf')):.6f}")
-        logger.info(f"  Best EVA similarity: {summary.get('best_eval_similarity', 0):.4f}")
+        logger.info(f"  Best CLIP similarity: {summary.get('best_eval_similarity', 0):.4f}")
+        logger.info(f"  🚫 Used minimal normalization approach")
         
         # Evaluation results
         final_eval = summary.get('final_eval', {})
         if final_eval:
             logger.info(f"📊 FINAL EVALUATION:")
-            logger.info(f"  EVA similarity: {final_eval.get('eval_eva_similarity', 0):.4f}")
+            logger.info(f"  CLIP similarity: {final_eval.get('eval_clip_similarity', 0):.4f}")
             logger.info(f"  High quality (>0.7): {final_eval.get('eval_high_quality', 0)*100:.1f}%")
             logger.info(f"  Very high quality (>0.8): {final_eval.get('eval_very_high_quality', 0)*100:.1f}%")
             logger.info(f"  Excellent quality (>0.9): {final_eval.get('eval_excellent_quality', 0)*100:.1f}%")

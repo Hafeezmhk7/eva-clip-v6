@@ -1,13 +1,12 @@
 """
-Fixed BLIP3-o Configuration - Aligned with BLIP3-o Paper
-src/modules/config/blip3o_config.py
+BLIP3-o Configuration for CLIP Reproduction - Aligned with BLIP3-o Paper
+Configuration for reproducing CLIP embeddings from EVA embeddings
 
-MAJOR FIXES:
-1. Proper BLIP3-o architecture specifications
-2. 3D RoPE and Grouped-Query Attention parameters
-3. Sandwich normalization configuration
-4. Better parameter validation
-5. Memory-optimized configurations
+Key changes from EVA reproduction:
+1. eva_embedding_size = 4096 (conditioning)
+2. clip_embedding_size = 1024 (target)
+3. Updated parameter validation
+4. Memory-optimized configurations
 """
 
 from transformers import PretrainedConfig
@@ -16,19 +15,19 @@ from dataclasses import dataclass
 import math
 
 
-class BLIP3oDiTConfig(PretrainedConfig):
+class BLIP3oCLIPDiTConfig(PretrainedConfig):
     """
-    Fixed configuration class for BLIP3-o patch-level DiT model.
+    Configuration class for BLIP3-o CLIP reproduction DiT model.
     
     This configuration follows the BLIP3-o paper architecture with:
-    - Patch-level training on 256 CLIP tokens (1024-dim)
-    - EVA-CLIP conditioning (256 tokens, 4096-dim)  
+    - Patch-level training on 256 EVA tokens (4096-dim)
+    - CLIP embedding reproduction (256 tokens, 1024-dim)  
     - Flow matching training objective
     - 3D RoPE and Grouped-Query Attention
     - Sandwich normalization (RMSNorm)
     """
     
-    model_type = "blip3o_patch_dit"
+    model_type = "blip3o_clip_dit"
     
     def __init__(
         self,
@@ -40,8 +39,8 @@ class BLIP3oDiTConfig(PretrainedConfig):
         intermediate_size: int = 3072,
         
         # Input/output dimensions (BLIP3-o specific)
-        eva_embedding_size: int = 4096,  # EVA-CLIP dimension
-        clip_embedding_size: int = 1024,  # CLIP patch dimension
+        eva_embedding_size: int = 4096,  # EVA-CLIP dimension (conditioning)
+        clip_embedding_size: int = 1024,  # CLIP dimension (target)
         num_tokens: int = 256,  # 16x16 = 256 patches (or 257 with CLS)
         
         # Training configuration
@@ -156,9 +155,9 @@ class BLIP3oDiTConfig(PretrainedConfig):
     
     def get_parameter_count_estimate(self):
         """Estimate total parameter count"""
-        # Input/output projections
-        input_params = self.eva_embedding_size * self.hidden_size
-        output_params = self.hidden_size * self.eva_embedding_size
+        # Input/output projections (reversed for CLIP reproduction)
+        input_params = self.clip_embedding_size * self.hidden_size
+        output_params = self.hidden_size * self.clip_embedding_size
         
         # Embeddings
         pos_embed_params = self.max_position_embeddings * self.hidden_size
@@ -171,7 +170,7 @@ class BLIP3oDiTConfig(PretrainedConfig):
             self.hidden_size * self.hidden_size +       # Output projection
             # Cross-attention
             self.hidden_size * self.hidden_size +       # Q projection
-            self.clip_embedding_size * self.hidden_size * 2 +  # K, V projections for CLIP
+            self.eva_embedding_size * self.hidden_size * 2 +  # K, V projections for EVA
             self.hidden_size * self.hidden_size +       # Output projection
             # FFN
             self.hidden_size * self.intermediate_size +   # Up projection
@@ -193,13 +192,13 @@ class BLIP3oDiTConfig(PretrainedConfig):
         return output
 
 
-def get_blip3o_config(
+def get_blip3o_clip_config(
     model_size: str = "base",
     training_mode: str = "patch_only",
     **kwargs
-) -> BLIP3oDiTConfig:
+) -> BLIP3oCLIPDiTConfig:
     """
-    Get predefined BLIP3-o configuration following the paper specifications.
+    Get predefined BLIP3-o configuration for CLIP reproduction.
     
     Args:
         model_size: Model size - "tiny", "small", "base", "large"
@@ -207,7 +206,7 @@ def get_blip3o_config(
         **kwargs: Additional configuration overrides
         
     Returns:
-        BLIP3oDiTConfig instance
+        BLIP3oCLIPDiTConfig instance
     """
     # Predefined configurations optimized for BLIP3-o architecture
     configs = {
@@ -266,12 +265,12 @@ def get_blip3o_config(
     # Apply overrides
     config_dict.update(kwargs)
     
-    return BLIP3oDiTConfig(**config_dict)
+    return BLIP3oCLIPDiTConfig(**config_dict)
 
 
 @dataclass
 class FlowMatchingConfig:
-    """Configuration for flow matching training following BLIP3-o specifications"""
+    """Configuration for flow matching training for CLIP reproduction"""
     prediction_type: str = "velocity"
     normalize_targets: bool = True
     flow_type: str = "rectified"
@@ -289,7 +288,7 @@ class FlowMatchingConfig:
 
 @dataclass  
 class TrainingConfig:
-    """Configuration for training parameters optimized for BLIP3-o"""
+    """Configuration for training parameters optimized for CLIP reproduction"""
     num_epochs: int = 20
     batch_size: int = 16
     eval_batch_size: int = 16
@@ -326,7 +325,7 @@ class EvaluationConfig:
     eval_inference_steps: int = 50
     normalize_embeddings: bool = True
     
-    # Quality thresholds for EVA reproduction
+    # Quality thresholds for CLIP reproduction
     high_quality_threshold: float = 0.7
     very_high_quality_threshold: float = 0.8
     excellent_quality_threshold: float = 0.9
@@ -336,9 +335,9 @@ class EvaluationConfig:
     guidance_scale: float = 1.0
 
 
-def get_default_configs() -> tuple:
+def get_default_clip_configs() -> tuple:
     """Get default configurations for all components"""
-    model_config = get_blip3o_config("base", "patch_only")
+    model_config = get_blip3o_clip_config("base", "patch_only")
     flow_config = FlowMatchingConfig()
     training_config = TrainingConfig()
     eval_config = EvaluationConfig()
@@ -348,7 +347,7 @@ def get_default_configs() -> tuple:
 
 def create_config_from_args(args) -> tuple:
     """Create configurations from command line arguments"""
-    model_config = get_blip3o_config(
+    model_config = get_blip3o_clip_config(
         model_size=getattr(args, 'model_size', 'base'),
         training_mode=getattr(args, 'training_mode', 'patch_only'),
         use_gradient_checkpointing=getattr(args, 'gradient_checkpointing', False),
@@ -381,7 +380,7 @@ def create_config_from_args(args) -> tuple:
 
 
 def validate_config_compatibility(
-    model_config: BLIP3oDiTConfig, 
+    model_config: BLIP3oCLIPDiTConfig, 
     flow_config: FlowMatchingConfig,
     training_config: TrainingConfig
 ) -> bool:
@@ -408,21 +407,21 @@ def validate_config_compatibility(
 
 
 def print_config_summary(
-    model_config: BLIP3oDiTConfig,
+    model_config: BLIP3oCLIPDiTConfig,
     flow_config: FlowMatchingConfig,
     training_config: TrainingConfig,
     eval_config: EvaluationConfig
 ):
     """Print comprehensive configuration summary"""
-    print("📋 BLIP3-o Configuration Summary")
+    print("📋 BLIP3-o CLIP Reproduction Configuration Summary")
     print("=" * 60)
     
     print(f"🏗️ Model Configuration (BLIP3-o DiT):")
     print(f"   Architecture: {model_config.hidden_size}D, {model_config.num_hidden_layers}L, {model_config.num_attention_heads}H")
     print(f"   Grouped-Query Attention: {model_config.num_attention_heads}/{model_config.num_key_value_heads} heads")
     print(f"   Tokens: {model_config.num_tokens} ({model_config.training_mode})")
-    print(f"   EVA input: {model_config.eva_embedding_size}D")
-    print(f"   CLIP conditioning: {model_config.clip_embedding_size}D")
+    print(f"   EVA conditioning: {model_config.eva_embedding_size}D")
+    print(f"   CLIP target: {model_config.clip_embedding_size}D")
     print(f"   3D RoPE: {model_config.use_3d_rope}")
     print(f"   Sandwich Norm: {model_config.use_sandwich_norm}")
     print(f"   RMS Norm: {model_config.use_rms_norm}")
@@ -503,7 +502,7 @@ def get_memory_optimized_config(
         if target_batch_size:
             estimated_memory = base_memory + target_batch_size * estimates["memory_per_batch_item"]
             if estimated_memory <= available_memory_gb * 0.9:  # 90% usage
-                config = get_blip3o_config(model_size)
+                config = get_blip3o_clip_config(model_size)
                 return model_size, config, estimated_memory
         else:
             # Find optimal batch size
@@ -512,12 +511,12 @@ def get_memory_optimized_config(
                 int((available_memory_gb * 0.9 - base_memory) / estimates["memory_per_batch_item"])
             )
             if max_batch_size >= 4:  # Minimum viable batch size
-                config = get_blip3o_config(model_size)
+                config = get_blip3o_clip_config(model_size)
                 estimated_memory = base_memory + max_batch_size * estimates["memory_per_batch_item"]
                 return model_size, config, estimated_memory
     
     # Fallback to tiny with minimal batch size
-    config = get_blip3o_config("tiny")
+    config = get_blip3o_clip_config("tiny")
     return "tiny", config, memory_estimates["tiny"]["base_memory_gb"] + 4 * memory_estimates["tiny"]["memory_per_batch_item"]
 
 
@@ -538,7 +537,7 @@ def create_overfitting_test_config(
         Tuple of configurations optimized for overfitting
     """
     # Get base model config
-    model_config = get_blip3o_config(base_model_size, training_mode)
+    model_config = get_blip3o_clip_config(base_model_size, training_mode)
     
     # Flow matching config optimized for overfitting
     flow_config = FlowMatchingConfig(
@@ -581,12 +580,12 @@ def create_overfitting_test_config(
     return model_config, flow_config, training_config, eval_config
 
 
-def validate_blip3o_architecture(config: BLIP3oDiTConfig) -> Dict[str, bool]:
+def validate_blip3o_clip_architecture(config: BLIP3oCLIPDiTConfig) -> Dict[str, bool]:
     """
     Validate that the configuration follows BLIP3-o architecture specifications
     
     Args:
-        config: BLIP3oDiTConfig to validate
+        config: BLIP3oCLIPDiTConfig to validate
         
     Returns:
         Dictionary with validation results
@@ -608,7 +607,7 @@ def validate_blip3o_architecture(config: BLIP3oDiTConfig) -> Dict[str, bool]:
     # Check RMS Normalization
     validation_results["rms_normalization"] = config.use_rms_norm
     
-    # Check input/output dimensions
+    # Check input/output dimensions (reversed for CLIP reproduction)
     validation_results["correct_eva_dim"] = config.eva_embedding_size == 4096
     validation_results["correct_clip_dim"] = config.clip_embedding_size == 1024
     
@@ -637,11 +636,11 @@ def validate_blip3o_architecture(config: BLIP3oDiTConfig) -> Dict[str, bool]:
     return validation_results
 
 
-def print_architecture_validation(config: BLIP3oDiTConfig):
+def print_architecture_validation(config: BLIP3oCLIPDiTConfig):
     """Print BLIP3-o architecture validation results"""
-    validation = validate_blip3o_architecture(config)
+    validation = validate_blip3o_clip_architecture(config)
     
-    print("🔍 BLIP3-o Architecture Validation")
+    print("🔍 BLIP3-o CLIP Reproduction Architecture Validation")
     print("=" * 50)
     
     # Core architecture features
@@ -653,8 +652,8 @@ def print_architecture_validation(config: BLIP3oDiTConfig):
     
     # Dimensions
     print("Input/Output Dimensions:")
-    print(f"  ✅ EVA Dimension (4096): {'Correct' if validation['correct_eva_dim'] else '❌ Incorrect'}")
-    print(f"  ✅ CLIP Dimension (1024): {'Correct' if validation['correct_clip_dim'] else '❌ Incorrect'}")
+    print(f"  ✅ EVA Conditioning (4096): {'Correct' if validation['correct_eva_dim'] else '❌ Incorrect'}")
+    print(f"  ✅ CLIP Target (1024): {'Correct' if validation['correct_clip_dim'] else '❌ Incorrect'}")
     print(f"  ✅ Token Count: {'Valid' if validation['valid_token_count'] else '❌ Invalid'}")
     
     # Training setup
@@ -665,7 +664,7 @@ def print_architecture_validation(config: BLIP3oDiTConfig):
     
     # Overall compliance
     compliance_status = "✅ COMPLIANT" if validation['blip3o_compliant'] else "❌ NON-COMPLIANT"
-    print(f"\nBLIP3-o Compliance: {compliance_status}")
+    print(f"\nBLIP3-o CLIP Reproduction Compliance: {compliance_status}")
     
     if not validation['blip3o_compliant']:
         print("\n⚠️ Configuration does not fully comply with BLIP3-o specifications!")
@@ -675,7 +674,7 @@ def print_architecture_validation(config: BLIP3oDiTConfig):
 
 
 # Export commonly used configurations
-DEFAULT_MODEL_CONFIG = get_blip3o_config("base", "patch_only")
+DEFAULT_MODEL_CONFIG = get_blip3o_clip_config("base", "patch_only")
 DEFAULT_FLOW_CONFIG = FlowMatchingConfig()
 DEFAULT_TRAINING_CONFIG = TrainingConfig()
 DEFAULT_EVAL_CONFIG = EvaluationConfig()
