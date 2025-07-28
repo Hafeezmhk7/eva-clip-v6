@@ -117,13 +117,13 @@ def parse_arguments():
                        help="Number of dataloader workers")
     
     # WandB configuration
-    parser.add_argument("--use_wandb", action="store_true", default=True,
+    parser.add_argument("--use_wandb", action="store_true", default=False,
                        help="Enable WandB logging")
     parser.add_argument("--no_wandb", action="store_true",
                        help="Disable WandB logging")
     parser.add_argument("--wandb_project", type=str, default="blip3o-clip-reproduction-fixed",
                        help="WandB project name")
-    parser.add_argument("--wandb_run_name", type=str, default=None,
+    parser.add_argument("--wandb_run_name", type=str, default="noise_scaling",
                        help="WandB run name")
     parser.add_argument("--wandb_tags", type=str, nargs="*", default=None,
                        help="WandB tags for the run")
@@ -738,7 +738,7 @@ def main():
             logger.warning("   ⚠️ DATA CONSISTENCY ISSUES REMAIN: Further investigation needed")
         
         # WandB information
-        if summary.get('wandb_enabled', False):
+        if summary.get('wandb_enabled', True):
             logger.info(f"📊 WandB Dashboard: Check your {args.wandb_project} project for detailed metrics")
         
         # Save final summary (with numpy type conversion)

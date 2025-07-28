@@ -230,12 +230,12 @@ class BLIP3oCLIPFlowMatchingLoss(nn.Module):
         # REGULARIZATION TERMS
         reg_loss = 0.0
         
-        # Velocity magnitude regularization
-        if self.velocity_reg_weight > 0:
-            pred_magnitude = torch.norm(model_output, dim=-1).mean()
-            target_magnitude = torch.norm(target_for_loss, dim=-1).mean()
-            velocity_reg = F.mse_loss(pred_magnitude, target_magnitude.detach())
-            reg_loss += self.velocity_reg_weight * velocity_reg
+        # # Velocity magnitude regularization
+        # if self.velocity_reg_weight > 0:
+        #     pred_magnitude = torch.norm(model_output, dim=-1).mean()
+        #     target_magnitude = torch.norm(target_for_loss, dim=-1).mean()
+        #     velocity_reg = F.mse_loss(pred_magnitude, target_magnitude.detach())
+        #     reg_loss += self.velocity_reg_weight * velocity_reg
         
         # Total loss
         total_loss = main_loss + reg_loss
