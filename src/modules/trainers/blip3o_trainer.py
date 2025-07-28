@@ -1052,7 +1052,7 @@ def create_clip_trainer(
     sync_noise_scale_every: int = 10,
     enable_generation_debug: bool = False,
     # WandB parameters
-    use_wandb: bool = True,
+    use_wandb: bool = False,
     wandb_project: str = "blip3o-clip-reproduction",
     wandb_run_name: Optional[str] = None,
     wandb_config: Optional[Dict] = None,
