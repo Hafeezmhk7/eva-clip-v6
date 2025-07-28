@@ -6,6 +6,7 @@ Key fixes:
 2. Better learning rate scheduling
 3. Overfitting test capability
 4. Comprehensive debugging and metrics
+5. Handles IterableDataset properly
 """
 
 import torch
@@ -89,6 +90,9 @@ class BLIP3oEVATrainer:
         self.device = device or (torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu"))
         self.model = self.model.to(self.device)
         
+        # Estimate steps per epoch for IterableDataset
+        self.estimated_steps_per_epoch = self._estimate_steps_per_epoch()
+        
         # Setup optimizer and scheduler
         self._setup_optimizer_and_scheduler()
         
@@ -119,8 +123,27 @@ class BLIP3oEVATrainer:
         logger.info(f"  Device: {self.device}")
         logger.info(f"  Learning rate: {self.learning_rate}")
         logger.info(f"  Epochs: {self.num_epochs}")
+        logger.info(f"  Estimated steps per epoch: {self.estimated_steps_per_epoch}")
         logger.info(f"  Overfit test: {self.overfit_test_size if self.overfit_test_size else 'Disabled'}")
         logger.info(f"  Mixed precision: {self.fp16}")
+
+    def _estimate_steps_per_epoch(self) -> int:
+        """Estimate steps per epoch for IterableDataset"""
+        try:
+            # Try to get exact length
+            return len(self.train_dataloader)
+        except TypeError:
+            # For IterableDataset, estimate from dataset length and batch size
+            try:
+                dataset_length = len(self.train_dataloader.dataset)
+                batch_size = self.train_dataloader.batch_size
+                estimated_steps = max(1, dataset_length // batch_size)
+                logger.info(f"Estimated steps per epoch from dataset length: {estimated_steps}")
+                return estimated_steps
+            except:
+                # Final fallback - reasonable default
+                logger.warning("Could not estimate steps per epoch, using default: 100")
+                return 100
 
     def _setup_optimizer_and_scheduler(self):
         """Setup optimizer and learning rate scheduler"""
@@ -134,7 +157,7 @@ class BLIP3oEVATrainer:
         )
         
         # Setup learning rate scheduler with warmup
-        total_steps = len(self.train_dataloader) * self.num_epochs
+        total_steps = self.estimated_steps_per_epoch * self.num_epochs
         
         if self.warmup_steps > 0:
             # Warmup + Cosine decay
@@ -163,7 +186,7 @@ class BLIP3oEVATrainer:
             )
         
         logger.info(f"Optimizer and scheduler setup complete")
-        logger.info(f"  Total steps: {total_steps}")
+        logger.info(f"  Total estimated steps: {total_steps}")
         logger.info(f"  Warmup steps: {self.warmup_steps}")
 
     def _prepare_overfit_test(self):
@@ -411,8 +434,8 @@ class BLIP3oEVATrainer:
         """Main training loop"""
         logger.info("Starting EVA reproduction training...")
         logger.info(f"  Model parameters: {sum(p.numel() for p in self.model.parameters()):,}")
-        logger.info(f"  Training steps per epoch: {len(self.train_dataloader)}")
-        logger.info(f"  Total training steps: {len(self.train_dataloader) * self.num_epochs}")
+        logger.info(f"  Estimated training steps per epoch: {self.estimated_steps_per_epoch}")
+        logger.info(f"  Total estimated training steps: {self.estimated_steps_per_epoch * self.num_epochs}")
         
         if self.overfit_batch is not None:
             logger.info(f"  OVERFITTING TEST MODE: Using {self.overfit_batch['batch_size']} samples")
@@ -428,56 +451,74 @@ class BLIP3oEVATrainer:
                 epoch_loss = 0.0
                 epoch_steps = 0
                 
-                for batch_idx, batch in enumerate(self.train_dataloader):
-                    step_start_time = time.time()
+                # Handle both regular DataLoader and IterableDataset
+                try:
+                    dataloader_iter = iter(self.train_dataloader)
+                    batch_count = 0
                     
-                    # Compute loss
-                    try:
-                        loss, metrics = self._compute_loss(batch)
-                    except Exception as e:
-                        logger.error(f"Error computing loss at step {self.global_step}: {e}")
-                        continue
-                    
-                    # Backward pass
-                    try:
-                        grad_norm = self._backward_and_step(loss)
-                    except Exception as e:
-                        logger.error(f"Error in backward pass at step {self.global_step}: {e}")
-                        continue
-                    
-                    # Update metrics
-                    epoch_loss += loss.item()
-                    epoch_steps += 1
-                    self.global_step += 1
-                    
-                    # Log metrics
-                    self._log_metrics(loss.item(), metrics or {}, grad_norm)
-                    
-                    # Run evaluation
-                    if self.global_step % self.eval_every_n_steps == 0:
-                        logger.info(f"Running evaluation at step {self.global_step}...")
-                        eval_metrics = self._evaluate()
+                    # For IterableDataset, we'll iterate until StopIteration
+                    while True:
+                        try:
+                            batch = next(dataloader_iter)
+                            batch_count += 1
+                        except StopIteration:
+                            logger.info(f"Epoch {epoch + 1} completed: {batch_count} batches processed")
+                            break
                         
-                        if eval_metrics:
-                            logger.info(f"Evaluation results:")
-                            for key, value in eval_metrics.items():
-                                logger.info(f"  {key}: {value:.4f}")
+                        step_start_time = time.time()
+                        
+                        # Compute loss
+                        try:
+                            loss, metrics = self._compute_loss(batch)
+                        except Exception as e:
+                            logger.error(f"Error computing loss at step {self.global_step}: {e}")
+                            continue
+                        
+                        # Backward pass
+                        try:
+                            grad_norm = self._backward_and_step(loss)
+                        except Exception as e:
+                            logger.error(f"Error in backward pass at step {self.global_step}: {e}")
+                            continue
+                        
+                        # Update metrics
+                        epoch_loss += loss.item()
+                        epoch_steps += 1
+                        self.global_step += 1
+                        
+                        # Log metrics
+                        self._log_metrics(loss.item(), metrics or {}, grad_norm)
+                        
+                        # Run evaluation
+                        if self.global_step % self.eval_every_n_steps == 0:
+                            logger.info(f"Running evaluation at step {self.global_step}...")
+                            eval_metrics = self._evaluate()
                             
-                            # Update best eval similarity
-                            if eval_metrics.get('eval_eva_similarity', 0) > self.best_eval_similarity:
-                                self.best_eval_similarity = eval_metrics['eval_eva_similarity']
-                                logger.info(f"New best EVA similarity: {self.best_eval_similarity:.4f}")
-                    
-                    # Save checkpoint
-                    if self.global_step % self.save_every_n_steps == 0:
-                        self._save_checkpoint()
-                    
-                    # Check for early success in overfitting test
-                    if (self.overfit_batch is not None and 
-                        metrics and 
-                        metrics.get('velocity_similarity', 0) > 0.9):
-                        logger.info("🎉 OVERFITTING TEST PASSED! Model can learn effectively.")
-                        break
+                            if eval_metrics:
+                                logger.info(f"Evaluation results:")
+                                for key, value in eval_metrics.items():
+                                    logger.info(f"  {key}: {value:.4f}")
+                                
+                                # Update best eval similarity
+                                if eval_metrics.get('eval_eva_similarity', 0) > self.best_eval_similarity:
+                                    self.best_eval_similarity = eval_metrics['eval_eva_similarity']
+                                    logger.info(f"New best EVA similarity: {self.best_eval_similarity:.4f}")
+                        
+                        # Save checkpoint
+                        if self.global_step % self.save_every_n_steps == 0:
+                            self._save_checkpoint()
+                        
+                        # Check for early success in overfitting test
+                        if (self.overfit_batch is not None and 
+                            metrics and 
+                            metrics.get('velocity_similarity', 0) > 0.9):
+                            logger.info("🎉 OVERFITTING TEST PASSED! Model can learn effectively.")
+                            break
+                
+                except Exception as e:
+                    logger.error(f"Error during epoch {epoch + 1}: {e}")
+                    # Try to continue with next epoch
+                    continue
                 
                 # End of epoch logging
                 avg_epoch_loss = epoch_loss / max(epoch_steps, 1)
@@ -485,6 +526,7 @@ class BLIP3oEVATrainer:
                 logger.info(f"  Average loss: {avg_epoch_loss:.6f}")
                 logger.info(f"  Best loss: {self.best_loss:.6f}")
                 logger.info(f"  Best similarity: {self.best_eval_similarity:.4f}")
+                logger.info(f"  Steps in epoch: {epoch_steps}")
                 
                 # Early stopping for overfitting test
                 if (self.overfit_batch is not None and 
@@ -526,6 +568,7 @@ class BLIP3oEVATrainer:
                 'similarity_history': list(self.similarity_history),
                 'lr_history': list(self.lr_history),
                 'grad_norm_history': list(self.grad_norm_history),
+                'estimated_steps_per_epoch': self.estimated_steps_per_epoch,
             }
             
             # Save training summary

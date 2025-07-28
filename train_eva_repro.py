@@ -138,6 +138,18 @@ def create_loss_function(args, logger):
     logger.info("Flow matching loss created")
     return loss_fn
 
+def get_dataloader_length_safe(dataloader):
+    """Safely get dataloader length, handling IterableDataset"""
+    try:
+        return len(dataloader)
+    except TypeError:
+        # For IterableDataset, try to get estimated length from dataset
+        try:
+            return len(dataloader.dataset)
+        except:
+            # Final fallback - return "unknown"
+            return "unknown"
+
 def create_dataloaders(args, logger):
     """Create data loaders"""
     try:
@@ -159,7 +171,14 @@ def create_dataloaders(args, logger):
     )
     
     logger.info(f"Dataloaders created")
-    logger.info(f"  Training batches: {len(train_dataloader)}")
+    
+    # Safely get lengths
+    train_length = get_dataloader_length_safe(train_dataloader)
+    if train_length != "unknown":
+        logger.info(f"  Training batches: {train_length:,}")
+    else:
+        logger.info(f"  Training batches: Estimated from IterableDataset")
+    
     logger.info(f"  Evaluation available: {eval_dataloader is not None}")
     
     return train_dataloader, eval_dataloader
@@ -252,7 +271,8 @@ def main():
                 'proper_initialization',
                 'correct_data_flow',
                 'numerical_stability',
-                'overfitting_test_capability'
+                'overfitting_test_capability',
+                'iterable_dataset_length_fix'
             ]
         }
         

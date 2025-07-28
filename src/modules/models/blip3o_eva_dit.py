@@ -442,24 +442,26 @@ class BLIP3oEVADiTModel(PreTrainedModel):
         generator: Optional[torch.Generator] = None,
         normalize_output: bool = True,
     ) -> torch.Tensor:
-        """Generate EVA embeddings"""
+        """Generate EVA embeddings using rectified flow"""
         device = clip_features.device
         batch_size, num_tokens, _ = clip_features.shape
         
-        # Start from noise
+        # Start from noise (t=0)
         x = torch.randn(
             batch_size, num_tokens, self.config.eva_embedding_size,
             device=device, generator=generator, dtype=clip_features.dtype
         )
         x = F.normalize(x, p=2, dim=-1)
         
-        # Reverse process (t=1 to t=0)
+        # Forward process (t=0 to t=1)
         dt = 1.0 / num_inference_steps
         
         for i in range(num_inference_steps):
-            t = 1.0 - i * dt
+            # Go from t=0 to t=1
+            t = i * dt  # t: 0.0 → 0.98
             t_batch = torch.full((batch_size,), t, device=device, dtype=clip_features.dtype)
             
+            # Get velocity prediction
             velocity = self.forward(
                 hidden_states=x,
                 timestep=t_batch,
@@ -467,8 +469,8 @@ class BLIP3oEVADiTModel(PreTrainedModel):
                 return_dict=False
             )
             
-            # Euler step
-            x = x - dt * velocity
+            # Forward Euler step: follow the velocity field
+            x = x + dt * velocity  # CHANGED: + instead of -
         
         if normalize_output:
             x = F.normalize(x, p=2, dim=-1)

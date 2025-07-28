@@ -2,9 +2,9 @@
 #SBATCH --job-name=eva_repro_fixed
 #SBATCH --partition=gpu_h100
 #SBATCH --nodes=1
-#SBATCH --gpus=3
+#SBATCH --gpus=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=18
+#SBATCH --cpus-per-task=8
 #SBATCH --time=15:00:00
 #SBATCH --mem=64G
 #SBATCH --output=./slurm_out/eva_repro_fixed_%j.out
@@ -50,7 +50,7 @@ WARMUP_STEPS=100                # Shorter warmup for testing
 MAX_GRAD_NORM=1.0               # Gradient clipping for stability
 
 # Evaluation parameters
-EVAL_EVERY_N_STEPS=100
+EVAL_EVERY_N_STEPS=50
 EVAL_NUM_SAMPLES=500
 EVAL_INFERENCE_STEPS=50
 

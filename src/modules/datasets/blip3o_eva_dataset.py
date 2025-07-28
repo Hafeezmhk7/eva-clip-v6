@@ -2,10 +2,11 @@
 """
 Fixed BLIP3-o Dataset for EVA-CLIP Reproduction
 Key fixes:
-1. Proper data loading and validation
-2. Correct collate function for flow matching
-3. Better error handling and normalization
-4. Clear input/output handling
+1. Added __len__ method for IterableDataset
+2. Proper data loading and validation
+3. Correct collate function for flow matching
+4. Better error handling and normalization
+5. Clear input/output handling
 """
 
 import torch
@@ -80,6 +81,9 @@ class BLIP3oEVAReproductionDataset(IterableDataset):
         self.current_sample_idx = 0
         self.total_samples_processed = 0
         
+        # Calculate estimated length for __len__ method
+        self._estimate_length()
+        
         logger.info(f"EVA Reproduction Dataset initialized:")
         logger.info(f"  Directory: {self.chunked_embeddings_dir}")
         logger.info(f"  Mode: {self.training_mode} ({self.expected_tokens} tokens)")
@@ -87,6 +91,7 @@ class BLIP3oEVAReproductionDataset(IterableDataset):
         logger.info(f"  CONDITIONING: CLIP embeddings [B, N, 1024]")
         logger.info(f"  Normalize: {self.normalize_embeddings}")
         logger.info(f"  Shards: {len(self.shard_files)}")
+        logger.info(f"  Estimated samples: {self.estimated_length:,}")
 
     def _load_manifest(self):
         """Load embeddings manifest"""
@@ -139,6 +144,45 @@ class BLIP3oEVAReproductionDataset(IterableDataset):
             self.rng.shuffle(self.shard_files)
         
         logger.info(f"Prepared {len(self.shard_files)} shard files")
+
+    def _estimate_length(self):
+        """Estimate total number of samples for __len__ method"""
+        try:
+            # If manifest is available, use it
+            if self.manifest.get('total_samples', 0) > 0:
+                manifest_samples = self.manifest['total_samples']
+                # Adjust for max_shards limitation
+                if self.max_shards is not None and self.manifest.get('total_shards', 0) > 0:
+                    ratio = min(self.max_shards / self.manifest['total_shards'], 1.0)
+                    self.estimated_length = int(manifest_samples * ratio)
+                else:
+                    self.estimated_length = manifest_samples
+                logger.info(f"Using manifest for length estimation: {self.estimated_length:,} samples")
+                return
+            
+            # Fallback: try to load first shard to estimate
+            if self.shard_files:
+                try:
+                    first_shard = self._load_shard(self.shard_files[0])
+                    if first_shard and 'clip_blip3o_embeddings' in first_shard:
+                        samples_per_shard = first_shard['clip_blip3o_embeddings'].shape[0]
+                        self.estimated_length = samples_per_shard * len(self.shard_files)
+                        logger.info(f"Estimated length from first shard: {self.estimated_length:,} samples ({samples_per_shard} per shard)")
+                        return
+                except Exception as e:
+                    logger.warning(f"Could not load first shard for estimation: {e}")
+            
+            # Final fallback: rough estimate
+            self.estimated_length = len(self.shard_files) * 1000  # Assume 1000 samples per shard
+            logger.warning(f"Using rough length estimate: {self.estimated_length:,} samples")
+            
+        except Exception as e:
+            logger.warning(f"Length estimation failed: {e}")
+            self.estimated_length = 1000  # Very conservative fallback
+
+    def __len__(self) -> int:
+        """Return estimated length for DataLoader compatibility"""
+        return self.estimated_length
 
     def _load_shard(self, shard_path: Path) -> Optional[Dict[str, Any]]:
         """Load a single shard with error handling"""
@@ -525,5 +569,7 @@ def create_eva_reproduction_dataloaders(
     )
     
     logger.info(f"EVA reproduction dataloaders created successfully")
+    logger.info(f"  Training dataset length: {len(train_dataset):,}")
+    logger.info(f"  Evaluation dataset length: {len(eval_dataset):,}")
     
     return train_dataloader, eval_dataloader
