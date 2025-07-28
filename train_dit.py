@@ -324,7 +324,7 @@ def create_dataloaders(args, logger):
 def create_trainer(model, loss_fn, train_dataloader, eval_dataloader, args, device, logger):
     """Create trainer with WandB integration"""
     # Process WandB arguments
-    use_wandb = args.use_wandb and not args.no_wandb
+    use_wandb = args.use_wandb
     
     # Create run name if not provided
     wandb_run_name = args.wandb_run_name
