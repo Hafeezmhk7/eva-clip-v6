@@ -1,0 +1,1632 @@
+2025-07-28 09:25:46,546 - INFO - 🚀 Starting CLIP Reproduction with BLIP3-o DiT
+2025-07-28 09:25:46,548 - INFO - ================================================================================
+2025-07-28 09:25:46,548 - INFO - EXPERIMENT DETAILS:
+2025-07-28 09:25:46,548 - INFO -   📋 Task: Reproduce clean CLIP embeddings from EVA embeddings
+2025-07-28 09:25:46,548 - INFO -   🧠 Model: BLIP3-o DiT with advanced architecture features
+2025-07-28 09:25:46,548 - INFO -   🎯 Target: CLIP embeddings [B, N, 1024]
+2025-07-28 09:25:46,548 - INFO -   🎮 Conditioning: EVA embeddings [B, N, 4096]
+2025-07-28 09:25:46,548 - INFO -   🌊 Method: Rectified Flow Matching
+2025-07-28 09:25:46,548 - INFO -   🚫 Normalization: MINIMAL (only for evaluation similarity)
+2025-07-28 09:25:46,548 - INFO - ================================================================================
+2025-07-28 09:25:46,548 - INFO - 🏗️ BLIP3-o ARCHITECTURE FEATURES:
+2025-07-28 09:25:46,548 - INFO -   🌐 3D Rotary Position Embedding: ✅ ENABLED
+2025-07-28 09:25:46,548 - INFO -   🥪 Sandwich Normalization: ✅ ENABLED
+2025-07-28 09:25:46,548 - INFO -   🔍 Grouped-Query Attention: ✅ ENABLED
+2025-07-28 09:25:46,548 - INFO -   📊 WandB Logging: ✅ ENABLED
+2025-07-28 09:25:46,548 - INFO - ================================================================================
+2025-07-28 09:25:46,548 - INFO - 📄 Updated file structure:
+2025-07-28 09:25:46,548 - INFO -   • Model: blip3o_dit.py (✅ 3D RoPE + Sandwich Norm)
+2025-07-28 09:25:46,548 - INFO -   • Loss: blip3o_fm_loss.py
+2025-07-28 09:25:46,548 - INFO -   • Dataset: blip3o_datasets.py
+2025-07-28 09:25:46,548 - INFO -   • Trainer: blip3o_trainer.py (✅ WandB Integration)
+2025-07-28 09:25:46,548 - INFO -   • Config: blip3o_config.py
+2025-07-28 09:25:46,549 - INFO - ================================================================================
+2025-07-28 09:25:46,549 - INFO - Configuration:
+2025-07-28 09:25:46,549 - INFO -   Model size: base
+2025-07-28 09:25:46,549 - INFO -   Training mode: patch_only
+2025-07-28 09:25:46,549 - INFO -   Embeddings dir: /scratch-shared/azadaianchuk1/blip3o_workspace/embeddings/patch_only_256_tokens
+2025-07-28 09:25:46,549 - INFO -   Output dir: ./checkpoints/clip_repro_20250728_092543
+2025-07-28 09:25:46,549 - INFO -   Learning rate: 0.0005
+2025-07-28 09:25:46,549 - INFO -   Batch size: 16
+2025-07-28 09:25:46,549 - INFO -   Epochs: 10
+2025-07-28 09:25:46,549 - INFO -   Max shards: 2
+2025-07-28 09:25:46,549 - INFO -   🧪 OVERFITTING TEST: 20 samples
+2025-07-28 09:25:46,549 - INFO -   Debug mode: False
+2025-07-28 09:25:46,549 - INFO -   📊 WandB project: blip3o-clip-reproduction
+2025-07-28 09:25:46,549 - INFO - ================================================================================
+2025-07-28 09:25:46,549 - INFO - 🔍 Checking module availability...
+2025-07-28 09:25:52,926 - INFO - ✅ CLIP DiT model loaded from src/modules/models/blip3o_dit.py
+2025-07-28 09:25:52,929 - INFO - ✅ Flow matching loss loaded from src/modules/losses/blip3o_fm_loss.py
+2025-07-28 09:25:54,246 - INFO - ✅ CLIP trainer loaded from src/modules/trainers/blip3o_trainer.py
+2025-07-28 09:25:54,249 - INFO - ✅ CLIP datasets loaded from src/modules/datasets/blip3o_dataset.py
+2025-07-28 09:25:54,253 - INFO - ✅ Configuration loaded from src/modules/config/blip3o_config.py
+2025-07-28 09:25:54,254 - INFO - 🎉 All CLIP reproduction components loaded successfully!
+2025-07-28 09:25:54,254 - INFO - 🎉 BLIP3-o CLIP reproduction modules fully initialized!
+2025-07-28 09:25:54,254 - INFO - 🚫 Using minimal normalization approach
+2025-07-28 09:25:54,254 - INFO - 🎯 Ready for EVA → CLIP reproduction training
+2025-07-28 09:25:54,254 - INFO - ✅ Using comprehensive modules system
+2025-07-28 09:25:54,254 - INFO - 🎉 All CLIP reproduction components loaded successfully!
+2025-07-28 09:25:54,254 - INFO - 🎉 All CLIP reproduction components loaded successfully!
+2025-07-28 09:25:54,254 - INFO - ✅ Imported config from src.modules
+2025-07-28 09:25:54,703 - INFO - Using GPU: NVIDIA H100
+2025-07-28 09:25:54,703 - INFO - GPU Memory: 100.0 GB
+2025-07-28 09:25:54,703 - INFO - 🏗️ BLIP3-o Architecture Configuration:
+2025-07-28 09:25:54,703 - INFO -   3D Rotary Position Embedding: ✅ Enabled
+2025-07-28 09:25:54,703 - INFO -   Sandwich Normalization: ✅ Enabled
+2025-07-28 09:25:54,703 - WARNING - Failed to import from blip3o_dit.py: No module named 'blip3o_dit'
+2025-07-28 09:25:54,703 - INFO - ✅ Imported model from src.modules
+2025-07-28 09:25:56,726 - INFO - BLIP3-o CLIP DiT model initialized with 249,339,136 parameters
+2025-07-28 09:25:56,726 - INFO -   3D RoPE: True
+2025-07-28 09:25:56,726 - INFO -   Sandwich Normalization: True
+2025-07-28 09:25:56,726 - INFO -   Grid size: 16x16
+2025-07-28 09:25:56,726 - INFO -   Hidden size: 768
+2025-07-28 09:25:56,726 - INFO -   CLIP size: 1024
+2025-07-28 09:25:56,726 - INFO - Creating base model for patch_only mode...
+2025-07-28 09:25:56,989 - INFO - Model created with 249,339,136 parameters
+2025-07-28 09:25:56,990 - INFO - Model moved to cuda
+2025-07-28 09:25:56,990 - INFO - 🔍 Architecture Validation:
+2025-07-28 09:25:56,990 - INFO -   3D RoPE: ✅
+2025-07-28 09:25:56,990 - INFO -   Sandwich Norm: ✅
+2025-07-28 09:25:56,990 - INFO -   Grid Size: 16x16
+2025-07-28 09:25:56,990 - INFO -   Grouped-Query Attention: 12/4
+2025-07-28 09:25:56,990 - WARNING - Failed to import from blip3o_fm_loss.py: No module named 'blip3o_fm_loss'
+2025-07-28 09:25:56,990 - INFO - ✅ Imported loss from src.modules
+2025-07-28 09:25:56,990 - INFO - CLIP Flow Matching Loss initialized:
+2025-07-28 09:25:56,991 - INFO -   Prediction type: velocity
+2025-07-28 09:25:56,991 - INFO -   Flow type: rectified
+2025-07-28 09:25:56,991 - INFO -   Loss weight: 1.0
+2025-07-28 09:25:56,991 - INFO -   Debug mode: False
+2025-07-28 09:25:56,991 - INFO - Flow matching loss created
+2025-07-28 09:25:56,991 - WARNING - Failed to import from blip3o_datasets.py: No module named 'blip3o_datasets'
+2025-07-28 09:25:56,991 - INFO - ✅ Imported dataset from src.modules
+2025-07-28 09:25:56,991 - INFO - Creating CLIP reproduction dataloaders:
+2025-07-28 09:25:56,991 - INFO -   Target: CLIP embeddings [B, N, 1024]
+2025-07-28 09:25:56,991 - INFO -   Conditioning: EVA embeddings [B, N, 4096]
+2025-07-28 09:25:56,991 - INFO -   Normalize: False
+2025-07-28 09:25:57,006 - INFO - Loaded manifest: 35 shards, 91,333 samples
+2025-07-28 09:25:57,006 - INFO - Found 35 files with pattern: embeddings_shard_*_patch_only.pkl
+2025-07-28 09:25:57,007 - INFO - Prepared 2 shard files
+2025-07-28 09:25:57,007 - INFO - Using manifest for length estimation: 5,219 samples
+2025-07-28 09:25:57,007 - INFO - CLIP Reproduction Dataset initialized:
+2025-07-28 09:25:57,007 - INFO -   Directory: /scratch-shared/azadaianchuk1/blip3o_workspace/embeddings/patch_only_256_tokens
+2025-07-28 09:25:57,007 - INFO -   Mode: patch_only (256 tokens)
+2025-07-28 09:25:57,007 - INFO -   TARGET: CLIP embeddings [B, N, 1024]
+2025-07-28 09:25:57,007 - INFO -   CONDITIONING: EVA embeddings [B, N, 4096]
+2025-07-28 09:25:57,007 - INFO -   Normalize: False
+2025-07-28 09:25:57,007 - INFO -   Shards: 2
+2025-07-28 09:25:57,008 - INFO -   Estimated samples: 5,219
+2025-07-28 09:25:57,008 - INFO - Loaded manifest: 35 shards, 91,333 samples
+2025-07-28 09:25:57,008 - INFO - Found 35 files with pattern: embeddings_shard_*_patch_only.pkl
+2025-07-28 09:25:57,008 - INFO - Prepared 2 shard files
+2025-07-28 09:25:57,008 - INFO - Using manifest for length estimation: 5,219 samples
+2025-07-28 09:25:57,008 - INFO - CLIP Reproduction Dataset initialized:
+2025-07-28 09:25:57,008 - INFO -   Directory: /scratch-shared/azadaianchuk1/blip3o_workspace/embeddings/patch_only_256_tokens
+2025-07-28 09:25:57,008 - INFO -   Mode: patch_only (256 tokens)
+2025-07-28 09:25:57,008 - INFO -   TARGET: CLIP embeddings [B, N, 1024]
+2025-07-28 09:25:57,009 - INFO -   CONDITIONING: EVA embeddings [B, N, 4096]
+2025-07-28 09:25:57,009 - INFO -   Normalize: False
+2025-07-28 09:25:57,009 - INFO -   Shards: 2
+2025-07-28 09:25:57,009 - INFO -   Estimated samples: 5,219
+2025-07-28 09:25:57,009 - INFO - CLIP reproduction dataloaders created successfully
+2025-07-28 09:25:57,009 - INFO -   Training dataset length: 5,219
+2025-07-28 09:25:57,009 - INFO -   Evaluation dataset length: 5,219
+2025-07-28 09:25:57,009 - INFO - Dataloaders created
+2025-07-28 09:25:57,009 - INFO -   Training batches: 326
+2025-07-28 09:25:57,009 - INFO -   Evaluation available: True
+2025-07-28 09:25:57,009 - INFO -   🚫 Normalization disabled in dataloaders
+2025-07-28 09:25:57,009 - WARNING - Failed to import from blip3o_trainer.py: No module named 'blip3o_trainer'
+2025-07-28 09:25:57,009 - INFO - ✅ Imported trainer from src.modules
+2025-07-28 09:25:57,012 - INFO - Got exact dataloader length: 326
+2025-07-28 09:25:57,013 - INFO - Optimizer and scheduler setup complete
+2025-07-28 09:25:57,013 - INFO -   Total estimated steps: 3260
+2025-07-28 09:25:57,013 - INFO -   Warmup steps: 100
+2025-07-28 09:25:58,380 - INFO - ✅ WandB initialized: blip3o-clip-reproduction
+2025-07-28 09:25:58,380 - INFO -    Run ID: d24g92c1
+2025-07-28 09:25:58,380 - INFO -    Run URL: https://wandb.ai/Eva-Clip/blip3o-clip-reproduction/runs/d24g92c1
+2025-07-28 09:25:58,380 - INFO - Preparing overfitting test with 20 samples...
+2025-07-28 09:26:02,764 - INFO - Loaded shard 1/2: 2601 samples
+2025-07-28 09:26:02,868 - INFO - Overfitting test prepared with 16 samples
+2025-07-28 09:26:02,869 - INFO - BLIP3-o CLIP Trainer initialized
+2025-07-28 09:26:02,869 - INFO -   Device: cuda
+2025-07-28 09:26:02,869 - INFO -   Learning rate: 0.0005
+2025-07-28 09:26:02,869 - INFO -   Epochs: 10
+2025-07-28 09:26:02,869 - INFO -   Estimated steps per epoch: 326
+2025-07-28 09:26:02,869 - INFO -   Overfit test: 20
+2025-07-28 09:26:02,869 - INFO -   Mixed precision: True
+2025-07-28 09:26:02,869 - INFO -   WandB logging: True
+2025-07-28 09:26:02,869 - INFO -   🚫 Minimal normalization: Only for evaluation similarity
+2025-07-28 09:26:02,869 - INFO - Trainer created with WandB integration
+2025-07-28 09:26:02,869 - INFO -   📊 WandB enabled: True
+2025-07-28 09:26:02,869 - INFO -   📊 WandB project: blip3o-clip-reproduction
+2025-07-28 09:26:02,869 - INFO -   📊 WandB run name: blip3o_base_patch_only_3drope_sandwich_20250728_092557
+2025-07-28 09:26:02,870 - INFO -   📊 WandB tags: ['blip3o', 'clip_reproduction', 'eva_conditioning', '3d_rope', 'sandwich_norm', 'overfit_test']
+2025-07-28 09:26:02,872 - INFO - Configuration saved to checkpoints/clip_repro_20250728_092543/experiment_config.json
+2025-07-28 09:26:02,873 - INFO - 
+🚀 Starting BLIP3-o training with advanced features...
+2025-07-28 09:26:02,873 - INFO - Expected behavior:
+2025-07-28 09:26:02,873 - INFO -   • Loss should decrease steadily
+2025-07-28 09:26:02,873 - INFO -   • Velocity similarity should increase
+2025-07-28 09:26:02,873 - INFO -   • CLIP similarity should improve during evaluation
+2025-07-28 09:26:02,873 - INFO -   • Gradients should be non-zero and stable
+2025-07-28 09:26:02,873 - INFO -   • Raw embeddings will be learned (no forced normalization)
+2025-07-28 09:26:02,873 - INFO -   • 3D RoPE should provide spatial understanding
+2025-07-28 09:26:02,873 - INFO -   • Sandwich normalization should improve gradient flow
+2025-07-28 09:26:02,873 - INFO -   • WandB should log comprehensive metrics
+2025-07-28 09:26:02,873 - INFO -   • OVERFITTING TEST: Should achieve >0.8 similarity on 20 samples
+2025-07-28 09:26:02,873 - INFO - 
+2025-07-28 09:26:02,873 - INFO - Starting CLIP reproduction training with WandB...
+2025-07-28 09:26:02,874 - INFO -   Model parameters: 249,339,136
+2025-07-28 09:26:02,874 - INFO -   Estimated training steps per epoch: 326
+2025-07-28 09:26:02,874 - INFO -   Total estimated training steps: 3260
+2025-07-28 09:26:02,874 - INFO -   🚫 Minimal normalization: Only for evaluation similarity
+2025-07-28 09:26:02,875 - INFO -   📊 WandB logging: True
+2025-07-28 09:26:02,875 - INFO -   OVERFITTING TEST MODE: Using 16 samples
+2025-07-28 09:26:02,877 - INFO - Starting epoch 1/10
+2025-07-28 09:26:06,912 - INFO - Loaded shard 1/2: 2601 samples
+2025-07-28 09:26:12,139 - INFO - Step 10: Loss=1.797856, VelSim=0.3670 (fair), GradNorm=23532.391, LR=9.50e-05, PredNorm=13.550, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:26:15,958 - INFO - Step 20: Loss=1.724939, VelSim=0.3972 (fair), GradNorm=21285.567, LR=1.40e-04, PredNorm=16.308, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:26:19,775 - INFO - Step 30: Loss=1.650839, VelSim=0.4212 (fair), GradNorm=13123.352, LR=1.85e-04, PredNorm=18.078, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:26:23,610 - INFO - Step 40: Loss=1.577113, VelSim=0.4280 (fair), GradNorm=31060.656, LR=2.30e-04, PredNorm=16.946, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:26:27,458 - INFO - Step 50: Loss=1.486815, VelSim=0.4065 (fair), GradNorm=51410.262, LR=2.75e-04, PredNorm=18.306, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:26:27,458 - INFO - Running evaluation at step 50...
+2025-07-28 09:26:31,821 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 09:26:39,128 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 09:26:39,128 - INFO -   eval_clip_similarity: 0.2132
+2025-07-28 09:26:39,128 - INFO -   eval_clip_similarity_std: 0.0160
+2025-07-28 09:26:39,128 - INFO -   eval_clip_similarity_min: 0.1883
+2025-07-28 09:26:39,128 - INFO -   eval_clip_similarity_max: 0.2414
+2025-07-28 09:26:39,128 - INFO -   eval_mse_loss: 1.7812
+2025-07-28 09:26:39,128 - INFO -   eval_mse_loss_std: 0.0868
+2025-07-28 09:26:39,128 - INFO -   eval_high_quality: 0.0000
+2025-07-28 09:26:39,129 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 09:26:39,129 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 09:26:39,129 - INFO -   eval_samples: 16.0000
+2025-07-28 09:26:39,129 - INFO -   eval_time_seconds: 11.6666
+2025-07-28 09:26:39,129 - INFO -   eval_samples_per_second: 1.3714
+2025-07-28 09:26:42,972 - INFO - Step 60: Loss=1.377000, VelSim=0.4326 (fair), GradNorm=60983.621, LR=3.20e-04, PredNorm=22.607, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:26:46,793 - INFO - Step 70: Loss=1.340290, VelSim=0.4495 (fair), GradNorm=34289.820, LR=3.65e-04, PredNorm=20.710, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:26:50,612 - INFO - Step 80: Loss=1.295285, VelSim=0.4747 (fair), GradNorm=67592.003, LR=4.10e-04, PredNorm=22.448, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:26:54,439 - INFO - Step 90: Loss=1.233286, VelSim=0.5126 (good), GradNorm=28256.776, LR=4.55e-04, PredNorm=22.872, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:26:58,264 - INFO - Step 100: Loss=1.166620, VelSim=0.5491 (good), GradNorm=45020.073, LR=5.00e-04, PredNorm=25.587, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:26:58,264 - INFO - Running evaluation at step 100...
+2025-07-28 09:27:02,644 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 09:27:09,810 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 09:27:09,810 - INFO -   eval_clip_similarity: 0.2201
+2025-07-28 09:27:09,811 - INFO -   eval_clip_similarity_std: 0.0184
+2025-07-28 09:27:09,811 - INFO -   eval_clip_similarity_min: 0.1914
+2025-07-28 09:27:09,811 - INFO -   eval_clip_similarity_max: 0.2542
+2025-07-28 09:27:09,811 - INFO -   eval_mse_loss: 1.9338
+2025-07-28 09:27:09,811 - INFO -   eval_mse_loss_std: 0.1600
+2025-07-28 09:27:09,811 - INFO -   eval_high_quality: 0.0000
+2025-07-28 09:27:09,811 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 09:27:09,811 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 09:27:09,811 - INFO -   eval_samples: 16.0000
+2025-07-28 09:27:09,811 - INFO -   eval_time_seconds: 11.5441
+2025-07-28 09:27:09,811 - INFO -   eval_samples_per_second: 1.3860
+2025-07-28 09:27:13,614 - INFO - Step 110: Loss=1.000172, VelSim=0.6338 (good), GradNorm=47926.130, LR=5.00e-04, PredNorm=27.664, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:27:17,440 - INFO - Step 120: Loss=0.840598, VelSim=0.7073 (good), GradNorm=36374.903, LR=5.00e-04, PredNorm=30.441, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:27:21,305 - INFO - Step 130: Loss=0.693996, VelSim=0.7690 (good), GradNorm=65123.258, LR=5.00e-04, PredNorm=34.079, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:27:25,150 - INFO - Step 140: Loss=0.562769, VelSim=0.8197 (excellent), GradNorm=38563.406, LR=5.00e-04, PredNorm=35.616, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:27:28,968 - INFO - Step 150: Loss=0.428153, VelSim=0.8672 (excellent), GradNorm=14694.173, LR=5.00e-04, PredNorm=36.951, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:27:28,969 - INFO - Running evaluation at step 150...
+2025-07-28 09:27:33,320 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 09:27:40,482 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 09:27:40,482 - INFO -   eval_clip_similarity: 0.2315
+2025-07-28 09:27:40,482 - INFO -   eval_clip_similarity_std: 0.0159
+2025-07-28 09:27:40,482 - INFO -   eval_clip_similarity_min: 0.2115
+2025-07-28 09:27:40,482 - INFO -   eval_clip_similarity_max: 0.2574
+2025-07-28 09:27:40,482 - INFO -   eval_mse_loss: 2.1431
+2025-07-28 09:27:40,483 - INFO -   eval_mse_loss_std: 0.0816
+2025-07-28 09:27:40,483 - INFO -   eval_high_quality: 0.0000
+2025-07-28 09:27:40,483 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 09:27:40,483 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 09:27:40,483 - INFO -   eval_samples: 16.0000
+2025-07-28 09:27:40,483 - INFO -   eval_time_seconds: 11.5115
+2025-07-28 09:27:40,483 - INFO -   eval_samples_per_second: 1.3899
+2025-07-28 09:27:44,325 - INFO - Step 160: Loss=0.359148, VelSim=0.8907 (excellent), GradNorm=30397.941, LR=5.00e-04, PredNorm=37.858, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:27:49,347 - INFO - Loaded shard 2/2: 2646 samples
+2025-07-28 09:27:52,567 - INFO - Step 170: Loss=0.327754, VelSim=0.9008 (excellent), GradNorm=32626.561, LR=4.99e-04, PredNorm=39.228, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:27:56,420 - INFO - Step 180: Loss=0.268489, VelSim=0.9194 (excellent), GradNorm=11416.076, LR=4.99e-04, PredNorm=39.221, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:28:00,247 - INFO - Step 190: Loss=0.239872, VelSim=0.9280 (excellent), GradNorm=11629.172, LR=4.99e-04, PredNorm=39.569, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:28:04,074 - INFO - Step 200: Loss=0.229124, VelSim=0.9325 (excellent), GradNorm=17439.497, LR=4.99e-04, PredNorm=39.357, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:28:04,074 - INFO - Running evaluation at step 200...
+2025-07-28 09:28:08,414 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 09:28:15,593 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 09:28:15,593 - INFO -   eval_clip_similarity: 0.2374
+2025-07-28 09:28:15,593 - INFO -   eval_clip_similarity_std: 0.0159
+2025-07-28 09:28:15,593 - INFO -   eval_clip_similarity_min: 0.2162
+2025-07-28 09:28:15,594 - INFO -   eval_clip_similarity_max: 0.2616
+2025-07-28 09:28:15,594 - INFO -   eval_mse_loss: 2.2340
+2025-07-28 09:28:15,594 - INFO -   eval_mse_loss_std: 0.0774
+2025-07-28 09:28:15,594 - INFO -   eval_high_quality: 0.0000
+2025-07-28 09:28:15,594 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 09:28:15,594 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 09:28:15,594 - INFO -   eval_samples: 16.0000
+2025-07-28 09:28:15,594 - INFO -   eval_time_seconds: 11.5168
+2025-07-28 09:28:15,594 - INFO -   eval_samples_per_second: 1.3893
+2025-07-28 09:28:19,414 - INFO - Step 210: Loss=0.207885, VelSim=0.9376 (excellent), GradNorm=8229.167, LR=4.99e-04, PredNorm=39.979, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:28:23,253 - INFO - Step 220: Loss=0.199086, VelSim=0.9398 (excellent), GradNorm=15680.070, LR=4.98e-04, PredNorm=40.263, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:28:27,068 - INFO - Step 230: Loss=0.190275, VelSim=0.9424 (excellent), GradNorm=14508.530, LR=4.98e-04, PredNorm=40.410, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:28:30,899 - INFO - Step 240: Loss=0.181565, VelSim=0.9449 (excellent), GradNorm=9336.405, LR=4.98e-04, PredNorm=40.232, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:28:34,712 - INFO - Step 250: Loss=0.177387, VelSim=0.9461 (excellent), GradNorm=11723.719, LR=4.97e-04, PredNorm=40.379, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:28:34,712 - INFO - Running evaluation at step 250...
+2025-07-28 09:28:39,061 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 09:28:46,255 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 09:28:46,256 - INFO -   eval_clip_similarity: 0.2373
+2025-07-28 09:28:46,256 - INFO -   eval_clip_similarity_std: 0.0148
+2025-07-28 09:28:46,256 - INFO -   eval_clip_similarity_min: 0.2166
+2025-07-28 09:28:46,256 - INFO -   eval_clip_similarity_max: 0.2634
+2025-07-28 09:28:46,256 - INFO -   eval_mse_loss: 2.2441
+2025-07-28 09:28:46,257 - INFO -   eval_mse_loss_std: 0.0754
+2025-07-28 09:28:46,257 - INFO -   eval_high_quality: 0.0000
+2025-07-28 09:28:46,257 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 09:28:46,257 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 09:28:46,257 - INFO -   eval_samples: 16.0000
+2025-07-28 09:28:46,257 - INFO -   eval_time_seconds: 11.5410
+2025-07-28 09:28:46,257 - INFO -   eval_samples_per_second: 1.3864
+2025-07-28 09:28:50,095 - INFO - Step 260: Loss=0.173049, VelSim=0.9473 (excellent), GradNorm=11411.450, LR=4.97e-04, PredNorm=40.287, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:28:53,914 - INFO - Step 270: Loss=0.169436, VelSim=0.9484 (excellent), GradNorm=11854.937, LR=4.96e-04, PredNorm=40.332, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:28:57,757 - INFO - Step 280: Loss=0.166142, VelSim=0.9494 (excellent), GradNorm=10996.824, LR=4.96e-04, PredNorm=40.556, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:29:01,573 - INFO - Step 290: Loss=0.161782, VelSim=0.9507 (excellent), GradNorm=5696.830, LR=4.96e-04, PredNorm=40.500, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:29:05,399 - INFO - Step 300: Loss=0.159723, VelSim=0.9514 (excellent), GradNorm=7157.364, LR=4.95e-04, PredNorm=40.666, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:29:05,399 - INFO - Running evaluation at step 300...
+2025-07-28 09:29:09,864 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 09:29:17,021 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 09:29:17,021 - INFO -   eval_clip_similarity: 0.2386
+2025-07-28 09:29:17,021 - INFO -   eval_clip_similarity_std: 0.0159
+2025-07-28 09:29:17,021 - INFO -   eval_clip_similarity_min: 0.2179
+2025-07-28 09:29:17,021 - INFO -   eval_clip_similarity_max: 0.2669
+2025-07-28 09:29:17,021 - INFO -   eval_mse_loss: 2.2405
+2025-07-28 09:29:17,021 - INFO -   eval_mse_loss_std: 0.0777
+2025-07-28 09:29:17,022 - INFO -   eval_high_quality: 0.0000
+2025-07-28 09:29:17,022 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 09:29:17,022 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 09:29:17,022 - INFO -   eval_samples: 16.0000
+2025-07-28 09:29:17,022 - INFO -   eval_time_seconds: 11.6201
+2025-07-28 09:29:17,022 - INFO -   eval_samples_per_second: 1.3769
+2025-07-28 09:29:20,839 - INFO - Step 310: Loss=0.161093, VelSim=0.9509 (excellent), GradNorm=14926.558, LR=4.95e-04, PredNorm=40.509, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:29:24,667 - INFO - Step 320: Loss=0.157433, VelSim=0.9520 (excellent), GradNorm=10766.908, LR=4.94e-04, PredNorm=40.666, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:29:26,905 - INFO - Iteration completed: 5247 samples processed
+2025-07-28 09:29:26,905 - INFO - Epoch 1 completed: 327 batches processed
+2025-07-28 09:29:26,920 - INFO - Epoch 1 completed:
+2025-07-28 09:29:26,920 - INFO -   Average loss: 0.694688
+2025-07-28 09:29:26,920 - INFO -   Best loss: 0.154465
+2025-07-28 09:29:26,920 - INFO -   Best similarity: 0.9530
+2025-07-28 09:29:26,920 - INFO -   Steps in epoch: 327
+2025-07-28 09:29:26,920 - INFO -   Epoch time: 204.0s
+2025-07-28 09:29:26,920 - INFO - Starting epoch 2/10
+2025-07-28 09:29:31,200 - INFO - Loaded shard 1/2: 2601 samples
+2025-07-28 09:29:32,949 - INFO - Step 330: Loss=0.153852, VelSim=0.9531 (excellent), GradNorm=5600.522, LR=4.94e-04, PredNorm=40.552, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:29:36,782 - INFO - Step 340: Loss=0.151729, VelSim=0.9538 (excellent), GradNorm=3076.573, LR=4.93e-04, PredNorm=40.614, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:29:40,609 - INFO - Step 350: Loss=0.150580, VelSim=0.9541 (excellent), GradNorm=5031.071, LR=4.92e-04, PredNorm=40.670, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:29:40,610 - INFO - Running evaluation at step 350...
+2025-07-28 09:29:44,925 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 09:29:52,099 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 09:29:52,100 - INFO -   eval_clip_similarity: 0.2400
+2025-07-28 09:29:52,100 - INFO -   eval_clip_similarity_std: 0.0140
+2025-07-28 09:29:52,100 - INFO -   eval_clip_similarity_min: 0.2192
+2025-07-28 09:29:52,100 - INFO -   eval_clip_similarity_max: 0.2661
+2025-07-28 09:29:52,100 - INFO -   eval_mse_loss: 2.2415
+2025-07-28 09:29:52,100 - INFO -   eval_mse_loss_std: 0.0784
+2025-07-28 09:29:52,100 - INFO -   eval_high_quality: 0.0000
+2025-07-28 09:29:52,100 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 09:29:52,100 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 09:29:52,100 - INFO -   eval_samples: 16.0000
+2025-07-28 09:29:52,100 - INFO -   eval_time_seconds: 11.4869
+2025-07-28 09:29:52,100 - INFO -   eval_samples_per_second: 1.3929
+2025-07-28 09:29:55,962 - INFO - Step 360: Loss=0.151225, VelSim=0.9539 (excellent), GradNorm=10877.554, LR=4.92e-04, PredNorm=40.610, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:29:59,778 - INFO - Step 370: Loss=0.148588, VelSim=0.9547 (excellent), GradNorm=6879.133, LR=4.91e-04, PredNorm=40.674, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:30:03,594 - INFO - Step 380: Loss=0.147260, VelSim=0.9551 (excellent), GradNorm=5867.036, LR=4.90e-04, PredNorm=40.624, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:30:07,424 - INFO - Step 390: Loss=0.146897, VelSim=0.9553 (excellent), GradNorm=8201.726, LR=4.90e-04, PredNorm=40.602, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:30:11,284 - INFO - Step 400: Loss=0.146603, VelSim=0.9554 (excellent), GradNorm=9569.967, LR=4.89e-04, PredNorm=40.763, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:30:11,284 - INFO - Running evaluation at step 400...
+2025-07-28 09:30:15,625 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 09:30:22,786 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 09:30:22,787 - INFO -   eval_clip_similarity: 0.2403
+2025-07-28 09:30:22,787 - INFO -   eval_clip_similarity_std: 0.0167
+2025-07-28 09:30:22,787 - INFO -   eval_clip_similarity_min: 0.2174
+2025-07-28 09:30:22,787 - INFO -   eval_clip_similarity_max: 0.2712
+2025-07-28 09:30:22,787 - INFO -   eval_mse_loss: 2.2335
+2025-07-28 09:30:22,787 - INFO -   eval_mse_loss_std: 0.0784
+2025-07-28 09:30:22,787 - INFO -   eval_high_quality: 0.0000
+2025-07-28 09:30:22,787 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 09:30:22,787 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 09:30:22,787 - INFO -   eval_samples: 16.0000
+2025-07-28 09:30:22,787 - INFO -   eval_time_seconds: 11.5004
+2025-07-28 09:30:22,787 - INFO -   eval_samples_per_second: 1.3913
+2025-07-28 09:30:26,622 - INFO - Step 410: Loss=0.144792, VelSim=0.9559 (excellent), GradNorm=6805.114, LR=4.88e-04, PredNorm=40.773, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:30:30,491 - INFO - Step 420: Loss=0.143624, VelSim=0.9563 (excellent), GradNorm=5711.417, LR=4.88e-04, PredNorm=40.714, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:30:34,337 - INFO - Step 430: Loss=0.142829, VelSim=0.9565 (excellent), GradNorm=5616.250, LR=4.87e-04, PredNorm=40.629, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:30:38,188 - INFO - Step 440: Loss=0.143531, VelSim=0.9563 (excellent), GradNorm=9581.144, LR=4.86e-04, PredNorm=40.561, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:30:42,432 - INFO - Step 450: Loss=0.141585, VelSim=0.9569 (excellent), GradNorm=5615.463, LR=4.85e-04, PredNorm=40.713, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:30:42,432 - INFO - Running evaluation at step 450...
+2025-07-28 09:30:46,778 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 09:30:53,932 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 09:30:53,932 - INFO -   eval_clip_similarity: 0.2442
+2025-07-28 09:30:53,932 - INFO -   eval_clip_similarity_std: 0.0153
+2025-07-28 09:30:53,932 - INFO -   eval_clip_similarity_min: 0.2233
+2025-07-28 09:30:53,932 - INFO -   eval_clip_similarity_max: 0.2691
+2025-07-28 09:30:53,933 - INFO -   eval_mse_loss: 2.2334
+2025-07-28 09:30:53,933 - INFO -   eval_mse_loss_std: 0.0746
+2025-07-28 09:30:53,933 - INFO -   eval_high_quality: 0.0000
+2025-07-28 09:30:53,933 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 09:30:53,933 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 09:30:53,933 - INFO -   eval_samples: 16.0000
+2025-07-28 09:30:53,933 - INFO -   eval_time_seconds: 11.4976
+2025-07-28 09:30:53,933 - INFO -   eval_samples_per_second: 1.3916
+2025-07-28 09:30:57,794 - INFO - Step 460: Loss=0.141188, VelSim=0.9570 (excellent), GradNorm=6722.631, LR=4.84e-04, PredNorm=40.715, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:31:01,652 - INFO - Step 470: Loss=0.140530, VelSim=0.9572 (excellent), GradNorm=6187.434, LR=4.83e-04, PredNorm=40.823, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:31:05,512 - INFO - Step 480: Loss=0.139630, VelSim=0.9575 (excellent), GradNorm=4909.243, LR=4.83e-04, PredNorm=40.794, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:31:12,720 - INFO - Loaded shard 2/2: 2646 samples
+2025-07-28 09:31:13,896 - INFO - Step 490: Loss=0.138867, VelSim=0.9577 (excellent), GradNorm=3520.138, LR=4.82e-04, PredNorm=40.727, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:31:17,749 - INFO - Step 500: Loss=0.138660, VelSim=0.9578 (excellent), GradNorm=4805.630, LR=4.81e-04, PredNorm=40.610, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:31:17,749 - INFO - Running evaluation at step 500...
+2025-07-28 09:31:21,961 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 09:31:29,111 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 09:31:29,111 - INFO -   eval_clip_similarity: 0.2427
+2025-07-28 09:31:29,111 - INFO -   eval_clip_similarity_std: 0.0149
+2025-07-28 09:31:29,111 - INFO -   eval_clip_similarity_min: 0.2218
+2025-07-28 09:31:29,111 - INFO -   eval_clip_similarity_max: 0.2683
+2025-07-28 09:31:29,111 - INFO -   eval_mse_loss: 2.2471
+2025-07-28 09:31:29,111 - INFO -   eval_mse_loss_std: 0.0823
+2025-07-28 09:31:29,111 - INFO -   eval_high_quality: 0.0000
+2025-07-28 09:31:29,111 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 09:31:29,111 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 09:31:29,111 - INFO -   eval_samples: 16.0000
+2025-07-28 09:31:29,112 - INFO -   eval_time_seconds: 11.3601
+2025-07-28 09:31:29,112 - INFO -   eval_samples_per_second: 1.4084
+2025-07-28 09:31:30,896 - INFO - Checkpoint saved: checkpoints/clip_repro_20250728_092543/checkpoint_step_500.pt
+2025-07-28 09:31:34,841 - INFO - Step 510: Loss=0.138489, VelSim=0.9578 (excellent), GradNorm=5920.642, LR=4.80e-04, PredNorm=40.752, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:31:38,801 - INFO - Step 520: Loss=0.139056, VelSim=0.9577 (excellent), GradNorm=8749.466, LR=4.79e-04, PredNorm=40.823, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:31:42,641 - INFO - Step 530: Loss=0.137665, VelSim=0.9581 (excellent), GradNorm=5638.850, LR=4.78e-04, PredNorm=40.654, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:31:46,522 - INFO - Step 540: Loss=0.136806, VelSim=0.9584 (excellent), GradNorm=3653.298, LR=4.77e-04, PredNorm=40.904, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:31:50,384 - INFO - Step 550: Loss=0.136282, VelSim=0.9585 (excellent), GradNorm=2705.642, LR=4.76e-04, PredNorm=40.839, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:31:50,384 - INFO - Running evaluation at step 550...
+2025-07-28 09:31:54,957 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 09:32:02,092 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 09:32:02,093 - INFO -   eval_clip_similarity: 0.2459
+2025-07-28 09:32:02,093 - INFO -   eval_clip_similarity_std: 0.0150
+2025-07-28 09:32:02,093 - INFO -   eval_clip_similarity_min: 0.2236
+2025-07-28 09:32:02,093 - INFO -   eval_clip_similarity_max: 0.2720
+2025-07-28 09:32:02,093 - INFO -   eval_mse_loss: 2.2380
+2025-07-28 09:32:02,093 - INFO -   eval_mse_loss_std: 0.0739
+2025-07-28 09:32:02,093 - INFO -   eval_high_quality: 0.0000
+2025-07-28 09:32:02,093 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 09:32:02,093 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 09:32:02,094 - INFO -   eval_samples: 16.0000
+2025-07-28 09:32:02,094 - INFO -   eval_time_seconds: 11.7061
+2025-07-28 09:32:02,094 - INFO -   eval_samples_per_second: 1.3668
+2025-07-28 09:32:05,944 - INFO - Step 560: Loss=0.136534, VelSim=0.9584 (excellent), GradNorm=5664.039, LR=4.75e-04, PredNorm=40.908, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:32:09,795 - INFO - Step 570: Loss=0.136411, VelSim=0.9585 (excellent), GradNorm=6102.864, LR=4.73e-04, PredNorm=40.661, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:32:13,647 - INFO - Step 580: Loss=0.135707, VelSim=0.9587 (excellent), GradNorm=4735.612, LR=4.72e-04, PredNorm=40.785, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:32:17,505 - INFO - Step 590: Loss=0.136528, VelSim=0.9584 (excellent), GradNorm=7993.756, LR=4.71e-04, PredNorm=40.811, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:32:21,356 - INFO - Step 600: Loss=0.135092, VelSim=0.9589 (excellent), GradNorm=4131.499, LR=4.70e-04, PredNorm=40.712, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:32:21,356 - INFO - Running evaluation at step 600...
+2025-07-28 09:32:25,691 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 09:32:32,843 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 09:32:32,843 - INFO -   eval_clip_similarity: 0.2440
+2025-07-28 09:32:32,843 - INFO -   eval_clip_similarity_std: 0.0148
+2025-07-28 09:32:32,843 - INFO -   eval_clip_similarity_min: 0.2262
+2025-07-28 09:32:32,843 - INFO -   eval_clip_similarity_max: 0.2695
+2025-07-28 09:32:32,843 - INFO -   eval_mse_loss: 2.2456
+2025-07-28 09:32:32,843 - INFO -   eval_mse_loss_std: 0.0746
+2025-07-28 09:32:32,843 - INFO -   eval_high_quality: 0.0000
+2025-07-28 09:32:32,844 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 09:32:32,844 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 09:32:32,844 - INFO -   eval_samples: 16.0000
+2025-07-28 09:32:32,844 - INFO -   eval_time_seconds: 11.4848
+2025-07-28 09:32:32,844 - INFO -   eval_samples_per_second: 1.3931
+2025-07-28 09:32:36,681 - INFO - Step 610: Loss=0.134514, VelSim=0.9591 (excellent), GradNorm=2453.800, LR=4.69e-04, PredNorm=40.803, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:32:40,538 - INFO - Step 620: Loss=0.134677, VelSim=0.9590 (excellent), GradNorm=4524.432, LR=4.68e-04, PredNorm=40.626, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:32:44,384 - INFO - Step 630: Loss=0.134259, VelSim=0.9591 (excellent), GradNorm=3881.430, LR=4.66e-04, PredNorm=40.949, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:32:48,233 - INFO - Step 640: Loss=0.133996, VelSim=0.9592 (excellent), GradNorm=3774.479, LR=4.65e-04, PredNorm=40.823, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:32:52,070 - INFO - Step 650: Loss=0.133784, VelSim=0.9593 (excellent), GradNorm=3630.862, LR=4.64e-04, PredNorm=40.752, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:32:52,070 - INFO - Running evaluation at step 650...
+2025-07-28 09:32:56,394 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 09:33:03,538 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 09:33:03,538 - INFO -   eval_clip_similarity: 0.2456
+2025-07-28 09:33:03,538 - INFO -   eval_clip_similarity_std: 0.0150
+2025-07-28 09:33:03,538 - INFO -   eval_clip_similarity_min: 0.2263
+2025-07-28 09:33:03,538 - INFO -   eval_clip_similarity_max: 0.2744
+2025-07-28 09:33:03,538 - INFO -   eval_mse_loss: 2.2415
+2025-07-28 09:33:03,539 - INFO -   eval_mse_loss_std: 0.0768
+2025-07-28 09:33:03,539 - INFO -   eval_high_quality: 0.0000
+2025-07-28 09:33:03,539 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 09:33:03,539 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 09:33:03,539 - INFO -   eval_samples: 16.0000
+2025-07-28 09:33:03,539 - INFO -   eval_time_seconds: 11.4655
+2025-07-28 09:33:03,539 - INFO -   eval_samples_per_second: 1.3955
+2025-07-28 09:33:04,904 - INFO - Iteration completed: 5247 samples processed
+2025-07-28 09:33:04,904 - INFO - Epoch 2 completed: 327 batches processed
+2025-07-28 09:33:04,919 - INFO - Epoch 2 completed:
+2025-07-28 09:33:04,919 - INFO -   Average loss: 0.140886
+2025-07-28 09:33:04,920 - INFO -   Best loss: 0.133662
+2025-07-28 09:33:04,920 - INFO -   Best similarity: 0.9593
+2025-07-28 09:33:04,920 - INFO -   Steps in epoch: 327
+2025-07-28 09:33:04,920 - INFO -   Epoch time: 218.0s
+2025-07-28 09:33:04,920 - INFO - Starting epoch 3/10
+2025-07-28 09:33:09,155 - INFO - Loaded shard 1/2: 2601 samples
+2025-07-28 09:33:11,821 - INFO - Step 660: Loss=0.134232, VelSim=0.9592 (excellent), GradNorm=6270.736, LR=4.63e-04, PredNorm=40.696, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:33:15,659 - INFO - Step 670: Loss=0.133793, VelSim=0.9593 (excellent), GradNorm=5007.574, LR=4.61e-04, PredNorm=40.780, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:33:19,516 - INFO - Step 680: Loss=0.133426, VelSim=0.9594 (excellent), GradNorm=4364.398, LR=4.60e-04, PredNorm=40.868, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:33:23,356 - INFO - Step 690: Loss=0.133150, VelSim=0.9595 (excellent), GradNorm=3914.476, LR=4.59e-04, PredNorm=40.842, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:33:27,219 - INFO - Step 700: Loss=0.133269, VelSim=0.9594 (excellent), GradNorm=5176.679, LR=4.57e-04, PredNorm=40.808, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:33:27,219 - INFO - Running evaluation at step 700...
+2025-07-28 09:33:31,584 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 09:33:38,735 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 09:33:38,736 - INFO -   eval_clip_similarity: 0.2496
+2025-07-28 09:33:38,736 - INFO -   eval_clip_similarity_std: 0.0151
+2025-07-28 09:33:38,736 - INFO -   eval_clip_similarity_min: 0.2318
+2025-07-28 09:33:38,736 - INFO -   eval_clip_similarity_max: 0.2772
+2025-07-28 09:33:38,736 - INFO -   eval_mse_loss: 2.2488
+2025-07-28 09:33:38,736 - INFO -   eval_mse_loss_std: 0.0742
+2025-07-28 09:33:38,736 - INFO -   eval_high_quality: 0.0000
+2025-07-28 09:33:38,736 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 09:33:38,736 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 09:33:38,736 - INFO -   eval_samples: 16.0000
+2025-07-28 09:33:38,736 - INFO -   eval_time_seconds: 11.5142
+2025-07-28 09:33:38,736 - INFO -   eval_samples_per_second: 1.3896
+2025-07-28 09:33:42,583 - INFO - Step 710: Loss=0.133247, VelSim=0.9595 (excellent), GradNorm=5387.059, LR=4.56e-04, PredNorm=40.777, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:33:46,463 - INFO - Step 720: Loss=0.132559, VelSim=0.9597 (excellent), GradNorm=3100.750, LR=4.54e-04, PredNorm=40.815, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:33:50,300 - INFO - Step 730: Loss=0.133345, VelSim=0.9595 (excellent), GradNorm=6415.354, LR=4.53e-04, PredNorm=40.580, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:33:54,156 - INFO - Step 740: Loss=0.132365, VelSim=0.9597 (excellent), GradNorm=3478.310, LR=4.52e-04, PredNorm=40.797, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:33:58,001 - INFO - Step 750: Loss=0.132111, VelSim=0.9598 (excellent), GradNorm=2786.496, LR=4.50e-04, PredNorm=40.875, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:33:58,001 - INFO - Running evaluation at step 750...
+2025-07-28 09:34:02,298 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 09:34:09,438 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 09:34:09,438 - INFO -   eval_clip_similarity: 0.2456
+2025-07-28 09:34:09,439 - INFO -   eval_clip_similarity_std: 0.0147
+2025-07-28 09:34:09,439 - INFO -   eval_clip_similarity_min: 0.2255
+2025-07-28 09:34:09,439 - INFO -   eval_clip_similarity_max: 0.2719
+2025-07-28 09:34:09,439 - INFO -   eval_mse_loss: 2.2403
+2025-07-28 09:34:09,439 - INFO -   eval_mse_loss_std: 0.0795
+2025-07-28 09:34:09,439 - INFO -   eval_high_quality: 0.0000
+2025-07-28 09:34:09,439 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 09:34:09,439 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 09:34:09,439 - INFO -   eval_samples: 16.0000
+2025-07-28 09:34:09,439 - INFO -   eval_time_seconds: 11.4351
+2025-07-28 09:34:09,439 - INFO -   eval_samples_per_second: 1.3992
+2025-07-28 09:34:13,336 - INFO - Step 760: Loss=0.132161, VelSim=0.9598 (excellent), GradNorm=3731.498, LR=4.49e-04, PredNorm=40.846, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:34:17,153 - INFO - Step 770: Loss=0.131789, VelSim=0.9599 (excellent), GradNorm=2204.243, LR=4.47e-04, PredNorm=40.854, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:34:20,981 - INFO - Step 780: Loss=0.131618, VelSim=0.9599 (excellent), GradNorm=1659.239, LR=4.46e-04, PredNorm=40.849, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:34:24,808 - INFO - Step 790: Loss=0.131537, VelSim=0.9600 (excellent), GradNorm=1992.280, LR=4.44e-04, PredNorm=40.864, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:34:28,634 - INFO - Step 800: Loss=0.131454, VelSim=0.9600 (excellent), GradNorm=2077.435, LR=4.42e-04, PredNorm=40.884, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:34:28,634 - INFO - Running evaluation at step 800...
+2025-07-28 09:34:33,005 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 09:34:40,150 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 09:34:40,151 - INFO -   eval_clip_similarity: 0.2466
+2025-07-28 09:34:40,151 - INFO -   eval_clip_similarity_std: 0.0156
+2025-07-28 09:34:40,151 - INFO -   eval_clip_similarity_min: 0.2258
+2025-07-28 09:34:40,151 - INFO -   eval_clip_similarity_max: 0.2698
+2025-07-28 09:34:40,151 - INFO -   eval_mse_loss: 2.2384
+2025-07-28 09:34:40,151 - INFO -   eval_mse_loss_std: 0.0768
+2025-07-28 09:34:40,151 - INFO -   eval_high_quality: 0.0000
+2025-07-28 09:34:40,151 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 09:34:40,151 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 09:34:40,151 - INFO -   eval_samples: 16.0000
+2025-07-28 09:34:40,151 - INFO -   eval_time_seconds: 11.5138
+2025-07-28 09:34:40,151 - INFO -   eval_samples_per_second: 1.3896
+2025-07-28 09:34:43,960 - INFO - Step 810: Loss=0.131763, VelSim=0.9599 (excellent), GradNorm=4302.141, LR=4.41e-04, PredNorm=40.871, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:34:50,066 - INFO - Loaded shard 2/2: 2646 samples
+2025-07-28 09:34:52,152 - INFO - Step 820: Loss=0.131957, VelSim=0.9599 (excellent), GradNorm=5201.910, LR=4.39e-04, PredNorm=40.705, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:34:55,968 - INFO - Step 830: Loss=0.131513, VelSim=0.9600 (excellent), GradNorm=3875.618, LR=4.38e-04, PredNorm=40.794, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:34:59,818 - INFO - Step 840: Loss=0.131570, VelSim=0.9600 (excellent), GradNorm=4491.070, LR=4.36e-04, PredNorm=40.810, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:35:03,648 - INFO - Step 850: Loss=0.131193, VelSim=0.9601 (excellent), GradNorm=3107.636, LR=4.34e-04, PredNorm=40.877, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:35:03,648 - INFO - Running evaluation at step 850...
+2025-07-28 09:35:08,004 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 09:35:15,138 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 09:35:15,138 - INFO -   eval_clip_similarity: 0.2477
+2025-07-28 09:35:15,138 - INFO -   eval_clip_similarity_std: 0.0157
+2025-07-28 09:35:15,138 - INFO -   eval_clip_similarity_min: 0.2275
+2025-07-28 09:35:15,138 - INFO -   eval_clip_similarity_max: 0.2780
+2025-07-28 09:35:15,139 - INFO -   eval_mse_loss: 2.2387
+2025-07-28 09:35:15,139 - INFO -   eval_mse_loss_std: 0.0769
+2025-07-28 09:35:15,139 - INFO -   eval_high_quality: 0.0000
+2025-07-28 09:35:15,139 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 09:35:15,139 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 09:35:15,139 - INFO -   eval_samples: 16.0000
+2025-07-28 09:35:15,139 - INFO -   eval_time_seconds: 11.4883
+2025-07-28 09:35:15,139 - INFO -   eval_samples_per_second: 1.3927
+2025-07-28 09:35:18,973 - INFO - Step 860: Loss=0.130955, VelSim=0.9602 (excellent), GradNorm=1985.114, LR=4.33e-04, PredNorm=40.844, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:35:22,780 - INFO - Step 870: Loss=0.130870, VelSim=0.9602 (excellent), GradNorm=2017.025, LR=4.31e-04, PredNorm=40.877, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:35:26,608 - INFO - Step 880: Loss=0.130743, VelSim=0.9602 (excellent), GradNorm=1378.707, LR=4.29e-04, PredNorm=40.855, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:35:30,423 - INFO - Step 890: Loss=0.130900, VelSim=0.9602 (excellent), GradNorm=3079.622, LR=4.28e-04, PredNorm=40.879, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:35:34,259 - INFO - Step 900: Loss=0.131482, VelSim=0.9600 (excellent), GradNorm=5634.485, LR=4.26e-04, PredNorm=40.977, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:35:34,259 - INFO - Running evaluation at step 900...
+2025-07-28 09:35:38,663 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 09:35:45,796 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 09:35:45,796 - INFO -   eval_clip_similarity: 0.2477
+2025-07-28 09:35:45,797 - INFO -   eval_clip_similarity_std: 0.0145
+2025-07-28 09:35:45,797 - INFO -   eval_clip_similarity_min: 0.2294
+2025-07-28 09:35:45,797 - INFO -   eval_clip_similarity_max: 0.2727
+2025-07-28 09:35:45,797 - INFO -   eval_mse_loss: 2.2470
+2025-07-28 09:35:45,797 - INFO -   eval_mse_loss_std: 0.0809
+2025-07-28 09:35:45,797 - INFO -   eval_high_quality: 0.0000
+2025-07-28 09:35:45,797 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 09:35:45,797 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 09:35:45,797 - INFO -   eval_samples: 16.0000
+2025-07-28 09:35:45,797 - INFO -   eval_time_seconds: 11.5354
+2025-07-28 09:35:45,797 - INFO -   eval_samples_per_second: 1.3870
+2025-07-28 09:35:49,636 - INFO - Step 910: Loss=0.130954, VelSim=0.9602 (excellent), GradNorm=3881.736, LR=4.24e-04, PredNorm=40.849, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:35:53,458 - INFO - Step 920: Loss=0.130601, VelSim=0.9603 (excellent), GradNorm=2265.726, LR=4.22e-04, PredNorm=40.915, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:35:57,633 - INFO - Step 930: Loss=0.131089, VelSim=0.9601 (excellent), GradNorm=4788.445, LR=4.20e-04, PredNorm=41.063, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:36:01,463 - INFO - Step 940: Loss=0.130692, VelSim=0.9602 (excellent), GradNorm=3466.362, LR=4.19e-04, PredNorm=40.891, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:36:05,281 - INFO - Step 950: Loss=0.130426, VelSim=0.9603 (excellent), GradNorm=2209.739, LR=4.17e-04, PredNorm=40.898, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:36:05,282 - INFO - Running evaluation at step 950...
+2025-07-28 09:36:09,735 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 09:36:16,871 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 09:36:16,871 - INFO -   eval_clip_similarity: 0.2477
+2025-07-28 09:36:16,871 - INFO -   eval_clip_similarity_std: 0.0148
+2025-07-28 09:36:16,871 - INFO -   eval_clip_similarity_min: 0.2265
+2025-07-28 09:36:16,871 - INFO -   eval_clip_similarity_max: 0.2720
+2025-07-28 09:36:16,871 - INFO -   eval_mse_loss: 2.2421
+2025-07-28 09:36:16,871 - INFO -   eval_mse_loss_std: 0.0751
+2025-07-28 09:36:16,871 - INFO -   eval_high_quality: 0.0000
+2025-07-28 09:36:16,871 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 09:36:16,871 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 09:36:16,871 - INFO -   eval_samples: 16.0000
+2025-07-28 09:36:16,871 - INFO -   eval_time_seconds: 11.5869
+2025-07-28 09:36:16,871 - INFO -   eval_samples_per_second: 1.3809
+2025-07-28 09:36:20,697 - INFO - Step 960: Loss=0.130309, VelSim=0.9603 (excellent), GradNorm=1671.511, LR=4.15e-04, PredNorm=40.863, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:36:24,546 - INFO - Step 970: Loss=0.130208, VelSim=0.9604 (excellent), GradNorm=941.921, LR=4.13e-04, PredNorm=40.876, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:36:28,373 - INFO - Step 980: Loss=0.130181, VelSim=0.9604 (excellent), GradNorm=1217.344, LR=4.11e-04, PredNorm=40.935, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:36:28,841 - INFO - Iteration completed: 5247 samples processed
+2025-07-28 09:36:28,841 - INFO - Epoch 3 completed: 327 batches processed
+2025-07-28 09:36:28,856 - INFO - Epoch 3 completed:
+2025-07-28 09:36:28,856 - INFO -   Average loss: 0.131759
+2025-07-28 09:36:28,856 - INFO -   Best loss: 0.130172
+2025-07-28 09:36:28,856 - INFO -   Best similarity: 0.9604
+2025-07-28 09:36:28,856 - INFO -   Steps in epoch: 327
+2025-07-28 09:36:28,856 - INFO -   Epoch time: 203.9s
+2025-07-28 09:36:28,857 - INFO - Starting epoch 4/10
+2025-07-28 09:36:33,194 - INFO - Loaded shard 1/2: 2601 samples
+2025-07-28 09:36:36,720 - INFO - Step 990: Loss=0.130599, VelSim=0.9603 (excellent), GradNorm=3959.138, LR=4.09e-04, PredNorm=41.107, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:36:40,544 - INFO - Step 1000: Loss=0.130330, VelSim=0.9603 (excellent), GradNorm=2924.187, LR=4.07e-04, PredNorm=40.768, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:36:40,544 - INFO - Running evaluation at step 1000...
+2025-07-28 09:36:44,892 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 09:36:52,037 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 09:36:52,037 - INFO -   eval_clip_similarity: 0.2476
+2025-07-28 09:36:52,037 - INFO -   eval_clip_similarity_std: 0.0155
+2025-07-28 09:36:52,038 - INFO -   eval_clip_similarity_min: 0.2277
+2025-07-28 09:36:52,038 - INFO -   eval_clip_similarity_max: 0.2756
+2025-07-28 09:36:52,038 - INFO -   eval_mse_loss: 2.2431
+2025-07-28 09:36:52,038 - INFO -   eval_mse_loss_std: 0.0786
+2025-07-28 09:36:52,038 - INFO -   eval_high_quality: 0.0000
+2025-07-28 09:36:52,038 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 09:36:52,038 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 09:36:52,038 - INFO -   eval_samples: 16.0000
+2025-07-28 09:36:52,038 - INFO -   eval_time_seconds: 11.4912
+2025-07-28 09:36:52,038 - INFO -   eval_samples_per_second: 1.3924
+2025-07-28 09:36:53,740 - INFO - Checkpoint saved: checkpoints/clip_repro_20250728_092543/checkpoint_step_1000.pt
+2025-07-28 09:36:57,560 - INFO - Step 1010: Loss=0.130285, VelSim=0.9604 (excellent), GradNorm=2935.496, LR=4.05e-04, PredNorm=40.776, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:37:01,390 - INFO - Step 1020: Loss=0.130279, VelSim=0.9604 (excellent), GradNorm=3214.750, LR=4.03e-04, PredNorm=40.836, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:37:05,224 - INFO - Step 1030: Loss=0.130074, VelSim=0.9604 (excellent), GradNorm=2132.983, LR=4.02e-04, PredNorm=40.901, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:37:09,063 - INFO - Step 1040: Loss=0.129946, VelSim=0.9605 (excellent), GradNorm=1243.488, LR=4.00e-04, PredNorm=40.860, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:37:12,892 - INFO - Step 1050: Loss=0.129893, VelSim=0.9605 (excellent), GradNorm=1016.268, LR=3.98e-04, PredNorm=40.848, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:37:12,892 - INFO - Running evaluation at step 1050...
+2025-07-28 09:37:17,165 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 09:37:24,303 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 09:37:24,304 - INFO -   eval_clip_similarity: 0.2483
+2025-07-28 09:37:24,304 - INFO -   eval_clip_similarity_std: 0.0142
+2025-07-28 09:37:24,304 - INFO -   eval_clip_similarity_min: 0.2265
+2025-07-28 09:37:24,304 - INFO -   eval_clip_similarity_max: 0.2724
+2025-07-28 09:37:24,304 - INFO -   eval_mse_loss: 2.2365
+2025-07-28 09:37:24,304 - INFO -   eval_mse_loss_std: 0.0795
+2025-07-28 09:37:24,304 - INFO -   eval_high_quality: 0.0000
+2025-07-28 09:37:24,304 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 09:37:24,304 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 09:37:24,304 - INFO -   eval_samples: 16.0000
+2025-07-28 09:37:24,304 - INFO -   eval_time_seconds: 11.4090
+2025-07-28 09:37:24,304 - INFO -   eval_samples_per_second: 1.4024
+2025-07-28 09:37:28,123 - INFO - Step 1060: Loss=0.129894, VelSim=0.9605 (excellent), GradNorm=1523.785, LR=3.96e-04, PredNorm=40.839, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:37:31,937 - INFO - Step 1070: Loss=0.129835, VelSim=0.9605 (excellent), GradNorm=1171.955, LR=3.94e-04, PredNorm=40.880, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:37:35,766 - INFO - Step 1080: Loss=0.129846, VelSim=0.9605 (excellent), GradNorm=1661.232, LR=3.92e-04, PredNorm=40.901, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:37:39,596 - INFO - Step 1090: Loss=0.129803, VelSim=0.9605 (excellent), GradNorm=1573.723, LR=3.89e-04, PredNorm=40.875, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:37:43,432 - INFO - Step 1100: Loss=0.129785, VelSim=0.9605 (excellent), GradNorm=1640.215, LR=3.87e-04, PredNorm=40.899, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:37:43,433 - INFO - Running evaluation at step 1100...
+2025-07-28 09:37:47,834 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 09:37:54,973 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 09:37:54,973 - INFO -   eval_clip_similarity: 0.2484
+2025-07-28 09:37:54,973 - INFO -   eval_clip_similarity_std: 0.0154
+2025-07-28 09:37:54,973 - INFO -   eval_clip_similarity_min: 0.2291
+2025-07-28 09:37:54,973 - INFO -   eval_clip_similarity_max: 0.2750
+2025-07-28 09:37:54,973 - INFO -   eval_mse_loss: 2.2358
+2025-07-28 09:37:54,973 - INFO -   eval_mse_loss_std: 0.0792
+2025-07-28 09:37:54,973 - INFO -   eval_high_quality: 0.0000
+2025-07-28 09:37:54,973 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 09:37:54,974 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 09:37:54,974 - INFO -   eval_samples: 16.0000
+2025-07-28 09:37:54,974 - INFO -   eval_time_seconds: 11.5381
+2025-07-28 09:37:54,974 - INFO -   eval_samples_per_second: 1.3867
+2025-07-28 09:37:58,799 - INFO - Step 1110: Loss=0.129822, VelSim=0.9605 (excellent), GradNorm=2184.831, LR=3.85e-04, PredNorm=40.903, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:38:02,614 - INFO - Step 1120: Loss=0.129886, VelSim=0.9605 (excellent), GradNorm=2817.176, LR=3.83e-04, PredNorm=40.965, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:38:06,438 - INFO - Step 1130: Loss=0.130090, VelSim=0.9604 (excellent), GradNorm=3920.710, LR=3.81e-04, PredNorm=40.896, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:38:10,276 - INFO - Step 1140: Loss=0.130021, VelSim=0.9604 (excellent), GradNorm=3701.386, LR=3.79e-04, PredNorm=40.877, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:38:15,692 - INFO - Loaded shard 2/2: 2646 samples
+2025-07-28 09:38:18,633 - INFO - Step 1150: Loss=0.129711, VelSim=0.9605 (excellent), GradNorm=2050.371, LR=3.77e-04, PredNorm=40.913, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:38:18,634 - INFO - Running evaluation at step 1150...
+2025-07-28 09:38:22,804 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 09:38:29,941 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 09:38:29,941 - INFO -   eval_clip_similarity: 0.2486
+2025-07-28 09:38:29,941 - INFO -   eval_clip_similarity_std: 0.0158
+2025-07-28 09:38:29,941 - INFO -   eval_clip_similarity_min: 0.2260
+2025-07-28 09:38:29,941 - INFO -   eval_clip_similarity_max: 0.2770
+2025-07-28 09:38:29,941 - INFO -   eval_mse_loss: 2.2342
+2025-07-28 09:38:29,941 - INFO -   eval_mse_loss_std: 0.0798
+2025-07-28 09:38:29,941 - INFO -   eval_high_quality: 0.0000
+2025-07-28 09:38:29,941 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 09:38:29,941 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 09:38:29,941 - INFO -   eval_samples: 16.0000
+2025-07-28 09:38:29,942 - INFO -   eval_time_seconds: 11.3051
+2025-07-28 09:38:29,942 - INFO -   eval_samples_per_second: 1.4153
+2025-07-28 09:38:33,780 - INFO - Step 1160: Loss=0.129585, VelSim=0.9606 (excellent), GradNorm=990.794, LR=3.75e-04, PredNorm=40.872, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:38:37,607 - INFO - Step 1170: Loss=0.129545, VelSim=0.9606 (excellent), GradNorm=707.275, LR=3.73e-04, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:38:41,442 - INFO - Step 1180: Loss=0.129519, VelSim=0.9606 (excellent), GradNorm=635.974, LR=3.71e-04, PredNorm=40.879, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:38:45,258 - INFO - Step 1190: Loss=0.129520, VelSim=0.9606 (excellent), GradNorm=1094.885, LR=3.68e-04, PredNorm=40.884, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:38:49,077 - INFO - Step 1200: Loss=0.129547, VelSim=0.9606 (excellent), GradNorm=1625.252, LR=3.66e-04, PredNorm=40.896, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:38:49,078 - INFO - Running evaluation at step 1200...
+2025-07-28 09:38:53,367 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 09:39:00,501 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 09:39:00,501 - INFO -   eval_clip_similarity: 0.2473
+2025-07-28 09:39:00,502 - INFO -   eval_clip_similarity_std: 0.0149
+2025-07-28 09:39:00,502 - INFO -   eval_clip_similarity_min: 0.2256
+2025-07-28 09:39:00,502 - INFO -   eval_clip_similarity_max: 0.2721
+2025-07-28 09:39:00,502 - INFO -   eval_mse_loss: 2.2400
+2025-07-28 09:39:00,502 - INFO -   eval_mse_loss_std: 0.0791
+2025-07-28 09:39:00,502 - INFO -   eval_high_quality: 0.0000
+2025-07-28 09:39:00,502 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 09:39:00,502 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 09:39:00,502 - INFO -   eval_samples: 16.0000
+2025-07-28 09:39:00,502 - INFO -   eval_time_seconds: 11.4209
+2025-07-28 09:39:00,502 - INFO -   eval_samples_per_second: 1.4009
+2025-07-28 09:39:04,317 - INFO - Step 1210: Loss=0.129514, VelSim=0.9606 (excellent), GradNorm=1469.028, LR=3.64e-04, PredNorm=40.910, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:39:08,185 - INFO - Step 1220: Loss=0.129489, VelSim=0.9606 (excellent), GradNorm=1448.271, LR=3.62e-04, PredNorm=40.914, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:39:12,041 - INFO - Step 1230: Loss=0.129606, VelSim=0.9606 (excellent), GradNorm=2560.893, LR=3.60e-04, PredNorm=40.911, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:39:15,898 - INFO - Step 1240: Loss=0.129582, VelSim=0.9606 (excellent), GradNorm=2492.113, LR=3.57e-04, PredNorm=40.858, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:39:19,786 - INFO - Step 1250: Loss=0.129422, VelSim=0.9606 (excellent), GradNorm=1226.432, LR=3.55e-04, PredNorm=40.898, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:39:19,786 - INFO - Running evaluation at step 1250...
+2025-07-28 09:39:24,125 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 09:39:31,283 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 09:39:31,283 - INFO -   eval_clip_similarity: 0.2487
+2025-07-28 09:39:31,283 - INFO -   eval_clip_similarity_std: 0.0155
+2025-07-28 09:39:31,283 - INFO -   eval_clip_similarity_min: 0.2288
+2025-07-28 09:39:31,283 - INFO -   eval_clip_similarity_max: 0.2743
+2025-07-28 09:39:31,284 - INFO -   eval_mse_loss: 2.2415
+2025-07-28 09:39:31,284 - INFO -   eval_mse_loss_std: 0.0789
+2025-07-28 09:39:31,284 - INFO -   eval_high_quality: 0.0000
+2025-07-28 09:39:31,284 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 09:39:31,284 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 09:39:31,284 - INFO -   eval_samples: 16.0000
+2025-07-28 09:39:31,284 - INFO -   eval_time_seconds: 11.4948
+2025-07-28 09:39:31,284 - INFO -   eval_samples_per_second: 1.3919
+2025-07-28 09:39:35,152 - INFO - Step 1260: Loss=0.129376, VelSim=0.9606 (excellent), GradNorm=809.803, LR=3.53e-04, PredNorm=40.894, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:39:39,023 - INFO - Step 1270: Loss=0.129352, VelSim=0.9606 (excellent), GradNorm=646.550, LR=3.51e-04, PredNorm=40.883, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:39:42,881 - INFO - Step 1280: Loss=0.129334, VelSim=0.9606 (excellent), GradNorm=581.708, LR=3.48e-04, PredNorm=40.864, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:39:46,745 - INFO - Step 1290: Loss=0.129323, VelSim=0.9606 (excellent), GradNorm=687.628, LR=3.46e-04, PredNorm=40.851, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:39:50,731 - INFO - Step 1300: Loss=0.129341, VelSim=0.9606 (excellent), GradNorm=1222.004, LR=3.44e-04, PredNorm=40.825, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:39:50,732 - INFO - Running evaluation at step 1300...
+2025-07-28 09:39:55,028 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 09:40:02,191 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 09:40:02,192 - INFO -   eval_clip_similarity: 0.2490
+2025-07-28 09:40:02,192 - INFO -   eval_clip_similarity_std: 0.0151
+2025-07-28 09:40:02,192 - INFO -   eval_clip_similarity_min: 0.2291
+2025-07-28 09:40:02,192 - INFO -   eval_clip_similarity_max: 0.2759
+2025-07-28 09:40:02,192 - INFO -   eval_mse_loss: 2.2358
+2025-07-28 09:40:02,192 - INFO -   eval_mse_loss_std: 0.0745
+2025-07-28 09:40:02,192 - INFO -   eval_high_quality: 0.0000
+2025-07-28 09:40:02,192 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 09:40:02,193 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 09:40:02,193 - INFO -   eval_samples: 16.0000
+2025-07-28 09:40:02,193 - INFO -   eval_time_seconds: 11.4577
+2025-07-28 09:40:02,193 - INFO -   eval_samples_per_second: 1.3964
+2025-07-28 09:40:04,743 - INFO - Iteration completed: 5247 samples processed
+2025-07-28 09:40:04,744 - INFO - Epoch 4 completed: 327 batches processed
+2025-07-28 09:40:04,758 - INFO - Epoch 4 completed:
+2025-07-28 09:40:04,759 - INFO -   Average loss: 0.129751
+2025-07-28 09:40:04,759 - INFO -   Best loss: 0.129300
+2025-07-28 09:40:04,759 - INFO -   Best similarity: 0.9607
+2025-07-28 09:40:04,759 - INFO -   Steps in epoch: 327
+2025-07-28 09:40:04,759 - INFO -   Epoch time: 215.9s
+2025-07-28 09:40:04,759 - INFO - Starting epoch 5/10
+2025-07-28 09:40:08,984 - INFO - Loaded shard 1/2: 2601 samples
+2025-07-28 09:40:10,459 - INFO - Step 1310: Loss=0.129295, VelSim=0.9607 (excellent), GradNorm=718.405, LR=3.42e-04, PredNorm=40.865, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:40:14,302 - INFO - Step 1320: Loss=0.129278, VelSim=0.9607 (excellent), GradNorm=662.455, LR=3.39e-04, PredNorm=40.878, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:40:18,156 - INFO - Step 1330: Loss=0.129268, VelSim=0.9607 (excellent), GradNorm=714.528, LR=3.37e-04, PredNorm=40.853, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:40:22,009 - INFO - Step 1340: Loss=0.129254, VelSim=0.9607 (excellent), GradNorm=717.462, LR=3.35e-04, PredNorm=40.871, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:40:25,880 - INFO - Step 1350: Loss=0.129239, VelSim=0.9607 (excellent), GradNorm=670.256, LR=3.32e-04, PredNorm=40.884, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:40:25,880 - INFO - Running evaluation at step 1350...
+2025-07-28 09:40:30,211 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 09:40:37,366 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 09:40:37,366 - INFO -   eval_clip_similarity: 0.2499
+2025-07-28 09:40:37,367 - INFO -   eval_clip_similarity_std: 0.0156
+2025-07-28 09:40:37,367 - INFO -   eval_clip_similarity_min: 0.2284
+2025-07-28 09:40:37,367 - INFO -   eval_clip_similarity_max: 0.2760
+2025-07-28 09:40:37,367 - INFO -   eval_mse_loss: 2.2333
+2025-07-28 09:40:37,367 - INFO -   eval_mse_loss_std: 0.0778
+2025-07-28 09:40:37,367 - INFO -   eval_high_quality: 0.0000
+2025-07-28 09:40:37,367 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 09:40:37,367 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 09:40:37,367 - INFO -   eval_samples: 16.0000
+2025-07-28 09:40:37,367 - INFO -   eval_time_seconds: 11.4841
+2025-07-28 09:40:37,367 - INFO -   eval_samples_per_second: 1.3932
+2025-07-28 09:40:41,227 - INFO - Step 1360: Loss=0.129222, VelSim=0.9607 (excellent), GradNorm=552.240, LR=3.30e-04, PredNorm=40.887, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:40:45,090 - INFO - Step 1370: Loss=0.129208, VelSim=0.9607 (excellent), GradNorm=494.500, LR=3.28e-04, PredNorm=40.885, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:40:49,046 - INFO - Step 1380: Loss=0.129208, VelSim=0.9607 (excellent), GradNorm=784.196, LR=3.25e-04, PredNorm=40.877, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:40:52,889 - INFO - Step 1390: Loss=0.129189, VelSim=0.9607 (excellent), GradNorm=615.853, LR=3.23e-04, PredNorm=40.900, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:40:56,749 - INFO - Step 1400: Loss=0.129174, VelSim=0.9607 (excellent), GradNorm=478.197, LR=3.21e-04, PredNorm=40.896, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:40:56,750 - INFO - Running evaluation at step 1400...
+2025-07-28 09:41:01,087 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 09:41:08,224 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 09:41:08,224 - INFO -   eval_clip_similarity: 0.2489
+2025-07-28 09:41:08,224 - INFO -   eval_clip_similarity_std: 0.0150
+2025-07-28 09:41:08,224 - INFO -   eval_clip_similarity_min: 0.2308
+2025-07-28 09:41:08,224 - INFO -   eval_clip_similarity_max: 0.2734
+2025-07-28 09:41:08,224 - INFO -   eval_mse_loss: 2.2359
+2025-07-28 09:41:08,224 - INFO -   eval_mse_loss_std: 0.0778
+2025-07-28 09:41:08,225 - INFO -   eval_high_quality: 0.0000
+2025-07-28 09:41:08,225 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 09:41:08,225 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 09:41:08,225 - INFO -   eval_samples: 16.0000
+2025-07-28 09:41:08,225 - INFO -   eval_time_seconds: 11.4720
+2025-07-28 09:41:08,225 - INFO -   eval_samples_per_second: 1.3947
+2025-07-28 09:41:12,089 - INFO - Step 1410: Loss=0.129161, VelSim=0.9607 (excellent), GradNorm=420.179, LR=3.18e-04, PredNorm=40.886, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:41:15,978 - INFO - Step 1420: Loss=0.129151, VelSim=0.9607 (excellent), GradNorm=434.653, LR=3.16e-04, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:41:19,851 - INFO - Step 1430: Loss=0.129140, VelSim=0.9607 (excellent), GradNorm=382.019, LR=3.13e-04, PredNorm=40.882, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:41:23,717 - INFO - Step 1440: Loss=0.129129, VelSim=0.9607 (excellent), GradNorm=371.508, LR=3.11e-04, PredNorm=40.882, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:41:27,585 - INFO - Step 1450: Loss=0.129119, VelSim=0.9607 (excellent), GradNorm=309.071, LR=3.09e-04, PredNorm=40.893, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:41:27,585 - INFO - Running evaluation at step 1450...
+2025-07-28 09:41:31,934 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 09:41:39,081 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 09:41:39,081 - INFO -   eval_clip_similarity: 0.2488
+2025-07-28 09:41:39,082 - INFO -   eval_clip_similarity_std: 0.0146
+2025-07-28 09:41:39,082 - INFO -   eval_clip_similarity_min: 0.2289
+2025-07-28 09:41:39,082 - INFO -   eval_clip_similarity_max: 0.2731
+2025-07-28 09:41:39,082 - INFO -   eval_mse_loss: 2.2380
+2025-07-28 09:41:39,082 - INFO -   eval_mse_loss_std: 0.0795
+2025-07-28 09:41:39,082 - INFO -   eval_high_quality: 0.0000
+2025-07-28 09:41:39,082 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 09:41:39,082 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 09:41:39,082 - INFO -   eval_samples: 16.0000
+2025-07-28 09:41:39,082 - INFO -   eval_time_seconds: 11.4939
+2025-07-28 09:41:39,082 - INFO -   eval_samples_per_second: 1.3920
+2025-07-28 09:41:42,954 - INFO - Step 1460: Loss=0.129111, VelSim=0.9607 (excellent), GradNorm=383.036, LR=3.06e-04, PredNorm=40.899, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:41:46,826 - INFO - Step 1470: Loss=0.129100, VelSim=0.9607 (excellent), GradNorm=308.510, LR=3.04e-04, PredNorm=40.884, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:41:51,276 - INFO - Loaded shard 2/2: 2646 samples
+2025-07-28 09:41:55,157 - INFO - Step 1480: Loss=0.129091, VelSim=0.9607 (excellent), GradNorm=266.464, LR=3.01e-04, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:41:59,018 - INFO - Step 1490: Loss=0.129082, VelSim=0.9607 (excellent), GradNorm=295.519, LR=2.99e-04, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:42:02,883 - INFO - Step 1500: Loss=0.129073, VelSim=0.9607 (excellent), GradNorm=249.405, LR=2.97e-04, PredNorm=40.887, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:42:02,884 - INFO - Running evaluation at step 1500...
+2025-07-28 09:42:07,175 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 09:42:14,309 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 09:42:14,309 - INFO -   eval_clip_similarity: 0.2494
+2025-07-28 09:42:14,309 - INFO -   eval_clip_similarity_std: 0.0149
+2025-07-28 09:42:14,309 - INFO -   eval_clip_similarity_min: 0.2294
+2025-07-28 09:42:14,309 - INFO -   eval_clip_similarity_max: 0.2755
+2025-07-28 09:42:14,309 - INFO -   eval_mse_loss: 2.2382
+2025-07-28 09:42:14,309 - INFO -   eval_mse_loss_std: 0.0794
+2025-07-28 09:42:14,309 - INFO -   eval_high_quality: 0.0000
+2025-07-28 09:42:14,309 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 09:42:14,309 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 09:42:14,309 - INFO -   eval_samples: 16.0000
+2025-07-28 09:42:14,309 - INFO -   eval_time_seconds: 11.4225
+2025-07-28 09:42:14,309 - INFO -   eval_samples_per_second: 1.4007
+2025-07-28 09:42:16,010 - INFO - Checkpoint saved: checkpoints/clip_repro_20250728_092543/checkpoint_step_1500.pt
+2025-07-28 09:42:19,892 - INFO - Step 1510: Loss=0.129065, VelSim=0.9607 (excellent), GradNorm=263.220, LR=2.94e-04, PredNorm=40.892, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:42:23,752 - INFO - Step 1520: Loss=0.129057, VelSim=0.9607 (excellent), GradNorm=289.125, LR=2.92e-04, PredNorm=40.885, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:42:27,628 - INFO - Step 1530: Loss=0.129049, VelSim=0.9607 (excellent), GradNorm=229.745, LR=2.89e-04, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:42:31,480 - INFO - Step 1540: Loss=0.129041, VelSim=0.9607 (excellent), GradNorm=236.676, LR=2.87e-04, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:42:35,347 - INFO - Step 1550: Loss=0.129034, VelSim=0.9607 (excellent), GradNorm=202.292, LR=2.84e-04, PredNorm=40.882, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:42:35,347 - INFO - Running evaluation at step 1550...
+2025-07-28 09:42:39,637 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 09:42:46,777 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 09:42:46,777 - INFO -   eval_clip_similarity: 0.2486
+2025-07-28 09:42:46,777 - INFO -   eval_clip_similarity_std: 0.0141
+2025-07-28 09:42:46,777 - INFO -   eval_clip_similarity_min: 0.2317
+2025-07-28 09:42:46,777 - INFO -   eval_clip_similarity_max: 0.2711
+2025-07-28 09:42:46,777 - INFO -   eval_mse_loss: 2.2385
+2025-07-28 09:42:46,777 - INFO -   eval_mse_loss_std: 0.0828
+2025-07-28 09:42:46,778 - INFO -   eval_high_quality: 0.0000
+2025-07-28 09:42:46,778 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 09:42:46,778 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 09:42:46,778 - INFO -   eval_samples: 16.0000
+2025-07-28 09:42:46,778 - INFO -   eval_time_seconds: 11.4278
+2025-07-28 09:42:46,778 - INFO -   eval_samples_per_second: 1.4001
+2025-07-28 09:42:50,636 - INFO - Step 1560: Loss=0.129027, VelSim=0.9607 (excellent), GradNorm=223.940, LR=2.82e-04, PredNorm=40.888, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:42:54,494 - INFO - Step 1570: Loss=0.129020, VelSim=0.9607 (excellent), GradNorm=246.864, LR=2.80e-04, PredNorm=40.891, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:42:58,352 - INFO - Step 1580: Loss=0.129012, VelSim=0.9607 (excellent), GradNorm=198.659, LR=2.77e-04, PredNorm=40.885, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:43:02,223 - INFO - Step 1590: Loss=0.129006, VelSim=0.9607 (excellent), GradNorm=190.993, LR=2.75e-04, PredNorm=40.885, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:43:06,077 - INFO - Step 1600: Loss=0.128999, VelSim=0.9607 (excellent), GradNorm=203.008, LR=2.72e-04, PredNorm=40.892, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:43:06,077 - INFO - Running evaluation at step 1600...
+2025-07-28 09:43:10,433 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 09:43:17,568 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 09:43:17,569 - INFO -   eval_clip_similarity: 0.2498
+2025-07-28 09:43:17,569 - INFO -   eval_clip_similarity_std: 0.0162
+2025-07-28 09:43:17,569 - INFO -   eval_clip_similarity_min: 0.2292
+2025-07-28 09:43:17,569 - INFO -   eval_clip_similarity_max: 0.2798
+2025-07-28 09:43:17,569 - INFO -   eval_mse_loss: 2.2367
+2025-07-28 09:43:17,569 - INFO -   eval_mse_loss_std: 0.0753
+2025-07-28 09:43:17,570 - INFO -   eval_high_quality: 0.0000
+2025-07-28 09:43:17,570 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 09:43:17,570 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 09:43:17,570 - INFO -   eval_samples: 16.0000
+2025-07-28 09:43:17,570 - INFO -   eval_time_seconds: 11.4890
+2025-07-28 09:43:17,570 - INFO -   eval_samples_per_second: 1.3926
+2025-07-28 09:43:21,432 - INFO - Step 1610: Loss=0.128993, VelSim=0.9607 (excellent), GradNorm=191.956, LR=2.70e-04, PredNorm=40.884, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:43:25,305 - INFO - Step 1620: Loss=0.128987, VelSim=0.9608 (excellent), GradNorm=203.609, LR=2.67e-04, PredNorm=40.885, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:43:29,166 - INFO - Step 1630: Loss=0.128981, VelSim=0.9608 (excellent), GradNorm=208.638, LR=2.65e-04, PredNorm=40.887, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:43:30,831 - INFO - Iteration completed: 5247 samples processed
+2025-07-28 09:43:30,831 - INFO - Epoch 5 completed: 327 batches processed
+2025-07-28 09:43:30,846 - INFO - Epoch 5 completed:
+2025-07-28 09:43:30,846 - INFO -   Average loss: 0.129112
+2025-07-28 09:43:30,846 - INFO -   Best loss: 0.128978
+2025-07-28 09:43:30,846 - INFO -   Best similarity: 0.9608
+2025-07-28 09:43:30,846 - INFO -   Steps in epoch: 327
+2025-07-28 09:43:30,846 - INFO -   Epoch time: 206.1s
+2025-07-28 09:43:30,847 - INFO - Starting epoch 6/10
+2025-07-28 09:43:35,115 - INFO - Loaded shard 1/2: 2601 samples
+2025-07-28 09:43:37,480 - INFO - Step 1640: Loss=0.128975, VelSim=0.9608 (excellent), GradNorm=188.814, LR=2.62e-04, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:43:41,335 - INFO - Step 1650: Loss=0.128969, VelSim=0.9608 (excellent), GradNorm=217.094, LR=2.60e-04, PredNorm=40.884, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:43:41,335 - INFO - Running evaluation at step 1650...
+2025-07-28 09:43:45,695 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 09:43:52,850 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 09:43:52,851 - INFO -   eval_clip_similarity: 0.2482
+2025-07-28 09:43:52,851 - INFO -   eval_clip_similarity_std: 0.0152
+2025-07-28 09:43:52,851 - INFO -   eval_clip_similarity_min: 0.2269
+2025-07-28 09:43:52,851 - INFO -   eval_clip_similarity_max: 0.2767
+2025-07-28 09:43:52,851 - INFO -   eval_mse_loss: 2.2391
+2025-07-28 09:43:52,851 - INFO -   eval_mse_loss_std: 0.0793
+2025-07-28 09:43:52,851 - INFO -   eval_high_quality: 0.0000
+2025-07-28 09:43:52,851 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 09:43:52,851 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 09:43:52,851 - INFO -   eval_samples: 16.0000
+2025-07-28 09:43:52,851 - INFO -   eval_time_seconds: 11.5129
+2025-07-28 09:43:52,851 - INFO -   eval_samples_per_second: 1.3897
+2025-07-28 09:43:56,718 - INFO - Step 1660: Loss=0.128963, VelSim=0.9608 (excellent), GradNorm=188.274, LR=2.57e-04, PredNorm=40.886, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:44:00,588 - INFO - Step 1670: Loss=0.128958, VelSim=0.9608 (excellent), GradNorm=201.032, LR=2.55e-04, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:44:04,463 - INFO - Step 1680: Loss=0.128952, VelSim=0.9608 (excellent), GradNorm=179.007, LR=2.52e-04, PredNorm=40.886, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:44:08,334 - INFO - Step 1690: Loss=0.128947, VelSim=0.9608 (excellent), GradNorm=198.495, LR=2.50e-04, PredNorm=40.881, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:44:12,262 - INFO - Step 1700: Loss=0.128942, VelSim=0.9608 (excellent), GradNorm=188.905, LR=2.48e-04, PredNorm=40.890, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:44:12,262 - INFO - Running evaluation at step 1700...
+2025-07-28 09:44:16,606 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 09:44:23,761 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 09:44:23,761 - INFO -   eval_clip_similarity: 0.2482
+2025-07-28 09:44:23,761 - INFO -   eval_clip_similarity_std: 0.0147
+2025-07-28 09:44:23,761 - INFO -   eval_clip_similarity_min: 0.2300
+2025-07-28 09:44:23,761 - INFO -   eval_clip_similarity_max: 0.2755
+2025-07-28 09:44:23,761 - INFO -   eval_mse_loss: 2.2389
+2025-07-28 09:44:23,762 - INFO -   eval_mse_loss_std: 0.0809
+2025-07-28 09:44:23,762 - INFO -   eval_high_quality: 0.0000
+2025-07-28 09:44:23,762 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 09:44:23,762 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 09:44:23,762 - INFO -   eval_samples: 16.0000
+2025-07-28 09:44:23,762 - INFO -   eval_time_seconds: 11.4972
+2025-07-28 09:44:23,762 - INFO -   eval_samples_per_second: 1.3916
+2025-07-28 09:44:27,631 - INFO - Step 1710: Loss=0.128937, VelSim=0.9608 (excellent), GradNorm=179.754, LR=2.45e-04, PredNorm=40.881, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:44:31,488 - INFO - Step 1720: Loss=0.128932, VelSim=0.9608 (excellent), GradNorm=172.099, LR=2.43e-04, PredNorm=40.884, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:44:35,352 - INFO - Step 1730: Loss=0.128927, VelSim=0.9608 (excellent), GradNorm=165.145, LR=2.40e-04, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:44:39,217 - INFO - Step 1740: Loss=0.128922, VelSim=0.9608 (excellent), GradNorm=176.297, LR=2.38e-04, PredNorm=40.883, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:44:43,073 - INFO - Step 1750: Loss=0.128918, VelSim=0.9608 (excellent), GradNorm=178.385, LR=2.35e-04, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:44:43,073 - INFO - Running evaluation at step 1750...
+2025-07-28 09:44:47,376 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 09:44:54,524 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 09:44:54,525 - INFO -   eval_clip_similarity: 0.2481
+2025-07-28 09:44:54,525 - INFO -   eval_clip_similarity_std: 0.0158
+2025-07-28 09:44:54,525 - INFO -   eval_clip_similarity_min: 0.2282
+2025-07-28 09:44:54,525 - INFO -   eval_clip_similarity_max: 0.2741
+2025-07-28 09:44:54,525 - INFO -   eval_mse_loss: 2.2393
+2025-07-28 09:44:54,525 - INFO -   eval_mse_loss_std: 0.0777
+2025-07-28 09:44:54,525 - INFO -   eval_high_quality: 0.0000
+2025-07-28 09:44:54,525 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 09:44:54,525 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 09:44:54,525 - INFO -   eval_samples: 16.0000
+2025-07-28 09:44:54,525 - INFO -   eval_time_seconds: 11.4497
+2025-07-28 09:44:54,525 - INFO -   eval_samples_per_second: 1.3974
+2025-07-28 09:44:58,381 - INFO - Step 1760: Loss=0.128913, VelSim=0.9608 (excellent), GradNorm=169.665, LR=2.33e-04, PredNorm=40.893, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:45:02,213 - INFO - Step 1770: Loss=0.128909, VelSim=0.9608 (excellent), GradNorm=157.670, LR=2.30e-04, PredNorm=40.888, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:45:06,042 - INFO - Step 1780: Loss=0.128905, VelSim=0.9608 (excellent), GradNorm=161.030, LR=2.28e-04, PredNorm=40.885, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:45:09,883 - INFO - Step 1790: Loss=0.128900, VelSim=0.9608 (excellent), GradNorm=151.232, LR=2.25e-04, PredNorm=40.886, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:45:16,407 - INFO - Loaded shard 2/2: 2646 samples
+2025-07-28 09:45:18,175 - INFO - Step 1800: Loss=0.128896, VelSim=0.9608 (excellent), GradNorm=154.491, LR=2.23e-04, PredNorm=40.885, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:45:18,175 - INFO - Running evaluation at step 1800...
+2025-07-28 09:45:22,317 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 09:45:29,459 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 09:45:29,460 - INFO -   eval_clip_similarity: 0.2482
+2025-07-28 09:45:29,460 - INFO -   eval_clip_similarity_std: 0.0146
+2025-07-28 09:45:29,460 - INFO -   eval_clip_similarity_min: 0.2301
+2025-07-28 09:45:29,460 - INFO -   eval_clip_similarity_max: 0.2749
+2025-07-28 09:45:29,460 - INFO -   eval_mse_loss: 2.2395
+2025-07-28 09:45:29,460 - INFO -   eval_mse_loss_std: 0.0769
+2025-07-28 09:45:29,460 - INFO -   eval_high_quality: 0.0000
+2025-07-28 09:45:29,460 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 09:45:29,461 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 09:45:29,461 - INFO -   eval_samples: 16.0000
+2025-07-28 09:45:29,461 - INFO -   eval_time_seconds: 11.2820
+2025-07-28 09:45:29,461 - INFO -   eval_samples_per_second: 1.4182
+2025-07-28 09:45:33,290 - INFO - Step 1810: Loss=0.128892, VelSim=0.9608 (excellent), GradNorm=159.194, LR=2.21e-04, PredNorm=40.888, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:45:37,121 - INFO - Step 1820: Loss=0.128888, VelSim=0.9608 (excellent), GradNorm=146.472, LR=2.18e-04, PredNorm=40.885, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:45:40,954 - INFO - Step 1830: Loss=0.128884, VelSim=0.9608 (excellent), GradNorm=155.340, LR=2.16e-04, PredNorm=40.885, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:45:44,798 - INFO - Step 1840: Loss=0.128881, VelSim=0.9608 (excellent), GradNorm=145.929, LR=2.13e-04, PredNorm=40.886, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:45:48,621 - INFO - Step 1850: Loss=0.128877, VelSim=0.9608 (excellent), GradNorm=146.888, LR=2.11e-04, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:45:48,621 - INFO - Running evaluation at step 1850...
+2025-07-28 09:45:53,001 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 09:46:00,146 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 09:46:00,147 - INFO -   eval_clip_similarity: 0.2480
+2025-07-28 09:46:00,147 - INFO -   eval_clip_similarity_std: 0.0149
+2025-07-28 09:46:00,147 - INFO -   eval_clip_similarity_min: 0.2292
+2025-07-28 09:46:00,147 - INFO -   eval_clip_similarity_max: 0.2739
+2025-07-28 09:46:00,147 - INFO -   eval_mse_loss: 2.2436
+2025-07-28 09:46:00,147 - INFO -   eval_mse_loss_std: 0.0777
+2025-07-28 09:46:00,147 - INFO -   eval_high_quality: 0.0000
+2025-07-28 09:46:00,147 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 09:46:00,147 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 09:46:00,147 - INFO -   eval_samples: 16.0000
+2025-07-28 09:46:00,147 - INFO -   eval_time_seconds: 11.5236
+2025-07-28 09:46:00,147 - INFO -   eval_samples_per_second: 1.3885
+2025-07-28 09:46:03,959 - INFO - Step 1860: Loss=0.128873, VelSim=0.9608 (excellent), GradNorm=146.304, LR=2.08e-04, PredNorm=40.886, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:46:07,793 - INFO - Step 1870: Loss=0.128870, VelSim=0.9608 (excellent), GradNorm=140.534, LR=2.06e-04, PredNorm=40.885, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:46:11,615 - INFO - Step 1880: Loss=0.128866, VelSim=0.9608 (excellent), GradNorm=143.875, LR=2.04e-04, PredNorm=40.884, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:46:15,444 - INFO - Step 1890: Loss=0.128863, VelSim=0.9608 (excellent), GradNorm=141.921, LR=2.01e-04, PredNorm=40.886, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:46:19,274 - INFO - Step 1900: Loss=0.128860, VelSim=0.9608 (excellent), GradNorm=141.893, LR=1.99e-04, PredNorm=40.887, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:46:19,274 - INFO - Running evaluation at step 1900...
+2025-07-28 09:46:23,597 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 09:46:30,744 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 09:46:30,744 - INFO -   eval_clip_similarity: 0.2491
+2025-07-28 09:46:30,744 - INFO -   eval_clip_similarity_std: 0.0158
+2025-07-28 09:46:30,744 - INFO -   eval_clip_similarity_min: 0.2259
+2025-07-28 09:46:30,744 - INFO -   eval_clip_similarity_max: 0.2768
+2025-07-28 09:46:30,744 - INFO -   eval_mse_loss: 2.2368
+2025-07-28 09:46:30,744 - INFO -   eval_mse_loss_std: 0.0795
+2025-07-28 09:46:30,744 - INFO -   eval_high_quality: 0.0000
+2025-07-28 09:46:30,744 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 09:46:30,744 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 09:46:30,745 - INFO -   eval_samples: 16.0000
+2025-07-28 09:46:30,745 - INFO -   eval_time_seconds: 11.4675
+2025-07-28 09:46:30,745 - INFO -   eval_samples_per_second: 1.3952
+2025-07-28 09:46:34,562 - INFO - Step 1910: Loss=0.128856, VelSim=0.9608 (excellent), GradNorm=134.177, LR=1.96e-04, PredNorm=40.888, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:46:38,400 - INFO - Step 1920: Loss=0.128853, VelSim=0.9608 (excellent), GradNorm=133.379, LR=1.94e-04, PredNorm=40.887, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:46:42,227 - INFO - Step 1930: Loss=0.128850, VelSim=0.9608 (excellent), GradNorm=130.044, LR=1.92e-04, PredNorm=40.887, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:46:46,073 - INFO - Step 1940: Loss=0.128847, VelSim=0.9608 (excellent), GradNorm=128.444, LR=1.89e-04, PredNorm=40.887, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:46:49,897 - INFO - Step 1950: Loss=0.128844, VelSim=0.9608 (excellent), GradNorm=130.021, LR=1.87e-04, PredNorm=40.888, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:46:49,898 - INFO - Running evaluation at step 1950...
+2025-07-28 09:46:54,233 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 09:47:01,377 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 09:47:01,378 - INFO -   eval_clip_similarity: 0.2488
+2025-07-28 09:47:01,378 - INFO -   eval_clip_similarity_std: 0.0141
+2025-07-28 09:47:01,378 - INFO -   eval_clip_similarity_min: 0.2295
+2025-07-28 09:47:01,378 - INFO -   eval_clip_similarity_max: 0.2772
+2025-07-28 09:47:01,378 - INFO -   eval_mse_loss: 2.2392
+2025-07-28 09:47:01,378 - INFO -   eval_mse_loss_std: 0.0820
+2025-07-28 09:47:01,378 - INFO -   eval_high_quality: 0.0000
+2025-07-28 09:47:01,378 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 09:47:01,378 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 09:47:01,378 - INFO -   eval_samples: 16.0000
+2025-07-28 09:47:01,379 - INFO -   eval_time_seconds: 11.4776
+2025-07-28 09:47:01,379 - INFO -   eval_samples_per_second: 1.3940
+2025-07-28 09:47:05,198 - INFO - Step 1960: Loss=0.128841, VelSim=0.9608 (excellent), GradNorm=131.334, LR=1.84e-04, PredNorm=40.886, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:47:05,966 - INFO - Iteration completed: 5247 samples processed
+2025-07-28 09:47:05,967 - INFO - Epoch 6 completed: 327 batches processed
+2025-07-28 09:47:05,981 - INFO - Epoch 6 completed:
+2025-07-28 09:47:05,982 - INFO -   Average loss: 0.128901
+2025-07-28 09:47:05,982 - INFO -   Best loss: 0.128841
+2025-07-28 09:47:05,982 - INFO -   Best similarity: 0.9608
+2025-07-28 09:47:05,982 - INFO -   Steps in epoch: 327
+2025-07-28 09:47:05,982 - INFO -   Epoch time: 215.1s
+2025-07-28 09:47:05,982 - INFO - Starting epoch 7/10
+2025-07-28 09:47:10,326 - INFO - Loaded shard 1/2: 2601 samples
+2025-07-28 09:47:13,545 - INFO - Step 1970: Loss=0.128838, VelSim=0.9608 (excellent), GradNorm=128.683, LR=1.82e-04, PredNorm=40.886, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:47:17,377 - INFO - Step 1980: Loss=0.128836, VelSim=0.9608 (excellent), GradNorm=131.521, LR=1.80e-04, PredNorm=40.887, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:47:21,204 - INFO - Step 1990: Loss=0.128833, VelSim=0.9608 (excellent), GradNorm=129.997, LR=1.77e-04, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:47:25,026 - INFO - Step 2000: Loss=0.128830, VelSim=0.9608 (excellent), GradNorm=126.554, LR=1.75e-04, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:47:25,026 - INFO - Running evaluation at step 2000...
+2025-07-28 09:47:29,291 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 09:47:36,438 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 09:47:36,438 - INFO -   eval_clip_similarity: 0.2494
+2025-07-28 09:47:36,438 - INFO -   eval_clip_similarity_std: 0.0156
+2025-07-28 09:47:36,438 - INFO -   eval_clip_similarity_min: 0.2261
+2025-07-28 09:47:36,438 - INFO -   eval_clip_similarity_max: 0.2768
+2025-07-28 09:47:36,438 - INFO -   eval_mse_loss: 2.2363
+2025-07-28 09:47:36,439 - INFO -   eval_mse_loss_std: 0.0785
+2025-07-28 09:47:36,439 - INFO -   eval_high_quality: 0.0000
+2025-07-28 09:47:36,439 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 09:47:36,439 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 09:47:36,439 - INFO -   eval_samples: 16.0000
+2025-07-28 09:47:36,439 - INFO -   eval_time_seconds: 11.4098
+2025-07-28 09:47:36,439 - INFO -   eval_samples_per_second: 1.4023
+2025-07-28 09:47:38,303 - INFO - Checkpoint saved: checkpoints/clip_repro_20250728_092543/checkpoint_step_2000.pt
+2025-07-28 09:47:42,119 - INFO - Step 2010: Loss=0.128828, VelSim=0.9608 (excellent), GradNorm=259.518, LR=1.73e-04, PredNorm=40.885, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:47:45,962 - INFO - Step 2020: Loss=0.128825, VelSim=0.9608 (excellent), GradNorm=251.265, LR=1.70e-04, PredNorm=40.888, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:47:49,812 - INFO - Step 2030: Loss=0.128822, VelSim=0.9608 (excellent), GradNorm=251.960, LR=1.68e-04, PredNorm=40.887, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:47:53,675 - INFO - Step 2040: Loss=0.128820, VelSim=0.9608 (excellent), GradNorm=249.865, LR=1.66e-04, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:47:57,632 - INFO - Step 2050: Loss=0.128818, VelSim=0.9608 (excellent), GradNorm=243.485, LR=1.63e-04, PredNorm=40.888, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:47:57,633 - INFO - Running evaluation at step 2050...
+2025-07-28 09:48:01,882 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 09:48:09,036 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 09:48:09,037 - INFO -   eval_clip_similarity: 0.2485
+2025-07-28 09:48:09,037 - INFO -   eval_clip_similarity_std: 0.0147
+2025-07-28 09:48:09,037 - INFO -   eval_clip_similarity_min: 0.2290
+2025-07-28 09:48:09,037 - INFO -   eval_clip_similarity_max: 0.2750
+2025-07-28 09:48:09,037 - INFO -   eval_mse_loss: 2.2374
+2025-07-28 09:48:09,037 - INFO -   eval_mse_loss_std: 0.0778
+2025-07-28 09:48:09,037 - INFO -   eval_high_quality: 0.0000
+2025-07-28 09:48:09,037 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 09:48:09,037 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 09:48:09,037 - INFO -   eval_samples: 16.0000
+2025-07-28 09:48:09,037 - INFO -   eval_time_seconds: 11.4014
+2025-07-28 09:48:09,037 - INFO -   eval_samples_per_second: 1.4033
+2025-07-28 09:48:12,886 - INFO - Step 2060: Loss=0.128816, VelSim=0.9608 (excellent), GradNorm=246.087, LR=1.61e-04, PredNorm=40.887, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:48:16,765 - INFO - Step 2070: Loss=0.128813, VelSim=0.9608 (excellent), GradNorm=239.457, LR=1.59e-04, PredNorm=40.886, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:48:20,639 - INFO - Step 2080: Loss=0.128811, VelSim=0.9608 (excellent), GradNorm=241.402, LR=1.57e-04, PredNorm=40.890, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:48:24,511 - INFO - Step 2090: Loss=0.128809, VelSim=0.9608 (excellent), GradNorm=231.712, LR=1.54e-04, PredNorm=40.887, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:48:28,375 - INFO - Step 2100: Loss=0.128806, VelSim=0.9608 (excellent), GradNorm=227.455, LR=1.52e-04, PredNorm=40.888, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:48:28,376 - INFO - Running evaluation at step 2100...
+2025-07-28 09:48:32,645 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 09:48:39,787 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 09:48:39,787 - INFO -   eval_clip_similarity: 0.2488
+2025-07-28 09:48:39,788 - INFO -   eval_clip_similarity_std: 0.0163
+2025-07-28 09:48:39,788 - INFO -   eval_clip_similarity_min: 0.2282
+2025-07-28 09:48:39,788 - INFO -   eval_clip_similarity_max: 0.2757
+2025-07-28 09:48:39,788 - INFO -   eval_mse_loss: 2.2382
+2025-07-28 09:48:39,788 - INFO -   eval_mse_loss_std: 0.0767
+2025-07-28 09:48:39,788 - INFO -   eval_high_quality: 0.0000
+2025-07-28 09:48:39,788 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 09:48:39,788 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 09:48:39,788 - INFO -   eval_samples: 16.0000
+2025-07-28 09:48:39,788 - INFO -   eval_time_seconds: 11.4097
+2025-07-28 09:48:39,789 - INFO -   eval_samples_per_second: 1.4023
+2025-07-28 09:48:43,646 - INFO - Step 2110: Loss=0.128804, VelSim=0.9608 (excellent), GradNorm=227.513, LR=1.50e-04, PredNorm=40.887, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:48:47,512 - INFO - Step 2120: Loss=0.128802, VelSim=0.9608 (excellent), GradNorm=233.891, LR=1.48e-04, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:48:53,234 - INFO - Loaded shard 2/2: 2646 samples
+2025-07-28 09:48:55,893 - INFO - Step 2130: Loss=0.128800, VelSim=0.9608 (excellent), GradNorm=234.721, LR=1.45e-04, PredNorm=40.886, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:48:59,754 - INFO - Step 2140: Loss=0.128798, VelSim=0.9608 (excellent), GradNorm=226.467, LR=1.43e-04, PredNorm=40.887, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:49:03,621 - INFO - Step 2150: Loss=0.128796, VelSim=0.9608 (excellent), GradNorm=222.446, LR=1.41e-04, PredNorm=40.888, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:49:03,621 - INFO - Running evaluation at step 2150...
+2025-07-28 09:49:07,899 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 09:49:15,052 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 09:49:15,052 - INFO -   eval_clip_similarity: 0.2479
+2025-07-28 09:49:15,052 - INFO -   eval_clip_similarity_std: 0.0142
+2025-07-28 09:49:15,052 - INFO -   eval_clip_similarity_min: 0.2306
+2025-07-28 09:49:15,053 - INFO -   eval_clip_similarity_max: 0.2738
+2025-07-28 09:49:15,053 - INFO -   eval_mse_loss: 2.2404
+2025-07-28 09:49:15,053 - INFO -   eval_mse_loss_std: 0.0791
+2025-07-28 09:49:15,053 - INFO -   eval_high_quality: 0.0000
+2025-07-28 09:49:15,053 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 09:49:15,053 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 09:49:15,053 - INFO -   eval_samples: 16.0000
+2025-07-28 09:49:15,053 - INFO -   eval_time_seconds: 11.4289
+2025-07-28 09:49:15,054 - INFO -   eval_samples_per_second: 1.4000
+2025-07-28 09:49:18,916 - INFO - Step 2160: Loss=0.128794, VelSim=0.9608 (excellent), GradNorm=220.388, LR=1.39e-04, PredNorm=40.887, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:49:22,787 - INFO - Step 2170: Loss=0.128792, VelSim=0.9608 (excellent), GradNorm=213.403, LR=1.37e-04, PredNorm=40.888, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:49:26,648 - INFO - Step 2180: Loss=0.128791, VelSim=0.9608 (excellent), GradNorm=210.017, LR=1.34e-04, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:49:30,503 - INFO - Step 2190: Loss=0.128789, VelSim=0.9608 (excellent), GradNorm=211.085, LR=1.32e-04, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:49:34,365 - INFO - Step 2200: Loss=0.128787, VelSim=0.9608 (excellent), GradNorm=212.406, LR=1.30e-04, PredNorm=40.888, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:49:34,365 - INFO - Running evaluation at step 2200...
+2025-07-28 09:49:38,699 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 09:49:45,843 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 09:49:45,843 - INFO -   eval_clip_similarity: 0.2483
+2025-07-28 09:49:45,843 - INFO -   eval_clip_similarity_std: 0.0151
+2025-07-28 09:49:45,843 - INFO -   eval_clip_similarity_min: 0.2256
+2025-07-28 09:49:45,843 - INFO -   eval_clip_similarity_max: 0.2753
+2025-07-28 09:49:45,843 - INFO -   eval_mse_loss: 2.2436
+2025-07-28 09:49:45,843 - INFO -   eval_mse_loss_std: 0.0793
+2025-07-28 09:49:45,843 - INFO -   eval_high_quality: 0.0000
+2025-07-28 09:49:45,843 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 09:49:45,843 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 09:49:45,844 - INFO -   eval_samples: 16.0000
+2025-07-28 09:49:45,844 - INFO -   eval_time_seconds: 11.4757
+2025-07-28 09:49:45,844 - INFO -   eval_samples_per_second: 1.3942
+2025-07-28 09:49:49,733 - INFO - Step 2210: Loss=0.128785, VelSim=0.9608 (excellent), GradNorm=209.945, LR=1.28e-04, PredNorm=40.888, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:49:53,579 - INFO - Step 2220: Loss=0.128784, VelSim=0.9608 (excellent), GradNorm=208.764, LR=1.26e-04, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:49:57,441 - INFO - Step 2230: Loss=0.128782, VelSim=0.9608 (excellent), GradNorm=206.318, LR=1.24e-04, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:50:01,300 - INFO - Step 2240: Loss=0.128781, VelSim=0.9608 (excellent), GradNorm=211.547, LR=1.22e-04, PredNorm=40.888, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:50:05,229 - INFO - Step 2250: Loss=0.128779, VelSim=0.9608 (excellent), GradNorm=207.998, LR=1.20e-04, PredNorm=40.887, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:50:05,230 - INFO - Running evaluation at step 2250...
+2025-07-28 09:50:09,516 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 09:50:16,650 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 09:50:16,650 - INFO -   eval_clip_similarity: 0.2483
+2025-07-28 09:50:16,650 - INFO -   eval_clip_similarity_std: 0.0147
+2025-07-28 09:50:16,650 - INFO -   eval_clip_similarity_min: 0.2273
+2025-07-28 09:50:16,650 - INFO -   eval_clip_similarity_max: 0.2750
+2025-07-28 09:50:16,650 - INFO -   eval_mse_loss: 2.2429
+2025-07-28 09:50:16,650 - INFO -   eval_mse_loss_std: 0.0796
+2025-07-28 09:50:16,651 - INFO -   eval_high_quality: 0.0000
+2025-07-28 09:50:16,651 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 09:50:16,651 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 09:50:16,651 - INFO -   eval_samples: 16.0000
+2025-07-28 09:50:16,651 - INFO -   eval_time_seconds: 11.4183
+2025-07-28 09:50:16,652 - INFO -   eval_samples_per_second: 1.4013
+2025-07-28 09:50:20,497 - INFO - Step 2260: Loss=0.128778, VelSim=0.9608 (excellent), GradNorm=212.362, LR=1.18e-04, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:50:24,367 - INFO - Step 2270: Loss=0.128776, VelSim=0.9608 (excellent), GradNorm=202.271, LR=1.16e-04, PredNorm=40.888, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:50:28,223 - INFO - Step 2280: Loss=0.128775, VelSim=0.9608 (excellent), GradNorm=203.630, LR=1.13e-04, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:50:31,080 - INFO - Iteration completed: 5247 samples processed
+2025-07-28 09:50:31,081 - INFO - Epoch 7 completed: 327 batches processed
+2025-07-28 09:50:31,095 - INFO - Epoch 7 completed:
+2025-07-28 09:50:31,096 - INFO -   Average loss: 0.128803
+2025-07-28 09:50:31,096 - INFO -   Best loss: 0.128773
+2025-07-28 09:50:31,096 - INFO -   Best similarity: 0.9608
+2025-07-28 09:50:31,096 - INFO -   Steps in epoch: 327
+2025-07-28 09:50:31,096 - INFO -   Epoch time: 205.1s
+2025-07-28 09:50:31,096 - INFO - Starting epoch 8/10
+2025-07-28 09:50:35,365 - INFO - Loaded shard 1/2: 2601 samples
+2025-07-28 09:50:36,539 - INFO - Step 2290: Loss=0.128773, VelSim=0.9608 (excellent), GradNorm=198.746, LR=1.11e-04, PredNorm=40.888, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:50:40,391 - INFO - Step 2300: Loss=0.128772, VelSim=0.9608 (excellent), GradNorm=199.338, LR=1.09e-04, PredNorm=40.888, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:50:40,391 - INFO - Running evaluation at step 2300...
+2025-07-28 09:50:44,784 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 09:50:51,959 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 09:50:51,960 - INFO -   eval_clip_similarity: 0.2488
+2025-07-28 09:50:51,960 - INFO -   eval_clip_similarity_std: 0.0139
+2025-07-28 09:50:51,960 - INFO -   eval_clip_similarity_min: 0.2307
+2025-07-28 09:50:51,960 - INFO -   eval_clip_similarity_max: 0.2746
+2025-07-28 09:50:51,960 - INFO -   eval_mse_loss: 2.2423
+2025-07-28 09:50:51,960 - INFO -   eval_mse_loss_std: 0.0738
+2025-07-28 09:50:51,960 - INFO -   eval_high_quality: 0.0000
+2025-07-28 09:50:51,960 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 09:50:51,960 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 09:50:51,960 - INFO -   eval_samples: 16.0000
+2025-07-28 09:50:51,960 - INFO -   eval_time_seconds: 11.5660
+2025-07-28 09:50:51,961 - INFO -   eval_samples_per_second: 1.3834
+2025-07-28 09:50:55,825 - INFO - Step 2310: Loss=0.128770, VelSim=0.9608 (excellent), GradNorm=191.492, LR=1.07e-04, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:50:59,688 - INFO - Step 2320: Loss=0.128769, VelSim=0.9608 (excellent), GradNorm=196.515, LR=1.05e-04, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:51:03,556 - INFO - Step 2330: Loss=0.128768, VelSim=0.9608 (excellent), GradNorm=192.359, LR=1.03e-04, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:51:07,403 - INFO - Step 2340: Loss=0.128766, VelSim=0.9608 (excellent), GradNorm=189.427, LR=1.02e-04, PredNorm=40.888, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:51:11,272 - INFO - Step 2350: Loss=0.128765, VelSim=0.9608 (excellent), GradNorm=195.661, LR=9.96e-05, PredNorm=40.887, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:51:11,273 - INFO - Running evaluation at step 2350...
+2025-07-28 09:51:15,593 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 09:51:22,752 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 09:51:22,752 - INFO -   eval_clip_similarity: 0.2491
+2025-07-28 09:51:22,752 - INFO -   eval_clip_similarity_std: 0.0148
+2025-07-28 09:51:22,752 - INFO -   eval_clip_similarity_min: 0.2289
+2025-07-28 09:51:22,752 - INFO -   eval_clip_similarity_max: 0.2796
+2025-07-28 09:51:22,752 - INFO -   eval_mse_loss: 2.2389
+2025-07-28 09:51:22,752 - INFO -   eval_mse_loss_std: 0.0784
+2025-07-28 09:51:22,753 - INFO -   eval_high_quality: 0.0000
+2025-07-28 09:51:22,753 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 09:51:22,753 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 09:51:22,753 - INFO -   eval_samples: 16.0000
+2025-07-28 09:51:22,753 - INFO -   eval_time_seconds: 11.4772
+2025-07-28 09:51:22,753 - INFO -   eval_samples_per_second: 1.3941
+2025-07-28 09:51:26,582 - INFO - Step 2360: Loss=0.128764, VelSim=0.9608 (excellent), GradNorm=185.948, LR=9.76e-05, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:51:30,460 - INFO - Step 2370: Loss=0.128763, VelSim=0.9608 (excellent), GradNorm=189.116, LR=9.57e-05, PredNorm=40.888, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:51:34,308 - INFO - Step 2380: Loss=0.128761, VelSim=0.9608 (excellent), GradNorm=186.813, LR=9.38e-05, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:51:38,176 - INFO - Step 2390: Loss=0.128760, VelSim=0.9608 (excellent), GradNorm=185.358, LR=9.19e-05, PredNorm=40.888, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:51:42,055 - INFO - Step 2400: Loss=0.128759, VelSim=0.9608 (excellent), GradNorm=184.709, LR=9.01e-05, PredNorm=40.888, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:51:42,055 - INFO - Running evaluation at step 2400...
+2025-07-28 09:51:46,386 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 09:51:53,534 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 09:51:53,535 - INFO -   eval_clip_similarity: 0.2492
+2025-07-28 09:51:53,535 - INFO -   eval_clip_similarity_std: 0.0159
+2025-07-28 09:51:53,535 - INFO -   eval_clip_similarity_min: 0.2268
+2025-07-28 09:51:53,535 - INFO -   eval_clip_similarity_max: 0.2758
+2025-07-28 09:51:53,535 - INFO -   eval_mse_loss: 2.2396
+2025-07-28 09:51:53,535 - INFO -   eval_mse_loss_std: 0.0733
+2025-07-28 09:51:53,535 - INFO -   eval_high_quality: 0.0000
+2025-07-28 09:51:53,535 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 09:51:53,535 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 09:51:53,535 - INFO -   eval_samples: 16.0000
+2025-07-28 09:51:53,535 - INFO -   eval_time_seconds: 11.4771
+2025-07-28 09:51:53,535 - INFO -   eval_samples_per_second: 1.3941
+2025-07-28 09:51:57,396 - INFO - Step 2410: Loss=0.128758, VelSim=0.9608 (excellent), GradNorm=178.814, LR=8.82e-05, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:52:01,250 - INFO - Step 2420: Loss=0.128757, VelSim=0.9608 (excellent), GradNorm=176.426, LR=8.64e-05, PredNorm=40.888, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:52:05,458 - INFO - Step 2430: Loss=0.128756, VelSim=0.9608 (excellent), GradNorm=181.214, LR=8.46e-05, PredNorm=40.888, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:52:09,305 - INFO - Step 2440: Loss=0.128755, VelSim=0.9608 (excellent), GradNorm=177.447, LR=8.28e-05, PredNorm=40.888, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:52:13,165 - INFO - Step 2450: Loss=0.128754, VelSim=0.9608 (excellent), GradNorm=176.650, LR=8.10e-05, PredNorm=40.888, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:52:13,165 - INFO - Running evaluation at step 2450...
+2025-07-28 09:52:17,461 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 09:52:24,615 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 09:52:24,616 - INFO -   eval_clip_similarity: 0.2503
+2025-07-28 09:52:24,616 - INFO -   eval_clip_similarity_std: 0.0143
+2025-07-28 09:52:24,616 - INFO -   eval_clip_similarity_min: 0.2336
+2025-07-28 09:52:24,616 - INFO -   eval_clip_similarity_max: 0.2749
+2025-07-28 09:52:24,616 - INFO -   eval_mse_loss: 2.2356
+2025-07-28 09:52:24,616 - INFO -   eval_mse_loss_std: 0.0762
+2025-07-28 09:52:24,616 - INFO -   eval_high_quality: 0.0000
+2025-07-28 09:52:24,616 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 09:52:24,616 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 09:52:24,616 - INFO -   eval_samples: 16.0000
+2025-07-28 09:52:24,616 - INFO -   eval_time_seconds: 11.4478
+2025-07-28 09:52:24,616 - INFO -   eval_samples_per_second: 1.3976
+2025-07-28 09:52:29,336 - INFO - Loaded shard 2/2: 2646 samples
+2025-07-28 09:52:32,879 - INFO - Step 2460: Loss=0.128753, VelSim=0.9608 (excellent), GradNorm=175.901, LR=7.92e-05, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:52:36,738 - INFO - Step 2470: Loss=0.128752, VelSim=0.9608 (excellent), GradNorm=173.949, LR=7.75e-05, PredNorm=40.888, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:52:40,592 - INFO - Step 2480: Loss=0.128751, VelSim=0.9608 (excellent), GradNorm=169.611, LR=7.58e-05, PredNorm=40.888, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:52:44,462 - INFO - Step 2490: Loss=0.128750, VelSim=0.9608 (excellent), GradNorm=167.867, LR=7.40e-05, PredNorm=40.888, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:52:48,312 - INFO - Step 2500: Loss=0.128749, VelSim=0.9608 (excellent), GradNorm=168.585, LR=7.23e-05, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:52:48,313 - INFO - Running evaluation at step 2500...
+2025-07-28 09:52:52,688 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 09:52:59,836 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 09:52:59,836 - INFO -   eval_clip_similarity: 0.2476
+2025-07-28 09:52:59,837 - INFO -   eval_clip_similarity_std: 0.0148
+2025-07-28 09:52:59,837 - INFO -   eval_clip_similarity_min: 0.2270
+2025-07-28 09:52:59,837 - INFO -   eval_clip_similarity_max: 0.2781
+2025-07-28 09:52:59,837 - INFO -   eval_mse_loss: 2.2429
+2025-07-28 09:52:59,837 - INFO -   eval_mse_loss_std: 0.0808
+2025-07-28 09:52:59,837 - INFO -   eval_high_quality: 0.0000
+2025-07-28 09:52:59,837 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 09:52:59,837 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 09:52:59,837 - INFO -   eval_samples: 16.0000
+2025-07-28 09:52:59,837 - INFO -   eval_time_seconds: 11.5218
+2025-07-28 09:52:59,837 - INFO -   eval_samples_per_second: 1.3887
+2025-07-28 09:53:01,537 - INFO - Checkpoint saved: checkpoints/clip_repro_20250728_092543/checkpoint_step_2500.pt
+2025-07-28 09:53:05,402 - INFO - Step 2510: Loss=0.128748, VelSim=0.9608 (excellent), GradNorm=166.644, LR=7.07e-05, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:53:09,255 - INFO - Step 2520: Loss=0.128747, VelSim=0.9608 (excellent), GradNorm=165.859, LR=6.90e-05, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:53:13,126 - INFO - Step 2530: Loss=0.128746, VelSim=0.9608 (excellent), GradNorm=163.129, LR=6.74e-05, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:53:16,987 - INFO - Step 2540: Loss=0.128746, VelSim=0.9608 (excellent), GradNorm=164.799, LR=6.57e-05, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:53:20,822 - INFO - Step 2550: Loss=0.128745, VelSim=0.9608 (excellent), GradNorm=161.155, LR=6.41e-05, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:53:20,822 - INFO - Running evaluation at step 2550...
+2025-07-28 09:53:25,137 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 09:53:32,283 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 09:53:32,283 - INFO -   eval_clip_similarity: 0.2487
+2025-07-28 09:53:32,283 - INFO -   eval_clip_similarity_std: 0.0151
+2025-07-28 09:53:32,283 - INFO -   eval_clip_similarity_min: 0.2298
+2025-07-28 09:53:32,283 - INFO -   eval_clip_similarity_max: 0.2720
+2025-07-28 09:53:32,283 - INFO -   eval_mse_loss: 2.2380
+2025-07-28 09:53:32,283 - INFO -   eval_mse_loss_std: 0.0779
+2025-07-28 09:53:32,283 - INFO -   eval_high_quality: 0.0000
+2025-07-28 09:53:32,284 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 09:53:32,284 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 09:53:32,284 - INFO -   eval_samples: 16.0000
+2025-07-28 09:53:32,284 - INFO -   eval_time_seconds: 11.4587
+2025-07-28 09:53:32,284 - INFO -   eval_samples_per_second: 1.3963
+2025-07-28 09:53:36,084 - INFO - Step 2560: Loss=0.128744, VelSim=0.9608 (excellent), GradNorm=159.789, LR=6.26e-05, PredNorm=40.888, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:53:39,907 - INFO - Step 2570: Loss=0.128743, VelSim=0.9608 (excellent), GradNorm=160.750, LR=6.10e-05, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:53:43,721 - INFO - Step 2580: Loss=0.128742, VelSim=0.9608 (excellent), GradNorm=158.120, LR=5.94e-05, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:53:47,545 - INFO - Step 2590: Loss=0.128742, VelSim=0.9608 (excellent), GradNorm=157.183, LR=5.79e-05, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:53:51,359 - INFO - Step 2600: Loss=0.128741, VelSim=0.9608 (excellent), GradNorm=156.097, LR=5.64e-05, PredNorm=40.888, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:53:51,359 - INFO - Running evaluation at step 2600...
+2025-07-28 09:53:55,669 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 09:54:02,823 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 09:54:02,823 - INFO -   eval_clip_similarity: 0.2483
+2025-07-28 09:54:02,824 - INFO -   eval_clip_similarity_std: 0.0151
+2025-07-28 09:54:02,824 - INFO -   eval_clip_similarity_min: 0.2291
+2025-07-28 09:54:02,824 - INFO -   eval_clip_similarity_max: 0.2730
+2025-07-28 09:54:02,824 - INFO -   eval_mse_loss: 2.2419
+2025-07-28 09:54:02,824 - INFO -   eval_mse_loss_std: 0.0839
+2025-07-28 09:54:02,824 - INFO -   eval_high_quality: 0.0000
+2025-07-28 09:54:02,824 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 09:54:02,824 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 09:54:02,824 - INFO -   eval_samples: 16.0000
+2025-07-28 09:54:02,824 - INFO -   eval_time_seconds: 11.4617
+2025-07-28 09:54:02,824 - INFO -   eval_samples_per_second: 1.3960
+2025-07-28 09:54:06,658 - INFO - Step 2610: Loss=0.128740, VelSim=0.9608 (excellent), GradNorm=152.357, LR=5.49e-05, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:54:08,603 - INFO - Iteration completed: 5247 samples processed
+2025-07-28 09:54:08,603 - INFO - Epoch 8 completed: 327 batches processed
+2025-07-28 09:54:08,617 - INFO - Epoch 8 completed:
+2025-07-28 09:54:08,618 - INFO -   Average loss: 0.128754
+2025-07-28 09:54:08,618 - INFO -   Best loss: 0.128740
+2025-07-28 09:54:08,618 - INFO -   Best similarity: 0.9608
+2025-07-28 09:54:08,618 - INFO -   Steps in epoch: 327
+2025-07-28 09:54:08,618 - INFO -   Epoch time: 217.5s
+2025-07-28 09:54:08,618 - INFO - Starting epoch 9/10
+2025-07-28 09:54:12,865 - INFO - Loaded shard 1/2: 2601 samples
+2025-07-28 09:54:14,902 - INFO - Step 2620: Loss=0.128740, VelSim=0.9608 (excellent), GradNorm=150.818, LR=5.34e-05, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:54:18,728 - INFO - Step 2630: Loss=0.128739, VelSim=0.9608 (excellent), GradNorm=150.135, LR=5.20e-05, PredNorm=40.888, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:54:22,572 - INFO - Step 2640: Loss=0.128738, VelSim=0.9608 (excellent), GradNorm=148.528, LR=5.05e-05, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:54:26,402 - INFO - Step 2650: Loss=0.128738, VelSim=0.9608 (excellent), GradNorm=149.937, LR=4.91e-05, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:54:26,403 - INFO - Running evaluation at step 2650...
+2025-07-28 09:54:30,741 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 09:54:37,902 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 09:54:37,902 - INFO -   eval_clip_similarity: 0.2476
+2025-07-28 09:54:37,902 - INFO -   eval_clip_similarity_std: 0.0156
+2025-07-28 09:54:37,902 - INFO -   eval_clip_similarity_min: 0.2256
+2025-07-28 09:54:37,902 - INFO -   eval_clip_similarity_max: 0.2742
+2025-07-28 09:54:37,902 - INFO -   eval_mse_loss: 2.2425
+2025-07-28 09:54:37,902 - INFO -   eval_mse_loss_std: 0.0741
+2025-07-28 09:54:37,902 - INFO -   eval_high_quality: 0.0000
+2025-07-28 09:54:37,903 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 09:54:37,903 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 09:54:37,903 - INFO -   eval_samples: 16.0000
+2025-07-28 09:54:37,903 - INFO -   eval_time_seconds: 11.4972
+2025-07-28 09:54:37,903 - INFO -   eval_samples_per_second: 1.3916
+2025-07-28 09:54:41,719 - INFO - Step 2660: Loss=0.128737, VelSim=0.9608 (excellent), GradNorm=146.371, LR=4.77e-05, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:54:45,544 - INFO - Step 2670: Loss=0.128737, VelSim=0.9608 (excellent), GradNorm=144.506, LR=4.64e-05, PredNorm=40.888, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:54:49,349 - INFO - Step 2680: Loss=0.128736, VelSim=0.9608 (excellent), GradNorm=147.704, LR=4.50e-05, PredNorm=40.888, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:54:53,178 - INFO - Step 2690: Loss=0.128735, VelSim=0.9608 (excellent), GradNorm=146.029, LR=4.37e-05, PredNorm=40.888, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:54:56,998 - INFO - Step 2700: Loss=0.128735, VelSim=0.9608 (excellent), GradNorm=142.536, LR=4.24e-05, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:54:56,998 - INFO - Running evaluation at step 2700...
+2025-07-28 09:55:01,297 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 09:55:08,428 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 09:55:08,428 - INFO -   eval_clip_similarity: 0.2484
+2025-07-28 09:55:08,428 - INFO -   eval_clip_similarity_std: 0.0159
+2025-07-28 09:55:08,428 - INFO -   eval_clip_similarity_min: 0.2251
+2025-07-28 09:55:08,428 - INFO -   eval_clip_similarity_max: 0.2801
+2025-07-28 09:55:08,428 - INFO -   eval_mse_loss: 2.2397
+2025-07-28 09:55:08,429 - INFO -   eval_mse_loss_std: 0.0791
+2025-07-28 09:55:08,429 - INFO -   eval_high_quality: 0.0000
+2025-07-28 09:55:08,429 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 09:55:08,429 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 09:55:08,429 - INFO -   eval_samples: 16.0000
+2025-07-28 09:55:08,429 - INFO -   eval_time_seconds: 11.4282
+2025-07-28 09:55:08,429 - INFO -   eval_samples_per_second: 1.4000
+2025-07-28 09:55:12,288 - INFO - Step 2710: Loss=0.128735, VelSim=0.9608 (excellent), GradNorm=143.294, LR=4.11e-05, PredNorm=40.888, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:55:16,094 - INFO - Step 2720: Loss=0.128734, VelSim=0.9608 (excellent), GradNorm=140.004, LR=3.98e-05, PredNorm=40.888, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:55:20,047 - INFO - Step 2730: Loss=0.128733, VelSim=0.9608 (excellent), GradNorm=137.905, LR=3.86e-05, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:55:23,862 - INFO - Step 2740: Loss=0.128733, VelSim=0.9608 (excellent), GradNorm=137.333, LR=3.73e-05, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:55:27,685 - INFO - Step 2750: Loss=0.128733, VelSim=0.9608 (excellent), GradNorm=138.493, LR=3.61e-05, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:55:27,686 - INFO - Running evaluation at step 2750...
+2025-07-28 09:55:32,011 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 09:55:39,173 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 09:55:39,173 - INFO -   eval_clip_similarity: 0.2489
+2025-07-28 09:55:39,173 - INFO -   eval_clip_similarity_std: 0.0143
+2025-07-28 09:55:39,173 - INFO -   eval_clip_similarity_min: 0.2305
+2025-07-28 09:55:39,173 - INFO -   eval_clip_similarity_max: 0.2784
+2025-07-28 09:55:39,174 - INFO -   eval_mse_loss: 2.2389
+2025-07-28 09:55:39,174 - INFO -   eval_mse_loss_std: 0.0745
+2025-07-28 09:55:39,174 - INFO -   eval_high_quality: 0.0000
+2025-07-28 09:55:39,174 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 09:55:39,174 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 09:55:39,174 - INFO -   eval_samples: 16.0000
+2025-07-28 09:55:39,174 - INFO -   eval_time_seconds: 11.4853
+2025-07-28 09:55:39,174 - INFO -   eval_samples_per_second: 1.3931
+2025-07-28 09:55:42,996 - INFO - Step 2760: Loss=0.128732, VelSim=0.9608 (excellent), GradNorm=136.864, LR=3.50e-05, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:55:46,832 - INFO - Step 2770: Loss=0.128732, VelSim=0.9608 (excellent), GradNorm=136.366, LR=3.38e-05, PredNorm=40.888, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:55:53,567 - INFO - Loaded shard 2/2: 2646 samples
+2025-07-28 09:55:55,030 - INFO - Step 2780: Loss=0.128731, VelSim=0.9608 (excellent), GradNorm=134.194, LR=3.27e-05, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:55:58,850 - INFO - Step 2790: Loss=0.128731, VelSim=0.9608 (excellent), GradNorm=133.905, LR=3.15e-05, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:56:02,664 - INFO - Step 2800: Loss=0.128730, VelSim=0.9608 (excellent), GradNorm=132.681, LR=3.04e-05, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:56:02,664 - INFO - Running evaluation at step 2800...
+2025-07-28 09:56:06,880 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 09:56:14,041 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 09:56:14,041 - INFO -   eval_clip_similarity: 0.2490
+2025-07-28 09:56:14,042 - INFO -   eval_clip_similarity_std: 0.0153
+2025-07-28 09:56:14,042 - INFO -   eval_clip_similarity_min: 0.2284
+2025-07-28 09:56:14,042 - INFO -   eval_clip_similarity_max: 0.2770
+2025-07-28 09:56:14,042 - INFO -   eval_mse_loss: 2.2364
+2025-07-28 09:56:14,042 - INFO -   eval_mse_loss_std: 0.0786
+2025-07-28 09:56:14,042 - INFO -   eval_high_quality: 0.0000
+2025-07-28 09:56:14,042 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 09:56:14,042 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 09:56:14,042 - INFO -   eval_samples: 16.0000
+2025-07-28 09:56:14,042 - INFO -   eval_time_seconds: 11.3749
+2025-07-28 09:56:14,042 - INFO -   eval_samples_per_second: 1.4066
+2025-07-28 09:56:17,877 - INFO - Step 2810: Loss=0.128730, VelSim=0.9608 (excellent), GradNorm=129.961, LR=2.94e-05, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:56:21,707 - INFO - Step 2820: Loss=0.128730, VelSim=0.9608 (excellent), GradNorm=128.718, LR=2.83e-05, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:56:25,533 - INFO - Step 2830: Loss=0.128729, VelSim=0.9608 (excellent), GradNorm=126.638, LR=2.73e-05, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:56:29,384 - INFO - Step 2840: Loss=0.128729, VelSim=0.9608 (excellent), GradNorm=127.505, LR=2.63e-05, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:56:33,220 - INFO - Step 2850: Loss=0.128729, VelSim=0.9608 (excellent), GradNorm=126.606, LR=2.53e-05, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:56:33,220 - INFO - Running evaluation at step 2850...
+2025-07-28 09:56:37,480 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 09:56:44,625 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 09:56:44,626 - INFO -   eval_clip_similarity: 0.2490
+2025-07-28 09:56:44,626 - INFO -   eval_clip_similarity_std: 0.0143
+2025-07-28 09:56:44,626 - INFO -   eval_clip_similarity_min: 0.2313
+2025-07-28 09:56:44,626 - INFO -   eval_clip_similarity_max: 0.2771
+2025-07-28 09:56:44,626 - INFO -   eval_mse_loss: 2.2396
+2025-07-28 09:56:44,626 - INFO -   eval_mse_loss_std: 0.0815
+2025-07-28 09:56:44,626 - INFO -   eval_high_quality: 0.0000
+2025-07-28 09:56:44,626 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 09:56:44,627 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 09:56:44,627 - INFO -   eval_samples: 16.0000
+2025-07-28 09:56:44,627 - INFO -   eval_time_seconds: 11.4037
+2025-07-28 09:56:44,627 - INFO -   eval_samples_per_second: 1.4031
+2025-07-28 09:56:48,535 - INFO - Step 2860: Loss=0.128728, VelSim=0.9608 (excellent), GradNorm=124.351, LR=2.43e-05, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:56:52,475 - INFO - Step 2870: Loss=0.128728, VelSim=0.9608 (excellent), GradNorm=122.671, LR=2.34e-05, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:56:56,289 - INFO - Step 2880: Loss=0.128728, VelSim=0.9608 (excellent), GradNorm=122.302, LR=2.25e-05, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:57:00,126 - INFO - Step 2890: Loss=0.128727, VelSim=0.9608 (excellent), GradNorm=122.460, LR=2.16e-05, PredNorm=40.888, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:57:03,954 - INFO - Step 2900: Loss=0.128727, VelSim=0.9608 (excellent), GradNorm=121.306, LR=2.07e-05, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:57:03,954 - INFO - Running evaluation at step 2900...
+2025-07-28 09:57:08,217 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 09:57:15,395 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 09:57:15,395 - INFO -   eval_clip_similarity: 0.2484
+2025-07-28 09:57:15,395 - INFO -   eval_clip_similarity_std: 0.0142
+2025-07-28 09:57:15,396 - INFO -   eval_clip_similarity_min: 0.2309
+2025-07-28 09:57:15,396 - INFO -   eval_clip_similarity_max: 0.2724
+2025-07-28 09:57:15,396 - INFO -   eval_mse_loss: 2.2405
+2025-07-28 09:57:15,396 - INFO -   eval_mse_loss_std: 0.0791
+2025-07-28 09:57:15,396 - INFO -   eval_high_quality: 0.0000
+2025-07-28 09:57:15,396 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 09:57:15,396 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 09:57:15,396 - INFO -   eval_samples: 16.0000
+2025-07-28 09:57:15,396 - INFO -   eval_time_seconds: 11.4391
+2025-07-28 09:57:15,396 - INFO -   eval_samples_per_second: 1.3987
+2025-07-28 09:57:19,254 - INFO - Step 2910: Loss=0.128726, VelSim=0.9608 (excellent), GradNorm=119.022, LR=1.98e-05, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:57:23,110 - INFO - Step 2920: Loss=0.128727, VelSim=0.9608 (excellent), GradNorm=116.620, LR=1.90e-05, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:57:26,982 - INFO - Step 2930: Loss=0.128726, VelSim=0.9608 (excellent), GradNorm=116.444, LR=1.82e-05, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:57:30,805 - INFO - Step 2940: Loss=0.128726, VelSim=0.9608 (excellent), GradNorm=116.529, LR=1.74e-05, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:57:31,872 - INFO - Iteration completed: 5247 samples processed
+2025-07-28 09:57:31,872 - INFO - Epoch 9 completed: 327 batches processed
+2025-07-28 09:57:31,887 - INFO - Epoch 9 completed:
+2025-07-28 09:57:31,887 - INFO -   Average loss: 0.128732
+2025-07-28 09:57:31,887 - INFO -   Best loss: 0.128726
+2025-07-28 09:57:31,887 - INFO -   Best similarity: 0.9608
+2025-07-28 09:57:31,888 - INFO -   Steps in epoch: 327
+2025-07-28 09:57:31,888 - INFO -   Epoch time: 203.3s
+2025-07-28 09:57:31,888 - INFO - Starting epoch 10/10
+2025-07-28 09:57:36,068 - INFO - Loaded shard 1/2: 2601 samples
+2025-07-28 09:57:39,013 - INFO - Step 2950: Loss=0.128726, VelSim=0.9608 (excellent), GradNorm=115.373, LR=1.67e-05, PredNorm=40.888, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:57:39,014 - INFO - Running evaluation at step 2950...
+2025-07-28 09:57:43,469 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 09:57:50,631 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 09:57:50,632 - INFO -   eval_clip_similarity: 0.2493
+2025-07-28 09:57:50,632 - INFO -   eval_clip_similarity_std: 0.0154
+2025-07-28 09:57:50,632 - INFO -   eval_clip_similarity_min: 0.2278
+2025-07-28 09:57:50,632 - INFO -   eval_clip_similarity_max: 0.2769
+2025-07-28 09:57:50,632 - INFO -   eval_mse_loss: 2.2372
+2025-07-28 09:57:50,632 - INFO -   eval_mse_loss_std: 0.0779
+2025-07-28 09:57:50,632 - INFO -   eval_high_quality: 0.0000
+2025-07-28 09:57:50,632 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 09:57:50,632 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 09:57:50,632 - INFO -   eval_samples: 16.0000
+2025-07-28 09:57:50,632 - INFO -   eval_time_seconds: 11.6149
+2025-07-28 09:57:50,632 - INFO -   eval_samples_per_second: 1.3775
+2025-07-28 09:57:54,453 - INFO - Step 2960: Loss=0.128725, VelSim=0.9608 (excellent), GradNorm=113.760, LR=1.59e-05, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:57:58,312 - INFO - Step 2970: Loss=0.128725, VelSim=0.9608 (excellent), GradNorm=114.091, LR=1.52e-05, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:58:02,172 - INFO - Step 2980: Loss=0.128725, VelSim=0.9608 (excellent), GradNorm=112.414, LR=1.45e-05, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:58:06,051 - INFO - Step 2990: Loss=0.128725, VelSim=0.9608 (excellent), GradNorm=109.937, LR=1.39e-05, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:58:09,906 - INFO - Step 3000: Loss=0.128725, VelSim=0.9608 (excellent), GradNorm=111.283, LR=1.32e-05, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:58:09,906 - INFO - Running evaluation at step 3000...
+2025-07-28 09:58:14,191 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 09:58:21,332 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 09:58:21,333 - INFO -   eval_clip_similarity: 0.2490
+2025-07-28 09:58:21,333 - INFO -   eval_clip_similarity_std: 0.0150
+2025-07-28 09:58:21,333 - INFO -   eval_clip_similarity_min: 0.2286
+2025-07-28 09:58:21,333 - INFO -   eval_clip_similarity_max: 0.2804
+2025-07-28 09:58:21,333 - INFO -   eval_mse_loss: 2.2387
+2025-07-28 09:58:21,333 - INFO -   eval_mse_loss_std: 0.0821
+2025-07-28 09:58:21,333 - INFO -   eval_high_quality: 0.0000
+2025-07-28 09:58:21,333 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 09:58:21,333 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 09:58:21,333 - INFO -   eval_samples: 16.0000
+2025-07-28 09:58:21,333 - INFO -   eval_time_seconds: 11.4238
+2025-07-28 09:58:21,333 - INFO -   eval_samples_per_second: 1.4006
+2025-07-28 09:58:23,039 - INFO - Checkpoint saved: checkpoints/clip_repro_20250728_092543/checkpoint_step_3000.pt
+2025-07-28 09:58:26,903 - INFO - Step 3010: Loss=0.128725, VelSim=0.9608 (excellent), GradNorm=113.121, LR=1.26e-05, PredNorm=40.888, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:58:30,743 - INFO - Step 3020: Loss=0.128724, VelSim=0.9608 (excellent), GradNorm=108.626, LR=1.20e-05, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:58:34,602 - INFO - Step 3030: Loss=0.128724, VelSim=0.9608 (excellent), GradNorm=108.891, LR=1.14e-05, PredNorm=40.888, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:58:38,458 - INFO - Step 3040: Loss=0.128724, VelSim=0.9608 (excellent), GradNorm=108.162, LR=1.09e-05, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:58:42,322 - INFO - Step 3050: Loss=0.128724, VelSim=0.9608 (excellent), GradNorm=108.289, LR=1.04e-05, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:58:42,322 - INFO - Running evaluation at step 3050...
+2025-07-28 09:58:46,615 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 09:58:53,768 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 09:58:53,769 - INFO -   eval_clip_similarity: 0.2491
+2025-07-28 09:58:53,769 - INFO -   eval_clip_similarity_std: 0.0152
+2025-07-28 09:58:53,769 - INFO -   eval_clip_similarity_min: 0.2307
+2025-07-28 09:58:53,769 - INFO -   eval_clip_similarity_max: 0.2773
+2025-07-28 09:58:53,769 - INFO -   eval_mse_loss: 2.2359
+2025-07-28 09:58:53,769 - INFO -   eval_mse_loss_std: 0.0789
+2025-07-28 09:58:53,770 - INFO -   eval_high_quality: 0.0000
+2025-07-28 09:58:53,770 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 09:58:53,770 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 09:58:53,770 - INFO -   eval_samples: 16.0000
+2025-07-28 09:58:53,770 - INFO -   eval_time_seconds: 11.4444
+2025-07-28 09:58:53,770 - INFO -   eval_samples_per_second: 1.3981
+2025-07-28 09:58:57,595 - INFO - Step 3060: Loss=0.128724, VelSim=0.9608 (excellent), GradNorm=106.462, LR=9.88e-06, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:59:01,458 - INFO - Step 3070: Loss=0.128724, VelSim=0.9608 (excellent), GradNorm=106.873, LR=9.40e-06, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:59:05,302 - INFO - Step 3080: Loss=0.128723, VelSim=0.9608 (excellent), GradNorm=105.298, LR=8.95e-06, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:59:09,167 - INFO - Step 3090: Loss=0.128723, VelSim=0.9608 (excellent), GradNorm=103.350, LR=8.53e-06, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:59:13,063 - INFO - Step 3100: Loss=0.128723, VelSim=0.9608 (excellent), GradNorm=102.726, LR=8.12e-06, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:59:13,063 - INFO - Running evaluation at step 3100...
+2025-07-28 09:59:17,317 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 09:59:24,450 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 09:59:24,451 - INFO -   eval_clip_similarity: 0.2494
+2025-07-28 09:59:24,451 - INFO -   eval_clip_similarity_std: 0.0157
+2025-07-28 09:59:24,451 - INFO -   eval_clip_similarity_min: 0.2299
+2025-07-28 09:59:24,451 - INFO -   eval_clip_similarity_max: 0.2778
+2025-07-28 09:59:24,451 - INFO -   eval_mse_loss: 2.2362
+2025-07-28 09:59:24,452 - INFO -   eval_mse_loss_std: 0.0773
+2025-07-28 09:59:24,452 - INFO -   eval_high_quality: 0.0000
+2025-07-28 09:59:24,452 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 09:59:24,452 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 09:59:24,452 - INFO -   eval_samples: 16.0000
+2025-07-28 09:59:24,452 - INFO -   eval_time_seconds: 11.3853
+2025-07-28 09:59:24,452 - INFO -   eval_samples_per_second: 1.4053
+2025-07-28 09:59:32,573 - INFO - Loaded shard 2/2: 2646 samples
+2025-07-28 09:59:34,946 - INFO - Step 3110: Loss=0.128723, VelSim=0.9608 (excellent), GradNorm=102.941, LR=7.75e-06, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:59:38,786 - INFO - Step 3120: Loss=0.128723, VelSim=0.9608 (excellent), GradNorm=102.508, LR=7.39e-06, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:59:42,649 - INFO - Step 3130: Loss=0.128723, VelSim=0.9608 (excellent), GradNorm=102.854, LR=7.06e-06, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:59:46,495 - INFO - Step 3140: Loss=0.128723, VelSim=0.9608 (excellent), GradNorm=100.944, LR=6.76e-06, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:59:50,366 - INFO - Step 3150: Loss=0.128723, VelSim=0.9608 (excellent), GradNorm=99.090, LR=6.48e-06, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 09:59:50,366 - INFO - Running evaluation at step 3150...
+2025-07-28 09:59:54,572 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 10:00:01,732 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 10:00:01,732 - INFO -   eval_clip_similarity: 0.2493
+2025-07-28 10:00:01,732 - INFO -   eval_clip_similarity_std: 0.0148
+2025-07-28 10:00:01,732 - INFO -   eval_clip_similarity_min: 0.2307
+2025-07-28 10:00:01,732 - INFO -   eval_clip_similarity_max: 0.2729
+2025-07-28 10:00:01,732 - INFO -   eval_mse_loss: 2.2395
+2025-07-28 10:00:01,733 - INFO -   eval_mse_loss_std: 0.0803
+2025-07-28 10:00:01,733 - INFO -   eval_high_quality: 0.0000
+2025-07-28 10:00:01,733 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 10:00:01,733 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 10:00:01,733 - INFO -   eval_samples: 16.0000
+2025-07-28 10:00:01,733 - INFO -   eval_time_seconds: 11.3632
+2025-07-28 10:00:01,733 - INFO -   eval_samples_per_second: 1.4080
+2025-07-28 10:00:05,590 - INFO - Step 3160: Loss=0.128723, VelSim=0.9608 (excellent), GradNorm=99.058, LR=6.22e-06, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 10:00:09,483 - INFO - Step 3170: Loss=0.128722, VelSim=0.9608 (excellent), GradNorm=99.793, LR=5.99e-06, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 10:00:13,331 - INFO - Step 3180: Loss=0.128722, VelSim=0.9608 (excellent), GradNorm=100.531, LR=5.78e-06, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 10:00:17,163 - INFO - Step 3190: Loss=0.128722, VelSim=0.9608 (excellent), GradNorm=98.961, LR=5.60e-06, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 10:00:20,977 - INFO - Step 3200: Loss=0.128722, VelSim=0.9608 (excellent), GradNorm=98.849, LR=5.44e-06, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 10:00:20,978 - INFO - Running evaluation at step 3200...
+2025-07-28 10:00:25,242 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 10:00:32,399 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 10:00:32,400 - INFO -   eval_clip_similarity: 0.2496
+2025-07-28 10:00:32,400 - INFO -   eval_clip_similarity_std: 0.0156
+2025-07-28 10:00:32,400 - INFO -   eval_clip_similarity_min: 0.2277
+2025-07-28 10:00:32,400 - INFO -   eval_clip_similarity_max: 0.2771
+2025-07-28 10:00:32,400 - INFO -   eval_mse_loss: 2.2368
+2025-07-28 10:00:32,400 - INFO -   eval_mse_loss_std: 0.0780
+2025-07-28 10:00:32,400 - INFO -   eval_high_quality: 0.0000
+2025-07-28 10:00:32,400 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 10:00:32,400 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 10:00:32,400 - INFO -   eval_samples: 16.0000
+2025-07-28 10:00:32,400 - INFO -   eval_time_seconds: 11.4199
+2025-07-28 10:00:32,400 - INFO -   eval_samples_per_second: 1.4011
+2025-07-28 10:00:36,226 - INFO - Step 3210: Loss=0.128722, VelSim=0.9608 (excellent), GradNorm=97.772, LR=5.31e-06, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 10:00:40,041 - INFO - Step 3220: Loss=0.128722, VelSim=0.9608 (excellent), GradNorm=98.464, LR=5.20e-06, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 10:00:43,883 - INFO - Step 3230: Loss=0.128722, VelSim=0.9608 (excellent), GradNorm=97.988, LR=5.11e-06, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 10:00:47,697 - INFO - Step 3240: Loss=0.128722, VelSim=0.9608 (excellent), GradNorm=97.574, LR=5.05e-06, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 10:00:51,554 - INFO - Step 3250: Loss=0.128722, VelSim=0.9608 (excellent), GradNorm=97.122, LR=5.01e-06, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 10:00:51,554 - INFO - Running evaluation at step 3250...
+2025-07-28 10:00:55,897 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 10:01:03,046 - INFO - Evaluation results (similarity uses normalization):
+2025-07-28 10:01:03,046 - INFO -   eval_clip_similarity: 0.2486
+2025-07-28 10:01:03,046 - INFO -   eval_clip_similarity_std: 0.0162
+2025-07-28 10:01:03,046 - INFO -   eval_clip_similarity_min: 0.2256
+2025-07-28 10:01:03,046 - INFO -   eval_clip_similarity_max: 0.2823
+2025-07-28 10:01:03,047 - INFO -   eval_mse_loss: 2.2395
+2025-07-28 10:01:03,047 - INFO -   eval_mse_loss_std: 0.0801
+2025-07-28 10:01:03,047 - INFO -   eval_high_quality: 0.0000
+2025-07-28 10:01:03,047 - INFO -   eval_very_high_quality: 0.0000
+2025-07-28 10:01:03,047 - INFO -   eval_excellent_quality: 0.0000
+2025-07-28 10:01:03,047 - INFO -   eval_samples: 16.0000
+2025-07-28 10:01:03,047 - INFO -   eval_time_seconds: 11.4902
+2025-07-28 10:01:03,047 - INFO -   eval_samples_per_second: 1.3925
+2025-07-28 10:01:06,876 - INFO - Step 3260: Loss=0.128722, VelSim=0.9608 (excellent), GradNorm=97.692, LR=5.00e-06, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 10:01:10,729 - INFO - Step 3270: Loss=0.128722, VelSim=0.9608 (excellent), GradNorm=96.631, LR=5.01e-06, PredNorm=40.889, TargetNorm=42.471 [OVERFIT TEST]
+2025-07-28 10:01:10,896 - INFO - Iteration completed: 5247 samples processed
+2025-07-28 10:01:10,897 - INFO - Epoch 10 completed: 327 batches processed
+2025-07-28 10:01:10,911 - INFO - Epoch 10 completed:
+2025-07-28 10:01:10,911 - INFO -   Average loss: 0.128723
+2025-07-28 10:01:10,912 - INFO -   Best loss: 0.128721
+2025-07-28 10:01:10,912 - INFO -   Best similarity: 0.9608
+2025-07-28 10:01:10,912 - INFO -   Steps in epoch: 327
+2025-07-28 10:01:10,912 - INFO -   Epoch time: 219.0s
+2025-07-28 10:01:12,730 - INFO - Checkpoint saved: checkpoints/clip_repro_20250728_092543/checkpoint_step_3270.pt
+2025-07-28 10:01:12,731 - INFO - Running final evaluation...
+2025-07-28 10:01:17,014 - INFO - Loaded shard 1/2: 2646 samples
+2025-07-28 10:01:33,493 - INFO - Training completed!
+2025-07-28 10:01:33,493 - INFO -   Total time: 2128.4 seconds
+2025-07-28 10:01:33,493 - INFO -   Total steps: 3270
+2025-07-28 10:01:33,493 - INFO -   Best loss: 0.128721
+2025-07-28 10:01:33,493 - INFO -   Best CLIP similarity: 0.9608
+2025-07-28 10:01:33,493 - INFO -   🚫 Used minimal normalization approach
+2025-07-28 10:01:33,493 - INFO -   📊 WandB run: True
+2025-07-28 10:01:33,493 - INFO -   Final evaluation:
+2025-07-28 10:01:33,493 - INFO -     eval_clip_similarity: 0.2479
+2025-07-28 10:01:33,493 - INFO -     eval_clip_similarity_std: 0.0140
+2025-07-28 10:01:33,493 - INFO -     eval_clip_similarity_min: 0.2270
+2025-07-28 10:01:33,493 - INFO -     eval_clip_similarity_max: 0.2848
+2025-07-28 10:01:33,493 - INFO -     eval_mse_loss: 2.2478
+2025-07-28 10:01:33,493 - INFO -     eval_mse_loss_std: 0.0784
+2025-07-28 10:01:33,493 - INFO -     eval_high_quality: 0.0000
+2025-07-28 10:01:33,493 - INFO -     eval_very_high_quality: 0.0000
+2025-07-28 10:01:33,493 - INFO -     eval_excellent_quality: 0.0000
+2025-07-28 10:01:33,493 - INFO -     eval_samples: 32.0000
+2025-07-28 10:01:33,493 - INFO -     eval_time_seconds: 18.5140
+2025-07-28 10:01:33,494 - INFO -     eval_samples_per_second: 1.7284
+2025-07-28 10:01:33,494 - INFO -   Overfitting test: ✅ PASSED
+2025-07-28 10:01:33,496 - INFO - 
+================================================================================
+2025-07-28 10:01:33,497 - INFO - 🎉 BLIP3-o TRAINING COMPLETED!
+2025-07-28 10:01:33,497 - INFO - ================================================================================
+2025-07-28 10:01:33,497 - INFO - 📊 RESULTS SUMMARY:
+2025-07-28 10:01:33,497 - INFO -   Duration: 2130.6 seconds (35.5 minutes)
+2025-07-28 10:01:33,497 - INFO -   Total steps: 3270
+2025-07-28 10:01:33,497 - INFO -   Best loss: 0.128721
+2025-07-28 10:01:33,497 - INFO -   Best CLIP similarity: 0.9608
+2025-07-28 10:01:33,497 - INFO -   🚫 Used minimal normalization approach
+2025-07-28 10:01:33,497 - INFO -   🌐 3D RoPE: ✅
+2025-07-28 10:01:33,497 - INFO -   🥪 Sandwich Norm: ✅
+2025-07-28 10:01:33,497 - INFO -   📊 WandB: ✅
+2025-07-28 10:01:33,497 - INFO - 📊 FINAL EVALUATION:
+2025-07-28 10:01:33,497 - INFO -   CLIP similarity: 0.2479
+2025-07-28 10:01:33,497 - INFO -   High quality (>0.7): 0.0%
+2025-07-28 10:01:33,497 - INFO -   Very high quality (>0.8): 0.0%
+2025-07-28 10:01:33,497 - INFO -   Excellent quality (>0.9): 0.0%
+2025-07-28 10:01:33,497 - INFO -   Samples evaluated: 32
+2025-07-28 10:01:33,497 - INFO - 🧪 OVERFITTING TEST: ✅ PASSED
+2025-07-28 10:01:33,497 - INFO -    ✅ Model can learn and memorize - BLIP3-o architecture is working!
+2025-07-28 10:01:33,497 - INFO - 🏗️  BLIP3-o ARCHITECTURE ASSESSMENT:
+2025-07-28 10:01:33,497 - INFO -    🎉 EXCELLENT: BLIP3-o DiT with 3D RoPE + Sandwich Norm working perfectly!
+2025-07-28 10:01:33,497 - INFO - 📊 WandB Dashboard: Check your blip3o-clip-reproduction project for detailed metrics
+2025-07-28 10:01:33,502 - INFO - 📁 Final summary saved to checkpoints/clip_repro_20250728_092543/final_summary.json
+2025-07-28 10:01:33,502 - INFO - 📁 Model checkpoints saved to checkpoints/clip_repro_20250728_092543
+2025-07-28 10:01:33,503 - INFO - ================================================================================

@@ -358,7 +358,7 @@ class BLIP3oCLIPTrainer:
             # Log to WandB
             if self.use_wandb:
                 wandb.log({
-                    "overfit_test/enabled": True,
+                    "overfit_test/enabled": False,
                     "overfit_test/size": actual_size,
                     "overfit_test/step": 0
                 })
@@ -913,7 +913,7 @@ def create_clip_trainer(
     overfit_test_size: Optional[int] = None,
     debug_mode: bool = False,
     # WandB parameters
-    use_wandb: bool = False,
+    use_wandb: bool = True,
     wandb_project: str = "blip3o-clip-reproduction",
     wandb_run_name: Optional[str] = None,
     wandb_config: Optional[Dict] = None,

@@ -105,7 +105,7 @@ def parse_arguments():
                        help="Number of dataloader workers")
     
     # NEW: WandB configuration
-    parser.add_argument("--use_wandb", action="store_true", default=False,
+    parser.add_argument("--use_wandb", action="store_true", default=True,
                        help="Enable WandB logging")
     parser.add_argument("--no_wandb", action="store_true",
                        help="Disable WandB logging")
