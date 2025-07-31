@@ -1,19 +1,20 @@
 #!/usr/bin/env python3
 """
-FIXED: CLIP Reproduction Training Script with Consistent Evaluation
+CLIP Reproduction Training Script - train_dit.py (UPDATED)
 Main training script for reproducing CLIP embeddings from EVA embeddings
 
-KEY FIXES:
-1. ✅ Evaluation uses subset of training data for consistency
-2. ✅ Extensive data statistics logging and validation
-3. ✅ Early detection of norm mismatches between training/evaluation
-4. ✅ Comprehensive debugging of data flow
-5. ✅ Validation that training and evaluation have similar norms
+UPDATES:
+1. ✅ 3D Rotary Position Embedding for spatial understanding
+2. ✅ Sandwich Normalization (RMSNorm before and after attention/MLP)
+3. ✅ WandB integration with comprehensive metrics logging
+4. ✅ Handles IterableDataset length issues for WandB
+5. ✅ BLIP3-o paper alignment
 
-This addresses the critical issue where:
-- Training data had CLIP norm ~40
-- Evaluation data had CLIP norm ~26
-- Model learned to predict norm ~40 but was evaluated on norm ~26
+Key features:
+1. Minimal normalization (only for evaluation similarity)
+2. Raw embedding space training
+3. Comprehensive monitoring and debugging
+4. WandB experiment tracking
 """
 
 import os
@@ -25,26 +26,25 @@ import logging
 from pathlib import Path
 from datetime import datetime
 import traceback
-import numpy as np
 
 # Setup paths
 sys.path.insert(0, str(Path(__file__).parent))
 
 def setup_logging():
-    """Setup comprehensive logging"""
+    """Setup logging configuration"""
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(levelname)s - %(message)s',
         handlers=[
             logging.StreamHandler(sys.stdout),
-            logging.FileHandler('clip_reproduction_training_fixed.log', mode='w')
+            logging.FileHandler('clip_reproduction_training.log', mode='w')
         ]
     )
     return logging.getLogger(__name__)
 
 def parse_arguments():
-    """Parse command line arguments with consistency options"""
-    parser = argparse.ArgumentParser(description="FIXED: CLIP Reproduction with Consistent Evaluation")
+    """Parse command line arguments"""
+    parser = argparse.ArgumentParser(description="CLIP Reproduction from EVA Embeddings with BLIP3-o DiT")
     
     # Required arguments
     parser.add_argument("--chunked_embeddings_dir", type=str, required=True,
@@ -60,13 +60,13 @@ def parse_arguments():
                        choices=["patch_only", "cls_patch"],
                        help="Training mode")
     
-    # BLIP3-o architecture features
+    # NEW: BLIP3-o architecture features
     parser.add_argument("--use_3d_rope", action="store_true", default=True,
                        help="Use 3D Rotary Position Embedding")
     parser.add_argument("--use_sandwich_norm", action="store_true", default=True,
                        help="Use sandwich normalization (RMSNorm before and after)")
     parser.add_argument("--no_3d_rope", action="store_true",
-                       help="Disable 3D RoPE")
+                       help="Disable 3D RoPE (use standard RoPE)")
     parser.add_argument("--no_sandwich_norm", action="store_true",
                        help="Disable sandwich normalization")
     
@@ -90,18 +90,6 @@ def parse_arguments():
     parser.add_argument("--eval_num_samples", type=int, default=500,
                        help="Number of samples for evaluation")
     
-    # NEW: Data consistency parameters
-    parser.add_argument("--eval_samples", type=int, default=100,
-                       help="Number of training samples to use for evaluation")
-    parser.add_argument("--validate_data_consistency", action="store_true", default=True,
-                       help="Validate training/evaluation data consistency")
-    parser.add_argument("--log_data_statistics", action="store_true", default=True,
-                       help="Log detailed data statistics")
-    parser.add_argument("--norm_tolerance", type=float, default=5.0,
-                       help="Tolerance for norm differences between train/eval")
-    parser.add_argument("--no_data_validation", action="store_true",
-                       help="Disable data consistency validation")
-    
     # Debugging and testing
     parser.add_argument("--overfit_test_size", type=int, default=None,
                        help="Size for overfitting test (None to disable)")
@@ -116,107 +104,29 @@ def parse_arguments():
     parser.add_argument("--num_workers", type=int, default=0,
                        help="Number of dataloader workers")
     
-    # WandB configuration
-    parser.add_argument("--use_wandb", action="store_true", default=False,
+    # NEW: WandB configuration
+    parser.add_argument("--use_wandb", action="store_true", default=True,
                        help="Enable WandB logging")
     parser.add_argument("--no_wandb", action="store_true",
                        help="Disable WandB logging")
-    parser.add_argument("--wandb_project", type=str, default="blip3o-clip-reproduction-fixed",
+    parser.add_argument("--wandb_project", type=str, default="blip3o-clip-reproduction",
                        help="WandB project name")
-    parser.add_argument("--wandb_run_name", type=str, default="noise_scaling",
+    parser.add_argument("--wandb_run_name", type=str, default=None,
                        help="WandB run name")
     parser.add_argument("--wandb_tags", type=str, nargs="*", default=None,
                        help="WandB tags for the run")
     
     return parser.parse_args()
 
-def validate_embeddings_directory(embeddings_dir: Path, logger):
-    """Validate and analyze embeddings directory"""
-    logger.info(f"🔍 Validating embeddings directory: {embeddings_dir}")
-    
-    if not embeddings_dir.exists():
-        raise FileNotFoundError(f"Embeddings directory does not exist: {embeddings_dir}")
-    
-    # Find pickle files
-    pkl_files = list(embeddings_dir.glob("*.pkl"))
-    
-    if not pkl_files:
-        raise FileNotFoundError(f"No .pkl files found in {embeddings_dir}")
-    
-    logger.info(f"Found {len(pkl_files)} pickle files")
-    
-    # Analyze first file to understand data structure
-    try:
-        import pickle
-        first_file = pkl_files[0]
-        logger.info(f"Analyzing first file: {first_file.name}")
-        
-        with open(first_file, 'rb') as f:
-            data = pickle.load(f)
-        
-        logger.info(f"Keys in first file: {list(data.keys())}")
-        
-        if 'clip_blip3o_embeddings' in data:
-            clip_shape = data['clip_blip3o_embeddings'].shape
-            logger.info(f"CLIP embeddings shape: {clip_shape}")
-            
-            # Compute statistics
-            clip_data = data['clip_blip3o_embeddings']
-            if hasattr(clip_data, 'numpy'):
-                clip_data = clip_data.numpy()
-            
-            clip_norms = np.linalg.norm(clip_data, axis=-1).mean(axis=1)
-            clip_norm_mean = np.mean(clip_norms)
-            clip_norm_std = np.std(clip_norms)
-            
-            logger.info(f"📊 CLIP data analysis:")
-            logger.info(f"   Norm mean: {clip_norm_mean:.2f}")
-            logger.info(f"   Norm std: {clip_norm_std:.2f}")
-            logger.info(f"   Norm range: [{np.min(clip_norms):.2f}, {np.max(clip_norms):.2f}]")
-            logger.info(f"   Samples: {clip_shape[0]}")
-            logger.info(f"   Tokens: {clip_shape[1]}")
-            logger.info(f"   Dimensions: {clip_shape[2]}")
-        
-        if 'eva_blip3o_embeddings' in data:
-            eva_shape = data['eva_blip3o_embeddings'].shape
-            logger.info(f"EVA embeddings shape: {eva_shape}")
-            
-            # Compute statistics
-            eva_data = data['eva_blip3o_embeddings']
-            if hasattr(eva_data, 'numpy'):
-                eva_data = eva_data.numpy()
-            
-            eva_norms = np.linalg.norm(eva_data, axis=-1).mean(axis=1)
-            eva_norm_mean = np.mean(eva_norms)
-            eva_norm_std = np.std(eva_norms)
-            
-            logger.info(f"📊 EVA data analysis:")
-            logger.info(f"   Norm mean: {eva_norm_mean:.2f}")
-            logger.info(f"   Norm std: {eva_norm_std:.2f}")
-            logger.info(f"   Norm range: [{np.min(eva_norms):.2f}, {np.max(eva_norms):.2f}]")
-            logger.info(f"   Samples: {eva_shape[0]}")
-            logger.info(f"   Tokens: {eva_shape[1]}")
-            logger.info(f"   Dimensions: {eva_shape[2]}")
-        
-        return {
-            'num_files': len(pkl_files),
-            'clip_shape': clip_shape if 'clip_blip3o_embeddings' in data else None,
-            'eva_shape': eva_shape if 'eva_blip3o_embeddings' in data else None,
-            'clip_norm_mean': clip_norm_mean if 'clip_blip3o_embeddings' in data else None,
-            'eva_norm_mean': eva_norm_mean if 'eva_blip3o_embeddings' in data else None,
-        }
-        
-    except Exception as e:
-        logger.error(f"Failed to analyze embeddings: {e}")
-        return {'num_files': len(pkl_files)}
-
 def setup_device_and_model(args, logger):
-    """Setup device and create model"""
+    """Setup device and create model with BLIP3-o features"""
     # Setup device
     if torch.cuda.is_available():
         device = torch.device("cuda")
         logger.info(f"Using GPU: {torch.cuda.get_device_name(0)}")
         logger.info(f"GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
+        
+        # Clear any cached memory
         torch.cuda.empty_cache()
     else:
         device = torch.device("cpu")
@@ -230,36 +140,45 @@ def setup_device_and_model(args, logger):
     logger.info(f"  3D Rotary Position Embedding: {'✅ Enabled' if use_3d_rope else '❌ Disabled'}")
     logger.info(f"  Sandwich Normalization: {'✅ Enabled' if use_sandwich_norm else '❌ Disabled'}")
     
-    # Import and create model using the FIXED files
+    # Import and create model - try multiple import paths
     model = None
     try:
-        # Try to import from the fixed files we just created
-        sys.path.insert(0, str(Path(__file__).parent))
-        
-        # First try to import the model from the original files in current directory
-        try:
-            from blip3o_dit import create_clip_reproduction_model, BLIP3oCLIPDiTConfig
-            logger.info("✅ Imported model from blip3o_dit.py")
-            model = create_clip_reproduction_model(
-                model_size=args.model_size,
-                training_mode=args.training_mode,
-                use_3d_rope=use_3d_rope,
-                use_sandwich_norm=use_sandwich_norm,
-            )
-        except ImportError:
-            # Try from modules
-            from src.modules.models.blip3o_dit import create_clip_reproduction_model, BLIP3oCLIPDiTConfig
-            logger.info("✅ Imported model from src.modules.models.blip3o_dit")
-            model = create_clip_reproduction_model(
-                model_size=args.model_size,
-                training_mode=args.training_mode,
-                use_3d_rope=use_3d_rope,
-                use_sandwich_norm=use_sandwich_norm,
-            )
-        
+        # Try the updated file first
+        from blip3o_dit import create_clip_reproduction_model, BLIP3oCLIPDiTConfig
+        logger.info("✅ Imported UPDATED model from blip3o_dit.py")
+        model = create_clip_reproduction_model(
+            model_size=args.model_size,
+            training_mode=args.training_mode,
+            use_3d_rope=use_3d_rope,
+            use_sandwich_norm=use_sandwich_norm,
+        )
     except ImportError as e:
-        logger.error(f"❌ Could not import model: {e}")
-        raise ImportError("Could not import model from any path")
+        logger.warning(f"Failed to import from blip3o_dit.py: {e}")
+        try:
+            # Try using the modules init
+            from src.modules import create_clip_reproduction_model, BLIP3oCLIPDiTConfig
+            logger.info("✅ Imported model from src.modules")
+            model = create_clip_reproduction_model(
+                model_size=args.model_size,
+                training_mode=args.training_mode,
+                use_3d_rope=use_3d_rope,
+                use_sandwich_norm=use_sandwich_norm,
+            )
+        except ImportError as e2:
+            logger.error(f"❌ Could not import model from src.modules: {e2}")
+            try:
+                # Direct import from the actual file
+                from src.modules.models.blip3o_dit import create_clip_reproduction_model, BLIP3oCLIPDiTConfig
+                logger.info("✅ Imported model directly from src.modules.models.blip3o_dit")
+                model = create_clip_reproduction_model(
+                    model_size=args.model_size,
+                    training_mode=args.training_mode,
+                    use_3d_rope=use_3d_rope,
+                    use_sandwich_norm=use_sandwich_norm,
+                )
+            except ImportError as e3:
+                logger.error(f"❌ Could not import model directly: {e3}")
+                raise ImportError("Could not import model from any path")
     
     if model is None:
         raise RuntimeError("Failed to create model")
@@ -271,113 +190,141 @@ def setup_device_and_model(args, logger):
     logger.info(f"Model created with {model.get_num_parameters():,} parameters")
     logger.info(f"Model moved to {device}")
     
+    # Print architecture validation
+    if hasattr(model, 'config'):
+        config = model.config
+        logger.info("🔍 Architecture Validation:")
+        logger.info(f"  3D RoPE: {'✅' if getattr(config, 'use_3d_rope', False) else '❌'}")
+        logger.info(f"  Sandwich Norm: {'✅' if getattr(config, 'use_sandwich_norm', False) else '❌'}")
+        logger.info(f"  Grid Size: {getattr(config, 'grid_size', 16)}x{getattr(config, 'grid_size', 16)}")
+        logger.info(f"  Grouped-Query Attention: {getattr(config, 'num_attention_heads', 12)}/{getattr(config, 'num_key_value_heads', 4)}")
+    
     return device, model
 
 def create_loss_function(args, logger):
     """Create loss function"""
     loss_fn = None
     try:
-        # Try to import from current directory first
-        try:
-            from blip3o_fm_loss import create_clip_reproduction_loss
-            logger.info("✅ Imported loss from blip3o_fm_loss.py")
-        except ImportError:
-            from src.modules.losses.blip3o_fm_loss import create_clip_reproduction_loss
-            logger.info("✅ Imported loss from src.modules.losses.blip3o_fm_loss")
-        
+        from blip3o_fm_loss import create_clip_reproduction_loss
+        logger.info("✅ Imported loss from blip3o_fm_loss.py")
         loss_fn = create_clip_reproduction_loss(
             prediction_type="velocity",
             flow_type="rectified",
             loss_weight=1.0,
-            use_adaptive_noise_scaling=True,  # Enable adaptive noise scaling
             debug_mode=args.debug_mode
         )
-        
     except ImportError as e:
-        logger.error(f"❌ Could not import loss function: {e}")
-        raise ImportError("Could not import loss function from any path")
+        logger.warning(f"Failed to import from blip3o_fm_loss.py: {e}")
+        try:
+            from src.modules import create_clip_reproduction_loss
+            logger.info("✅ Imported loss from src.modules")
+            loss_fn = create_clip_reproduction_loss(
+                prediction_type="velocity",
+                flow_type="rectified",
+                loss_weight=1.0,
+                debug_mode=args.debug_mode
+            )
+        except ImportError as e2:
+            logger.error(f"❌ Could not import loss from src.modules: {e2}")
+            try:
+                from src.modules.losses.blip3o_fm_loss import create_clip_reproduction_loss
+                logger.info("✅ Imported loss directly from src.modules.losses.blip3o_fm_loss")
+                loss_fn = create_clip_reproduction_loss(
+                    prediction_type="velocity",
+                    flow_type="rectified",
+                    loss_weight=1.0,
+                    debug_mode=args.debug_mode
+                )
+            except ImportError as e3:
+                logger.error(f"❌ Could not import loss directly: {e3}")
+                raise ImportError("Could not import loss from any path")
     
     if loss_fn is None:
         raise RuntimeError("Failed to create loss function")
     
-    logger.info("Flow matching loss created with adaptive noise scaling")
+    logger.info("Flow matching loss created")
     return loss_fn
 
-def create_dataloaders(args, logger, data_analysis):
-    """Create data loaders with consistent evaluation"""
-    # Process data consistency arguments
-    validate_consistency = args.validate_data_consistency and not args.no_data_validation
-    
-    logger.info("📊 Creating dataloaders with CONSISTENT evaluation:")
-    logger.info(f"  Evaluation samples: {args.eval_samples} (from training data)")
-    logger.info(f"  Data consistency validation: {validate_consistency}")
-    logger.info(f"  Statistics logging: {args.log_data_statistics}")
-    logger.info(f"  Norm tolerance: {args.norm_tolerance}")
-    
-    # Determine expected norm ranges based on data analysis
-    expected_clip_range = (20.0, 50.0)  # Default range
-    expected_eva_range = (20.0, 60.0)   # Default range
-    
-    if data_analysis.get('clip_norm_mean'):
-        clip_mean = data_analysis['clip_norm_mean']
-        expected_clip_range = (clip_mean - 10, clip_mean + 10)
-        logger.info(f"📊 Expected CLIP norm range: {expected_clip_range} (based on data: {clip_mean:.2f})")
-    
-    if data_analysis.get('eva_norm_mean'):
-        eva_mean = data_analysis['eva_norm_mean']
-        expected_eva_range = (eva_mean - 15, eva_mean + 15)
-        logger.info(f"📊 Expected EVA norm range: {expected_eva_range} (based on data: {eva_mean:.2f})")
-    
+def get_dataloader_length_safe(dataloader):
+    """Safely get dataloader length, handling IterableDataset"""
+    try:
+        return len(dataloader)
+    except TypeError:
+        # For IterableDataset, try to get estimated length from dataset
+        try:
+            return len(dataloader.dataset)
+        except:
+            # Final fallback - return "unknown"
+            return "unknown"
+
+def create_dataloaders(args, logger):
+    """Create data loaders"""
     train_dataloader, eval_dataloader = None, None
     try:
-        # Import the FIXED dataset
-        try:
-            # First check if we have the files in the artifacts we just created
-            # For now, import from the existing files
-            from blip3o_datasets import create_clip_reproduction_dataloaders
-            logger.info("✅ Imported FIXED dataset from blip3o_datasets.py")
-        except ImportError:
-            from src.modules.datasets.blip3o_dataset import create_clip_reproduction_dataloaders
-            logger.info("✅ Imported dataset from src.modules.datasets.blip3o_dataset")
-        
+        from blip3o_datasets import create_clip_reproduction_dataloaders
+        logger.info("✅ Imported dataset from blip3o_datasets.py")
         train_dataloader, eval_dataloader = create_clip_reproduction_dataloaders(
             chunked_embeddings_dir=args.chunked_embeddings_dir,
             batch_size=args.batch_size,
             training_mode=args.training_mode,
             max_shards=args.max_shards,
-            normalize_embeddings=False,  # Keep disabled for consistency
+            normalize_embeddings=False,  # Disable normalization
             num_workers=args.num_workers,
-            pin_memory=torch.cuda.is_available(),
-            # NEW: Consistent evaluation parameters
-            eval_samples=args.eval_samples,
-            eval_from_training=True,  # Use training samples for evaluation
-            collect_statistics=args.log_data_statistics,
-            # Data validation parameters
-            validate_shapes=True,
-            skip_corrupted=True,
-            expected_clip_norm_range=expected_clip_range,
-            expected_eva_norm_range=expected_eva_range,
+            pin_memory=torch.cuda.is_available()
         )
-        
     except ImportError as e:
-        logger.error(f"❌ Could not import dataset: {e}")
-        raise ImportError("Could not import dataset from any path")
+        logger.warning(f"Failed to import from blip3o_datasets.py: {e}")
+        try:
+            from src.modules import create_clip_reproduction_dataloaders
+            logger.info("✅ Imported dataset from src.modules")
+            train_dataloader, eval_dataloader = create_clip_reproduction_dataloaders(
+                chunked_embeddings_dir=args.chunked_embeddings_dir,
+                batch_size=args.batch_size,
+                training_mode=args.training_mode,
+                max_shards=args.max_shards,
+                normalize_embeddings=False,  # Disable normalization
+                num_workers=args.num_workers,
+                pin_memory=torch.cuda.is_available()
+            )
+        except ImportError as e2:
+            logger.error(f"❌ Could not import dataset from src.modules: {e2}")
+            try:
+                from src.modules.datasets.blip3o_dataset import create_clip_reproduction_dataloaders
+                logger.info("✅ Imported dataset directly from src.modules.datasets.blip3o_dataset")
+                train_dataloader, eval_dataloader = create_clip_reproduction_dataloaders(
+                    chunked_embeddings_dir=args.chunked_embeddings_dir,
+                    batch_size=args.batch_size,
+                    training_mode=args.training_mode,
+                    max_shards=args.max_shards,
+                    normalize_embeddings=False,  # Disable normalization
+                    num_workers=args.num_workers,
+                    pin_memory=torch.cuda.is_available()
+                )
+            except ImportError as e3:
+                logger.error(f"❌ Could not import dataset directly: {e3}")
+                raise ImportError("Could not import dataset from any path")
     
     if train_dataloader is None:
         raise RuntimeError("Failed to create dataloaders")
     
-    logger.info(f"✅ FIXED dataloaders created")
-    logger.info(f"  🎯 CRITICAL FIX: Evaluation uses subset of training data")
-    logger.info(f"  📊 This ensures consistent norms between training and evaluation")
-    logger.info(f"  🚫 Normalization disabled for consistency")
+    logger.info(f"Dataloaders created")
+    
+    # Safely get lengths
+    train_length = get_dataloader_length_safe(train_dataloader)
+    if train_length != "unknown":
+        logger.info(f"  Training batches: {train_length:,}")
+    else:
+        logger.info(f"  Training batches: Estimated from IterableDataset")
+    
+    logger.info(f"  Evaluation available: {eval_dataloader is not None}")
+    logger.info(f"  🚫 Normalization disabled in dataloaders")
     
     return train_dataloader, eval_dataloader
 
 def create_trainer(model, loss_fn, train_dataloader, eval_dataloader, args, device, logger):
-    """Create trainer with data consistency validation"""
-    # Process arguments
-    use_wandb = args.use_wandb and not args.no_wandb
-    validate_consistency = args.validate_data_consistency and not args.no_data_validation
+    """Create trainer with WandB integration"""
+    # Process WandB arguments
+    use_wandb = args.use_wandb
     
     # Create run name if not provided
     wandb_run_name = args.wandb_run_name
@@ -389,7 +336,7 @@ def create_trainer(model, loss_fn, train_dataloader, eval_dataloader, args, devi
         if getattr(model.config, 'use_sandwich_norm', False):
             arch_features.append("sandwich")
         arch_str = "_".join(arch_features) if arch_features else "standard"
-        wandb_run_name = f"blip3o_fixed_{args.model_size}_{args.training_mode}_{arch_str}_{timestamp}"
+        wandb_run_name = f"blip3o_{args.model_size}_{args.training_mode}_{arch_str}_{timestamp}"
     
     # WandB configuration
     wandb_config = {
@@ -399,19 +346,11 @@ def create_trainer(model, loss_fn, train_dataloader, eval_dataloader, args, devi
         "use_sandwich_norm": getattr(model.config, 'use_sandwich_norm', False),
         "batch_size": args.batch_size,
         "max_shards": args.max_shards,
-        "experiment_version": "v4_fixed_consistent_evaluation",
-        # NEW: Data consistency config
-        "eval_samples": args.eval_samples,
-        "validate_data_consistency": validate_consistency,
-        "log_data_statistics": args.log_data_statistics,
-        "norm_tolerance": args.norm_tolerance,
-        "consistent_evaluation": True,
-        "evaluation_from_training": True,
-        "fix_applied": "consistent_train_eval_data",
+        "experiment_version": "v3_with_blip3o_features",
     }
     
     # Add tags
-    wandb_tags = ["blip3o", "clip_reproduction", "eva_conditioning", "FIXED", "consistent_evaluation"]
+    wandb_tags = ["blip3o", "clip_reproduction", "eva_conditioning"]
     if getattr(model.config, 'use_3d_rope', False):
         wandb_tags.append("3d_rope")
     if getattr(model.config, 'use_sandwich_norm', False):
@@ -423,14 +362,8 @@ def create_trainer(model, loss_fn, train_dataloader, eval_dataloader, args, devi
     
     trainer = None
     try:
-        # Import the FIXED trainer
-        try:
-            from blip3o_trainer import create_clip_trainer
-            logger.info("✅ Imported FIXED trainer from blip3o_trainer.py")
-        except ImportError:
-            from src.modules.trainers.blip3o_trainer import create_clip_trainer
-            logger.info("✅ Imported trainer from src.modules.trainers.blip3o_trainer")
-        
+        from blip3o_trainer import create_clip_trainer
+        logger.info("✅ Imported UPDATED trainer from blip3o_trainer.py")
         trainer = create_clip_trainer(
             model=model,
             loss_fn=loss_fn,
@@ -448,28 +381,77 @@ def create_trainer(model, loss_fn, train_dataloader, eval_dataloader, args, devi
             overfit_test_size=args.overfit_test_size,
             output_dir=args.output_dir,
             device=device,
-            # NEW: Data consistency parameters
-            validate_data_consistency=validate_consistency,
-            log_data_statistics=args.log_data_statistics,
-            norm_tolerance=args.norm_tolerance,
             # WandB parameters
             use_wandb=use_wandb,
             wandb_project=args.wandb_project,
             wandb_run_name=wandb_run_name,
             wandb_config=wandb_config,
         )
-        
     except ImportError as e:
-        logger.error(f"❌ Could not import trainer: {e}")
-        raise ImportError("Could not import trainer from any path")
+        logger.warning(f"Failed to import from blip3o_trainer.py: {e}")
+        try:
+            from src.modules import create_clip_trainer
+            logger.info("✅ Imported trainer from src.modules")
+            trainer = create_clip_trainer(
+                model=model,
+                loss_fn=loss_fn,
+                train_dataloader=train_dataloader,
+                eval_dataloader=eval_dataloader,
+                learning_rate=args.learning_rate,
+                weight_decay=args.weight_decay,
+                num_epochs=args.num_epochs,
+                warmup_steps=args.warmup_steps,
+                max_grad_norm=args.max_grad_norm,
+                fp16=args.fp16,
+                eval_every_n_steps=args.eval_every_n_steps,
+                eval_num_samples=args.eval_num_samples,
+                debug_mode=args.debug_mode,
+                overfit_test_size=args.overfit_test_size,
+                output_dir=args.output_dir,
+                device=device,
+                # WandB parameters
+                use_wandb=use_wandb,
+                wandb_project=args.wandb_project,
+                wandb_run_name=wandb_run_name,
+                wandb_config=wandb_config,
+            )
+        except ImportError as e2:
+            logger.error(f"❌ Could not import trainer from src.modules: {e2}")
+            try:
+                from src.modules.trainers.blip3o_trainer import create_clip_trainer
+                logger.info("✅ Imported trainer directly from src.modules.trainers.blip3o_trainer")
+                trainer = create_clip_trainer(
+                    model=model,
+                    loss_fn=loss_fn,
+                    train_dataloader=train_dataloader,
+                    eval_dataloader=eval_dataloader,
+                    learning_rate=args.learning_rate,
+                    weight_decay=args.weight_decay,
+                    num_epochs=args.num_epochs,
+                    warmup_steps=args.warmup_steps,
+                    max_grad_norm=args.max_grad_norm,
+                    fp16=args.fp16,
+                    eval_every_n_steps=args.eval_every_n_steps,
+                    eval_num_samples=args.eval_num_samples,
+                    debug_mode=args.debug_mode,
+                    overfit_test_size=args.overfit_test_size,
+                    output_dir=args.output_dir,
+                    device=device,
+                    # WandB parameters
+                    use_wandb=use_wandb,
+                    wandb_project=args.wandb_project,
+                    wandb_run_name=wandb_run_name,
+                    wandb_config=wandb_config,
+                )
+            except ImportError as e3:
+                logger.error(f"❌ Could not import trainer directly: {e3}")
+                raise ImportError("Could not import trainer from any path")
     
     if trainer is None:
         raise RuntimeError("Failed to create trainer")
     
-    logger.info("✅ FIXED trainer created with data consistency validation")
+    logger.info("Trainer created with WandB integration")
     logger.info(f"  📊 WandB enabled: {use_wandb}")
-    logger.info(f"  🎯 Data consistency validation: {validate_consistency}")
-    logger.info(f"  📈 Statistics logging: {args.log_data_statistics}")
     if use_wandb:
         logger.info(f"  📊 WandB project: {args.wandb_project}")
         logger.info(f"  📊 WandB run name: {wandb_run_name}")
@@ -477,31 +459,139 @@ def create_trainer(model, loss_fn, train_dataloader, eval_dataloader, args, devi
     
     return trainer
 
+def load_config_if_available(args, logger):
+    """Load configuration if available"""
+    model_config = None
+    
+    # Try multiple import paths for config
+    try:
+        from src.modules import get_blip3o_clip_config, print_config_summary, FlowMatchingConfig, TrainingConfig, EvaluationConfig
+        logger.info("✅ Imported config from src.modules")
+        
+        # Create all config objects with proper arguments
+        model_config = get_blip3o_clip_config(
+            args.model_size, 
+            args.training_mode,
+            use_3d_rope=args.use_3d_rope and not args.no_3d_rope,
+            use_sandwich_norm=args.use_sandwich_norm and not args.no_sandwich_norm,
+        )
+        
+        # Create flow config
+        flow_config = FlowMatchingConfig(
+            prediction_type="velocity",
+            normalize_targets=True,
+            flow_type="rectified",
+            loss_scale=1.0,
+        )
+        
+        # Create training config  
+        training_config = TrainingConfig(
+            num_epochs=args.num_epochs,
+            batch_size=args.batch_size,
+            learning_rate=args.learning_rate,
+            weight_decay=args.weight_decay,
+            warmup_steps=args.warmup_steps,
+            debug_mode=args.debug_mode,
+            overfit_test_size=args.overfit_test_size,
+            eval_every_n_steps=args.eval_every_n_steps,
+            eval_num_samples=args.eval_num_samples,
+        )
+        
+        # Create evaluation config
+        eval_config = EvaluationConfig(
+            eval_every_n_steps=args.eval_every_n_steps,
+            eval_num_samples=args.eval_num_samples,
+            eval_inference_steps=50,
+        )
+        
+        # Print config summary with all real objects
+        print_config_summary(model_config, flow_config, training_config, eval_config)
+        
+        return model_config
+        
+    except ImportError as e:
+        logger.warning(f"Failed to import config from src.modules: {e}")
+        try:
+            # Try direct import from the actual file
+            from src.modules.config.blip3o_config import get_blip3o_clip_config, print_config_summary, FlowMatchingConfig, TrainingConfig, EvaluationConfig
+            logger.info("✅ Imported config directly from src.modules.config.blip3o_config")
+            
+            # Create all config objects
+            model_config = get_blip3o_clip_config(
+                args.model_size, 
+                args.training_mode,
+                use_3d_rope=args.use_3d_rope and not args.no_3d_rope,
+                use_sandwich_norm=args.use_sandwich_norm and not args.no_sandwich_norm,
+            )
+            
+            flow_config = FlowMatchingConfig(
+                prediction_type="velocity",
+                normalize_targets=True,
+                flow_type="rectified",
+                loss_scale=1.0,
+            )
+            
+            training_config = TrainingConfig(
+                num_epochs=args.num_epochs,
+                batch_size=args.batch_size,
+                learning_rate=args.learning_rate,
+                weight_decay=args.weight_decay,
+                warmup_steps=args.warmup_steps,
+                debug_mode=args.debug_mode,
+                overfit_test_size=args.overfit_test_size,
+                eval_every_n_steps=args.eval_every_n_steps,
+                eval_num_samples=args.eval_num_samples,
+            )
+            
+            eval_config = EvaluationConfig(
+                eval_every_n_steps=args.eval_every_n_steps,
+                eval_num_samples=args.eval_num_samples,
+                eval_inference_steps=50,
+            )
+            
+            print_config_summary(model_config, flow_config, training_config, eval_config)
+            
+            return model_config
+            
+        except ImportError as e2:
+            logger.warning(f"⚠️ Could not import config from any path: {e2}")
+            logger.warning("⚠️ Continuing without config summary.")
+            return None
+            
+    except Exception as e:
+        logger.error(f"Error creating config objects: {e}")
+        logger.error(f"Error details: {type(e).__name__}: {str(e)}")
+        # Return the model_config even if printing fails
+        return model_config
+
+def check_modules_availability(logger):
+    """Check which modules are available"""
+    logger.info("🔍 Checking module availability...")
+    
+    # Try to use the comprehensive modules init
+    try:
+        from src.modules import check_environment, print_environment_status
+        logger.info("✅ Using comprehensive modules system")
+        
+        # Print environment status
+        print_environment_status()
+        
+        # Check environment
+        env_status = check_environment()
+        if not env_status['all_available']:
+            logger.warning(f"⚠️ Some modules not available: {env_status['missing_components']}")
+        
+        return env_status
+    except ImportError:
+        logger.info("📁 Using individual file imports")
+        return {'all_available': True, 'missing_components': []}
+
 def main():
-    """Main training function with data consistency fixes"""
+    """Main training function with BLIP3-o features"""
     args = parse_arguments()
     logger = setup_logging()
     
-    logger.info("🚀 FIXED: CLIP Reproduction with Consistent Evaluation")
-    logger.info("=" * 80)
-    logger.info("🔧 CRITICAL FIXES APPLIED:")
-    logger.info("  1. ✅ Evaluation uses subset of training data")
-    logger.info("  2. ✅ Extensive data statistics logging")
-    logger.info("  3. ✅ Early detection of norm mismatches")
-    logger.info("  4. ✅ Validation of training/evaluation consistency")
-    logger.info("  5. ✅ No hidden normalization differences")
-    logger.info("=" * 80)
-    logger.info("🎯 PROBLEM ADDRESSED:")
-    logger.info("  • Training data CLIP norm: ~40 (model learns this)")
-    logger.info("  • Evaluation data CLIP norm: ~26 (different source!)")
-    logger.info("  • Model predicts norm ~40 but evaluated on norm ~26")
-    logger.info("  • Result: Low CLIP similarity due to norm mismatch")
-    logger.info("=" * 80)
-    logger.info("🔧 SOLUTION:")
-    logger.info("  • Use first 100 samples from training data for evaluation")
-    logger.info("  • Validate that train/eval norms are consistent")
-    logger.info("  • Log detailed statistics to catch any mismatches")
-    logger.info("  • No separate evaluation dataset preprocessing")
+    logger.info("🚀 Starting CLIP Reproduction with BLIP3-o DiT")
     logger.info("=" * 80)
     logger.info("EXPERIMENT DETAILS:")
     logger.info("  📋 Task: Reproduce clean CLIP embeddings from EVA embeddings")
@@ -511,24 +601,20 @@ def main():
     logger.info("  🌊 Method: Rectified Flow Matching")
     logger.info("  🚫 Normalization: MINIMAL (only for evaluation similarity)")
     logger.info("=" * 80)
-    
-    # Process architecture arguments
+    logger.info("🏗️ BLIP3-o ARCHITECTURE FEATURES:")
     use_3d_rope = args.use_3d_rope and not args.no_3d_rope
     use_sandwich_norm = args.use_sandwich_norm and not args.no_sandwich_norm
-    validate_consistency = args.validate_data_consistency and not args.no_data_validation
-    
-    logger.info("🏗️ BLIP3-o ARCHITECTURE FEATURES:")
     logger.info(f"  🌐 3D Rotary Position Embedding: {'✅ ENABLED' if use_3d_rope else '❌ DISABLED'}")
     logger.info(f"  🥪 Sandwich Normalization: {'✅ ENABLED' if use_sandwich_norm else '❌ DISABLED'}")
     logger.info(f"  🔍 Grouped-Query Attention: ✅ ENABLED")
     logger.info(f"  📊 WandB Logging: {'✅ ENABLED' if args.use_wandb and not args.no_wandb else '❌ DISABLED'}")
     logger.info("=" * 80)
-    logger.info("🎯 DATA CONSISTENCY FEATURES:")
-    logger.info(f"  📊 Consistent Evaluation: ✅ ENABLED (uses training samples)")
-    logger.info(f"  🔍 Data Validation: {'✅ ENABLED' if validate_consistency else '❌ DISABLED'}")
-    logger.info(f"  📈 Statistics Logging: {'✅ ENABLED' if args.log_data_statistics else '❌ DISABLED'}")
-    logger.info(f"  ⚖️ Norm Tolerance: {args.norm_tolerance}")
-    logger.info(f"  📊 Evaluation Samples: {args.eval_samples} (from training)")
+    logger.info("📄 Updated file structure:")
+    logger.info("  • Model: blip3o_dit.py (✅ 3D RoPE + Sandwich Norm)")
+    logger.info("  • Loss: blip3o_fm_loss.py")
+    logger.info("  • Dataset: blip3o_datasets.py")
+    logger.info("  • Trainer: blip3o_trainer.py (✅ WandB Integration)")
+    logger.info("  • Config: blip3o_config.py")
     logger.info("=" * 80)
     logger.info(f"Configuration:")
     logger.info(f"  Model size: {args.model_size}")
@@ -549,13 +635,15 @@ def main():
     logger.info("=" * 80)
     
     try:
+        # Check module availability
+        env_status = check_modules_availability(logger)
+        
         # Create output directory
         output_dir = Path(args.output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
         
-        # Validate embeddings directory and analyze data
-        embeddings_dir = Path(args.chunked_embeddings_dir)
-        data_analysis = validate_embeddings_directory(embeddings_dir, logger)
+        # Load config if available
+        model_config = load_config_if_available(args, logger)
         
         # Setup device and model
         device, model = setup_device_and_model(args, logger)
@@ -563,98 +651,82 @@ def main():
         # Create loss function
         loss_fn = create_loss_function(args, logger)
         
-        # Create dataloaders with FIXED consistent evaluation
-        train_dataloader, eval_dataloader = create_dataloaders(args, logger, data_analysis)
+        # Create dataloaders
+        train_dataloader, eval_dataloader = create_dataloaders(args, logger)
         
-        # Validate that we have evaluation dataloader
-        if eval_dataloader is None:
-            logger.error("❌ CRITICAL: No evaluation dataloader created!")
-            logger.error("   This means we cannot validate training/evaluation consistency!")
-            raise RuntimeError("Failed to create evaluation dataloader")
-        
-        logger.info("✅ CONSISTENCY CHECK: Both training and evaluation dataloaders created")
-        
-        # Create trainer with FIXED data consistency validation
+        # Create trainer
         trainer = create_trainer(model, loss_fn, train_dataloader, eval_dataloader, args, device, logger)
         
-        # Save configuration (convert numpy types to Python types for JSON)
-        def convert_numpy_types(obj):
-            """Convert numpy types to Python types for JSON serialization"""
-            if hasattr(obj, 'item'):  # numpy scalars
-                return obj.item()
-            elif isinstance(obj, np.ndarray):
-                return obj.tolist()
-            elif isinstance(obj, dict):
-                return {k: convert_numpy_types(v) for k, v in obj.items()}
-            elif isinstance(obj, list):
-                return [convert_numpy_types(v) for v in obj]
-            else:
-                return obj
-        
+        # Save configuration
         config = {
             'args': vars(args),
+            'model_config': model_config.to_dict() if model_config and hasattr(model_config, 'to_dict') else {},
             'model_params': model.get_num_parameters() if hasattr(model, 'get_num_parameters') else 'unknown',
             'timestamp': datetime.now().isoformat(),
-            'experiment_type': 'clip_reproduction_blip3o_FIXED',
-            'normalization_approach': 'minimal_with_consistent_evaluation',
-            'data_analysis': convert_numpy_types(data_analysis),
-            'fixes_applied': [
-                'consistent_train_eval_data',
-                'evaluation_from_training_samples',
-                'data_statistics_logging',
-                'norm_mismatch_detection',
-                'early_consistency_validation',
-                'extensive_debugging',
-                'no_hidden_normalization_differences',
-            ],
+            'experiment_type': 'clip_reproduction_blip3o',
+            'normalization_approach': 'minimal',
             'architecture_features': {
                 '3d_rope': use_3d_rope,
                 'sandwich_normalization': use_sandwich_norm,
                 'grouped_query_attention': True,
                 'minimal_normalization': True,
-                'consistent_evaluation': True,
-                'data_validation': validate_consistency,
             },
-            'consistency_features': {
-                'eval_from_training': True,
-                'eval_samples': args.eval_samples,
-                'validate_consistency': validate_consistency,
-                'log_statistics': args.log_data_statistics,
-                'norm_tolerance': args.norm_tolerance,
-                'expected_clip_norm_range': data_analysis.get('clip_norm_mean', 'unknown'),
-                'expected_eva_norm_range': data_analysis.get('eva_norm_mean', 'unknown'),
+            'file_names': {
+                'model': 'blip3o_dit.py',
+                'loss': 'blip3o_fm_loss.py',
+                'dataset': 'blip3o_datasets.py',
+                'trainer': 'blip3o_trainer.py',
+                'config': 'blip3o_config.py',
+                'training_script': 'train_dit.py',
             },
+            'environment_status': env_status,
             'wandb_config': {
                 'enabled': args.use_wandb and not args.no_wandb,
                 'project': args.wandb_project,
                 'run_name': args.wandb_run_name,
             },
+            'updates_applied': [
+                '3d_rotary_position_embedding',
+                'sandwich_normalization_rms',
+                'blip3o_paper_alignment',
+                'wandb_integration',
+                'iterable_dataset_wandb_fix',
+                'comprehensive_metrics_logging',
+                'minimal_normalization_approach',
+                'raw_embedding_space_training',
+                'gradient_flow_improvements',
+                'proper_initialization',
+                'numerical_stability',
+                'overfitting_test_capability',
+            ]
         }
         
-        # config_path = output_dir / 'experiment_config_FIXED.json'
-        # with open(config_path, 'w') as f:
-        #     json.dump(config, f, indent=2)
+        config_path = output_dir / 'experiment_config.json'
+        with open(config_path, 'w') as f:
+            json.dump(config, f, indent=2)
         
-        # logger.info(f"FIXED configuration saved to {config_path}")
+        logger.info(f"Configuration saved to {config_path}")
         
         # Start training
-        logger.info("\n🚀 Starting BLIP3-o training with CONSISTENT evaluation...")
-        logger.info("Expected behavior with FIXES:")
-        logger.info("  ✅ Training and evaluation should have similar CLIP norms")
-        logger.info("  ✅ Model predictions should match evaluation target norms")
-        logger.info("  ✅ CLIP similarity should improve significantly")
-        logger.info("  ✅ No norm mismatch warnings")
-        logger.info("  ✅ Consistent performance across training and evaluation")
-        logger.info("  ✅ Detailed statistics logging for debugging")
+        logger.info("\n🚀 Starting BLIP3-o training with advanced features...")
+        logger.info("Expected behavior:")
+        logger.info("  • Loss should decrease steadily")
+        logger.info("  • Velocity similarity should increase")
+        logger.info("  • CLIP similarity should improve during evaluation")
+        logger.info("  • Gradients should be non-zero and stable")
+        logger.info("  • Raw embeddings will be learned (no forced normalization)")
+        logger.info("  • 3D RoPE should provide spatial understanding")
+        logger.info("  • Sandwich normalization should improve gradient flow")
+        logger.info("  • WandB should log comprehensive metrics")
         
         if args.overfit_test_size:
-            logger.info(f"  🧪 OVERFITTING TEST: Should achieve >0.8 similarity on {args.overfit_test_size} samples")
+            logger.info(f"  • OVERFITTING TEST: Should achieve >0.8 similarity on {args.overfit_test_size} samples")
         
         logger.info("")
         
         start_time = datetime.now()
         
-        # Run training with FIXED data consistency
+        # Run training
         summary = trainer.train()
         
         end_time = datetime.now()
@@ -662,31 +734,14 @@ def main():
         
         # Final summary
         logger.info("\n" + "=" * 80)
-        logger.info("🎉 FIXED BLIP3-o TRAINING COMPLETED!")
+        logger.info("🎉 BLIP3-o TRAINING COMPLETED!")
         logger.info("=" * 80)
         logger.info(f"📊 RESULTS SUMMARY:")
         logger.info(f"  Duration: {duration:.1f} seconds ({duration/60:.1f} minutes)")
         logger.info(f"  Total steps: {summary.get('total_steps', 0)}")
         logger.info(f"  Best loss: {summary.get('best_loss', float('inf')):.6f}")
         logger.info(f"  Best CLIP similarity: {summary.get('best_eval_similarity', 0):.4f}")
-        
-        # NEW: Data consistency results
-        consistency_warnings = summary.get('norm_consistency_warnings', 0)
-        data_consistency_good = summary.get('data_consistency_good', False)
-        
-        logger.info(f"🎯 DATA CONSISTENCY RESULTS:")
-        logger.info(f"  Consistency warnings: {consistency_warnings}")
-        logger.info(f"  Data consistency: {'✅ GOOD' if data_consistency_good else '⚠️ POOR'}")
-        
-        if data_consistency_good:
-            logger.info(f"  ✅ SUCCESS: No norm mismatches detected!")
-            logger.info(f"  ✅ Training and evaluation data are consistent!")
-        else:
-            logger.warning(f"  ⚠️ ATTENTION: {consistency_warnings} consistency warnings detected")
-            logger.warning(f"  ⚠️ There may still be norm mismatches in the data")
-        
-        # Architecture results
-        logger.info(f"🏗️ ARCHITECTURE RESULTS:")
+        logger.info(f"  🚫 Used minimal normalization approach")
         logger.info(f"  🌐 3D RoPE: {'✅' if use_3d_rope else '❌'}")
         logger.info(f"  🥪 Sandwich Norm: {'✅' if use_sandwich_norm else '❌'}")
         logger.info(f"  📊 WandB: {'✅' if summary.get('wandb_enabled', False) else '❌'}")
@@ -699,75 +754,48 @@ def main():
             logger.info(f"  High quality (>0.7): {final_eval.get('eval_high_quality', 0)*100:.1f}%")
             logger.info(f"  Very high quality (>0.8): {final_eval.get('eval_very_high_quality', 0)*100:.1f}%")
             logger.info(f"  Excellent quality (>0.9): {final_eval.get('eval_excellent_quality', 0)*100:.1f}%")
-            logger.info(f"  Generated norm: {final_eval.get('eval_generated_norm_mean', 0):.3f}")
-            logger.info(f"  Target norm: {final_eval.get('eval_target_norm_mean', 0):.3f}")
-            logger.info(f"  Norm ratio: {final_eval.get('eval_norm_ratio', 0):.3f}")
             logger.info(f"  Samples evaluated: {final_eval.get('eval_samples', 0)}")
-            
-            # Consistency check in final evaluation
-            if 'train_eval_clip_diff' in final_eval:
-                diff = final_eval['train_eval_clip_diff']
-                consistency = final_eval.get('data_consistency_good', False)
-                logger.info(f"  🎯 Final consistency: {'✅ Good' if consistency else '⚠️ Poor'} (diff: {diff:.2f})")
         
         # Overfitting test results
         if args.overfit_test_size:
             overfit_success = summary.get('overfit_success', False)
             logger.info(f"🧪 OVERFITTING TEST: {'✅ PASSED' if overfit_success else '❌ FAILED'}")
             if overfit_success:
-                logger.info("   ✅ Model can learn and memorize - architecture is working!")
+                logger.info("   ✅ Model can learn and memorize - BLIP3-o architecture is working!")
             else:
-                logger.info("   ⚠️ Model struggles to overfit - check architecture/loss")
+                logger.info("   ⚠️  Model struggles to overfit - check architecture/loss")
         
-        # Success assessment
+        # Architecture assessment
         best_sim = summary.get('best_eval_similarity', 0)
-        logger.info(f"🏗️ OVERALL ASSESSMENT:")
-        if data_consistency_good:
-            if best_sim > 0.7:
-                logger.info("   🎉 EXCELLENT: FIXED approach works perfectly!")
-                logger.info("   🎉 Data consistency maintained, high CLIP similarity achieved!")
-            elif best_sim > 0.4:
-                logger.info("   ✅ GOOD: FIXED approach shows significant improvement!")
-                logger.info("   ✅ Data consistency maintained, good CLIP similarity!")
-            elif best_sim > 0.2:
-                logger.info("   📈 IMPROVED: FIXED approach shows clear progress!")
-                logger.info("   📈 Data consistency maintained, some improvement in similarity!")
-            else:
-                logger.info("   ⚠️ NEEDS WORK: Data consistency good but similarity still low")
+        logger.info(f"🏗️  BLIP3-o ARCHITECTURE ASSESSMENT:")
+        if best_sim > 0.7:
+            logger.info("   🎉 EXCELLENT: BLIP3-o DiT with 3D RoPE + Sandwich Norm working perfectly!")
+        elif best_sim > 0.4:
+            logger.info("   ✅ GOOD: BLIP3-o DiT architecture shows strong capability!")
+        elif best_sim > 0.1:
+            logger.info("   📈 FAIR: BLIP3-o DiT architecture is functional!")
         else:
-            logger.warning("   ⚠️ DATA CONSISTENCY ISSUES REMAIN: Further investigation needed")
+            logger.info("   ⚠️  NEEDS WORK: Architecture may need tuning!")
         
         # WandB information
-        if summary.get('wandb_enabled', True):
+        if summary.get('wandb_enabled', False):
             logger.info(f"📊 WandB Dashboard: Check your {args.wandb_project} project for detailed metrics")
         
-        # Save final summary (with numpy type conversion)
+        # Save final summary
         summary['duration_seconds'] = duration
         summary['end_time'] = end_time.isoformat()
         summary['experiment_config'] = config
-        summary['data_analysis'] = convert_numpy_types(data_analysis)
-        summary['fixes_applied'] = config['fixes_applied']
-        summary['consistency_features'] = config['consistency_features']
         
-        # Convert any remaining numpy types in summary
-        summary = convert_numpy_types(summary)
-        
-        summary_path = output_dir / 'final_summary_FIXED.json'
+        summary_path = output_dir / 'final_summary.json'
         with open(summary_path, 'w') as f:
             json.dump(summary, f, indent=2)
         
-        logger.info(f"📁 FIXED final summary saved to {summary_path}")
+        logger.info(f"📁 Final summary saved to {summary_path}")
         logger.info(f"📁 Model checkpoints saved to {output_dir}")
         
         logger.info("=" * 80)
         
-        # Return success code based on data consistency
-        if data_consistency_good:
-            logger.info("🎉 SUCCESS: Data consistency maintained!")
-            return 0
-        else:
-            logger.warning("⚠️ PARTIAL SUCCESS: Training completed but consistency issues remain")
-            return 1
+        return 0
         
     except Exception as e:
         logger.error(f"❌ Training failed with error: {e}")
