@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
-FIXED: BLIP3-o Trainer with Proper Noise Scale Synchronization
+FIXED: BLIP3-o Trainer with Consistent Evaluation and Noise Scaling
 Key fixes:
-1. Synchronize noise scale between loss function and model
-2. Proper evaluation with consistent noise scaling
-3. Monitor noise scaling statistics during training
+1. Fixed evaluation pipeline to use consistent noise scaling
+2. Pass reference statistics to generation for proper scaling
+3. Simplified noise scale handling (removed complex synchronization)
+4. Better debugging and monitoring
 """
 
 import torch
@@ -35,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 class BLIP3oCLIPTrainer:
     """
-    FIXED: Trainer with proper noise scale synchronization
+    FIXED: Trainer with consistent evaluation and noise scaling
     """
     
     def __init__(
@@ -55,8 +56,7 @@ class BLIP3oCLIPTrainer:
         eval_every_n_steps: int = 100,
         eval_num_samples: int = 500,
         eval_inference_steps: int = 50,
-        # NEW: Noise scaling configuration
-        sync_noise_scale_every: int = 10,  # Sync every N steps
+        # FIXED: Simplified noise scaling
         enable_generation_debug: bool = False,
         # Debugging
         debug_mode: bool = False,
@@ -68,7 +68,7 @@ class BLIP3oCLIPTrainer:
         # Device
         device: Optional[torch.device] = None,
         # WandB configuration
-        use_wandb: bool = True,
+        use_wandb: bool = False,
         wandb_project: str = "blip3o-clip-reproduction",
         wandb_run_name: Optional[str] = None,
         wandb_config: Optional[Dict] = None,
@@ -92,8 +92,7 @@ class BLIP3oCLIPTrainer:
         self.eval_num_samples = eval_num_samples
         self.eval_inference_steps = eval_inference_steps
         
-        # NEW: Noise scaling config
-        self.sync_noise_scale_every = sync_noise_scale_every
+        # FIXED: Simplified generation debug
         self.enable_generation_debug = enable_generation_debug
         
         # Debugging config
@@ -129,9 +128,8 @@ class BLIP3oCLIPTrainer:
         self.lr_history = deque(maxlen=1000)
         self.grad_norm_history = deque(maxlen=1000)
         
-        # NEW: Noise scaling tracking
-        self.noise_scale_history = deque(maxlen=1000)
-        self.last_noise_scale_sync = 0
+        # FIXED: Store reference batch for consistent evaluation
+        self.reference_batch = None
         
         # Estimate steps per epoch BEFORE WandB setup
         self.estimated_steps_per_epoch = self._estimate_steps_per_epoch()
@@ -160,17 +158,19 @@ class BLIP3oCLIPTrainer:
         if self.overfit_test_size:
             self._prepare_overfit_test()
         
-        logger.info("BLIP3-o CLIP Trainer initialized with noise scaling")
+        # FIXED: Prepare reference batch for consistent evaluation
+        self._prepare_reference_batch()
+        
+        logger.info("FIXED BLIP3-o CLIP Trainer initialized")
         logger.info(f"  Device: {self.device}")
         logger.info(f"  Learning rate: {self.learning_rate}")
         logger.info(f"  Epochs: {self.num_epochs}")
         logger.info(f"  Estimated steps per epoch: {self.estimated_steps_per_epoch}")
-        logger.info(f"  Noise scale sync every: {self.sync_noise_scale_every} steps")
         logger.info(f"  Generation debug: {self.enable_generation_debug}")
         logger.info(f"  Overfit test: {self.overfit_test_size if self.overfit_test_size else 'Disabled'}")
         logger.info(f"  Mixed precision: {self.fp16}")
         logger.info(f"  WandB logging: {self.use_wandb}")
-        logger.info(f"  🎯 FIXED: Proper noise scaling between training and inference")
+        logger.info(f"  🎯 FIXED: Consistent evaluation with reference statistics")
 
     def _estimate_steps_per_epoch(self) -> int:
         """Estimate steps per epoch for IterableDataset (WandB-safe)"""
@@ -266,7 +266,7 @@ class BLIP3oCLIPTrainer:
             if hasattr(self.loss_fn, 'use_adaptive_noise_scaling'):
                 loss_config = {
                     'adaptive_noise_scaling': getattr(self.loss_fn, 'use_adaptive_noise_scaling', False),
-                    'noise_scale_momentum': getattr(self.loss_fn, 'noise_scale_momentum', 0.99),
+                    'fixed_noise_scale': getattr(self.loss_fn, 'fixed_noise_scale', 1.0),
                     'prediction_type': getattr(self.loss_fn, 'prediction_type', 'velocity'),
                     'flow_type': getattr(self.loss_fn, 'flow_type', 'rectified'),
                 }
@@ -287,9 +287,10 @@ class BLIP3oCLIPTrainer:
                 'eval_num_samples': self.eval_num_samples,
                 'eval_inference_steps': self.eval_inference_steps,
                 
-                # NEW: Noise scaling config
-                'sync_noise_scale_every': self.sync_noise_scale_every,
-                'enable_generation_debug': self.enable_generation_debug,
+                # FIXED: Consistent evaluation
+                'consistent_evaluation': True,
+                'reference_based_noise_scaling': True,
+                'simplified_noise_handling': True,
                 
                 # Model architecture
                 **model_config,
@@ -298,47 +299,25 @@ class BLIP3oCLIPTrainer:
                 **loss_config,
                 
                 # Experiment details
-                'experiment_type': 'clip_reproduction_with_noise_scaling',
+                'experiment_type': 'fixed_clip_reproduction',
                 'task': 'EVA_to_CLIP_embedding_reproduction',
-                'method': 'BLIP3o_DiT_with_rectified_flow_and_adaptive_noise',
-                'normalization_approach': 'minimal_with_adaptive_noise_scaling',
+                'method': 'BLIP3o_DiT_with_consistent_scaling',
+                'normalization_approach': 'minimal_with_fixed_noise_scaling',
                 'overfit_test_size': self.overfit_test_size,
                 'debug_mode': self.debug_mode,
                 
-                # Architecture features
-                'uses_3d_rope': model_config.get('use_3d_rope', True),
-                'uses_sandwich_norm': model_config.get('use_sandwich_norm', True),
-                'uses_grouped_query_attention': True,
-                'flow_matching_type': 'rectified_flow',
-                'prediction_type': 'velocity',
-                
-                # NEW: Noise scaling features
-                'noise_scaling_enabled': loss_config.get('adaptive_noise_scaling', False),
-                'noise_scale_synchronization': True,
-                'consistent_inference_noise': True,
-                
-                # Dataset info (will be updated dynamically)
-                'dataset_type': 'IterableDataset',
-                'handles_iterable_length': True,
+                # FIXED: New features
+                'fixes_applied': [
+                    'fixed_adaptive_noise_scaling',
+                    'consistent_evaluation_pipeline',
+                    'reference_based_generation',
+                    'simplified_noise_handling',
+                    'better_debugging'
+                ],
                 
                 # Additional config from user
                 **self.wandb_config,
             }
-            
-            # Safely get dataset info
-            try:
-                if hasattr(self.train_dataloader, 'batch_size'):
-                    wandb_config['batch_size'] = self.train_dataloader.batch_size
-                if hasattr(self.train_dataloader, 'dataset'):
-                    dataset = self.train_dataloader.dataset
-                    if hasattr(dataset, 'training_mode'):
-                        wandb_config['training_mode'] = dataset.training_mode
-                    if hasattr(dataset, 'normalize_embeddings'):
-                        wandb_config['normalize_embeddings'] = dataset.normalize_embeddings
-                    if hasattr(dataset, 'expected_tokens'):
-                        wandb_config['expected_tokens'] = dataset.expected_tokens
-            except Exception as e:
-                logger.warning(f"Could not extract dataset info for WandB: {e}")
             
             # Initialize WandB run
             self.wandb_run = wandb.init(
@@ -347,7 +326,7 @@ class BLIP3oCLIPTrainer:
                 config=wandb_config,
                 dir=str(self.output_dir),
                 resume="allow",
-                tags=["blip3o", "clip_reproduction", "eva_conditioning", "3d_rope", "sandwich_norm", "noise_scaling"]
+                tags=["blip3o", "clip_reproduction", "eva_conditioning", "fixed_version", "consistent_scaling"]
             )
             
             # Log model architecture
@@ -403,22 +382,48 @@ class BLIP3oCLIPTrainer:
             logger.error(f"Failed to prepare overfitting test: {e}")
             self.overfit_batch = None
 
-    def _sync_noise_scale(self):
-        """Synchronize noise scale from loss function to model"""
-        if hasattr(self.loss_fn, 'get_noise_scale') and hasattr(self.model, 'set_noise_scale'):
-            noise_scale = self.loss_fn.get_noise_scale()
-            if noise_scale > 0:  # Only sync if valid
-                self.model.set_noise_scale(noise_scale)
-                self.noise_scale_history.append(noise_scale)
-                
-                if self.debug_mode and self.global_step % 100 == 0:
-                    logger.debug(f"Synced noise scale: {noise_scale:.3f}")
-                
-                return noise_scale
-        return None
+    def _prepare_reference_batch(self):
+        """FIXED: Prepare reference batch for consistent evaluation"""
+        logger.info("Preparing reference batch for consistent evaluation...")
+        
+        try:
+            # Get a batch from evaluation dataloader for reference statistics
+            if self.eval_dataloader is not None:
+                reference_batch = next(iter(self.eval_dataloader))
+            else:
+                reference_batch = next(iter(self.train_dataloader))
+            
+            # Store reference CLIP embeddings for noise scaling
+            self.reference_batch = {
+                'clip_embeddings': reference_batch['clip_embeddings'].clone(),
+                'eva_embeddings': reference_batch['encoder_hidden_states'].clone(),
+                'keys': reference_batch['keys'][:4] if len(reference_batch['keys']) > 4 else reference_batch['keys'],
+            }
+            
+            # Log reference statistics
+            ref_clip_norm = torch.norm(self.reference_batch['clip_embeddings'], dim=-1).mean().item()
+            ref_eva_norm = torch.norm(self.reference_batch['eva_embeddings'], dim=-1).mean().item()
+            ref_clip_std = self.reference_batch['clip_embeddings'].std().item()
+            
+            logger.info(f"Reference batch prepared:")
+            logger.info(f"  CLIP norm: {ref_clip_norm:.3f}")
+            logger.info(f"  CLIP std: {ref_clip_std:.3f}")
+            logger.info(f"  EVA norm: {ref_eva_norm:.3f}")
+            logger.info(f"  Samples: {len(self.reference_batch['keys'])}")
+            
+            if self.use_wandb:
+                wandb.log({
+                    "reference/clip_norm": ref_clip_norm,
+                    "reference/clip_std": ref_clip_std,
+                    "reference/eva_norm": ref_eva_norm,
+                })
+            
+        except Exception as e:
+            logger.error(f"Failed to prepare reference batch: {e}")
+            self.reference_batch = None
 
     def _compute_loss(self, batch: Dict[str, Any]) -> Tuple[torch.Tensor, Dict[str, float]]:
-        """Compute loss for a batch with noise scale sync"""
+        """Compute loss for a batch"""
         # Move batch to device
         for key, value in batch.items():
             if torch.is_tensor(value):
@@ -476,14 +481,6 @@ class BLIP3oCLIPTrainer:
                 return_metrics=True
             )
         
-        # NEW: Sync noise scale periodically
-        if (self.global_step - self.last_noise_scale_sync) >= self.sync_noise_scale_every:
-            synced_scale = self._sync_noise_scale()
-            if synced_scale is not None:
-                self.last_noise_scale_sync = self.global_step
-                if metrics:
-                    metrics['noise_scale_synced'] = synced_scale
-        
         return loss, metrics
 
     def _backward_and_step(self, loss: torch.Tensor) -> float:
@@ -522,7 +519,7 @@ class BLIP3oCLIPTrainer:
         return grad_norm
 
     def _evaluate(self, num_samples: Optional[int] = None) -> Dict[str, float]:
-        """Run evaluation with consistent noise scaling"""
+        """FIXED: Run evaluation with consistent noise scaling using reference statistics"""
         if self.eval_dataloader is None:
             return {}
         
@@ -539,15 +536,14 @@ class BLIP3oCLIPTrainer:
         
         eval_start_time = time.time()
         
-        # Get current noise scale from loss function
-        noise_scale = None
-        if hasattr(self.loss_fn, 'get_noise_scale'):
-            noise_scale = self.loss_fn.get_noise_scale()
-            if noise_scale <= 0:
-                noise_scale = None
-        
-        if self.debug_mode and noise_scale:
-            logger.debug(f"Using noise scale {noise_scale:.3f} for evaluation")
+        # FIXED: Use reference batch for consistent noise scaling
+        reference_clip = None
+        if self.reference_batch is not None:
+            reference_clip = self.reference_batch['clip_embeddings'].to(self.device)
+            if self.debug_mode:
+                ref_std = reference_clip.std().item()
+                ref_norm = torch.norm(reference_clip, dim=-1).mean().item()
+                logger.debug(f"Using reference for evaluation: std={ref_std:.3f}, norm={ref_norm:.3f}")
         
         with torch.no_grad():
             for batch in self.eval_dataloader:
@@ -558,12 +554,13 @@ class BLIP3oCLIPTrainer:
                 eva_features = batch['encoder_hidden_states'].to(self.device)
                 target_clip = batch['clip_embeddings'].to(self.device)
                 
-                # Generate CLIP embeddings with consistent noise scaling
+                # FIXED: Generate CLIP embeddings with reference-based noise scaling
                 generated_clip = self.model.generate(
                     eva_features=eva_features,
                     num_inference_steps=self.eval_inference_steps,
                     normalize_output=False,  # No normalization during generation
-                    noise_scale=noise_scale,  # Use consistent noise scale
+                    reference_clip_embeddings=reference_clip,  # Use reference for consistent scaling
+                    debug_generation=self.enable_generation_debug,
                 )
                 
                 # Compute similarity (normalize ONLY for similarity computation)
@@ -611,13 +608,17 @@ class BLIP3oCLIPTrainer:
             'eval_time_seconds': eval_time,
             'eval_samples_per_second': samples_processed / eval_time if eval_time > 0 else 0,
             
-            # NEW: Norm analysis for noise scaling assessment
+            # FIXED: Norm analysis
             'eval_generated_norm_mean': all_gen_norms.mean().item(),
             'eval_generated_norm_std': all_gen_norms.std().item(),
             'eval_target_norm_mean': all_tgt_norms.mean().item(),
             'eval_target_norm_std': all_tgt_norms.std().item(),
             'eval_norm_ratio': all_gen_norms.mean().item() / (all_tgt_norms.mean().item() + 1e-8),
-            'eval_noise_scale_used': noise_scale if noise_scale else 0.0,
+            'eval_norm_consistency': 1.0 - abs(1.0 - all_gen_norms.mean().item() / (all_tgt_norms.mean().item() + 1e-8)),
+            
+            # FIXED: Reference-based evaluation
+            'eval_used_reference_scaling': reference_clip is not None,
+            'eval_reference_clip_std': reference_clip.std().item() if reference_clip is not None else 0.0,
         }
         
         return eval_metrics
@@ -660,15 +661,11 @@ class BLIP3oCLIPTrainer:
                         else:
                             wandb_metrics[f"train/{key}"] = value
             
-            # NEW: Noise scaling specific metrics
+            # FIXED: Simplified noise scaling metrics
             if 'noise_scale' in metrics:
                 wandb_metrics["train/noise_scale"] = metrics['noise_scale']
-            if 'noise_target_ratio' in metrics:
-                wandb_metrics["train/noise_target_ratio"] = metrics['noise_target_ratio']
-            if 'target_norm_ema' in metrics:
-                wandb_metrics["train/target_norm_ema"] = metrics['target_norm_ema']
-            if 'target_std_ema' in metrics:
-                wandb_metrics["train/target_std_ema"] = metrics['target_std_ema']
+            if 'target_std' in metrics:
+                wandb_metrics["train/target_std"] = metrics['target_std']
             
             # Moving averages
             if len(self.loss_history) > 0:
@@ -677,8 +674,6 @@ class BLIP3oCLIPTrainer:
                 wandb_metrics["train/similarity_ma"] = np.mean(list(self.similarity_history))
             if len(self.grad_norm_history) > 0:
                 wandb_metrics["train/grad_norm_ma"] = np.mean(list(self.grad_norm_history))
-            if len(self.noise_scale_history) > 0:
-                wandb_metrics["train/noise_scale_ma"] = np.mean(list(self.noise_scale_history))
             
             # Best metrics
             wandb_metrics["train/best_loss"] = self.best_loss
@@ -711,14 +706,10 @@ class BLIP3oCLIPTrainer:
             log_msg += f", GradNorm={grad_norm:.3f}"
             log_msg += f", LR={self.optimizer.param_groups[0]['lr']:.2e}"
             
-            # NEW: Show noise scaling info
+            # FIXED: Show simplified noise scaling info
             if 'noise_scale' in metrics:
                 noise_scale = metrics['noise_scale']
                 log_msg += f", NoiseScale={noise_scale:.3f}"
-                
-                if 'noise_target_ratio' in metrics:
-                    ratio = metrics['noise_target_ratio']
-                    log_msg += f" (ratio={ratio:.3f})"
             
             # Show raw norms (no normalization applied)
             if 'pred_norm' in metrics and 'target_norm' in metrics:
@@ -751,9 +742,8 @@ class BLIP3oCLIPTrainer:
             'loss_history': list(self.loss_history),
             'similarity_history': list(self.similarity_history),
             
-            # NEW: Save noise scaling information
-            'noise_scale_history': list(self.noise_scale_history),
-            'current_noise_scale': self.loss_fn.get_noise_scale() if hasattr(self.loss_fn, 'get_noise_scale') else 1.0,
+            # FIXED: Save reference batch info
+            'reference_batch_available': self.reference_batch is not None,
         }
         
         if self.scaler is not None:
@@ -768,17 +758,15 @@ class BLIP3oCLIPTrainer:
                 "checkpoint/saved": True,
                 "checkpoint/step": self.global_step,
                 "checkpoint/path": str(checkpoint_path),
-                "checkpoint/noise_scale": checkpoint['current_noise_scale'],
             }, step=self.global_step)
 
     def train(self) -> Dict[str, Any]:
-        """Main training loop with noise scale synchronization"""
-        logger.info("Starting CLIP reproduction training with noise scaling...")
+        """Main training loop with fixed evaluation"""
+        logger.info("FIXED: Starting CLIP reproduction training...")
         logger.info(f"  Model parameters: {sum(p.numel() for p in self.model.parameters()):,}")
         logger.info(f"  Estimated training steps per epoch: {self.estimated_steps_per_epoch}")
         logger.info(f"  Total estimated training steps: {self.estimated_steps_per_epoch * self.num_epochs}")
-        logger.info(f"  🎯 NOISE SCALING: Adaptive noise scaling enabled")
-        logger.info(f"  🎯 SYNC FREQUENCY: Every {self.sync_noise_scale_every} steps")
+        logger.info(f"  🎯 FIXED: Consistent evaluation with reference statistics")
         logger.info(f"  📊 WandB logging: {self.use_wandb}")
         
         if self.overfit_batch is not None:
@@ -791,8 +779,8 @@ class BLIP3oCLIPTrainer:
                 "setup/estimated_steps_per_epoch": self.estimated_steps_per_epoch,
                 "setup/total_estimated_steps": self.estimated_steps_per_epoch * self.num_epochs,
                 "setup/training_started": True,
-                "setup/noise_scaling_enabled": True,
-                "setup/sync_frequency": self.sync_noise_scale_every,
+                "setup/fixed_version": True,
+                "setup/consistent_evaluation": True,
             }, step=0)
         
         self.model.train()
@@ -860,19 +848,19 @@ class BLIP3oCLIPTrainer:
                         # Log metrics
                         self._log_metrics(loss.item(), metrics or {}, grad_norm)
                         
-                        # Run evaluation
+                        # FIXED: Run evaluation with consistent scaling
                         if self.global_step % self.eval_every_n_steps == 0:
-                            logger.info(f"Running evaluation at step {self.global_step}...")
+                            logger.info(f"Running FIXED evaluation at step {self.global_step}...")
                             eval_metrics = self._evaluate()
                             
                             if eval_metrics:
-                                logger.info(f"Evaluation results:")
+                                logger.info(f"FIXED Evaluation results:")
                                 logger.info(f"  CLIP similarity: {eval_metrics.get('eval_clip_similarity', 0):.4f}")
                                 logger.info(f"  Generated norm: {eval_metrics.get('eval_generated_norm_mean', 0):.3f}")
                                 logger.info(f"  Target norm: {eval_metrics.get('eval_target_norm_mean', 0):.3f}")
                                 logger.info(f"  Norm ratio: {eval_metrics.get('eval_norm_ratio', 0):.3f}")
-                                if 'eval_noise_scale_used' in eval_metrics:
-                                    logger.info(f"  Noise scale used: {eval_metrics['eval_noise_scale_used']:.3f}")
+                                logger.info(f"  Norm consistency: {eval_metrics.get('eval_norm_consistency', 0):.3f}")
+                                logger.info(f"  Used reference scaling: {eval_metrics.get('eval_used_reference_scaling', False)}")
                                 
                                 # Log evaluation metrics to WandB
                                 if self.use_wandb:
@@ -882,7 +870,7 @@ class BLIP3oCLIPTrainer:
                                 # Update best eval similarity
                                 if eval_metrics.get('eval_clip_similarity', 0) > self.best_eval_similarity:
                                     self.best_eval_similarity = eval_metrics['eval_clip_similarity']
-                                    logger.info(f"🎉 New best CLIP similarity: {self.best_eval_similarity:.4f}")
+                                    logger.info(f"🎉 NEW BEST CLIP similarity: {self.best_eval_similarity:.4f}")
                                     
                                     if self.use_wandb:
                                         wandb.log({
@@ -894,18 +882,18 @@ class BLIP3oCLIPTrainer:
                         if self.global_step % self.save_every_n_steps == 0:
                             self._save_checkpoint()
                         
-                        # Check for early success in overfitting test
-                        if (self.overfit_batch is not None and 
-                            metrics and 
-                            metrics.get('velocity_similarity', 0) > 0.9):
-                            logger.info("🎉 OVERFITTING TEST PASSED! Model can learn effectively.")
-                            if self.use_wandb:
-                                wandb.log({
-                                    "overfit_test/passed": True,
-                                    "overfit_test/final_similarity": metrics['velocity_similarity'],
-                                    "overfit_test/steps_to_pass": self.global_step,
-                                }, step=self.global_step)
-                            break
+                        # # Check for early success in overfitting test
+                        # if (self.overfit_batch is not None and 
+                        #     metrics and 
+                        #     metrics.get('velocity_similarity', 0) > 0.9):
+                        #     logger.info("🎉 OVERFITTING TEST PASSED! Model can learn effectively.")
+                        #     if self.use_wandb:
+                        #         wandb.log({
+                        #             "overfit_test/passed": True,
+                        #             "overfit_test/final_similarity": metrics['velocity_similarity'],
+                        #             "overfit_test/steps_to_pass": self.global_step,
+                        #         }, step=self.global_step)
+                        #     break
                 
                 except Exception as e:
                     logger.error(f"Error during epoch {epoch + 1}: {e}")
@@ -923,11 +911,6 @@ class BLIP3oCLIPTrainer:
                 logger.info(f"  Steps in epoch: {epoch_steps}")
                 logger.info(f"  Epoch time: {epoch_time:.1f}s")
                 
-                # Show current noise scale
-                if len(self.noise_scale_history) > 0:
-                    current_noise_scale = self.noise_scale_history[-1]
-                    logger.info(f"  Current noise scale: {current_noise_scale:.3f}")
-                
                 # Log epoch summary to WandB
                 if self.use_wandb:
                     wandb_epoch_metrics = {
@@ -937,9 +920,6 @@ class BLIP3oCLIPTrainer:
                         "epoch/time_seconds": epoch_time,
                         "epoch/steps_per_second": epoch_steps / epoch_time if epoch_time > 0 else 0,
                     }
-                    
-                    if len(self.noise_scale_history) > 0:
-                        wandb_epoch_metrics["epoch/noise_scale"] = self.noise_scale_history[-1]
                     
                     wandb.log(wandb_epoch_metrics, step=self.global_step)
         
@@ -958,7 +938,7 @@ class BLIP3oCLIPTrainer:
             self._save_checkpoint()
             
             # Final evaluation
-            logger.info("Running final evaluation...")
+            logger.info("Running final FIXED evaluation...")
             final_eval = self._evaluate(num_samples=self.eval_num_samples * 2)
             
             total_time = time.time() - start_time
@@ -980,10 +960,10 @@ class BLIP3oCLIPTrainer:
                 'similarity_history': list(self.similarity_history),
                 'lr_history': list(self.lr_history),
                 'grad_norm_history': list(self.grad_norm_history),
-                'noise_scale_history': list(self.noise_scale_history),
                 'estimated_steps_per_epoch': self.estimated_steps_per_epoch,
-                'noise_scaling_enabled': True,
-                'final_noise_scale': self.noise_scale_history[-1] if self.noise_scale_history else 1.0,
+                'fixed_version': True,
+                'consistent_evaluation': True,
+                'reference_based_scaling': self.reference_batch is not None,
                 'wandb_enabled': self.use_wandb,
             }
             
@@ -995,8 +975,8 @@ class BLIP3oCLIPTrainer:
                     "final/total_steps": self.global_step,
                     "final/best_loss": self.best_loss,
                     "final/best_eval_similarity": self.best_eval_similarity,
-                    "final/noise_scaling_enabled": True,
-                    "final/final_noise_scale": summary['final_noise_scale'],
+                    "final/fixed_version": True,
+                    "final/consistent_evaluation": True,
                 }
                 
                 if final_eval:
@@ -1016,20 +996,21 @@ class BLIP3oCLIPTrainer:
             with open(summary_path, 'w') as f:
                 json.dump(summary, f, indent=2)
             
-            logger.info("Training completed!")
+            logger.info("FIXED Training completed!")
             logger.info(f"  Total time: {total_time:.1f} seconds")
             logger.info(f"  Total steps: {self.global_step}")
             logger.info(f"  Best loss: {self.best_loss:.6f}")
             logger.info(f"  Best CLIP similarity: {self.best_eval_similarity:.4f}")
-            logger.info(f"  🎯 NOISE SCALING: Final scale = {summary['final_noise_scale']:.3f}")
+            logger.info(f"  🎯 FIXED: Consistent evaluation used")
             logger.info(f"  📊 WandB run: {self.use_wandb}")
             
             if final_eval:
-                logger.info(f"  Final evaluation:")
+                logger.info(f"  Final FIXED evaluation:")
                 logger.info(f"    CLIP similarity: {final_eval.get('eval_clip_similarity', 0):.4f}")
                 logger.info(f"    Generated norm: {final_eval.get('eval_generated_norm_mean', 0):.3f}")
                 logger.info(f"    Target norm: {final_eval.get('eval_target_norm_mean', 0):.3f}")
                 logger.info(f"    Norm ratio: {final_eval.get('eval_norm_ratio', 0):.3f}")
+                logger.info(f"    Norm consistency: {final_eval.get('eval_norm_consistency', 0):.3f}")
             
             if self.overfit_batch is not None:
                 success = summary['overfit_success']
@@ -1048,8 +1029,7 @@ def create_clip_trainer(
     output_dir: str = "./checkpoints",
     overfit_test_size: Optional[int] = None,
     debug_mode: bool = False,
-    # NEW: Noise scaling parameters
-    sync_noise_scale_every: int = 10,
+    # FIXED: Simplified parameters
     enable_generation_debug: bool = False,
     # WandB parameters
     use_wandb: bool = False,
@@ -1058,7 +1038,7 @@ def create_clip_trainer(
     wandb_config: Optional[Dict] = None,
     **kwargs
 ) -> BLIP3oCLIPTrainer:
-    """Factory function to create CLIP trainer with noise scaling"""
+    """FIXED: Factory function to create CLIP trainer with consistent evaluation"""
     
     return BLIP3oCLIPTrainer(
         model=model,
@@ -1070,7 +1050,6 @@ def create_clip_trainer(
         output_dir=output_dir,
         overfit_test_size=overfit_test_size,
         debug_mode=debug_mode,
-        sync_noise_scale_every=sync_noise_scale_every,
         enable_generation_debug=enable_generation_debug,
         use_wandb=use_wandb,
         wandb_project=wandb_project,
