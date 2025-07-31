@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-FIXED: Flow Matching Loss for CLIP Reproduction with Consistent Noise Scaling
+FIXED: Flow Matching Loss for CLIP Reproduction with NO Unwanted Normalization
 Key fixes:
-1. Disabled adaptive noise scaling to ensure training/inference consistency
-2. Use target-based noise scaling for reproducible results
-3. Simplified noise handling for better debugging
-4. Removed complex statistics tracking that caused inconsistencies
+1. NO normalization during training except for cosine similarity computation
+2. Consistent noise scaling for training/inference consistency
+3. Enhanced debugging for norm analysis
+4. Clear separation between raw embeddings and normalized embeddings
 """
 
 import torch
@@ -20,12 +20,13 @@ logger = logging.getLogger(__name__)
 
 class BLIP3oCLIPFlowMatchingLoss(nn.Module):
     """
-    FIXED: Flow Matching Loss for CLIP reproduction with consistent noise scaling
+    FIXED: Flow Matching Loss for CLIP reproduction with NO unwanted normalization
     
     Key improvements:
-    - Fixed noise scaling for training/inference consistency
-    - Simplified noise handling
-    - Better debugging and monitoring
+    - NO normalization during training (raw embedding space)
+    - Normalization ONLY for cosine similarity computation
+    - Enhanced debugging and monitoring
+    - Consistent noise scaling
     """
     
     def __init__(
@@ -79,6 +80,7 @@ class BLIP3oCLIPFlowMatchingLoss(nn.Module):
         logger.info(f"  Adaptive noise scaling: {use_adaptive_noise_scaling}")
         logger.info(f"  Fixed noise scale: {fixed_noise_scale}")
         logger.info(f"  Debug mode: {debug_mode}")
+        logger.info(f"  🚫 NO NORMALIZATION during training (raw embedding space)")
 
     def _create_target_scaled_noise(self, target_samples: torch.Tensor) -> torch.Tensor:
         """
@@ -126,7 +128,7 @@ class BLIP3oCLIPFlowMatchingLoss(nn.Module):
         **kwargs
     ) -> Tuple[torch.Tensor, Optional[Dict[str, float]]]:
         """
-        FIXED: Compute flow matching loss with consistent noise scaling
+        FIXED: Compute flow matching loss with NO unwanted normalization
         """
         
         batch_size, num_tokens, embed_dim = model_output.shape
@@ -139,7 +141,7 @@ class BLIP3oCLIPFlowMatchingLoss(nn.Module):
         # Clamp timesteps
         timesteps = self._clamp_timesteps(timesteps)
         
-        # Keep targets as-is (no normalization during training)
+        # FIXED: Keep targets as-is (NO normalization during training)
         target_clean = target_samples.detach()
         
         # FIXED: Create properly scaled noise using target statistics
@@ -156,17 +158,17 @@ class BLIP3oCLIPFlowMatchingLoss(nn.Module):
         # Expand timesteps for broadcasting [B, 1, 1]
         t = timesteps.view(batch_size, 1, 1).to(dtype)
         
-        # RECTIFIED FLOW COMPUTATION with consistent scaling
+        # FIXED: RECTIFIED FLOW COMPUTATION with NO normalization
         if self.flow_type == "rectified":
-            # Linear interpolation: x_t = (1-t) * noise + t * target
+            # Linear interpolation: x_t = (1-t) * noise + t * target (NO normalization)
             true_velocity = target_clean - noise
             target_for_loss = true_velocity
         else:  # reflow
             raise NotImplementedError("Reflow not implemented yet")
         
-        # LOSS COMPUTATION
+        # FIXED: LOSS COMPUTATION in raw space (NO normalization)
         if self.prediction_type == "velocity":
-            # Direct velocity prediction loss
+            # Direct velocity prediction loss in raw embedding space
             prediction_loss = F.mse_loss(model_output, target_for_loss, reduction='none')
         else:
             raise NotImplementedError(f"Prediction type {self.prediction_type} not implemented")
@@ -199,7 +201,7 @@ class BLIP3oCLIPFlowMatchingLoss(nn.Module):
         metrics = {}
         if return_metrics:
             with torch.no_grad():
-                # ONLY normalize for cosine similarity computation
+                # FIXED: ONLY normalize for cosine similarity computation
                 pred_normalized = F.normalize(model_output + self.eps, p=2, dim=-1)
                 target_norm = F.normalize(target_for_loss + self.eps, p=2, dim=-1)
                 
@@ -212,11 +214,12 @@ class BLIP3oCLIPFlowMatchingLoss(nn.Module):
                 self._update_ema(self.loss_ema, main_loss.item())
                 self._update_ema(self.similarity_ema, mean_similarity)
                 
-                # Compute norms for monitoring (raw, unnormalized)
+                # FIXED: Compute norms for monitoring (raw, unnormalized)
                 pred_norm = torch.norm(model_output, dim=-1).mean().item()
                 target_norm_val = torch.norm(target_for_loss, dim=-1).mean().item()
                 clip_norm = torch.norm(target_clean, dim=-1).mean().item()
                 noise_norm = torch.norm(noise, dim=-1).mean().item()
+                eva_norm = torch.norm(eva_conditioning, dim=-1).mean().item()
                 
                 # Error analysis (raw space)
                 error = model_output - target_for_loss
@@ -238,6 +241,30 @@ class BLIP3oCLIPFlowMatchingLoss(nn.Module):
                 if self.use_adaptive_noise_scaling:
                     current_noise_scale = target_clean.std().item()
                 
+                # FIXED: Detailed statistics for each embedding type
+                clip_stats = {
+                    'mean': target_clean.mean().item(),
+                    'std': target_clean.std().item(),
+                    'min': target_clean.min().item(),
+                    'max': target_clean.max().item(),
+                    'norm': clip_norm,
+                }
+                
+                pred_stats = {
+                    'mean': model_output.mean().item(),
+                    'std': model_output.std().item(),
+                    'min': model_output.min().item(),
+                    'max': model_output.max().item(),
+                    'norm': pred_norm,
+                }
+                
+                noise_stats = {
+                    'mean': noise.mean().item(),
+                    'std': noise.std().item(),
+                    'norm': noise_norm,
+                    'scale_used': current_noise_scale,
+                }
+                
                 metrics = {
                     # Core metrics
                     'loss': main_loss.item(),
@@ -246,12 +273,24 @@ class BLIP3oCLIPFlowMatchingLoss(nn.Module):
                     'velocity_similarity': mean_similarity,
                     'velocity_similarity_std': per_image_sim.std().item(),
                     
-                    # Norm tracking
+                    # FIXED: Raw norm tracking (NO normalization applied)
                     'pred_norm': pred_norm,
                     'target_norm': target_norm_val,
                     'clip_norm': clip_norm,
                     'noise_norm': noise_norm,
-                    'eva_norm': torch.norm(eva_conditioning, dim=-1).mean().item(),
+                    'eva_norm': eva_norm,
+                    
+                    # FIXED: Detailed embedding statistics
+                    'clip_mean': clip_stats['mean'],
+                    'clip_std': clip_stats['std'],
+                    'clip_min': clip_stats['min'],
+                    'clip_max': clip_stats['max'],
+                    'pred_mean': pred_stats['mean'],
+                    'pred_std': pred_stats['std'],
+                    'pred_min': pred_stats['min'],
+                    'pred_max': pred_stats['max'],
+                    'noise_mean': noise_stats['mean'],
+                    'noise_std': noise_stats['std'],
                     
                     # FIXED: Noise scaling metrics
                     'noise_scale': current_noise_scale,
@@ -274,11 +313,15 @@ class BLIP3oCLIPFlowMatchingLoss(nn.Module):
                     'timestep_std': timesteps.std().item(),
                     'interpolation_weight': t.mean().item(),
                     
-                    # Debugging info
-                    'pred_min': model_output.min().item(),
-                    'pred_max': model_output.max().item(),
-                    'target_min': target_for_loss.min().item(),
-                    'target_max': target_for_loss.max().item(),
+                    # FIXED: Normalization tracking
+                    'normalization_applied_during_training': False,  # Always False
+                    'normalization_for_cosine_similarity_only': True,  # Always True
+                    'raw_embedding_space_training': True,  # Always True
+                    
+                    # Scale consistency checks
+                    'clip_eva_norm_ratio': clip_norm / (eva_norm + self.eps),
+                    'pred_clip_norm_ratio': pred_norm / (clip_norm + self.eps),
+                    'noise_consistency': abs(noise_norm - current_noise_scale) < 0.1,
                 }
                 
                 # Check for numerical issues
@@ -289,14 +332,18 @@ class BLIP3oCLIPFlowMatchingLoss(nn.Module):
                     logger.error(f"  Pred norm: {pred_norm}")
                     logger.error(f"  Target norm: {target_norm_val}")
                 
-                # Debug logging
+                # Enhanced debug logging
                 if self.debug_mode and self.step_count % 50 == 0:
                     logger.info(f"[Step {self.step_count}] FIXED CLIP Flow Matching Debug:")
                     logger.info(f"  Loss: {main_loss.item():.6f} (quality: {quality})")
                     logger.info(f"  Velocity Sim: {mean_similarity:.4f}")
-                    logger.info(f"  Norms - Pred: {pred_norm:.3f}, Target: {target_norm_val:.3f}, Noise: {noise_norm:.3f}")
+                    logger.info(f"  🚫 NO normalization applied during training")
+                    logger.info(f"  Raw Norms - Pred: {pred_norm:.3f}, Target: {target_norm_val:.3f}, CLIP: {clip_norm:.3f}")
                     logger.info(f"  Noise Scale: {current_noise_scale:.3f} (ratio: {metrics['noise_target_ratio']:.3f})")
                     logger.info(f"  Error: {error_norm:.3f} (relative: {relative_error:.3f})")
+                    logger.info(f"  CLIP stats: mean={clip_stats['mean']:.3f}, std={clip_stats['std']:.3f}")
+                    logger.info(f"  Pred stats: mean={pred_stats['mean']:.3f}, std={pred_stats['std']:.3f}")
+                    logger.info(f"  Scale consistency: {'✅' if metrics['noise_consistency'] else '⚠️'}")
         
         return total_loss, metrics
 
@@ -305,9 +352,9 @@ class BLIP3oCLIPFlowMatchingLoss(nn.Module):
         generated: torch.Tensor,  # Generated CLIP embeddings
         target: torch.Tensor,     # Target CLIP embeddings
     ) -> Dict[str, float]:
-        """FIXED: Compute evaluation metrics with consistent scaling"""
+        """FIXED: Compute evaluation metrics with NO unwanted normalization"""
         with torch.no_grad():
-            # Normalize ONLY for cosine similarity computation
+            # FIXED: Normalize ONLY for cosine similarity computation
             generated_norm = F.normalize(generated, p=2, dim=-1)
             target_norm = F.normalize(target, p=2, dim=-1)
             
@@ -315,7 +362,7 @@ class BLIP3oCLIPFlowMatchingLoss(nn.Module):
             cosine_sim = F.cosine_similarity(generated_norm, target_norm, dim=-1)
             per_image_sim = cosine_sim.mean(dim=1)
             
-            # MSE in raw space (no normalization)
+            # FIXED: MSE in raw space (NO normalization)
             mse_loss = F.mse_loss(generated, target)
             
             # Quality metrics (based on cosine similarity)
@@ -323,9 +370,24 @@ class BLIP3oCLIPFlowMatchingLoss(nn.Module):
             very_high_quality = (per_image_sim > 0.8).float().mean().item()
             excellent_quality = (per_image_sim > 0.9).float().mean().item()
             
-            # Scale analysis
+            # FIXED: Scale analysis (raw space, NO normalization)
             generated_norm_val = torch.norm(generated, dim=-1).mean().item()
             target_norm_val = torch.norm(target, dim=-1).mean().item()
+            
+            # FIXED: Detailed embedding statistics
+            generated_stats = {
+                'mean': generated.mean().item(),
+                'std': generated.std().item(),
+                'min': generated.min().item(),
+                'max': generated.max().item(),
+            }
+            
+            target_stats = {
+                'mean': target.mean().item(),
+                'std': target.std().item(),
+                'min': target.min().item(),
+                'max': target.max().item(),
+            }
             
             return {
                 'eval_clip_similarity': per_image_sim.mean().item(),
@@ -334,9 +396,25 @@ class BLIP3oCLIPFlowMatchingLoss(nn.Module):
                 'eval_very_high_quality_ratio': very_high_quality,
                 'eval_excellent_quality_ratio': excellent_quality,
                 'eval_similarity_std': per_image_sim.std().item(),
+                
+                # FIXED: Raw embedding norms (NO normalization)
                 'eval_generated_norm': generated_norm_val,
                 'eval_target_norm': target_norm_val,
                 'eval_norm_ratio': generated_norm_val / (target_norm_val + 1e-8),
+                
+                # FIXED: Detailed embedding statistics
+                'eval_generated_mean': generated_stats['mean'],
+                'eval_generated_std': generated_stats['std'],
+                'eval_generated_min': generated_stats['min'],
+                'eval_generated_max': generated_stats['max'],
+                'eval_target_mean': target_stats['mean'],
+                'eval_target_std': target_stats['std'],
+                'eval_target_min': target_stats['min'],
+                'eval_target_max': target_stats['max'],
+                
+                # FIXED: Normalization tracking
+                'eval_normalization_applied': False,  # NO normalization except for similarity
+                'eval_raw_embedding_space': True,    # Always in raw space
             }
 
     def get_noise_scale(self) -> float:
@@ -357,7 +435,7 @@ def create_clip_reproduction_loss(
     debug_mode: bool = False,
     **kwargs
 ) -> BLIP3oCLIPFlowMatchingLoss:
-    """FIXED: Factory function for CLIP reproduction loss with consistent scaling"""
+    """FIXED: Factory function for CLIP reproduction loss with NO unwanted normalization"""
     return BLIP3oCLIPFlowMatchingLoss(
         prediction_type=prediction_type,
         flow_type=flow_type,

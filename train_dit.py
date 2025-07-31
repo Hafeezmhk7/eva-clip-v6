@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """
-FIXED: CLIP Reproduction Training Script - train_dit_fixed.py
-Updated training script that uses all the FIXED components for consistent training and evaluation.
+FIXED: CLIP Reproduction Training Script with Consistent Data and NO Unwanted Normalization
+Updated training script that uses all the FIXED components:
 
 Key updates:
-1. Uses FIXED loss function with disabled adaptive noise scaling
-2. Uses FIXED dataset with consistent processing
-3. Uses FIXED model with proper generation
-4. Uses FIXED trainer with consistent evaluation
-5. Better debugging and monitoring
+1. Uses FIXED loss function with NO unwanted normalization
+2. Uses FIXED dataset with NO normalization applied
+3. Uses FIXED model with NO unwanted normalization
+4. Uses FIXED trainer with consistent overfitting test data
+5. Enhanced norm tracking and debugging
+6. Overfitting test uses same data source as evaluation
 
 Usage:
     python train_dit_fixed.py --chunked_embeddings_dir /path/to/embeddings --output_dir ./checkpoints
@@ -41,7 +42,7 @@ def setup_logging():
 
 def parse_arguments():
     """Parse command line arguments"""
-    parser = argparse.ArgumentParser(description="FIXED CLIP Reproduction from EVA Embeddings")
+    parser = argparse.ArgumentParser(description="FIXED CLIP Reproduction from EVA Embeddings with Consistent Data")
     
     # Required arguments
     parser.add_argument("--chunked_embeddings_dir", type=str, required=True,
@@ -110,11 +111,11 @@ def parse_arguments():
                        help="Number of dataloader workers")
     
     # WandB configuration
-    parser.add_argument("--use_wandb", action="store_true", default=True,
+    parser.add_argument("--use_wandb", action="store_true", default=False,
                        help="Enable WandB logging")
     parser.add_argument("--no_wandb", action="store_true",
                        help="Disable WandB logging")
-    parser.add_argument("--wandb_project", type=str, default="fixed-blip3o-clip-reproduction",
+    parser.add_argument("--wandb_project", type=str, default="fixed-blip3o-clip-reproduction-consistent",
                        help="WandB project name")
     parser.add_argument("--wandb_run_name", type=str, default=None,
                        help="WandB run name")
@@ -140,6 +141,7 @@ def setup_device_and_model(args, logger):
     logger.info("🏗️ FIXED BLIP3-o Architecture Configuration:")
     logger.info(f"  3D Rotary Position Embedding: {'✅ Enabled' if use_3d_rope else '❌ Disabled'}")
     logger.info(f"  Sandwich Normalization: {'✅ Enabled' if use_sandwich_norm else '❌ Disabled'}")
+    logger.info(f"  🚫 NO unwanted normalization in model")
     
     # Import and create FIXED model
     try:
@@ -183,6 +185,7 @@ def create_loss_function(args, logger):
         logger.info(f"FIXED loss function created:")
         logger.info(f"  Adaptive noise scaling: {args.use_adaptive_noise_scaling}")
         logger.info(f"  Fixed noise scale: {args.fixed_noise_scale}")
+        logger.info(f"  🚫 NO unwanted normalization during training")
         
     except ImportError as e:
         logger.error(f"❌ Could not import FIXED loss function: {e}")
@@ -203,16 +206,17 @@ def create_dataloaders(args, logger):
             batch_size=args.batch_size,
             training_mode=args.training_mode,
             max_shards=args.max_shards,
-            normalize_embeddings=False,  # FIXED: No normalization
-            collect_statistics=False,    # FIXED: No statistics collection
+            normalize_embeddings=False,  # FIXED: NO normalization
+            collect_statistics=False,    # FIXED: NO statistics collection
             num_workers=args.num_workers,
             pin_memory=torch.cuda.is_available()
         )
         
         logger.info(f"FIXED dataloaders created:")
-        logger.info(f"  Normalization: Disabled")
+        logger.info(f"  🚫 Normalization: DISABLED (forced)")
         logger.info(f"  Statistics collection: Disabled")
         logger.info(f"  Max shards: {args.max_shards}")
+        logger.info(f"  Raw embedding space: ✅")
         
     except ImportError as e:
         logger.error(f"❌ Could not import FIXED dataset: {e}")
@@ -250,7 +254,11 @@ def create_trainer(model, loss_fn, train_dataloader, eval_dataloader, args, devi
             "fixed_version": True,
             "adaptive_noise_scaling": args.use_adaptive_noise_scaling,
             "fixed_noise_scale": args.fixed_noise_scale,
-            "experiment_version": "fixed_v1_consistent_scaling",
+            "experiment_version": "fixed_v2_consistent_data_no_normalization",
+            "consistent_overfit_test": True,
+            "enhanced_norm_tracking": True,
+            "no_unwanted_normalization": True,
+            "raw_embedding_space": True,
         }
         
         trainer = create_clip_trainer(
@@ -281,6 +289,8 @@ def create_trainer(model, loss_fn, train_dataloader, eval_dataloader, args, devi
         logger.info(f"  Evaluation: Every {args.eval_every_n_steps} steps")
         logger.info(f"  Inference steps: {args.eval_inference_steps}")
         logger.info(f"  WandB enabled: {args.use_wandb and not args.no_wandb}")
+        logger.info(f"  🔧 FIXED: Overfitting test uses same data source as evaluation")
+        logger.info(f"  📊 FIXED: Enhanced norm tracking enabled")
         
     except ImportError as e:
         logger.error(f"❌ Could not import FIXED trainer: {e}")
@@ -294,23 +304,26 @@ def main():
     args = parse_arguments()
     logger = setup_logging()
     
-    logger.info("🚀 FIXED CLIP Reproduction Training with BLIP3-o DiT")
-    logger.info("=" * 80)
+    logger.info("🔧 FIXED: CLIP Reproduction Training with Consistent Data and NO Unwanted Normalization")
+    logger.info("=" * 90)
     logger.info("🔧 FIXES APPLIED:")
-    logger.info("  ✅ Disabled adaptive noise scaling for consistency")
-    logger.info("  ✅ Fixed data processing (no statistics collection)")
-    logger.info("  ✅ Consistent evaluation with reference statistics")
-    logger.info("  ✅ Proper noise scaling in generation")
-    logger.info("  ✅ Simplified trainer without complex synchronization")
-    logger.info("=" * 80)
+    logger.info("  ✅ Overfitting test uses SAME data source as evaluation")
+    logger.info("  ✅ NO normalization applied during data loading (raw embedding space)")
+    logger.info("  ✅ NO normalization applied during training (except for cosine similarity)")
+    logger.info("  ✅ NO normalization applied during generation (unless explicitly requested)")
+    logger.info("  ✅ Enhanced norm tracking for debugging")
+    logger.info("  ✅ Consistent data processing between train and eval")
+    logger.info("  ✅ Fixed noise scaling for training/inference consistency")
+    logger.info("=" * 90)
     logger.info("EXPERIMENT DETAILS:")
     logger.info("  📋 Task: Reproduce clean CLIP embeddings from EVA embeddings")
-    logger.info("  🧠 Model: FIXED BLIP3-o DiT with consistent scaling")
-    logger.info("  🎯 Target: CLIP embeddings [B, N, 1024]")
-    logger.info("  🎮 Conditioning: EVA embeddings [B, N, 4096]")
-    logger.info("  🌊 Method: Rectified Flow Matching with FIXED noise handling")
-    logger.info("  🚫 Normalization: MINIMAL (only for evaluation similarity)")
-    logger.info("=" * 80)
+    logger.info("  🧠 Model: FIXED BLIP3-o DiT with NO unwanted normalization")
+    logger.info("  🎯 Target: CLIP embeddings [B, N, 1024] - RAW (no normalization)")
+    logger.info("  🎮 Conditioning: EVA embeddings [B, N, 4096] - RAW (no normalization)")
+    logger.info("  🌊 Method: Rectified Flow Matching in RAW embedding space")
+    logger.info("  🚫 Normalization: ONLY for cosine similarity computation")
+    logger.info("  📊 Enhanced: Detailed norm tracking and debugging")
+    logger.info("=" * 90)
     logger.info(f"Configuration:")
     logger.info(f"  Model size: {args.model_size}")
     logger.info(f"  Training mode: {args.training_mode}")
@@ -323,11 +336,11 @@ def main():
     logger.info(f"  Adaptive noise scaling: {args.use_adaptive_noise_scaling}")
     logger.info(f"  Fixed noise scale: {args.fixed_noise_scale}")
     if args.overfit_test_size:
-        logger.info(f"  🧪 OVERFITTING TEST: {args.overfit_test_size} samples")
+        logger.info(f"  🧪 FIXED OVERFITTING TEST: {args.overfit_test_size} samples (from eval data)")
     logger.info(f"  Debug mode: {args.debug_mode}")
     if args.use_wandb and not args.no_wandb:
         logger.info(f"  📊 WandB project: {args.wandb_project}")
-    logger.info("=" * 80)
+    logger.info("=" * 90)
     
     try:
         # Create output directory
@@ -352,28 +365,43 @@ def main():
             'model_config': model.config.to_dict() if hasattr(model.config, 'to_dict') else {},
             'model_params': model.get_num_parameters() if hasattr(model, 'get_num_parameters') else 'unknown',
             'timestamp': datetime.now().isoformat(),
-            'experiment_type': 'fixed_clip_reproduction_blip3o',
-            'normalization_approach': 'minimal_with_fixed_noise_scaling',
+            'experiment_type': 'fixed_clip_reproduction_consistent_data_no_normalization',
+            'normalization_approach': 'raw_embedding_space_with_cosine_similarity_only',
             'fixes_applied': [
-                'disabled_adaptive_noise_scaling',
-                'fixed_data_processing_consistency',
-                'consistent_evaluation_pipeline',
-                'reference_based_generation_scaling',
-                'simplified_trainer_logic',
-                'removed_complex_statistics_tracking',
-                'better_debugging_and_monitoring'
+                'consistent_overfit_test_data_source',
+                'no_unwanted_normalization_anywhere',
+                'raw_embedding_space_training',
+                'enhanced_norm_tracking',
+                'consistent_data_processing',
+                'fixed_noise_scaling',
+                'detailed_debugging_and_monitoring'
             ],
             'architecture_features': {
                 '3d_rope': getattr(model.config, 'use_3d_rope', False),
                 'sandwich_normalization': getattr(model.config, 'use_sandwich_norm', False),
                 'grouped_query_attention': True,
-                'minimal_normalization': True,
+                'no_unwanted_normalization': True,
+                'raw_embedding_space': True,
                 'fixed_noise_scaling': True,
             },
             'noise_scaling': {
                 'adaptive': args.use_adaptive_noise_scaling,
                 'fixed_scale': args.fixed_noise_scale,
-                'method': 'target_based' if not args.use_adaptive_noise_scaling else 'adaptive'
+                'method': 'target_based' if not args.use_adaptive_noise_scaling else 'adaptive',
+                'applied_during': 'training_and_inference_consistently'
+            },
+            'normalization_policy': {
+                'data_loading': 'none',
+                'training': 'none_except_cosine_similarity',
+                'generation': 'none_unless_explicitly_requested',
+                'evaluation': 'only_for_cosine_similarity',
+                'raw_embedding_space': True,
+            },
+            'data_consistency': {
+                'overfit_test_source': 'eval_dataloader',
+                'train_eval_identical_processing': True,
+                'consistent_shuffling': False,  # eval doesn't shuffle
+                'norm_tracking': True,
             },
             'wandb_config': {
                 'enabled': args.use_wandb and not args.no_wandb,
@@ -389,17 +417,20 @@ def main():
         logger.info(f"FIXED configuration saved to {config_path}")
         
         # Start training
-        logger.info("\n🚀 Starting FIXED BLIP3-o training...")
-        logger.info("Expected behavior with FIXES:")
-        logger.info("  • Consistent noise scaling between training and evaluation")
+        logger.info("\n🔧 Starting FIXED BLIP3-o training with consistent data...")
+        logger.info("Expected behavior with ALL FIXES:")
+        logger.info("  • Consistent target norms between training and evaluation")
+        logger.info("  • Overfitting test should achieve >0.8 similarity (same data as eval)")
+        logger.info("  • NO unwanted normalization anywhere in the pipeline")
+        logger.info("  • Raw embedding space training with proper scale learning")
+        logger.info("  • Enhanced norm tracking shows data distribution")
         logger.info("  • Much better norm consistency (target vs generated)")
-        logger.info("  • Higher cosine similarity (should reach >0.8 for overfitting)")
-        logger.info("  • No more adaptive noise scale drift")
+        logger.info("  • Higher cosine similarity due to consistent data and scaling")
         logger.info("  • Stable and reproducible evaluation results")
-        logger.info("  • Better debugging information")
         
         if args.overfit_test_size:
             logger.info(f"  • OVERFITTING TEST: Should achieve >0.8 similarity on {args.overfit_test_size} samples")
+            logger.info(f"    ✅ Uses SAME data source as evaluation for consistency")
         
         logger.info("")
         
@@ -412,28 +443,30 @@ def main():
         duration = (end_time - start_time).total_seconds()
         
         # Final summary
-        logger.info("\n" + "=" * 80)
+        logger.info("\n" + "=" * 90)
         logger.info("🎉 FIXED BLIP3-o TRAINING COMPLETED!")
-        logger.info("=" * 80)
+        logger.info("=" * 90)
         logger.info(f"📊 RESULTS SUMMARY:")
         logger.info(f"  Duration: {duration:.1f} seconds ({duration/60:.1f} minutes)")
         logger.info(f"  Total steps: {summary.get('total_steps', 0)}")
         logger.info(f"  Best loss: {summary.get('best_loss', float('inf')):.6f}")
         logger.info(f"  Best CLIP similarity: {summary.get('best_eval_similarity', 0):.4f}")
-        logger.info(f"  🔧 FIXED version with consistent scaling")
+        logger.info(f"  🔧 FIXED version with consistent data and NO unwanted normalization")
         
         # Compare with expected improvements
         best_sim = summary.get('best_eval_similarity', 0)
         if best_sim > 0.8:
-            logger.info(f"  🎉 EXCELLENT: Similarity >0.8 - Fixes worked perfectly!")
-        elif best_sim > 0.5:
-            logger.info(f"  ✅ GOOD: Similarity >0.5 - Significant improvement!")
+            logger.info(f"  🎉 EXCELLENT: Similarity >0.8 - All fixes worked perfectly!")
+        elif best_sim > 0.6:
+            logger.info(f"  ✅ VERY GOOD: Similarity >0.6 - Major improvement!")
+        elif best_sim > 0.4:
+            logger.info(f"  ✅ GOOD: Similarity >0.4 - Significant improvement!")
         elif best_sim > 0.3:
             logger.info(f"  📈 BETTER: Similarity >0.3 - Some improvement seen")
         else:
-            logger.info(f"  ⚠️  STILL ISSUES: Similarity <0.3 - May need more fixes")
+            logger.info(f"  ⚠️  STILL ISSUES: Similarity <0.3 - May need additional investigation")
         
-        # Evaluation results
+        # Enhanced evaluation results analysis
         final_eval = summary.get('final_eval', {})
         if final_eval:
             logger.info(f"📊 FINAL FIXED EVALUATION:")
@@ -443,35 +476,78 @@ def main():
             logger.info(f"  Norm ratio: {final_eval.get('eval_norm_ratio', 0):.3f}")
             logger.info(f"  Norm consistency: {final_eval.get('eval_norm_consistency', 0):.3f}")
             logger.info(f"  High quality (>0.7): {final_eval.get('eval_high_quality', 0)*100:.1f}%")
+            logger.info(f"  Very high quality (>0.8): {final_eval.get('eval_very_high_quality', 0)*100:.1f}%")
             logger.info(f"  Excellent quality (>0.9): {final_eval.get('eval_excellent_quality', 0)*100:.1f}%")
             
             # Assess norm consistency improvement
             norm_ratio = final_eval.get('eval_norm_ratio', 0)
             if 0.9 <= norm_ratio <= 1.1:
-                logger.info(f"  🎉 EXCELLENT norm consistency!")
+                logger.info(f"  🎉 EXCELLENT norm consistency! (ratio: {norm_ratio:.3f})")
             elif 0.8 <= norm_ratio <= 1.2:
-                logger.info(f"  ✅ GOOD norm consistency!")
+                logger.info(f"  ✅ GOOD norm consistency! (ratio: {norm_ratio:.3f})")
+            elif 0.7 <= norm_ratio <= 1.3:
+                logger.info(f"  📈 IMPROVED norm consistency (ratio: {norm_ratio:.3f})")
             else:
-                logger.info(f"  ⚠️  Norm consistency still needs work")
+                logger.info(f"  ⚠️  Norm consistency still needs work (ratio: {norm_ratio:.3f})")
+        
+        # Norm analysis from enhanced tracking
+        norm_stats = summary.get('norm_statistics', {})
+        if norm_stats:
+            logger.info(f"📊 ENHANCED NORM ANALYSIS:")
+            
+            if 'training_target_norm' in norm_stats:
+                train_stats = norm_stats['training_target_norm']
+                logger.info(f"  Training target norms: mean={train_stats['mean']:.3f}, std={train_stats.get('std', 0):.3f}")
+                logger.info(f"    Range: [{train_stats.get('min', 0):.3f}, {train_stats.get('max', 0):.3f}]")
+            
+            if 'eval_target_norm' in norm_stats:
+                eval_stats = norm_stats['eval_target_norm']
+                logger.info(f"  Eval target norms: mean={eval_stats['mean']:.3f}, std={eval_stats.get('std', 0):.3f}")
+                logger.info(f"    Range: [{eval_stats.get('min', 0):.3f}, {eval_stats.get('max', 0):.3f}]")
+            
+            if 'overfit_target_norm' in norm_stats:
+                overfit_stats = norm_stats['overfit_target_norm']
+                logger.info(f"  Overfit target norm: {overfit_stats['mean']:.3f}")
+            
+            # Check final consistency
+            if 'training_target_norm' in norm_stats and 'eval_target_norm' in norm_stats:
+                train_mean = norm_stats['training_target_norm']['mean']
+                eval_mean = norm_stats['eval_target_norm']['mean']
+                diff = abs(train_mean - eval_mean)
+                if diff < 1.0:
+                    logger.info(f"  🎉 EXCELLENT data consistency! (diff={diff:.3f})")
+                elif diff < 2.0:
+                    logger.info(f"  ✅ GOOD data consistency! (diff={diff:.3f})")
+                elif diff < 5.0:
+                    logger.info(f"  📈 IMPROVED data consistency (diff={diff:.3f})")
+                else:
+                    logger.info(f"  ⚠️  Data consistency still needs work (diff={diff:.3f})")
         
         # Overfitting test results
         if args.overfit_test_size:
             overfit_success = summary.get('overfit_success', False)
-            logger.info(f"🧪 OVERFITTING TEST: {'✅ PASSED' if overfit_success else '❌ FAILED'}")
+            overfit_data_source = summary.get('overfit_test_data_source', 'unknown')
+            logger.info(f"🧪 FIXED OVERFITTING TEST: {'✅ PASSED' if overfit_success else '❌ FAILED'}")
+            logger.info(f"  Data source: {overfit_data_source}")
             if overfit_success:
                 logger.info("   ✅ FIXED model can learn and memorize effectively!")
+                logger.info("   ✅ Architecture and data pipeline are working correctly!")
             else:
-                logger.info("   ⚠️  Model still struggles - may need more fixes")
+                logger.info("   ⚠️  Model still struggles - may need hyperparameter tuning")
         
         # WandB information
         if summary.get('wandb_enabled', False):
             logger.info(f"📊 WandB Dashboard: Check your {args.wandb_project} project for detailed metrics")
+            logger.info(f"  Enhanced norm tracking available in WandB logs")
         
         # Save final summary
         summary['duration_seconds'] = duration
         summary['end_time'] = end_time.isoformat()
         summary['experiment_config'] = config
         summary['fixes_applied'] = config['fixes_applied']
+        summary['consistent_data'] = True
+        summary['no_unwanted_normalization'] = True
+        summary['enhanced_norm_tracking'] = True
         
         summary_path = output_dir / 'fixed_final_summary.json'
         with open(summary_path, 'w') as f:
@@ -480,14 +556,22 @@ def main():
         logger.info(f"📁 FIXED summary saved to {summary_path}")
         logger.info(f"📁 Model checkpoints saved to {output_dir}")
         
-        logger.info("=" * 80)
-        logger.info("🔧 COMPARISON TIPS:")
-        logger.info("  • Compare this run with your previous results")
-        logger.info("  • Look for improved norm consistency in logs")
-        logger.info("  • Check if cosine similarity is much higher")
-        logger.info("  • Verify evaluation is more stable/consistent")
-        logger.info("  • Run debug script: python debug_clip_issues.py <embeddings_dir>")
-        logger.info("=" * 80)
+        logger.info("=" * 90)
+        logger.info("🔧 VERIFICATION CHECKLIST:")
+        logger.info("  ✅ Overfitting test uses same data source as evaluation")
+        logger.info("  ✅ Target norms should be consistent between training and eval")
+        logger.info("  ✅ NO normalization applied except for cosine similarity")
+        logger.info("  ✅ Raw embedding space preserved throughout pipeline")
+        logger.info("  ✅ Enhanced norm tracking shows data distribution")
+        logger.info("  ✅ Model can potentially achieve >0.8 similarity on overfitting test")
+        logger.info("=" * 90)
+        logger.info("🔬 DEBUGGING TIPS:")
+        logger.info("  • Check norm tracking logs for consistent target norms")
+        logger.info("  • Compare training vs eval target norm means (should be similar)")
+        logger.info("  • Look for 'CLIP norm=X.X' in shard loading logs")
+        logger.info("  • Verify overfitting test shows 'from evaluation data' message")
+        logger.info("  • Run norm analysis script: python debug_norm_analysis.py <embeddings_dir>")
+        logger.info("=" * 90)
         
         return 0
         

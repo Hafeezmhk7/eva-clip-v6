@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-FIXED: BLIP3-o DiT Model with Consistent Noise Scaling for Generation
+FIXED: BLIP3-o DiT Model with NO Unwanted Normalization
 Key fixes:
-1. Consistent noise scaling between training and inference
-2. Use target statistics for proper noise scaling during generation
-3. Better generation process with consistent scaling
-4. Removed complex adaptive scaling that caused inconsistencies
+1. NO normalization during generation except when explicitly requested
+2. Consistent noise scaling between training and inference using reference statistics
+3. Enhanced debugging for generation process
+4. Clear separation between raw embeddings and normalized embeddings
 """
 
 import torch
@@ -534,7 +534,7 @@ class DiTBlock3D(nn.Module):
 
 
 class BLIP3oCLIPDiTModel(PreTrainedModel):
-    """FIXED: BLIP3-o DiT Model with Consistent Noise Scaling"""
+    """FIXED: BLIP3-o DiT Model with NO Unwanted Normalization"""
     
     config_class = BLIP3oCLIPDiTConfig
     supports_gradient_checkpointing = True
@@ -544,7 +544,7 @@ class BLIP3oCLIPDiTModel(PreTrainedModel):
         self.config = config
         self.gradient_checkpointing = False
         
-        # Input projection (CLIP -> hidden)
+        # Input projection (CLIP -> hidden) - NO normalization here
         self.input_proj = nn.Linear(config.clip_embedding_size, config.hidden_size, bias=True)
         
         # Timestep embedding
@@ -567,7 +567,7 @@ class BLIP3oCLIPDiTModel(PreTrainedModel):
             self.output_norm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
             self.output_adaln = AdaLN(config.hidden_size, config.hidden_size)
         
-        # Output projection: hidden_size -> clip_embedding_size
+        # Output projection: hidden_size -> clip_embedding_size (NO normalization here)
         self.output_proj = nn.Linear(config.hidden_size, config.clip_embedding_size, bias=True)
         
         # FIXED: Simple noise scale storage (no complex adaptive scaling)
@@ -582,10 +582,11 @@ class BLIP3oCLIPDiTModel(PreTrainedModel):
         logger.info(f"  Grid size: {config.grid_size}x{config.grid_size}")
         logger.info(f"  Hidden size: {config.hidden_size}")
         logger.info(f"  CLIP size: {config.clip_embedding_size}")
+        logger.info(f"  🚫 NO unwanted normalization in input/output projections")
 
     def _init_weights(self):
         """Initialize model weights"""
-        # Input projection
+        # Input projection - NO normalization, just good initialization
         nn.init.xavier_uniform_(self.input_proj.weight)
         nn.init.zeros_(self.input_proj.bias)
         
@@ -604,17 +605,17 @@ class BLIP3oCLIPDiTModel(PreTrainedModel):
 
     def forward(
         self,
-        hidden_states: torch.Tensor,  # [B, N, 1024] - Noisy CLIP embeddings
+        hidden_states: torch.Tensor,  # [B, N, 1024] - Noisy CLIP embeddings (RAW)
         timestep: torch.Tensor,       # [B] - Flow matching timesteps
-        encoder_hidden_states: torch.Tensor,  # [B, N, 4096] - EVA conditioning
+        encoder_hidden_states: torch.Tensor,  # [B, N, 4096] - EVA conditioning (RAW)
         return_dict: bool = True,
         **kwargs
     ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
-        """Forward pass with 3D RoPE and sandwich normalization"""
+        """Forward pass with NO unwanted normalization"""
         batch_size, seq_len, _ = hidden_states.shape
         
-        # Project CLIP input to hidden dimension
-        x = self.input_proj(hidden_states)  # [B, N, 1024] -> [B, N, hidden_size]
+        # FIXED: Project CLIP input to hidden dimension (NO normalization)
+        x = self.input_proj(hidden_states)  # [B, N, 1024] -> [B, N, hidden_size] (RAW)
         
         # Add positional embeddings (fallback for non-spatial positions)
         if not self.config.use_3d_rope and seq_len <= self.config.max_position_embeddings:
@@ -632,16 +633,16 @@ class BLIP3oCLIPDiTModel(PreTrainedModel):
             else:
                 x = block(x, encoder_hidden_states, timestep_emb)
         
-        # Output projection with proper sandwich norm handling
+        # FIXED: Output projection with NO unwanted normalization
         if self.config.use_sandwich_norm:
             # Pre-norm only (no post-norm to avoid dimension mismatch)
             x = self.output_pre_norm(x)  # [B, N, hidden_size]
             x = self.output_adaln_pre(x, timestep_emb)  # [B, N, hidden_size]
-            velocity_pred = self.output_proj(x)  # [B, N, hidden_size] -> [B, N, 1024]
+            velocity_pred = self.output_proj(x)  # [B, N, hidden_size] -> [B, N, 1024] (RAW output)
         else:
             x = self.output_norm(x)
             x = self.output_adaln(x, timestep_emb)
-            velocity_pred = self.output_proj(x)
+            velocity_pred = self.output_proj(x)  # RAW output, no normalization
         
         if return_dict:
             return {"velocity_prediction": velocity_pred, "hidden_states": x}
@@ -653,7 +654,7 @@ class BLIP3oCLIPDiTModel(PreTrainedModel):
         eva_features: torch.Tensor,
         num_inference_steps: int = 50,
         generator: Optional[torch.Generator] = None,
-        normalize_output: bool = False,
+        normalize_output: bool = False,  # FIXED: Default False to prevent unwanted normalization
         # FIXED: Use reference target statistics for consistent scaling
         reference_clip_embeddings: Optional[torch.Tensor] = None,
         noise_scale: Optional[float] = None,
@@ -662,14 +663,14 @@ class BLIP3oCLIPDiTModel(PreTrainedModel):
         debug_generation: bool = False,
     ) -> torch.Tensor:
         """
-        FIXED: Generate CLIP embeddings with consistent noise scaling
+        FIXED: Generate CLIP embeddings with NO unwanted normalization
         
         Args:
-            eva_features: EVA conditioning [B, N, 4096]
+            eva_features: EVA conditioning [B, N, 4096] (RAW)
             num_inference_steps: Number of denoising steps
             generator: Random generator for reproducibility
-            normalize_output: Whether to L2-normalize output
-            reference_clip_embeddings: Reference CLIP embeddings for noise scaling
+            normalize_output: Whether to L2-normalize output (DEFAULT: False)
+            reference_clip_embeddings: Reference CLIP embeddings for noise scaling (RAW)
             noise_scale: Override noise scale (uses reference-based if None)
             guidance_scale: Classifier-free guidance scale
             use_heun_solver: Use Heun's method instead of Euler
@@ -678,34 +679,34 @@ class BLIP3oCLIPDiTModel(PreTrainedModel):
         device = eva_features.device
         batch_size, num_tokens, _ = eva_features.shape
         
-        # FIXED: Determine noise scale using target statistics
+        # FIXED: Determine noise scale using target statistics (NO normalization)
         if noise_scale is not None:
             current_noise_scale = noise_scale
         elif reference_clip_embeddings is not None:
-            # Use reference target statistics for consistent scaling
+            # Use reference target statistics for consistent scaling (RAW)
             target_std = reference_clip_embeddings.std().item()
             current_noise_scale = target_std
             if debug_generation:
                 ref_norm = torch.norm(reference_clip_embeddings, dim=-1).mean().item()
-                logger.debug(f"Using reference-based noise scale: {current_noise_scale:.3f} (ref norm: {ref_norm:.3f})")
+                logger.debug(f"Using reference-based noise scale: {current_noise_scale:.3f} (ref norm: {ref_norm:.3f}) - RAW")
         else:
             # Fallback: use default
             current_noise_scale = self.default_noise_scale.item()
             if debug_generation:
                 logger.warning(f"No reference provided, using default noise scale: {current_noise_scale:.3f}")
         
-        # Start from properly scaled noise
+        # FIXED: Start from properly scaled noise (NO normalization)
         x = torch.randn(
             batch_size, num_tokens, self.config.clip_embedding_size,
             device=device, generator=generator, dtype=eva_features.dtype
         )
         
-        # FIXED: Scale initial noise to match training distribution
+        # FIXED: Scale initial noise to match training distribution (RAW)
         x = x * current_noise_scale
         
         if debug_generation:
             initial_noise_norm = torch.norm(x, dim=-1).mean().item()
-            logger.debug(f"Generation start - Noise scale: {current_noise_scale:.3f}, Initial norm: {initial_noise_norm:.3f}")
+            logger.debug(f"Generation start - Noise scale: {current_noise_scale:.3f}, Initial norm: {initial_noise_norm:.3f} (RAW)")
         
         # Forward process (t=0 to t=1) with proper ODE solving
         dt = 1.0 / num_inference_steps
@@ -715,7 +716,7 @@ class BLIP3oCLIPDiTModel(PreTrainedModel):
             t = i * dt
             t_batch = torch.full((batch_size,), t, device=device, dtype=eva_features.dtype)
             
-            # Get velocity prediction
+            # FIXED: Get velocity prediction (output is RAW, no normalization)
             velocity = self.forward(
                 hidden_states=x,
                 timestep=t_batch,
@@ -749,13 +750,18 @@ class BLIP3oCLIPDiTModel(PreTrainedModel):
                 # Implement classifier-free guidance if needed
                 pass
         
-        # Optional normalization only if requested
+        # FIXED: Optional normalization ONLY if explicitly requested
         if normalize_output:
             x = F.normalize(x, p=2, dim=-1)
+            if debug_generation:
+                logger.debug("Applied L2 normalization to output (explicitly requested)")
+        else:
+            if debug_generation:
+                logger.debug("NO normalization applied to output (keeping RAW)")
             
         if debug_generation:
             final_norm = torch.norm(x, dim=-1).mean().item()
-            logger.debug(f"Generation end - Final norm: {final_norm:.3f}")
+            logger.debug(f"Generation end - Final norm: {final_norm:.3f} ({'normalized' if normalize_output else 'RAW'})")
             if reference_clip_embeddings is not None:
                 ref_final_norm = torch.norm(reference_clip_embeddings, dim=-1).mean().item()
                 logger.debug(f"Reference norm: {ref_final_norm:.3f}, Ratio: {final_norm/ref_final_norm:.3f}")
@@ -774,7 +780,7 @@ def create_clip_reproduction_model(
     use_sandwich_norm: bool = True,
     **kwargs
 ) -> BLIP3oCLIPDiTModel:
-    """FIXED: Create CLIP reproduction model with consistent scaling"""
+    """FIXED: Create CLIP reproduction model with NO unwanted normalization"""
     
     if config is None:
         # Model size configurations

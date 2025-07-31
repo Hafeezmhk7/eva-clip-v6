@@ -1,0 +1,403 @@
+2025-07-31 23:57:18,552 - INFO - 🔧 FIXED: CLIP Reproduction Training with Consistent Data and NO Unwanted Normalization
+2025-07-31 23:57:18,553 - INFO - ==========================================================================================
+2025-07-31 23:57:18,553 - INFO - 🔧 FIXES APPLIED:
+2025-07-31 23:57:18,553 - INFO -   ✅ Overfitting test uses SAME data source as evaluation
+2025-07-31 23:57:18,553 - INFO -   ✅ NO normalization applied during data loading (raw embedding space)
+2025-07-31 23:57:18,553 - INFO -   ✅ NO normalization applied during training (except for cosine similarity)
+2025-07-31 23:57:18,553 - INFO -   ✅ NO normalization applied during generation (unless explicitly requested)
+2025-07-31 23:57:18,553 - INFO -   ✅ Enhanced norm tracking for debugging
+2025-07-31 23:57:18,553 - INFO -   ✅ Consistent data processing between train and eval
+2025-07-31 23:57:18,553 - INFO -   ✅ Fixed noise scaling for training/inference consistency
+2025-07-31 23:57:18,553 - INFO - ==========================================================================================
+2025-07-31 23:57:18,553 - INFO - EXPERIMENT DETAILS:
+2025-07-31 23:57:18,553 - INFO -   📋 Task: Reproduce clean CLIP embeddings from EVA embeddings
+2025-07-31 23:57:18,553 - INFO -   🧠 Model: FIXED BLIP3-o DiT with NO unwanted normalization
+2025-07-31 23:57:18,553 - INFO -   🎯 Target: CLIP embeddings [B, N, 1024] - RAW (no normalization)
+2025-07-31 23:57:18,553 - INFO -   🎮 Conditioning: EVA embeddings [B, N, 4096] - RAW (no normalization)
+2025-07-31 23:57:18,553 - INFO -   🌊 Method: Rectified Flow Matching in RAW embedding space
+2025-07-31 23:57:18,553 - INFO -   🚫 Normalization: ONLY for cosine similarity computation
+2025-07-31 23:57:18,554 - INFO -   📊 Enhanced: Detailed norm tracking and debugging
+2025-07-31 23:57:18,554 - INFO - ==========================================================================================
+2025-07-31 23:57:18,554 - INFO - Configuration:
+2025-07-31 23:57:18,554 - INFO -   Model size: base
+2025-07-31 23:57:18,554 - INFO -   Training mode: patch_only
+2025-07-31 23:57:18,554 - INFO -   Embeddings dir: /scratch-shared/azadaianchuk1/blip3o_workspace/embeddings/patch_only_256_tokens
+2025-07-31 23:57:18,554 - INFO -   Output dir: ./checkpoints/clip_repro_20250731_235715
+2025-07-31 23:57:18,554 - INFO -   Learning rate: 0.0005
+2025-07-31 23:57:18,554 - INFO -   Batch size: 8
+2025-07-31 23:57:18,554 - INFO -   Epochs: 10
+2025-07-31 23:57:18,554 - INFO -   Max shards: 2
+2025-07-31 23:57:18,554 - INFO -   Adaptive noise scaling: False
+2025-07-31 23:57:18,554 - INFO -   Fixed noise scale: 1.0
+2025-07-31 23:57:18,554 - INFO -   🧪 FIXED OVERFITTING TEST: 20 samples (from eval data)
+2025-07-31 23:57:18,554 - INFO -   Debug mode: False
+2025-07-31 23:57:18,554 - INFO - ==========================================================================================
+2025-07-31 23:57:19,044 - INFO - Using GPU: NVIDIA H100
+2025-07-31 23:57:19,044 - INFO - GPU Memory: 100.0 GB
+2025-07-31 23:57:19,044 - INFO - 🏗️ FIXED BLIP3-o Architecture Configuration:
+2025-07-31 23:57:19,044 - INFO -   3D Rotary Position Embedding: ✅ Enabled
+2025-07-31 23:57:19,044 - INFO -   Sandwich Normalization: ✅ Enabled
+2025-07-31 23:57:19,044 - INFO -   🚫 NO unwanted normalization in model
+2025-07-31 23:57:26,521 - INFO - ✅ CLIP DiT model loaded from src/modules/models/blip3o_dit.py
+2025-07-31 23:57:26,531 - INFO - ✅ Flow matching loss loaded from src/modules/losses/blip3o_fm_loss.py
+2025-07-31 23:57:28,118 - INFO - ✅ CLIP trainer loaded from src/modules/trainers/blip3o_trainer.py
+2025-07-31 23:57:28,131 - INFO - ✅ CLIP datasets loaded from src/modules/datasets/blip3o_dataset.py
+2025-07-31 23:57:28,135 - INFO - ✅ Configuration loaded from src/modules/config/blip3o_config.py
+2025-07-31 23:57:28,135 - INFO - 🎉 All CLIP reproduction components loaded successfully!
+2025-07-31 23:57:28,135 - INFO - 🎉 BLIP3-o CLIP reproduction modules fully initialized!
+2025-07-31 23:57:28,135 - INFO - 🚫 Using minimal normalization approach
+2025-07-31 23:57:28,135 - INFO - 🎯 Ready for EVA → CLIP reproduction training
+2025-07-31 23:57:28,135 - INFO - ✅ Imported FIXED model
+2025-07-31 23:57:30,159 - INFO - FIXED BLIP3-o CLIP DiT model initialized with 249,339,136 parameters
+2025-07-31 23:57:30,160 - INFO -   3D RoPE: True
+2025-07-31 23:57:30,160 - INFO -   Sandwich Normalization: True
+2025-07-31 23:57:30,160 - INFO -   Grid size: 16x16
+2025-07-31 23:57:30,160 - INFO -   Hidden size: 768
+2025-07-31 23:57:30,160 - INFO -   CLIP size: 1024
+2025-07-31 23:57:30,160 - INFO -   🚫 NO unwanted normalization in input/output projections
+2025-07-31 23:57:30,387 - INFO - FIXED model created with 249,339,136 parameters
+2025-07-31 23:57:30,388 - INFO - Model moved to cuda
+2025-07-31 23:57:30,388 - INFO - ✅ Imported FIXED loss function
+2025-07-31 23:57:30,388 - INFO - FIXED CLIP Flow Matching Loss initialized:
+2025-07-31 23:57:30,388 - INFO -   Prediction type: velocity
+2025-07-31 23:57:30,388 - INFO -   Flow type: rectified
+2025-07-31 23:57:30,388 - INFO -   Adaptive noise scaling: False
+2025-07-31 23:57:30,388 - INFO -   Fixed noise scale: 1.0
+2025-07-31 23:57:30,388 - INFO -   Debug mode: False
+2025-07-31 23:57:30,388 - INFO -   🚫 NO NORMALIZATION during training (raw embedding space)
+2025-07-31 23:57:30,388 - INFO - FIXED loss function created:
+2025-07-31 23:57:30,388 - INFO -   Adaptive noise scaling: False
+2025-07-31 23:57:30,388 - INFO -   Fixed noise scale: 1.0
+2025-07-31 23:57:30,388 - INFO -   🚫 NO unwanted normalization during training
+2025-07-31 23:57:30,388 - INFO - ✅ Imported FIXED dataset
+2025-07-31 23:57:30,388 - INFO - FIXED: Creating CLIP reproduction dataloaders:
+2025-07-31 23:57:30,388 - INFO -   Target: CLIP embeddings [B, N, 1024] - RAW (no normalization)
+2025-07-31 23:57:30,388 - INFO -   Conditioning: EVA embeddings [B, N, 4096] - RAW (no normalization)
+2025-07-31 23:57:30,388 - INFO -   🚫 Normalization: DISABLED (forced)
+2025-07-31 23:57:30,388 - INFO -   Collect statistics: False
+2025-07-31 23:57:30,404 - INFO - Loaded manifest: 35 shards, 91,333 samples
+2025-07-31 23:57:30,404 - INFO - Found 35 files with pattern: embeddings_shard_*_patch_only.pkl
+2025-07-31 23:57:30,405 - INFO - Prepared 2 shard files
+2025-07-31 23:57:30,405 - INFO - Using manifest for length estimation: 5,219 samples
+2025-07-31 23:57:30,405 - INFO - FIXED CLIP Reproduction Dataset initialized:
+2025-07-31 23:57:30,405 - INFO -   Directory: /scratch-shared/azadaianchuk1/blip3o_workspace/embeddings/patch_only_256_tokens
+2025-07-31 23:57:30,405 - INFO -   Mode: patch_only (256 tokens)
+2025-07-31 23:57:30,405 - INFO -   TARGET: CLIP embeddings [B, N, 1024] - RAW (no normalization)
+2025-07-31 23:57:30,405 - INFO -   CONDITIONING: EVA embeddings [B, N, 4096] - RAW (no normalization)
+2025-07-31 23:57:30,405 - INFO -   🚫 Normalization: DISABLED (raw embedding space)
+2025-07-31 23:57:30,405 - INFO -   Shards: 2
+2025-07-31 23:57:30,405 - INFO -   Statistics collection: False
+2025-07-31 23:57:30,405 - INFO - Loaded manifest: 35 shards, 91,333 samples
+2025-07-31 23:57:30,406 - INFO - Found 35 files with pattern: embeddings_shard_*_patch_only.pkl
+2025-07-31 23:57:30,406 - INFO - Prepared 2 shard files
+2025-07-31 23:57:30,406 - INFO - Using manifest for length estimation: 5,219 samples
+2025-07-31 23:57:30,406 - INFO - FIXED CLIP Reproduction Dataset initialized:
+2025-07-31 23:57:30,406 - INFO -   Directory: /scratch-shared/azadaianchuk1/blip3o_workspace/embeddings/patch_only_256_tokens
+2025-07-31 23:57:30,406 - INFO -   Mode: patch_only (256 tokens)
+2025-07-31 23:57:30,406 - INFO -   TARGET: CLIP embeddings [B, N, 1024] - RAW (no normalization)
+2025-07-31 23:57:30,406 - INFO -   CONDITIONING: EVA embeddings [B, N, 4096] - RAW (no normalization)
+2025-07-31 23:57:30,406 - INFO -   🚫 Normalization: DISABLED (raw embedding space)
+2025-07-31 23:57:30,406 - INFO -   Shards: 2
+2025-07-31 23:57:30,406 - INFO -   Statistics collection: False
+2025-07-31 23:57:30,406 - INFO - FIXED: CLIP reproduction dataloaders created successfully
+2025-07-31 23:57:30,406 - INFO -   Training dataset length: 5,219
+2025-07-31 23:57:30,406 - INFO -   Evaluation dataset length: 5,219
+2025-07-31 23:57:30,406 - INFO -   🚫 NO normalization applied in either dataset
+2025-07-31 23:57:30,406 - INFO -   Consistent processing: ✅
+2025-07-31 23:57:30,406 - INFO - FIXED dataloaders created:
+2025-07-31 23:57:30,406 - INFO -   🚫 Normalization: DISABLED (forced)
+2025-07-31 23:57:30,406 - INFO -   Statistics collection: Disabled
+2025-07-31 23:57:30,406 - INFO -   Max shards: 2
+2025-07-31 23:57:30,406 - INFO -   Raw embedding space: ✅
+2025-07-31 23:57:30,406 - INFO - ✅ Imported FIXED trainer
+2025-07-31 23:57:30,409 - INFO - Got exact dataloader length: 652
+2025-07-31 23:57:30,411 - INFO - Optimizer and scheduler setup complete
+2025-07-31 23:57:30,411 - INFO -   Total estimated steps: 6520
+2025-07-31 23:57:30,411 - INFO -   Warmup steps: 100
+2025-07-31 23:57:30,411 - INFO - Preparing reference batch for consistent evaluation...
+2025-07-31 23:57:34,853 - INFO - Loaded shard 1/2: 2646 samples, CLIP norm=26.278, EVA norm=43.618
+2025-07-31 23:57:34,913 - INFO - Reference batch prepared:
+2025-07-31 23:57:34,913 - INFO -   CLIP norm: 25.292
+2025-07-31 23:57:34,913 - INFO -   CLIP std: 0.941
+2025-07-31 23:57:34,913 - INFO -   EVA norm: 42.896
+2025-07-31 23:57:34,913 - INFO -   Samples: 4
+2025-07-31 23:57:34,913 - INFO - 🔧 FIXED: Preparing overfitting test with 20 samples from EVAL DATA...
+2025-07-31 23:57:39,085 - INFO - Loaded shard 1/2: 2646 samples, CLIP norm=26.278, EVA norm=43.618
+2025-07-31 23:57:39,107 - INFO - ✅ Using eval_dataloader for overfitting test (consistent with evaluation)
+2025-07-31 23:57:39,112 - INFO - ✅ FIXED overfitting test prepared with 8 samples:
+2025-07-31 23:57:39,114 - INFO -   Data source: eval_dataloader
+2025-07-31 23:57:39,114 - INFO -   Overfit CLIP norm: 25.292
+2025-07-31 23:57:39,114 - INFO -   Overfit EVA norm: 42.896
+2025-07-31 23:57:39,114 - INFO -   Reference CLIP norm: 25.292
+2025-07-31 23:57:39,114 - INFO -   Norm difference: 0.000 (✅ CONSISTENT)
+2025-07-31 23:57:39,114 - INFO - FIXED BLIP3-o CLIP Trainer initialized
+2025-07-31 23:57:39,114 - INFO -   Device: cuda
+2025-07-31 23:57:39,114 - INFO -   Learning rate: 0.0005
+2025-07-31 23:57:39,114 - INFO -   Epochs: 10
+2025-07-31 23:57:39,114 - INFO -   Estimated steps per epoch: 652
+2025-07-31 23:57:39,115 - INFO -   Generation debug: False
+2025-07-31 23:57:39,115 - INFO -   Overfit test: 20
+2025-07-31 23:57:39,115 - INFO -   Mixed precision: True
+2025-07-31 23:57:39,115 - INFO -   WandB logging: False
+2025-07-31 23:57:39,115 - INFO -   🎯 FIXED: Consistent evaluation with reference statistics
+2025-07-31 23:57:39,115 - INFO -   📊 FIXED: Enhanced norm tracking enabled
+2025-07-31 23:57:39,115 - INFO - FIXED trainer created:
+2025-07-31 23:57:39,115 - INFO -   Evaluation: Every 50 steps
+2025-07-31 23:57:39,115 - INFO -   Inference steps: 20
+2025-07-31 23:57:39,115 - INFO -   WandB enabled: False
+2025-07-31 23:57:39,115 - INFO -   🔧 FIXED: Overfitting test uses same data source as evaluation
+2025-07-31 23:57:39,115 - INFO -   📊 FIXED: Enhanced norm tracking enabled
+2025-07-31 23:57:39,118 - INFO - FIXED configuration saved to checkpoints/clip_repro_20250731_235715/fixed_experiment_config.json
+2025-07-31 23:57:39,118 - INFO - 
+🔧 Starting FIXED BLIP3-o training with consistent data...
+2025-07-31 23:57:39,118 - INFO - Expected behavior with ALL FIXES:
+2025-07-31 23:57:39,118 - INFO -   • Consistent target norms between training and evaluation
+2025-07-31 23:57:39,118 - INFO -   • Overfitting test should achieve >0.8 similarity (same data as eval)
+2025-07-31 23:57:39,118 - INFO -   • NO unwanted normalization anywhere in the pipeline
+2025-07-31 23:57:39,118 - INFO -   • Raw embedding space training with proper scale learning
+2025-07-31 23:57:39,118 - INFO -   • Enhanced norm tracking shows data distribution
+2025-07-31 23:57:39,118 - INFO -   • Much better norm consistency (target vs generated)
+2025-07-31 23:57:39,118 - INFO -   • Higher cosine similarity due to consistent data and scaling
+2025-07-31 23:57:39,118 - INFO -   • Stable and reproducible evaluation results
+2025-07-31 23:57:39,118 - INFO -   • OVERFITTING TEST: Should achieve >0.8 similarity on 20 samples
+2025-07-31 23:57:39,118 - INFO -     ✅ Uses SAME data source as evaluation for consistency
+2025-07-31 23:57:39,118 - INFO - 
+2025-07-31 23:57:39,118 - INFO - 🔧 FIXED: Starting CLIP reproduction training with consistent data...
+2025-07-31 23:57:39,119 - INFO -   Model parameters: 249,339,136
+2025-07-31 23:57:39,119 - INFO -   Estimated training steps per epoch: 652
+2025-07-31 23:57:39,119 - INFO -   Total estimated training steps: 6520
+2025-07-31 23:57:39,119 - INFO -   🎯 FIXED: Consistent evaluation with reference statistics
+2025-07-31 23:57:39,119 - INFO -   📊 WandB logging: False
+2025-07-31 23:57:39,119 - INFO -   🔧 FIXED: Overfitting test uses same data source as evaluation
+2025-07-31 23:57:39,119 - INFO -   📊 FIXED: Enhanced norm tracking enabled
+2025-07-31 23:57:39,120 - INFO -   OVERFITTING TEST MODE: Using 8 samples from evaluation data
+2025-07-31 23:57:39,121 - INFO - Starting epoch 1/10
+2025-07-31 23:57:43,540 - INFO - Loaded shard 1/2: 2601 samples, CLIP norm=26.319, EVA norm=43.667
+2025-07-31 23:57:46,926 - INFO - Step 10: Loss=1.565301, VelSim=0.3559 (fair), GradNorm=18694.252, LR=9.50e-05, NoiseScale=1.000, PredNorm=12.519, TargetNorm=39.900, BatchCLIPNorm=25.292 [OVERFIT TEST]
+2025-07-31 23:57:49,741 - INFO - Step 20: Loss=1.504018, VelSim=0.3909 (fair), GradNorm=12015.875, LR=1.40e-04, NoiseScale=1.000, PredNorm=15.503, TargetNorm=39.900, BatchCLIPNorm=25.292 [OVERFIT TEST]
+2025-07-31 23:57:52,554 - INFO - Step 30: Loss=1.461896, VelSim=0.4170 (fair), GradNorm=17606.494, LR=1.85e-04, NoiseScale=1.000, PredNorm=16.164, TargetNorm=39.900, BatchCLIPNorm=25.292 [OVERFIT TEST]
+2025-07-31 23:57:55,371 - INFO - Step 40: Loss=1.371835, VelSim=0.4575 (fair), GradNorm=40485.927, LR=2.30e-04, NoiseScale=1.000, PredNorm=17.195, TargetNorm=39.900, BatchCLIPNorm=25.292 [OVERFIT TEST]
+2025-07-31 23:57:58,189 - INFO - Step 50: Loss=1.188928, VelSim=0.5327 (good), GradNorm=53690.290, LR=2.75e-04, NoiseScale=1.000, PredNorm=22.418, TargetNorm=39.900, BatchCLIPNorm=25.292 [OVERFIT TEST]
+2025-07-31 23:57:58,190 - INFO - 📊 NORM ANALYSIS:
+2025-07-31 23:57:58,190 - INFO -   Training Target Norms: mean=25.292, std=0.000, range=[25.292, 25.292]
+2025-07-31 23:57:58,190 - INFO -   Overfit Target Norm: 25.292
+2025-07-31 23:57:58,190 - INFO - Running FIXED evaluation at step 50...
+2025-07-31 23:58:02,377 - INFO - Loaded shard 1/2: 2646 samples, CLIP norm=26.278, EVA norm=43.618
+2025-07-31 23:58:16,791 - INFO - FIXED Evaluation results:
+2025-07-31 23:58:16,792 - INFO -   CLIP similarity: 0.2412
+2025-07-31 23:58:16,792 - INFO -   Generated norm: 34.772
+2025-07-31 23:58:16,792 - INFO -   Target norm: 25.856
+2025-07-31 23:58:16,792 - INFO -   Norm ratio: 1.345
+2025-07-31 23:58:16,792 - INFO -   Norm consistency: 0.655
+2025-07-31 23:58:16,792 - INFO -   Used reference scaling: True
+2025-07-31 23:58:19,597 - INFO - Step 60: Loss=0.954885, VelSim=0.6218 (good), GradNorm=72874.370, LR=3.20e-04, NoiseScale=1.000, PredNorm=26.022, TargetNorm=39.900, BatchCLIPNorm=25.292 [OVERFIT TEST]
+2025-07-31 23:58:22,404 - INFO - Step 70: Loss=0.776075, VelSim=0.7003 (good), GradNorm=45938.232, LR=3.65e-04, NoiseScale=1.000, PredNorm=27.771, TargetNorm=39.900, BatchCLIPNorm=25.292 [OVERFIT TEST]
+2025-07-31 23:58:25,209 - INFO - Step 80: Loss=0.571489, VelSim=0.7860 (good), GradNorm=53519.069, LR=4.10e-04, NoiseScale=1.000, PredNorm=31.747, TargetNorm=39.900, BatchCLIPNorm=25.292 [OVERFIT TEST]
+2025-07-31 23:58:28,023 - INFO - Step 90: Loss=0.398493, VelSim=0.8547 (excellent), GradNorm=40094.921, LR=4.55e-04, NoiseScale=1.000, PredNorm=34.719, TargetNorm=39.900, BatchCLIPNorm=25.292 [OVERFIT TEST]
+2025-07-31 23:58:30,834 - INFO - Step 100: Loss=0.299894, VelSim=0.8922 (excellent), GradNorm=33599.741, LR=5.00e-04, NoiseScale=1.000, PredNorm=35.505, TargetNorm=39.900, BatchCLIPNorm=25.292 [OVERFIT TEST]
+2025-07-31 23:58:30,835 - INFO - 📊 NORM ANALYSIS:
+2025-07-31 23:58:30,835 - INFO -   Training Target Norms: mean=25.292, std=0.000, range=[25.292, 25.292]
+2025-07-31 23:58:30,835 - INFO -   Eval Target Norms: mean=25.856, std=0.564, range=[25.292, 26.420]
+2025-07-31 23:58:30,835 - INFO -   Overfit Target Norm: 25.292
+2025-07-31 23:58:30,835 - INFO -   Train vs Eval Consistency: ✅ CONSISTENT (diff=0.564)
+2025-07-31 23:58:30,835 - INFO - Running FIXED evaluation at step 100...
+2025-07-31 23:58:34,989 - INFO - Loaded shard 1/2: 2646 samples, CLIP norm=26.278, EVA norm=43.618
+2025-07-31 23:58:49,176 - INFO - FIXED Evaluation results:
+2025-07-31 23:58:49,176 - INFO -   CLIP similarity: 0.2499
+2025-07-31 23:58:49,176 - INFO -   Generated norm: 46.743
+2025-07-31 23:58:49,176 - INFO -   Target norm: 25.856
+2025-07-31 23:58:49,176 - INFO -   Norm ratio: 1.808
+2025-07-31 23:58:49,176 - INFO -   Norm consistency: 0.192
+2025-07-31 23:58:49,176 - INFO -   Used reference scaling: True
+2025-07-31 23:58:49,745 - INFO - 🎉 OVERFITTING TEST PASSED! Model can learn effectively.
+2025-07-31 23:58:49,745 - INFO - Epoch 1 completed:
+2025-07-31 23:58:49,745 - INFO -   Average loss: 1.062171
+2025-07-31 23:58:49,745 - INFO -   Best loss: 0.279254
+2025-07-31 23:58:49,745 - INFO -   Best similarity: 0.9000
+2025-07-31 23:58:49,745 - INFO -   Steps in epoch: 102
+2025-07-31 23:58:49,745 - INFO -   Epoch time: 70.6s
+2025-07-31 23:58:49,746 - INFO -   📊 Epoch Norm Analysis:
+2025-07-31 23:58:49,746 - INFO -     Training target norm: 25.292
+2025-07-31 23:58:49,746 - INFO -     Eval target norm: 25.856
+2025-07-31 23:58:49,746 - INFO - Starting epoch 2/10
+2025-07-31 23:58:54,068 - INFO - Loaded shard 1/2: 2601 samples, CLIP norm=26.319, EVA norm=43.667
+2025-07-31 23:58:54,350 - INFO - 🎉 OVERFITTING TEST PASSED! Model can learn effectively.
+2025-07-31 23:58:54,351 - INFO - Epoch 2 completed:
+2025-07-31 23:58:54,351 - INFO -   Average loss: 0.268721
+2025-07-31 23:58:54,351 - INFO -   Best loss: 0.268721
+2025-07-31 23:58:54,351 - INFO -   Best similarity: 0.9040
+2025-07-31 23:58:54,351 - INFO -   Steps in epoch: 1
+2025-07-31 23:58:54,351 - INFO -   Epoch time: 4.6s
+2025-07-31 23:58:54,352 - INFO -   📊 Epoch Norm Analysis:
+2025-07-31 23:58:54,352 - INFO -     Training target norm: 25.292
+2025-07-31 23:58:54,352 - INFO -     Eval target norm: 25.856
+2025-07-31 23:58:54,352 - INFO - Starting epoch 3/10
+2025-07-31 23:58:58,425 - INFO - Loaded shard 1/2: 2601 samples, CLIP norm=26.319, EVA norm=43.667
+2025-07-31 23:58:58,710 - INFO - 🎉 OVERFITTING TEST PASSED! Model can learn effectively.
+2025-07-31 23:58:58,710 - INFO - Epoch 3 completed:
+2025-07-31 23:58:58,710 - INFO -   Average loss: 0.261189
+2025-07-31 23:58:58,710 - INFO -   Best loss: 0.261189
+2025-07-31 23:58:58,710 - INFO -   Best similarity: 0.9068
+2025-07-31 23:58:58,710 - INFO -   Steps in epoch: 1
+2025-07-31 23:58:58,710 - INFO -   Epoch time: 4.4s
+2025-07-31 23:58:58,710 - INFO -   📊 Epoch Norm Analysis:
+2025-07-31 23:58:58,710 - INFO -     Training target norm: 25.292
+2025-07-31 23:58:58,710 - INFO -     Eval target norm: 25.856
+2025-07-31 23:58:58,710 - INFO - Starting epoch 4/10
+2025-07-31 23:59:02,779 - INFO - Loaded shard 1/2: 2601 samples, CLIP norm=26.319, EVA norm=43.667
+2025-07-31 23:59:03,059 - INFO - 🎉 OVERFITTING TEST PASSED! Model can learn effectively.
+2025-07-31 23:59:03,059 - INFO - Epoch 4 completed:
+2025-07-31 23:59:03,059 - INFO -   Average loss: 0.252654
+2025-07-31 23:59:03,059 - INFO -   Best loss: 0.252654
+2025-07-31 23:59:03,059 - INFO -   Best similarity: 0.9101
+2025-07-31 23:59:03,059 - INFO -   Steps in epoch: 1
+2025-07-31 23:59:03,059 - INFO -   Epoch time: 4.3s
+2025-07-31 23:59:03,059 - INFO -   📊 Epoch Norm Analysis:
+2025-07-31 23:59:03,060 - INFO -     Training target norm: 25.292
+2025-07-31 23:59:03,060 - INFO -     Eval target norm: 25.856
+2025-07-31 23:59:03,060 - INFO - Starting epoch 5/10
+2025-07-31 23:59:07,149 - INFO - Loaded shard 1/2: 2601 samples, CLIP norm=26.319, EVA norm=43.667
+2025-07-31 23:59:07,429 - INFO - 🎉 OVERFITTING TEST PASSED! Model can learn effectively.
+2025-07-31 23:59:07,429 - INFO - Epoch 5 completed:
+2025-07-31 23:59:07,430 - INFO -   Average loss: 0.245708
+2025-07-31 23:59:07,430 - INFO -   Best loss: 0.245708
+2025-07-31 23:59:07,430 - INFO -   Best similarity: 0.9127
+2025-07-31 23:59:07,430 - INFO -   Steps in epoch: 1
+2025-07-31 23:59:07,430 - INFO -   Epoch time: 4.4s
+2025-07-31 23:59:07,431 - INFO -   📊 Epoch Norm Analysis:
+2025-07-31 23:59:07,431 - INFO -     Training target norm: 25.292
+2025-07-31 23:59:07,431 - INFO -     Eval target norm: 25.856
+2025-07-31 23:59:07,431 - INFO - Starting epoch 6/10
+2025-07-31 23:59:11,511 - INFO - Loaded shard 1/2: 2601 samples, CLIP norm=26.319, EVA norm=43.667
+2025-07-31 23:59:11,794 - INFO - 🎉 OVERFITTING TEST PASSED! Model can learn effectively.
+2025-07-31 23:59:11,795 - INFO - Epoch 6 completed:
+2025-07-31 23:59:11,795 - INFO -   Average loss: 0.239831
+2025-07-31 23:59:11,795 - INFO -   Best loss: 0.239831
+2025-07-31 23:59:11,795 - INFO -   Best similarity: 0.9148
+2025-07-31 23:59:11,795 - INFO -   Steps in epoch: 1
+2025-07-31 23:59:11,795 - INFO -   Epoch time: 4.4s
+2025-07-31 23:59:11,795 - INFO -   📊 Epoch Norm Analysis:
+2025-07-31 23:59:11,795 - INFO -     Training target norm: 25.292
+2025-07-31 23:59:11,795 - INFO -     Eval target norm: 25.856
+2025-07-31 23:59:11,795 - INFO - Starting epoch 7/10
+2025-07-31 23:59:15,873 - INFO - Loaded shard 1/2: 2601 samples, CLIP norm=26.319, EVA norm=43.667
+2025-07-31 23:59:16,156 - INFO - 🎉 OVERFITTING TEST PASSED! Model can learn effectively.
+2025-07-31 23:59:16,157 - INFO - Epoch 7 completed:
+2025-07-31 23:59:16,157 - INFO -   Average loss: 0.232915
+2025-07-31 23:59:16,157 - INFO -   Best loss: 0.232915
+2025-07-31 23:59:16,157 - INFO -   Best similarity: 0.9174
+2025-07-31 23:59:16,157 - INFO -   Steps in epoch: 1
+2025-07-31 23:59:16,157 - INFO -   Epoch time: 4.4s
+2025-07-31 23:59:16,157 - INFO -   📊 Epoch Norm Analysis:
+2025-07-31 23:59:16,157 - INFO -     Training target norm: 25.292
+2025-07-31 23:59:16,158 - INFO -     Eval target norm: 25.856
+2025-07-31 23:59:16,158 - INFO - Starting epoch 8/10
+2025-07-31 23:59:20,210 - INFO - Loaded shard 1/2: 2601 samples, CLIP norm=26.319, EVA norm=43.667
+2025-07-31 23:59:20,493 - INFO - 🎉 OVERFITTING TEST PASSED! Model can learn effectively.
+2025-07-31 23:59:20,493 - INFO - Epoch 8 completed:
+2025-07-31 23:59:20,493 - INFO -   Average loss: 0.227621
+2025-07-31 23:59:20,493 - INFO -   Best loss: 0.227621
+2025-07-31 23:59:20,494 - INFO -   Best similarity: 0.9195
+2025-07-31 23:59:20,494 - INFO -   Steps in epoch: 1
+2025-07-31 23:59:20,494 - INFO -   Epoch time: 4.3s
+2025-07-31 23:59:20,494 - INFO -   📊 Epoch Norm Analysis:
+2025-07-31 23:59:20,494 - INFO -     Training target norm: 25.292
+2025-07-31 23:59:20,494 - INFO -     Eval target norm: 25.856
+2025-07-31 23:59:20,494 - INFO - Starting epoch 9/10
+2025-07-31 23:59:24,572 - INFO - Loaded shard 1/2: 2601 samples, CLIP norm=26.319, EVA norm=43.667
+2025-07-31 23:59:24,853 - INFO - Step 110: Loss=0.222275, VelSim=0.9214 (excellent), GradNorm=12226.200, LR=5.00e-04, NoiseScale=1.000, PredNorm=36.993, TargetNorm=39.900, BatchCLIPNorm=25.292 [OVERFIT TEST]
+2025-07-31 23:59:24,854 - INFO - 🎉 OVERFITTING TEST PASSED! Model can learn effectively.
+2025-07-31 23:59:24,854 - INFO - Epoch 9 completed:
+2025-07-31 23:59:24,854 - INFO -   Average loss: 0.222275
+2025-07-31 23:59:24,854 - INFO -   Best loss: 0.222275
+2025-07-31 23:59:24,854 - INFO -   Best similarity: 0.9214
+2025-07-31 23:59:24,854 - INFO -   Steps in epoch: 1
+2025-07-31 23:59:24,854 - INFO -   Epoch time: 4.4s
+2025-07-31 23:59:24,854 - INFO -   📊 Epoch Norm Analysis:
+2025-07-31 23:59:24,854 - INFO -     Training target norm: 25.292
+2025-07-31 23:59:24,854 - INFO -     Eval target norm: 25.856
+2025-07-31 23:59:24,854 - INFO - Starting epoch 10/10
+2025-07-31 23:59:28,931 - INFO - Loaded shard 1/2: 2601 samples, CLIP norm=26.319, EVA norm=43.667
+2025-07-31 23:59:29,211 - INFO - 🎉 OVERFITTING TEST PASSED! Model can learn effectively.
+2025-07-31 23:59:29,211 - INFO - Epoch 10 completed:
+2025-07-31 23:59:29,211 - INFO -   Average loss: 0.216835
+2025-07-31 23:59:29,212 - INFO -   Best loss: 0.216835
+2025-07-31 23:59:29,212 - INFO -   Best similarity: 0.9234
+2025-07-31 23:59:29,212 - INFO -   Steps in epoch: 1
+2025-07-31 23:59:29,212 - INFO -   Epoch time: 4.4s
+2025-07-31 23:59:29,212 - INFO -   📊 Epoch Norm Analysis:
+2025-07-31 23:59:29,212 - INFO -     Training target norm: 25.292
+2025-07-31 23:59:29,212 - INFO -     Eval target norm: 25.856
+2025-07-31 23:59:31,072 - INFO - Checkpoint saved: checkpoints/clip_repro_20250731_235715/checkpoint_step_111.pt
+2025-07-31 23:59:31,072 - INFO - Running final FIXED evaluation...
+2025-07-31 23:59:35,369 - INFO - Loaded shard 1/2: 2646 samples, CLIP norm=26.278, EVA norm=43.618
+2025-08-01 00:00:03,696 - INFO - 🔧 FIXED Training completed!
+2025-08-01 00:00:03,697 - INFO -   Total time: 144.6 seconds
+2025-08-01 00:00:03,697 - INFO -   Total steps: 111
+2025-08-01 00:00:03,697 - INFO -   Best loss: 0.216835
+2025-08-01 00:00:03,697 - INFO -   Best CLIP similarity: 0.9234
+2025-08-01 00:00:03,697 - INFO -   🎯 FIXED: Consistent evaluation used
+2025-08-01 00:00:03,697 - INFO -   🔧 FIXED: Consistent overfitting test data
+2025-08-01 00:00:03,697 - INFO -   📊 WandB run: False
+2025-08-01 00:00:03,697 - INFO - 📊 FINAL NORM ANALYSIS:
+2025-08-01 00:00:03,697 - INFO -   Training target norm: 25.292 ± 0.000 (range: 25.292-25.292)
+2025-08-01 00:00:03,698 - INFO -   Eval target norm: 26.072 ± 0.623 (range: 25.292-26.921)
+2025-08-01 00:00:03,698 - INFO -   Overfit target norm: 25.292
+2025-08-01 00:00:03,698 - INFO -   Final consistency: ✅ CONSISTENT (diff=0.780)
+2025-08-01 00:00:03,698 - INFO -   Final FIXED evaluation:
+2025-08-01 00:00:03,698 - INFO -     CLIP similarity: 0.2420
+2025-08-01 00:00:03,698 - INFO -     Generated norm: 45.774
+2025-08-01 00:00:03,698 - INFO -     Target norm: 26.288
+2025-08-01 00:00:03,698 - INFO -     Norm ratio: 1.741
+2025-08-01 00:00:03,698 - INFO -     Norm consistency: 0.259
+2025-08-01 00:00:03,698 - INFO -   Overfitting test: ✅ PASSED
+2025-08-01 00:00:03,701 - INFO - 
+==========================================================================================
+2025-08-01 00:00:03,701 - INFO - 🎉 FIXED BLIP3-o TRAINING COMPLETED!
+2025-08-01 00:00:03,701 - INFO - ==========================================================================================
+2025-08-01 00:00:03,701 - INFO - 📊 RESULTS SUMMARY:
+2025-08-01 00:00:03,701 - INFO -   Duration: 144.6 seconds (2.4 minutes)
+2025-08-01 00:00:03,701 - INFO -   Total steps: 111
+2025-08-01 00:00:03,701 - INFO -   Best loss: 0.216835
+2025-08-01 00:00:03,701 - INFO -   Best CLIP similarity: 0.9234
+2025-08-01 00:00:03,701 - INFO -   🔧 FIXED version with consistent data and NO unwanted normalization
+2025-08-01 00:00:03,702 - INFO -   🎉 EXCELLENT: Similarity >0.8 - All fixes worked perfectly!
+2025-08-01 00:00:03,702 - INFO - 📊 FINAL FIXED EVALUATION:
+2025-08-01 00:00:03,702 - INFO -   CLIP similarity: 0.2420
+2025-08-01 00:00:03,702 - INFO -   Generated norm: 45.774
+2025-08-01 00:00:03,702 - INFO -   Target norm: 26.288
+2025-08-01 00:00:03,702 - INFO -   Norm ratio: 1.741
+2025-08-01 00:00:03,702 - INFO -   Norm consistency: 0.259
+2025-08-01 00:00:03,702 - INFO -   High quality (>0.7): 0.0%
+2025-08-01 00:00:03,702 - INFO -   Very high quality (>0.8): 0.0%
+2025-08-01 00:00:03,702 - INFO -   Excellent quality (>0.9): 0.0%
+2025-08-01 00:00:03,702 - INFO -   ⚠️  Norm consistency still needs work (ratio: 1.741)
+2025-08-01 00:00:03,702 - INFO - 📊 ENHANCED NORM ANALYSIS:
+2025-08-01 00:00:03,702 - INFO -   Training target norms: mean=25.292, std=0.000
+2025-08-01 00:00:03,702 - INFO -     Range: [25.292, 25.292]
+2025-08-01 00:00:03,702 - INFO -   Eval target norms: mean=26.072, std=0.623
+2025-08-01 00:00:03,702 - INFO -     Range: [25.292, 26.921]
+2025-08-01 00:00:03,702 - INFO -   Overfit target norm: 25.292
+2025-08-01 00:00:03,702 - INFO -   🎉 EXCELLENT data consistency! (diff=0.780)
+2025-08-01 00:00:03,702 - INFO - 🧪 FIXED OVERFITTING TEST: ✅ PASSED
+2025-08-01 00:00:03,702 - INFO -   Data source: eval_dataloader
+2025-08-01 00:00:03,702 - INFO -    ✅ FIXED model can learn and memorize effectively!
+2025-08-01 00:00:03,703 - INFO -    ✅ Architecture and data pipeline are working correctly!
+2025-08-01 00:00:03,704 - INFO - 📁 FIXED summary saved to checkpoints/clip_repro_20250731_235715/fixed_final_summary.json
+2025-08-01 00:00:03,704 - INFO - 📁 Model checkpoints saved to checkpoints/clip_repro_20250731_235715
+2025-08-01 00:00:03,704 - INFO - ==========================================================================================
+2025-08-01 00:00:03,704 - INFO - 🔧 VERIFICATION CHECKLIST:
+2025-08-01 00:00:03,704 - INFO -   ✅ Overfitting test uses same data source as evaluation
+2025-08-01 00:00:03,704 - INFO -   ✅ Target norms should be consistent between training and eval
+2025-08-01 00:00:03,704 - INFO -   ✅ NO normalization applied except for cosine similarity
+2025-08-01 00:00:03,704 - INFO -   ✅ Raw embedding space preserved throughout pipeline
+2025-08-01 00:00:03,705 - INFO -   ✅ Enhanced norm tracking shows data distribution
+2025-08-01 00:00:03,705 - INFO -   ✅ Model can potentially achieve >0.8 similarity on overfitting test
+2025-08-01 00:00:03,705 - INFO - ==========================================================================================
+2025-08-01 00:00:03,705 - INFO - 🔬 DEBUGGING TIPS:
+2025-08-01 00:00:03,705 - INFO -   • Check norm tracking logs for consistent target norms
+2025-08-01 00:00:03,705 - INFO -   • Compare training vs eval target norm means (should be similar)
+2025-08-01 00:00:03,705 - INFO -   • Look for 'CLIP norm=X.X' in shard loading logs
+2025-08-01 00:00:03,705 - INFO -   • Verify overfitting test shows 'from evaluation data' message
+2025-08-01 00:00:03,705 - INFO -   • Run norm analysis script: python debug_norm_analysis.py <embeddings_dir>
+2025-08-01 00:00:03,705 - INFO - ==========================================================================================

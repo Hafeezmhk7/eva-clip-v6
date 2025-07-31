@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-FIXED: BLIP3-o Dataset with Consistent Processing for Training and Evaluation
+FIXED: BLIP3-o Dataset with NO Unwanted Normalization
 Key fixes:
-1. Disabled statistics collection that caused inconsistencies
+1. NO normalization applied during data loading (keep raw embeddings)
 2. Consistent data processing between train and eval
-3. Simplified collate function with target-based noise scaling
-4. Better debugging and monitoring
+3. Enhanced debugging for norm analysis
+4. Clear separation of raw embeddings vs normalized embeddings
 """
 
 import torch
@@ -26,13 +26,13 @@ logger = logging.getLogger(__name__)
 
 class BLIP3oCLIPReproductionDataset(IterableDataset):
     """
-    FIXED: Dataset for CLIP reproduction with consistent processing
+    FIXED: Dataset for CLIP reproduction with NO unwanted normalization
     
     This dataset loads:
-    - CLIP embeddings [B, N, 1024] as TARGET (what we want to reproduce)
-    - EVA embeddings [B, N, 4096] as CONDITIONING (guidance)
+    - CLIP embeddings [B, N, 1024] as TARGET (what we want to reproduce) - RAW, no normalization
+    - EVA embeddings [B, N, 4096] as CONDITIONING (guidance) - RAW, no normalization
     
-    FIXED: Removed statistics collection and ensured consistent processing
+    FIXED: NO normalization applied during data loading
     """
     
     def __init__(
@@ -40,7 +40,7 @@ class BLIP3oCLIPReproductionDataset(IterableDataset):
         chunked_embeddings_dir: Union[str, Path],
         split: str = "train",
         training_mode: str = "patch_only",
-        normalize_embeddings: bool = False,  # FIXED: Keep False for consistency
+        normalize_embeddings: bool = False,  # FIXED: Always False to prevent normalization
         max_shards: Optional[int] = None,
         shuffle_shards: bool = True,
         shuffle_within_shard: bool = True,
@@ -57,14 +57,19 @@ class BLIP3oCLIPReproductionDataset(IterableDataset):
         self.chunked_embeddings_dir = Path(chunked_embeddings_dir)
         self.split = split
         self.training_mode = training_mode
-        self.normalize_embeddings = normalize_embeddings
+        # FIXED: Force normalization to False to prevent unwanted normalization
+        self.normalize_embeddings = False  # Always False regardless of input
         self.max_shards = max_shards
         self.shuffle_shards = shuffle_shards
         self.shuffle_within_shard = shuffle_within_shard
         self.skip_corrupted = skip_corrupted
         self.validate_shapes = validate_shapes
         self.max_retries = max_retries
-        self.collect_statistics = collect_statistics  # FIXED: Usually False
+        self.collect_statistics = False  # Always False
+        
+        # Log if user tried to enable normalization
+        if normalize_embeddings:
+            logger.warning("🚫 Normalization was requested but DISABLED to prevent unwanted normalization during training")
         
         # Determine expected tokens
         if expected_tokens is None:
@@ -75,11 +80,13 @@ class BLIP3oCLIPReproductionDataset(IterableDataset):
         # Setup random state
         self.rng = random.Random(42)
         
-        # FIXED: Simplified statistics (no adaptive updates)
+        # FIXED: Simple statistics (no adaptive updates)
         self.data_statistics = {
             'clip_norm_mean': 0.0,
             'eva_norm_mean': 0.0,
-            'samples_seen': 0
+            'samples_seen': 0,
+            'clip_norm_history': [],
+            'eva_norm_history': [],
         }
         
         # Load manifest and prepare shards
@@ -98,11 +105,11 @@ class BLIP3oCLIPReproductionDataset(IterableDataset):
         logger.info(f"FIXED CLIP Reproduction Dataset initialized:")
         logger.info(f"  Directory: {self.chunked_embeddings_dir}")
         logger.info(f"  Mode: {self.training_mode} ({self.expected_tokens} tokens)")
-        logger.info(f"  TARGET: CLIP embeddings [B, N, 1024]")
-        logger.info(f"  CONDITIONING: EVA embeddings [B, N, 4096]")
-        logger.info(f"  Normalize: {self.normalize_embeddings}")
+        logger.info(f"  TARGET: CLIP embeddings [B, N, 1024] - RAW (no normalization)")
+        logger.info(f"  CONDITIONING: EVA embeddings [B, N, 4096] - RAW (no normalization)")
+        logger.info(f"  🚫 Normalization: DISABLED (raw embedding space)")
         logger.info(f"  Shards: {len(self.shard_files) if hasattr(self, 'shard_files') else 'Unknown'}")
-        logger.info(f"  Collect statistics: {self.collect_statistics}")
+        logger.info(f"  Statistics collection: {self.collect_statistics}")
 
     def _load_manifest(self):
         """Load embeddings manifest"""
@@ -196,18 +203,22 @@ class BLIP3oCLIPReproductionDataset(IterableDataset):
         return self.estimated_length
 
     def _update_statistics(self, clip_emb: torch.Tensor, eva_emb: torch.Tensor):
-        """FIXED: Simplified statistics update (optional)"""
+        """FIXED: Track statistics without normalization"""
         if not self.collect_statistics:
             return
             
         with torch.no_grad():
             batch_size = clip_emb.shape[0]
             
-            # Simple statistics
+            # FIXED: Simple statistics on RAW embeddings (no normalization)
             clip_norm_mean = torch.norm(clip_emb, dim=-1).mean().item()
             eva_norm_mean = torch.norm(eva_emb, dim=-1).mean().item()
             
-            # Simple average (no complex EMA)
+            # Store history for analysis
+            self.data_statistics['clip_norm_history'].append(clip_norm_mean)
+            self.data_statistics['eva_norm_history'].append(eva_norm_mean)
+            
+            # Simple running average
             if self.data_statistics['samples_seen'] == 0:
                 self.data_statistics['clip_norm_mean'] = clip_norm_mean
                 self.data_statistics['eva_norm_mean'] = eva_norm_mean
@@ -242,7 +253,7 @@ class BLIP3oCLIPReproductionDataset(IterableDataset):
                 time.sleep(0.1)
 
     def _validate_and_process_shard(self, shard_data: Dict[str, Any], shard_path: Path):
-        """Validate and process shard data"""
+        """Validate and process shard data WITHOUT normalization"""
         # Check required keys
         required_keys = ['clip_blip3o_embeddings', 'eva_blip3o_embeddings', 'captions']
         for key in required_keys:
@@ -291,41 +302,23 @@ class BLIP3oCLIPReproductionDataset(IterableDataset):
             else:
                 raise ValueError(f"Cannot adapt from {current_tokens} to {self.expected_tokens} tokens")
         
-        # Update statistics BEFORE normalization (if enabled)
+        # FIXED: Update statistics BEFORE any processing (if enabled)
         if self.collect_statistics:
             self._update_statistics(
                 shard_data['clip_blip3o_embeddings'], 
                 shard_data['eva_blip3o_embeddings']
             )
         
-        # Apply normalization if requested (usually disabled)
-        if self.normalize_embeddings:
-            shard_data = self._normalize_embeddings(shard_data)
-
-    def _normalize_embeddings(self, shard_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Apply L2 normalization to embeddings (usually disabled)"""
-        clip_emb = shard_data['clip_blip3o_embeddings']
-        eva_emb = shard_data['eva_blip3o_embeddings']
+        # FIXED: NO normalization applied - keep embeddings in raw space
+        # Mark that no normalization was applied
+        shard_data['normalization_applied'] = False
+        shard_data['raw_embedding_space'] = True
         
-        # Check for NaN/Inf
-        if torch.isnan(clip_emb).any() or torch.isinf(clip_emb).any():
-            logger.warning("Found NaN/Inf in CLIP embeddings")
-            clip_emb = torch.nan_to_num(clip_emb, nan=0.0, posinf=1.0, neginf=-1.0)
-        
-        if torch.isnan(eva_emb).any() or torch.isinf(eva_emb).any():
-            logger.warning("Found NaN/Inf in EVA embeddings")
-            eva_emb = torch.nan_to_num(eva_emb, nan=0.0, posinf=1.0, neginf=-1.0)
-        
-        # Apply L2 normalization
-        eps = 1e-8
-        clip_normalized = F.normalize(clip_emb + eps, p=2, dim=-1)
-        eva_normalized = F.normalize(eva_emb + eps, p=2, dim=-1)
-        
-        shard_data['clip_blip3o_embeddings'] = clip_normalized
-        shard_data['eva_blip3o_embeddings'] = eva_normalized
-        shard_data['normalization_applied'] = True
-        
-        return shard_data
+        # Log shard statistics for debugging
+        if logger.isEnabledFor(logging.DEBUG):
+            clip_norm = torch.norm(shard_data['clip_blip3o_embeddings'], dim=-1).mean().item()
+            eva_norm = torch.norm(shard_data['eva_blip3o_embeddings'], dim=-1).mean().item()
+            logger.debug(f"Shard {shard_path.name}: CLIP norm={clip_norm:.3f}, EVA norm={eva_norm:.3f} (RAW)")
 
     def _load_next_shard(self) -> bool:
         """Load next shard"""
@@ -355,7 +348,11 @@ class BLIP3oCLIPReproductionDataset(IterableDataset):
                 
                 self.current_sample_idx = 0
                 
-                logger.info(f"Loaded shard {self.current_shard_idx + 1}/{len(self.shard_files)}: {num_samples} samples")
+                # FIXED: Log shard loading with norm information
+                clip_norm = torch.norm(self.current_shard_data['clip_blip3o_embeddings'], dim=-1).mean().item()
+                eva_norm = torch.norm(self.current_shard_data['eva_blip3o_embeddings'], dim=-1).mean().item()
+                logger.info(f"Loaded shard {self.current_shard_idx + 1}/{len(self.shard_files)}: {num_samples} samples, CLIP norm={clip_norm:.3f}, EVA norm={eva_norm:.3f}")
+                
                 self.current_shard_idx += 1
                 return True
             else:
@@ -367,16 +364,33 @@ class BLIP3oCLIPReproductionDataset(IterableDataset):
 
     def get_data_statistics(self) -> Dict[str, float]:
         """Get collected data statistics"""
-        return self.data_statistics.copy()
+        stats = self.data_statistics.copy()
+        
+        # Add additional analysis
+        if self.data_statistics['clip_norm_history']:
+            clip_norms = self.data_statistics['clip_norm_history']
+            stats['clip_norm_std'] = float(np.std(clip_norms))
+            stats['clip_norm_min'] = float(np.min(clip_norms))
+            stats['clip_norm_max'] = float(np.max(clip_norms))
+            stats['clip_norm_range'] = stats['clip_norm_max'] - stats['clip_norm_min']
+        
+        if self.data_statistics['eva_norm_history']:
+            eva_norms = self.data_statistics['eva_norm_history']
+            stats['eva_norm_std'] = float(np.std(eva_norms))
+            stats['eva_norm_min'] = float(np.min(eva_norms))
+            stats['eva_norm_max'] = float(np.max(eva_norms))
+            stats['eva_norm_range'] = stats['eva_norm_max'] - stats['eva_norm_min']
+        
+        return stats
 
     def __iter__(self) -> Iterator[Dict[str, Any]]:
-        """Iterate through all samples"""
+        """Iterate through all samples WITHOUT normalization"""
         self.current_shard_idx = 0
         self.current_shard_data = None
         self.current_sample_idx = 0
         self.total_samples_processed = 0
         
-        logger.debug(f"Starting iteration over {len(self.shard_files)} shards")
+        logger.debug(f"Starting iteration over {len(self.shard_files)} shards (NO normalization)")
         
         if not self._load_next_shard():
             return
@@ -386,7 +400,7 @@ class BLIP3oCLIPReproductionDataset(IterableDataset):
                 try:
                     sample_idx = self.current_samples[self.current_sample_idx]
                     
-                    # Extract sample data
+                    # FIXED: Extract sample data WITHOUT normalization
                     clip_emb = self.current_shard_data['clip_blip3o_embeddings'][sample_idx]
                     eva_emb = self.current_shard_data['eva_blip3o_embeddings'][sample_idx]
                     caption = self.current_shard_data['captions'][sample_idx]
@@ -406,16 +420,23 @@ class BLIP3oCLIPReproductionDataset(IterableDataset):
                         else:
                             raise ValueError("NaN detected in embeddings")
                     
-                    # Create sample item for CLIP reproduction
+                    # FIXED: Create sample item for CLIP reproduction (RAW embeddings)
                     item = {
-                        'eva_embeddings': eva_emb,      # [N, 4096] - CONDITIONING
-                        'clip_embeddings': clip_emb,    # [N, 1024] - TARGET to reproduce
+                        'eva_embeddings': eva_emb,      # [N, 4096] - CONDITIONING (RAW)
+                        'clip_embeddings': clip_emb,    # [N, 1024] - TARGET to reproduce (RAW)
                         'caption': caption,
                         'key': f"shard_{self.current_shard_idx-1}_sample_{sample_idx}",
                         'sample_idx': sample_idx,
                         'training_mode': self.training_mode,
                         'num_tokens': self.expected_tokens,
-                        'normalized': self.current_shard_data.get('normalization_applied', False),
+                        'normalized': False,  # Always False - no normalization applied
+                        'raw_embedding_space': True,  # Always True - keep in raw space
+                        
+                        # FIXED: Embedding statistics for debugging
+                        'clip_norm': torch.norm(clip_emb, dim=-1).mean().item(),
+                        'eva_norm': torch.norm(eva_emb, dim=-1).mean().item(),
+                        'clip_std': clip_emb.std().item(),
+                        'eva_std': eva_emb.std().item(),
                     }
                     
                     self.current_sample_idx += 1
@@ -434,18 +455,18 @@ class BLIP3oCLIPReproductionDataset(IterableDataset):
             if not self._load_next_shard():
                 break
         
-        logger.info(f"Iteration completed: {self.total_samples_processed} samples processed")
+        logger.info(f"Iteration completed: {self.total_samples_processed} samples processed (RAW embedding space)")
 
 
 def clip_reproduction_collate_fn(batch: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
-    FIXED: Collate function for CLIP reproduction with consistent noise handling
+    FIXED: Collate function for CLIP reproduction with NO unwanted normalization
     
     This function:
-    1. Takes clean CLIP embeddings as targets
-    2. Uses EVA embeddings for conditioning
+    1. Takes clean CLIP embeddings as targets (RAW, no normalization)
+    2. Uses EVA embeddings for conditioning (RAW, no normalization)
     3. Creates noise scaled to target distribution for consistency
-    4. Focuses on clean data preparation
+    4. Focuses on clean data preparation WITHOUT normalization
     """
     if not batch:
         raise ValueError("Empty batch")
@@ -456,9 +477,9 @@ def clip_reproduction_collate_fn(batch: List[Dict[str, Any]]) -> Dict[str, Any]:
         raise ValueError("No valid items in batch")
     
     try:
-        # Stack embeddings
-        eva_embeddings = torch.stack([item['eva_embeddings'] for item in valid_batch])     # [B, N, 4096]
-        clip_embeddings = torch.stack([item['clip_embeddings'] for item in valid_batch])   # [B, N, 1024]
+        # FIXED: Stack embeddings WITHOUT normalization
+        eva_embeddings = torch.stack([item['eva_embeddings'] for item in valid_batch])     # [B, N, 4096] - RAW
+        clip_embeddings = torch.stack([item['clip_embeddings'] for item in valid_batch])   # [B, N, 1024] - RAW
         
         # Collect metadata
         captions = [item['caption'] for item in valid_batch]
@@ -475,15 +496,15 @@ def clip_reproduction_collate_fn(batch: List[Dict[str, Any]]) -> Dict[str, Any]:
         # Sample random timesteps for each sample in batch
         timesteps = torch.rand(batch_size, device=device, dtype=dtype)
         
-        # FIXED: Create noise scaled to target distribution for consistency
+        # FIXED: Create noise scaled to target distribution for consistency (NO normalization)
         target_std = clip_embeddings.std()
         noise = torch.randn_like(clip_embeddings, device=device, dtype=dtype) * target_std
         
-        # Linear interpolation for rectified flow: x_t = (1-t) * noise + t * clip_clean
+        # Linear interpolation for rectified flow: x_t = (1-t) * noise + t * clip_clean (RAW)
         t_expanded = timesteps.view(batch_size, 1, 1)  # [B, 1, 1]
         noisy_clip = (1 - t_expanded) * noise + t_expanded * clip_embeddings
         
-        # Velocity target: v = clip_clean - noise (for rectified flow)
+        # Velocity target: v = clip_clean - noise (for rectified flow) (RAW)
         velocity_target = clip_embeddings - noise
         
         # Validation
@@ -493,16 +514,20 @@ def clip_reproduction_collate_fn(batch: List[Dict[str, Any]]) -> Dict[str, Any]:
         assert velocity_target.shape == (batch_size, seq_len, 1024), f"Velocity target shape: {velocity_target.shape}"
         assert timesteps.shape == (batch_size,), f"Timesteps shape: {timesteps.shape}"
         
+        # FIXED: Collect embedding statistics for debugging
+        clip_norms = [item.get('clip_norm', 0) for item in valid_batch]
+        eva_norms = [item.get('eva_norm', 0) for item in valid_batch]
+        
         return {
-            # Model inputs
-            'encoder_hidden_states': eva_embeddings,     # [B, N, 4096] - EVA conditioning
-            'hidden_states': noisy_clip,                 # [B, N, 1024] - Noisy CLIP input
+            # Model inputs (RAW embeddings, no normalization)
+            'encoder_hidden_states': eva_embeddings,     # [B, N, 4096] - EVA conditioning (RAW)
+            'hidden_states': noisy_clip,                 # [B, N, 1024] - Noisy CLIP input (RAW)
             'timestep': timesteps,                       # [B] - Flow matching timesteps
             
-            # Training targets
-            'clip_embeddings': clip_embeddings,          # [B, N, 1024] - Clean CLIP (target)
-            'velocity_target': velocity_target,          # [B, N, 1024] - Velocity for flow matching
-            'noise': noise,                              # [B, N, 1024] - Noise used
+            # Training targets (RAW embeddings, no normalization)
+            'clip_embeddings': clip_embeddings,          # [B, N, 1024] - Clean CLIP (target) (RAW)
+            'velocity_target': velocity_target,          # [B, N, 1024] - Velocity for flow matching (RAW)
+            'noise': noise,                              # [B, N, 1024] - Noise used (RAW)
             
             # Metadata
             'captions': captions,
@@ -512,14 +537,24 @@ def clip_reproduction_collate_fn(batch: List[Dict[str, Any]]) -> Dict[str, Any]:
             'num_tokens': valid_batch[0]['num_tokens'],
             'seq_len': seq_len,
             
-            # FIXED: Data characteristics for debugging
-            'eva_embeddings_normalized': False,
-            'clip_embeddings_normalized': False,
+            # FIXED: Data characteristics for debugging (NO normalization applied)
+            'eva_embeddings_normalized': False,  # Always False
+            'clip_embeddings_normalized': False,  # Always False
+            'raw_embedding_space': True,  # Always True
+            'normalization_applied': False,  # Always False
+            
+            # FIXED: Embedding statistics
             'eva_norm_mean': torch.norm(eva_embeddings, dim=-1).mean().item(),
             'clip_norm_mean': torch.norm(clip_embeddings, dim=-1).mean().item(),
             'noise_norm_mean': torch.norm(noise, dim=-1).mean().item(),
             'target_std_used': target_std.item(),
             'noise_scale_ratio': torch.norm(noise, dim=-1).mean().item() / torch.norm(clip_embeddings, dim=-1).mean().item(),
+            
+            # Individual sample norms for analysis
+            'batch_clip_norms': clip_norms,
+            'batch_eva_norms': eva_norms,
+            'clip_norm_std_in_batch': np.std(clip_norms) if clip_norms else 0.0,
+            'eva_norm_std_in_batch': np.std(eva_norms) if eva_norms else 0.0,
         }
         
     except Exception as e:
@@ -531,6 +566,8 @@ def clip_reproduction_collate_fn(batch: List[Dict[str, Any]]) -> Dict[str, Any]:
                 for key, value in batch[0].items():
                     if torch.is_tensor(value):
                         logger.error(f"  {key}: {value.shape} {value.dtype}")
+                    else:
+                        logger.error(f"  {key}: {type(value)} = {value}")
             except:
                 pass
         raise
@@ -542,29 +579,34 @@ def create_clip_reproduction_dataloaders(
     eval_batch_size: Optional[int] = None,
     training_mode: str = "patch_only",
     max_shards: Optional[int] = None,
-    normalize_embeddings: bool = False,  # FIXED: Keep False
+    normalize_embeddings: bool = False,  # FIXED: Always forced to False
     num_workers: int = 0,
     pin_memory: bool = False,
     # FIXED: Disable statistics collection by default
     collect_statistics: bool = False,
     **kwargs
 ) -> Tuple[DataLoader, Optional[DataLoader]]:
-    """FIXED: Create dataloaders for CLIP reproduction with consistent processing"""
+    """FIXED: Create dataloaders for CLIP reproduction with NO unwanted normalization"""
     
     if eval_batch_size is None:
         eval_batch_size = batch_size
     
+    # FIXED: Force normalization to False
+    if normalize_embeddings:
+        logger.warning("🚫 Normalization was requested but FORCED TO FALSE to prevent unwanted normalization")
+    normalize_embeddings = False
+    
     logger.info(f"FIXED: Creating CLIP reproduction dataloaders:")
-    logger.info(f"  Target: CLIP embeddings [B, N, 1024]")
-    logger.info(f"  Conditioning: EVA embeddings [B, N, 4096]")
-    logger.info(f"  Normalize: {normalize_embeddings}")
+    logger.info(f"  Target: CLIP embeddings [B, N, 1024] - RAW (no normalization)")
+    logger.info(f"  Conditioning: EVA embeddings [B, N, 4096] - RAW (no normalization)")
+    logger.info(f"  🚫 Normalization: DISABLED (forced)")
     logger.info(f"  Collect statistics: {collect_statistics}")
     
     # FIXED: Use identical settings for both train and eval
     dataset_kwargs = {
         'chunked_embeddings_dir': chunked_embeddings_dir,
         'training_mode': training_mode,
-        'normalize_embeddings': normalize_embeddings,
+        'normalize_embeddings': normalize_embeddings,  # Always False
         'max_shards': max_shards,
         'collect_statistics': collect_statistics,
         **kwargs
@@ -610,6 +652,7 @@ def create_clip_reproduction_dataloaders(
     logger.info(f"FIXED: CLIP reproduction dataloaders created successfully")
     logger.info(f"  Training dataset length: {len(train_dataset):,}")
     logger.info(f"  Evaluation dataset length: {len(eval_dataset):,}")
+    logger.info(f"  🚫 NO normalization applied in either dataset")
     logger.info(f"  Consistent processing: ✅")
     
     return train_dataloader, eval_dataloader
