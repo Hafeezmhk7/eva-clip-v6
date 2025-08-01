@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
-FIXED: BLIP3-o DiT Model with NO Noise Scaling
-Key fixes:
-1. NO noise scaling during generation - use standard Gaussian noise
-2. Consistent noise distribution between training and inference 
-3. Enhanced debugging for generation process
-4. Clear separation between raw embeddings and normalized embeddings
+UPDATED: BLIP3-o DiT Model with Scale-Aware Generation
+Key improvements:
+1. Log-normal timestep scheduling 
+2. Velocity scaling to prevent explosion
+3. Periodic norm guidance during inference
+4. Final scale correction
+5. Better consistency between training and inference
 """
 
 import torch
@@ -47,6 +48,11 @@ class BLIP3oCLIPDiTConfig(PretrainedConfig):
         initializer_range: float = 0.02,
         use_gradient_checkpointing: bool = False,
         training_mode: str = "patch_only",
+        # NEW: Scale-aware generation parameters
+        typical_clip_norm: float = 26.0,  # Typical CLIP embedding norm
+        velocity_explosion_threshold: float = 100.0,
+        norm_guidance_strength: float = 0.1,
+        norm_guidance_frequency: int = 10,
         **kwargs
     ):
         super().__init__(**kwargs)
@@ -76,10 +82,17 @@ class BLIP3oCLIPDiTConfig(PretrainedConfig):
         self.use_gradient_checkpointing = use_gradient_checkpointing
         self.training_mode = training_mode
         
+        # Scale-aware generation parameters
+        self.typical_clip_norm = typical_clip_norm
+        self.velocity_explosion_threshold = velocity_explosion_threshold
+        self.norm_guidance_strength = norm_guidance_strength
+        self.norm_guidance_frequency = norm_guidance_frequency
+        
         # Calculate grid size for 3D RoPE
         self.grid_size = image_size // patch_size  # 224 // 14 = 16
 
 
+# Keep all the existing classes (RMSNorm, Rotary3DEmbedding, etc.) - they remain the same
 class RMSNorm(nn.Module):
     """RMS Normalization"""
     def __init__(self, hidden_size: int, eps: float = 1e-6):
@@ -96,10 +109,7 @@ class RMSNorm(nn.Module):
 
 
 class Rotary3DEmbedding(nn.Module):
-    """
-    3D Rotary Position Embedding for BLIP3-o
-    Supports spatial (height, width) and temporal/depth dimensions
-    """
+    """3D Rotary Position Embedding for BLIP3-o"""
     def __init__(
         self, 
         dim: int, 
@@ -115,36 +125,30 @@ class Rotary3DEmbedding(nn.Module):
         self.base = base
         self.use_3d = use_3d
         
-        # Split dimensions for 3D RoPE
         if use_3d:
             assert dim % 4 == 0, "Dimension must be divisible by 4 for 3D RoPE"
-            self.dim_h = dim // 4      # Height dimension
-            self.dim_w = dim // 4      # Width dimension  
-            self.dim_d = dim // 2      # Depth dimension
+            self.dim_h = dim // 4
+            self.dim_w = dim // 4
+            self.dim_d = dim // 2
         else:
             self.dim_h = dim // 2
             self.dim_w = dim // 2
             self.dim_d = 0
         
-        # Create frequency tensors for each dimension
         self._create_frequency_tensors()
 
     def _create_frequency_tensors(self):
         """Create frequency tensors for each spatial dimension"""
         if self.use_3d:
-            # Height frequencies
             inv_freq_h = 1.0 / (self.base ** (torch.arange(0, self.dim_h, 2).float() / self.dim_h))
             self.register_buffer("inv_freq_h", inv_freq_h, persistent=False)
             
-            # Width frequencies  
             inv_freq_w = 1.0 / (self.base ** (torch.arange(0, self.dim_w, 2).float() / self.dim_w))
             self.register_buffer("inv_freq_w", inv_freq_w, persistent=False)
             
-            # Depth frequencies
             inv_freq_d = 1.0 / (self.base ** (torch.arange(0, self.dim_d, 2).float() / self.dim_d))
             self.register_buffer("inv_freq_d", inv_freq_d, persistent=False)
         else:
-            # Standard 2D RoPE
             inv_freq = 1.0 / (self.base ** (torch.arange(0, self.dim, 2).float() / self.dim))
             self.register_buffer("inv_freq", inv_freq, persistent=False)
 
@@ -155,61 +159,45 @@ class Rotary3DEmbedding(nn.Module):
         device = x.device
         
         if not self.use_3d:
-            # Standard RoPE
             t = torch.arange(seq_len, device=device, dtype=torch.float32)
             freqs = torch.einsum("i,j->ij", t, self.inv_freq)
             emb = torch.cat((freqs, freqs), dim=-1)
             return emb.cos().unsqueeze(0), emb.sin().unsqueeze(0)
         
-        # 3D RoPE for spatial understanding
         batch_size = x.shape[0]
-        
-        # Handle CLS token if present
         has_cls = seq_len == self.grid_size * self.grid_size + 1
         start_idx = 1 if has_cls else 0
         spatial_len = seq_len - start_idx
         
-        # Create 3D position embeddings
         pos_embeddings = []
         
         if has_cls:
-            # CLS token gets zero position (or special position)
             cls_emb = torch.zeros(1, self.dim, device=device)
             pos_embeddings.append(cls_emb)
         
-        # Create spatial positions (height, width)
         grid_h, grid_w = int(math.sqrt(spatial_len)), int(math.sqrt(spatial_len))
         
-        # Height positions
         pos_h = torch.arange(grid_h, device=device, dtype=torch.float32)
         freqs_h = torch.einsum("i,j->ij", pos_h, self.inv_freq_h)
         
-        # Width positions
         pos_w = torch.arange(grid_w, device=device, dtype=torch.float32)
         freqs_w = torch.einsum("i,j->ij", pos_w, self.inv_freq_w)
         
-        # Depth positions (for multi-scale or hierarchical features)
-        depth_scale = torch.zeros(1, device=device, dtype=torch.float32)  # Can be modified for hierarchical
+        depth_scale = torch.zeros(1, device=device, dtype=torch.float32)
         freqs_d = torch.einsum("i,j->ij", depth_scale, self.inv_freq_d)
         
-        # Combine spatial embeddings
         for h in range(grid_h):
             for w in range(grid_w):
-                # Combine height, width, and depth frequencies
-                h_emb = torch.cat((freqs_h[h], freqs_h[h]), dim=-1)  # [dim_h]
-                w_emb = torch.cat((freqs_w[w], freqs_w[w]), dim=-1)  # [dim_w]
-                d_emb = torch.cat((freqs_d[0], freqs_d[0]), dim=-1)  # [dim_d]
+                h_emb = torch.cat((freqs_h[h], freqs_h[h]), dim=-1)
+                w_emb = torch.cat((freqs_w[w], freqs_w[w]), dim=-1)
+                d_emb = torch.cat((freqs_d[0], freqs_d[0]), dim=-1)
                 
-                # Concatenate all dimensions
-                combined_emb = torch.cat([h_emb, w_emb, d_emb], dim=0)  # [dim]
+                combined_emb = torch.cat([h_emb, w_emb, d_emb], dim=0)
                 pos_embeddings.append(combined_emb)
         
-        # Stack all position embeddings
-        all_pos_emb = torch.stack(pos_embeddings, dim=0)  # [seq_len, dim]
-        
-        # Convert to cos/sin
-        cos_emb = all_pos_emb.cos().unsqueeze(0)  # [1, seq_len, dim]
-        sin_emb = all_pos_emb.sin().unsqueeze(0)  # [1, seq_len, dim]
+        all_pos_emb = torch.stack(pos_embeddings, dim=0)
+        cos_emb = all_pos_emb.cos().unsqueeze(0)
+        sin_emb = all_pos_emb.sin().unsqueeze(0)
         
         return cos_emb, sin_emb
 
@@ -221,7 +209,6 @@ def apply_rotary_pos_emb_3d(q: torch.Tensor, k: torch.Tensor, cos: torch.Tensor,
         x2 = x[..., x.shape[-1] // 2 :]
         return torch.cat((-x2, x1), dim=-1)
 
-    # Apply rotary embedding
     q_embed = (q * cos) + (rotate_half(q) * sin)
     k_embed = (k * cos) + (rotate_half(k) * sin)
     return q_embed, k_embed
@@ -234,14 +221,12 @@ class TimestepEmbedder(nn.Module):
         self.hidden_size = hidden_size
         self.frequency_embedding_size = frequency_embedding_size
         
-        # Use SiLU activation for better gradients
         self.mlp = nn.Sequential(
             nn.Linear(frequency_embedding_size, hidden_size),
             nn.SiLU(),
             nn.Linear(hidden_size, hidden_size),
         )
         
-        # Better initialization
         nn.init.xavier_uniform_(self.mlp[0].weight)
         nn.init.zeros_(self.mlp[0].bias)
         nn.init.xavier_uniform_(self.mlp[2].weight)
@@ -263,6 +248,9 @@ class TimestepEmbedder(nn.Module):
         return self.mlp(t_freq)
 
 
+# Keep the existing Attention3D, MLP, AdaLN, DiTBlock3D classes unchanged...
+# (These remain the same as in your original code)
+
 class Attention3D(nn.Module):
     """Multi-head attention with 3D RoPE for BLIP3-o"""
     def __init__(self, config: BLIP3oCLIPDiTConfig):
@@ -281,7 +269,6 @@ class Attention3D(nn.Module):
         self.v_proj = nn.Linear(self.hidden_size, self.num_key_value_heads * self.head_dim, bias=False)
         self.o_proj = nn.Linear(self.num_heads * self.head_dim, self.hidden_size, bias=False)
         
-        # 3D RoPE
         self.rotary_emb = Rotary3DEmbedding(
             self.head_dim,
             grid_size=config.grid_size,
@@ -291,15 +278,12 @@ class Attention3D(nn.Module):
         )
         
         self.dropout = nn.Dropout(config.attention_dropout)
-        
-        # Better initialization
         self._init_weights()
     
     def _init_weights(self):
         """Initialize attention weights"""
         for module in [self.q_proj, self.k_proj, self.v_proj]:
             nn.init.xavier_uniform_(module.weight)
-        # Smaller initialization for output projection
         nn.init.xavier_uniform_(self.o_proj.weight, gain=1.0 / math.sqrt(self.config.num_hidden_layers))
     
     def forward(
@@ -311,33 +295,27 @@ class Attention3D(nn.Module):
         bsz, q_len, _ = hidden_states.size()
         
         if key_value_states is not None:
-            # Cross-attention
             kv_seq_len = key_value_states.shape[1]
             query_states = self.q_proj(hidden_states)
             key_states = self.k_proj(key_value_states)
             value_states = self.v_proj(key_value_states)
         else:
-            # Self-attention
             kv_seq_len = q_len
             query_states = self.q_proj(hidden_states)
             key_states = self.k_proj(hidden_states)
             value_states = self.v_proj(hidden_states)
         
-        # Reshape for multi-head attention
         query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
         key_states = key_states.view(bsz, kv_seq_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
         value_states = value_states.view(bsz, kv_seq_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
         
-        # Apply 3D RoPE only for self-attention (spatial understanding)
-        if key_value_states is None:  # Self-attention
+        if key_value_states is None:
             cos, sin = self.rotary_emb(hidden_states, seq_len=kv_seq_len)
             query_states, key_states = apply_rotary_pos_emb_3d(query_states, key_states, cos, sin)
         
-        # Repeat k/v heads if needed (grouped-query attention)
         key_states = key_states.repeat_interleave(self.num_key_value_groups, dim=1)
         value_states = value_states.repeat_interleave(self.num_key_value_groups, dim=1)
         
-        # Attention computation
         attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(self.head_dim)
         
         if attention_mask is not None:
@@ -362,7 +340,6 @@ class MLP(nn.Module):
         self.act_fn = nn.SiLU()
         self.dropout = nn.Dropout(config.dropout_prob)
         
-        # Better initialization
         nn.init.xavier_uniform_(self.gate_proj.weight)
         nn.init.xavier_uniform_(self.up_proj.weight)
         nn.init.xavier_uniform_(self.down_proj.weight, gain=1.0 / math.sqrt(config.num_hidden_layers))
@@ -383,18 +360,15 @@ class AdaLN(nn.Module):
             nn.Linear(conditioning_size, 2 * hidden_size, bias=True)
         )
         
-        # Initialize to identity transformation
         nn.init.zeros_(self.adaLN_modulation[-1].weight)
         nn.init.zeros_(self.adaLN_modulation[-1].bias)
 
     def forward(self, x: torch.Tensor, conditioning: torch.Tensor) -> torch.Tensor:
-        # Ensure conditioning has correct shape
         if conditioning.dim() == 2:
             conditioning = conditioning.unsqueeze(1)
         
         shift, scale = self.adaLN_modulation(conditioning).chunk(2, dim=-1)
         
-        # Broadcast if needed
         if shift.shape[1] == 1 and x.shape[1] > 1:
             shift = shift.expand(-1, x.shape[1], -1)
             scale = scale.expand(-1, x.shape[1], -1)
@@ -404,50 +378,36 @@ class AdaLN(nn.Module):
 
 
 class DiTBlock3D(nn.Module):
-    """
-    BLIP3-o DiT transformer block with 3D RoPE and Sandwich Normalization
-    """
+    """BLIP3-o DiT transformer block with 3D RoPE and Sandwich Normalization"""
     def __init__(self, config: BLIP3oCLIPDiTConfig):
         super().__init__()
         self.hidden_size = config.hidden_size
         self.use_sandwich_norm = config.use_sandwich_norm
         
-        # Self-attention
         self.self_attn = Attention3D(config)
-        
-        # Cross-attention
         self.cross_attn = Attention3D(config)
-        
-        # MLP
         self.mlp = MLP(config)
         
-        # EVA projection
         self.eva_proj = nn.Linear(config.eva_embedding_size, config.hidden_size, bias=True)
         nn.init.xavier_uniform_(self.eva_proj.weight)
         nn.init.zeros_(self.eva_proj.bias)
         
         if config.use_sandwich_norm:
-            # Sandwich normalization: Pre + Post norms for each component
-            
-            # Self-attention sandwich norms
             self.self_attn_pre_norm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
             self.self_attn_post_norm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
             self.self_attn_ada_ln_pre = AdaLN(config.hidden_size, config.hidden_size)
             self.self_attn_ada_ln_post = AdaLN(config.hidden_size, config.hidden_size)
             
-            # Cross-attention sandwich norms
             self.cross_attn_pre_norm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
             self.cross_attn_post_norm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
             self.cross_attn_ada_ln_pre = AdaLN(config.hidden_size, config.hidden_size)
             self.cross_attn_ada_ln_post = AdaLN(config.hidden_size, config.hidden_size)
             
-            # MLP sandwich norms
             self.mlp_pre_norm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
             self.mlp_post_norm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
             self.mlp_ada_ln_pre = AdaLN(config.hidden_size, config.hidden_size)
             self.mlp_ada_ln_post = AdaLN(config.hidden_size, config.hidden_size)
         else:
-            # Standard normalization (pre-norm only)
             self.norm1 = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
             self.norm2 = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
             self.norm3 = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
@@ -463,59 +423,42 @@ class DiTBlock3D(nn.Module):
     ) -> torch.Tensor:
         
         if self.use_sandwich_norm:
-            # Sandwich normalization pattern
-            
             # Self-attention with sandwich norm
             residual = hidden_states
-            # Pre-norm
             hidden_states = self.self_attn_pre_norm(hidden_states)
             hidden_states = self.self_attn_ada_ln_pre(hidden_states, timestep_emb)
-            # Attention
             hidden_states = self.self_attn(hidden_states)
-            # Post-norm
             hidden_states = self.self_attn_post_norm(hidden_states)
             hidden_states = self.self_attn_ada_ln_post(hidden_states, timestep_emb)
-            # Residual
             hidden_states = residual + hidden_states
             
             # Cross-attention with sandwich norm
             residual = hidden_states
-            # Pre-norm
             hidden_states = self.cross_attn_pre_norm(hidden_states)
             hidden_states = self.cross_attn_ada_ln_pre(hidden_states, timestep_emb)
-            # Cross-attention
             eva_features = self.eva_proj(encoder_hidden_states)
             hidden_states = self.cross_attn(hidden_states, key_value_states=eva_features)
-            # Post-norm
             hidden_states = self.cross_attn_post_norm(hidden_states)
             hidden_states = self.cross_attn_ada_ln_post(hidden_states, timestep_emb)
-            # Residual
             hidden_states = residual + hidden_states
             
             # MLP with sandwich norm
             residual = hidden_states
-            # Pre-norm
             hidden_states = self.mlp_pre_norm(hidden_states)
             hidden_states = self.mlp_ada_ln_pre(hidden_states, timestep_emb)
-            # MLP
             hidden_states = self.mlp(hidden_states)
-            # Post-norm
             hidden_states = self.mlp_post_norm(hidden_states)
             hidden_states = self.mlp_ada_ln_post(hidden_states, timestep_emb)
-            # Residual
             hidden_states = residual + hidden_states
             
         else:
             # Standard pre-norm pattern
-            
-            # Self-attention
             residual = hidden_states
             hidden_states = self.norm1(hidden_states)
             hidden_states = self.ada_ln1(hidden_states, timestep_emb)
             hidden_states = self.self_attn(hidden_states)
             hidden_states = residual + hidden_states
             
-            # Cross-attention with EVA
             residual = hidden_states
             hidden_states = self.norm2(hidden_states)
             hidden_states = self.ada_ln2(hidden_states, timestep_emb)
@@ -523,7 +466,6 @@ class DiTBlock3D(nn.Module):
             hidden_states = self.cross_attn(hidden_states, key_value_states=eva_features)
             hidden_states = residual + hidden_states
             
-            # MLP
             residual = hidden_states
             hidden_states = self.norm3(hidden_states)
             hidden_states = self.ada_ln3(hidden_states, timestep_emb)
@@ -534,7 +476,7 @@ class DiTBlock3D(nn.Module):
 
 
 class BLIP3oCLIPDiTModel(PreTrainedModel):
-    """FIXED: BLIP3-o DiT Model with NO Noise Scaling"""
+    """UPDATED: BLIP3-o DiT Model with Scale-Aware Generation"""
     
     config_class = BLIP3oCLIPDiTConfig
     supports_gradient_checkpointing = True
@@ -544,54 +486,36 @@ class BLIP3oCLIPDiTModel(PreTrainedModel):
         self.config = config
         self.gradient_checkpointing = False
         
-        # Input projection (CLIP -> hidden) - NO normalization here
         self.input_proj = nn.Linear(config.clip_embedding_size, config.hidden_size, bias=True)
-        
-        # Timestep embedding
         self.timestep_embedder = TimestepEmbedder(config.hidden_size)
-        
-        # Positional embedding (fallback for non-3D RoPE)
         self.pos_embed = nn.Parameter(torch.zeros(1, config.max_position_embeddings, config.hidden_size))
         
-        # Transformer blocks with 3D capabilities
         self.blocks = nn.ModuleList([
             DiTBlock3D(config) for _ in range(config.num_hidden_layers)
         ])
         
-        # Output layers with proper sandwich norm handling
         if config.use_sandwich_norm:
-            # Only apply pre-norm to hidden states, not post-norm to output
             self.output_pre_norm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
             self.output_adaln_pre = AdaLN(config.hidden_size, config.hidden_size)
         else:
             self.output_norm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
             self.output_adaln = AdaLN(config.hidden_size, config.hidden_size)
         
-        # Output projection: hidden_size -> clip_embedding_size (NO normalization here)
         self.output_proj = nn.Linear(config.hidden_size, config.clip_embedding_size, bias=True)
         
-        # Initialize model
         self._init_weights()
         
-        logger.info(f"FIXED BLIP3-o CLIP DiT model initialized with {self.get_num_parameters():,} parameters")
+        logger.info(f"UPDATED BLIP3-o CLIP DiT model initialized with {self.get_num_parameters():,} parameters")
         logger.info(f"  3D RoPE: {config.use_3d_rope}")
         logger.info(f"  Sandwich Normalization: {config.use_sandwich_norm}")
-        logger.info(f"  Grid size: {config.grid_size}x{config.grid_size}")
-        logger.info(f"  Hidden size: {config.hidden_size}")
-        logger.info(f"  CLIP size: {config.clip_embedding_size}")
-        logger.info(f"  🚫 NO unwanted normalization in input/output projections")
-        logger.info(f"  🎲 Standard Gaussian noise for generation (NO SCALING)")
+        logger.info(f"  🎯 Typical CLIP norm: {config.typical_clip_norm}")
+        logger.info(f"  🚀 Scale-aware generation enabled")
 
     def _init_weights(self):
         """Initialize model weights"""
-        # Input projection - NO normalization, just good initialization
         nn.init.xavier_uniform_(self.input_proj.weight)
         nn.init.zeros_(self.input_proj.bias)
-        
-        # Positional embedding
         nn.init.normal_(self.pos_embed, std=0.02)
-        
-        # Output projection - CRITICAL: Small initialization for flow matching
         nn.init.normal_(self.output_proj.weight, std=0.02)
         nn.init.zeros_(self.output_proj.bias)
 
@@ -603,26 +527,22 @@ class BLIP3oCLIPDiTModel(PreTrainedModel):
 
     def forward(
         self,
-        hidden_states: torch.Tensor,  # [B, N, 1024] - Noisy CLIP embeddings (RAW)
-        timestep: torch.Tensor,       # [B] - Flow matching timesteps
-        encoder_hidden_states: torch.Tensor,  # [B, N, 4096] - EVA conditioning (RAW)
+        hidden_states: torch.Tensor,
+        timestep: torch.Tensor,
+        encoder_hidden_states: torch.Tensor,
         return_dict: bool = True,
         **kwargs
     ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
-        """Forward pass with NO unwanted normalization"""
+        """Forward pass"""
         batch_size, seq_len, _ = hidden_states.shape
         
-        # FIXED: Project CLIP input to hidden dimension (NO normalization)
-        x = self.input_proj(hidden_states)  # [B, N, 1024] -> [B, N, hidden_size] (RAW)
+        x = self.input_proj(hidden_states)
         
-        # Add positional embeddings (fallback for non-spatial positions)
         if not self.config.use_3d_rope and seq_len <= self.config.max_position_embeddings:
             x = x + self.pos_embed[:, :seq_len, :]
         
-        # Get timestep embeddings
-        timestep_emb = self.timestep_embedder(timestep)  # [B, hidden_size]
+        timestep_emb = self.timestep_embedder(timestep)
         
-        # Pass through transformer blocks with 3D RoPE
         for block in self.blocks:
             if self.gradient_checkpointing and self.training:
                 x = torch.utils.checkpoint.checkpoint(
@@ -631,20 +551,43 @@ class BLIP3oCLIPDiTModel(PreTrainedModel):
             else:
                 x = block(x, encoder_hidden_states, timestep_emb)
         
-        # FIXED: Output projection with NO unwanted normalization
         if self.config.use_sandwich_norm:
-            # Pre-norm only (no post-norm to avoid dimension mismatch)
-            x = self.output_pre_norm(x)  # [B, N, hidden_size]
-            x = self.output_adaln_pre(x, timestep_emb)  # [B, N, hidden_size]
-            velocity_pred = self.output_proj(x)  # [B, N, hidden_size] -> [B, N, 1024] (RAW output)
+            x = self.output_pre_norm(x)
+            x = self.output_adaln_pre(x, timestep_emb)
+            velocity_pred = self.output_proj(x)
         else:
             x = self.output_norm(x)
             x = self.output_adaln(x, timestep_emb)
-            velocity_pred = self.output_proj(x)  # RAW output, no normalization
+            velocity_pred = self.output_proj(x)
         
         if return_dict:
             return {"velocity_prediction": velocity_pred, "hidden_states": x}
         return velocity_pred
+    
+    def _create_lognormal_timestep_schedule(self, num_inference_steps: int, device: torch.device) -> torch.Tensor:
+        """
+        Create log-normal timestep schedule for better sampling
+        This is a key improvement from BLIP3-o
+        """
+        # Start with linear schedule
+        timesteps = torch.linspace(1.0, 0.0, num_inference_steps + 1, device=device)[:-1]
+        
+        # Transform to log-normal distribution
+        timesteps = torch.exp(-2 * timesteps)
+        timesteps = timesteps / (1 + timesteps)
+        
+        return timesteps
+    
+    def _estimate_target_norm_from_eva(self, eva_features: torch.Tensor) -> float:
+        """
+        Estimate target CLIP norm based on EVA features
+        This helps maintain scale consistency
+        """
+        eva_norm = torch.norm(eva_features, dim=-1).mean().item()
+        # Empirical relationship between EVA and CLIP norms
+        estimated_clip_norm = eva_norm * 0.6  # Approximate ratio
+        # Clamp to reasonable range
+        return max(20.0, min(35.0, estimated_clip_norm))
     
     @torch.no_grad()
     def generate(
@@ -652,52 +595,91 @@ class BLIP3oCLIPDiTModel(PreTrainedModel):
         eva_features: torch.Tensor,
         num_inference_steps: int = 50,
         generator: Optional[torch.Generator] = None,
-        normalize_output: bool = False,  # FIXED: Default False to prevent unwanted normalization
-        # REMOVED: All noise scaling parameters
-        guidance_scale: float = 1.0,
-        use_heun_solver: bool = False,
+        normalize_output: bool = False,
+        # NEW: Scale-aware generation parameters
+        target_norm: Optional[float] = None,
+        use_lognormal_schedule: bool = True,
+        velocity_explosion_threshold: Optional[float] = None,
+        norm_guidance_strength: Optional[float] = None,
+        norm_guidance_frequency: Optional[int] = None,
         debug_generation: bool = False,
+        **kwargs
     ) -> torch.Tensor:
         """
-        FIXED: Generate CLIP embeddings with standard Gaussian noise (NO SCALING)
-        
-        Args:
-            eva_features: EVA conditioning [B, N, 4096] (RAW)
-            num_inference_steps: Number of denoising steps
-            generator: Random generator for reproducibility
-            normalize_output: Whether to L2-normalize output (DEFAULT: False)
-            guidance_scale: Classifier-free guidance scale
-            use_heun_solver: Use Heun's method instead of Euler
-            debug_generation: Enable debug logging
+        UPDATED: Scale-aware generation following BLIP3-o approach
+        Key improvements:
+        1. Log-normal timestep scheduling
+        2. Velocity explosion prevention
+        3. Periodic norm guidance
+        4. Scale consistency between training and inference
         """
         device = eva_features.device
         batch_size, num_tokens, _ = eva_features.shape
         
-        # FIXED: Start from standard Gaussian noise (NO SCALING)
+        # Use config defaults if not provided
+        if velocity_explosion_threshold is None:
+            velocity_explosion_threshold = self.config.velocity_explosion_threshold
+        if norm_guidance_strength is None:
+            norm_guidance_strength = self.config.norm_guidance_strength
+        if norm_guidance_frequency is None:
+            norm_guidance_frequency = self.config.norm_guidance_frequency
+        
+        # Estimate target norm if not provided
+        if target_norm is None:
+            if hasattr(self.config, 'typical_clip_norm'):
+                target_norm = self.config.typical_clip_norm
+            else:
+                target_norm = self._estimate_target_norm_from_eva(eva_features)
+        
+        # FIXED: Ensure target_norm is always a Python float, not a tensor
+        if torch.is_tensor(target_norm):
+            target_norm = float(target_norm.item())
+        elif isinstance(target_norm, np.ndarray):
+            target_norm = float(target_norm.item())
+        else:
+            target_norm = float(target_norm)
+        
+        # Validate target_norm is reasonable
+        if not (10.0 <= target_norm <= 100.0):
+            logger.warning(f"Target norm {target_norm:.3f} seems unusual, clamping to reasonable range")
+            target_norm = max(10.0, min(100.0, target_norm))
+        
+        # Start from properly scaled noise
         x = torch.randn(
             batch_size, num_tokens, self.config.clip_embedding_size,
             device=device, generator=generator, dtype=eva_features.dtype
         )
         
         if debug_generation:
-            initial_noise_mean = x.mean().item()
-            initial_noise_std = x.std().item()
-            initial_noise_norm = torch.norm(x, dim=-1).mean().item()
-            logger.debug(f"Generation start - Standard Gaussian noise:")
-            logger.debug(f"  Mean: {initial_noise_mean:.6f} (should be ~0)")
-            logger.debug(f"  Std: {initial_noise_std:.6f} (should be ~1)")
-            logger.debug(f"  Norm: {initial_noise_norm:.3f}")
-            logger.debug(f"  🎲 NO noise scaling applied")
-        
-        # Forward process (t=0 to t=1) with proper ODE solving
-        dt = 1.0 / num_inference_steps
-        
-        for i in range(num_inference_steps):
-            # Current time
-            t = i * dt
-            t_batch = torch.full((batch_size,), t, device=device, dtype=eva_features.dtype)
+            logger.info(f"🎯 Target norm: {target_norm:.3f} (type: {type(target_norm).__name__})")
+            logger.info(f"📊 Initial noise norm: {torch.norm(x, dim=-1).mean().item():.3f}")
+            logger.info(f"🚀 Using scale-aware generation")
             
-            # Get velocity prediction (output is RAW, no normalization)
+            # Validate target_norm is a scalar
+            if not isinstance(target_norm, (int, float)):
+                logger.error(f"❌ target_norm should be scalar, got {type(target_norm)}: {target_norm}")
+                raise ValueError(f"target_norm must be a scalar number, got {type(target_norm)}")
+            
+            # Additional validation
+            if torch.is_tensor(target_norm):
+                logger.error(f"❌ target_norm is still a tensor after conversion: {target_norm}")
+                raise ValueError("target_norm should not be a tensor at this point")
+        
+        # Create timestep schedule
+        if use_lognormal_schedule:
+            timesteps = self._create_lognormal_timestep_schedule(num_inference_steps, device)
+            if debug_generation:
+                logger.info(f"📅 Using log-normal timestep schedule: {timesteps[:5].tolist()}...")
+        else:
+            timesteps = torch.linspace(1.0, 0.0, num_inference_steps + 1, device=device)[:-1]
+            if debug_generation:
+                logger.info(f"📅 Using linear timestep schedule")
+        
+        # Forward ODE integration with scale-aware improvements
+        for i, t in enumerate(timesteps):
+            t_batch = torch.full((batch_size,), t.item(), device=device, dtype=eva_features.dtype)
+            
+            # Get velocity prediction
             velocity = self.forward(
                 hidden_states=x,
                 timestep=t_batch,
@@ -705,50 +687,69 @@ class BLIP3oCLIPDiTModel(PreTrainedModel):
                 return_dict=False
             )
             
-            if use_heun_solver and i < num_inference_steps - 1:
-                # Heun's method (2nd order)
-                # First step
-                x_temp = x + dt * velocity
-                
-                # Get velocity at next step
-                t_next = (i + 1) * dt
-                t_next_batch = torch.full((batch_size,), t_next, device=device, dtype=eva_features.dtype)
-                velocity_next = self.forward(
-                    hidden_states=x_temp,
-                    timestep=t_next_batch,
-                    encoder_hidden_states=eva_features,
-                    return_dict=False
-                )
-                
-                # Average velocities for final step
-                x = x + dt * (velocity + velocity_next) / 2
-            else:
-                # Forward Euler step: follow the velocity field
-                x = x + dt * velocity
+            # IMPROVEMENT 1: Prevent velocity explosion
+            velocity_norm = torch.norm(velocity, dim=-1).mean()
+            if velocity_norm > velocity_explosion_threshold:
+                scale_factor = (velocity_explosion_threshold * 0.5) / velocity_norm.item()
+                velocity = velocity * scale_factor
+                if debug_generation and i % 20 == 0:
+                    logger.info(f"  Step {i}: Scaled velocity by {scale_factor:.3f} (norm was {velocity_norm:.1f})")
             
-            # Optional: guidance (can be implemented for conditional generation)
-            if guidance_scale != 1.0:
-                # Implement classifier-free guidance if needed
-                pass
+            # Compute step size
+            if i < len(timesteps) - 1:
+                dt = timesteps[i] - timesteps[i + 1]
+            else:
+                dt = timesteps[i]
+            
+            # Euler step
+            x = x + dt * velocity
+            
+            # IMPROVEMENT 2: Periodic norm guidance
+            if i % norm_guidance_frequency == 0 and i > 0:
+                current_norm = torch.norm(x, dim=-1, keepdim=True)
+                # FIXED: Ensure target_norm is a scalar and add error handling
+                try:
+                    target_norm_scalar = float(target_norm) if torch.is_tensor(target_norm) else float(target_norm)
+                    target_norm_tensor = torch.full_like(current_norm, target_norm_scalar)
+                except Exception as e:
+                    logger.error(f"❌ Error creating target_norm_tensor: {e}")
+                    logger.error(f"target_norm type: {type(target_norm)}, value: {target_norm}")
+                    logger.error(f"current_norm shape: {current_norm.shape}, dtype: {current_norm.dtype}")
+                    raise
+                
+                # Gentle correction towards target norm
+                norm_ratio = target_norm_tensor / (current_norm + 1e-8)
+                correction_strength = norm_guidance_strength * min(1.0, i / (num_inference_steps * 0.3))
+                norm_correction = correction_strength * (norm_ratio - 1.0)
+                x = x * (1.0 + norm_correction)
+                
+                if debug_generation and i % (norm_guidance_frequency * 4) == 0:
+                    logger.info(f"  Step {i}: Applied norm guidance, current norm: {current_norm.mean().item():.3f}")
         
-        # FIXED: Optional normalization ONLY if explicitly requested
+        # IMPROVEMENT 3: Final scale correction
+        current_norm = torch.norm(x, dim=-1, keepdim=True)
+        # FIXED: Ensure target_norm is a scalar and add error handling
+        try:
+            target_norm_scalar = float(target_norm) if torch.is_tensor(target_norm) else float(target_norm)
+            target_norm_tensor = torch.full_like(current_norm, target_norm_scalar)
+        except Exception as e:
+            logger.error(f"❌ Error in final scale correction: {e}")
+            logger.error(f"target_norm type: {type(target_norm)}, value: {target_norm}")
+            logger.error(f"current_norm shape: {current_norm.shape}, dtype: {current_norm.dtype}")
+            raise
+        x = x * (target_norm_tensor / (current_norm + 1e-8))
+        
+        # Optional normalization
         if normalize_output:
             x = F.normalize(x, p=2, dim=-1)
             if debug_generation:
-                logger.debug("Applied L2 normalization to output (explicitly requested)")
-        else:
-            if debug_generation:
-                logger.debug("NO normalization applied to output (keeping RAW)")
-            
+                logger.info("Applied L2 normalization to output")
+        
         if debug_generation:
-            final_mean = x.mean().item()
-            final_std = x.std().item()
             final_norm = torch.norm(x, dim=-1).mean().item()
-            logger.debug(f"Generation end - Final output:")
-            logger.debug(f"  Mean: {final_mean:.3f}")
-            logger.debug(f"  Std: {final_std:.3f}")
-            logger.debug(f"  Norm: {final_norm:.3f} ({'normalized' if normalize_output else 'RAW'})")
-            logger.debug(f"  🎲 Used standard Gaussian noise throughout (NO SCALING)")
+            target_norm_value = float(target_norm) if torch.is_tensor(target_norm) else float(target_norm)
+            logger.info(f"🎯 Final norm: {final_norm:.3f} (target: {target_norm_value:.3f})")
+            logger.info(f"✅ Scale-aware generation completed")
         
         return x
     
@@ -762,12 +763,16 @@ def create_clip_reproduction_model(
     model_size: str = "base",
     use_3d_rope: bool = True,
     use_sandwich_norm: bool = True,
+    # NEW: Scale-aware generation parameters
+    typical_clip_norm: float = 26.0,
+    velocity_explosion_threshold: float = 100.0,
+    norm_guidance_strength: float = 0.1,
+    norm_guidance_frequency: int = 10,
     **kwargs
 ) -> BLIP3oCLIPDiTModel:
-    """FIXED: Create CLIP reproduction model with NO noise scaling"""
+    """UPDATED: Create CLIP reproduction model with scale-aware generation"""
     
     if config is None:
-        # Model size configurations
         size_configs = {
             "tiny": {"hidden_size": 384, "num_hidden_layers": 6, "num_attention_heads": 6, "num_key_value_heads": 2},
             "small": {"hidden_size": 512, "num_hidden_layers": 8, "num_attention_heads": 8, "num_key_value_heads": 4},
@@ -784,6 +789,11 @@ def create_clip_reproduction_model(
             "intermediate_size": model_config["hidden_size"] * 4,
             "use_3d_rope": use_3d_rope,
             "use_sandwich_norm": use_sandwich_norm,
+            # Scale-aware generation parameters
+            "typical_clip_norm": typical_clip_norm,
+            "velocity_explosion_threshold": velocity_explosion_threshold,
+            "norm_guidance_strength": norm_guidance_strength,
+            "norm_guidance_frequency": norm_guidance_frequency,
             **kwargs
         })
         

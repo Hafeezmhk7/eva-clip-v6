@@ -1,18 +1,15 @@
 #!/usr/bin/env python3
 """
-FIXED: CLIP Reproduction Training Script with Consistent Data and NO Unwanted Normalization
-Updated training script that uses all the FIXED components:
-
-Key updates:
-1. Uses FIXED loss function with NO unwanted normalization
-2. Uses FIXED dataset with NO normalization applied
-3. Uses FIXED model with NO unwanted normalization
-4. Uses FIXED trainer with consistent overfitting test data
-5. Enhanced norm tracking and debugging
-6. Overfitting test uses same data source as evaluation
+UPDATED: CLIP Reproduction Training Script with Scale-Aware Generation
+Key improvements:
+1. Log-normal timestep scheduling for better sampling
+2. Velocity explosion prevention during inference  
+3. Periodic norm guidance for scale consistency
+4. Adaptive target norm estimation
+5. Enhanced evaluation with scale-aware metrics
 
 Usage:
-    python train_dit_fixed.py --chunked_embeddings_dir /path/to/embeddings --output_dir ./checkpoints
+    python train_dit.py --chunked_embeddings_dir /path/to/embeddings --output_dir ./checkpoints --use_scale_aware
 """
 
 import os
@@ -35,15 +32,14 @@ def setup_logging():
         format='%(asctime)s - %(levelname)s - %(message)s',
         handlers=[
             logging.StreamHandler(sys.stdout),
-            logging.FileHandler('fixed_clip_reproduction_training.log', mode='w')
+            logging.FileHandler('scale_aware_clip_training.log', mode='w')
         ]
     )
     return logging.getLogger(__name__)
 
-# Update argument parser to remove noise scaling options
 def parse_arguments():
-    """Parse command line arguments"""
-    parser = argparse.ArgumentParser(description="FIXED CLIP Reproduction with NO Noise Scaling")
+    """Parse command line arguments with scale-aware options"""
+    parser = argparse.ArgumentParser(description="BLIP3-o CLIP Reproduction with Scale-Aware Generation")
     
     # Required arguments
     parser.add_argument("--chunked_embeddings_dir", type=str, required=True,
@@ -83,9 +79,23 @@ def parse_arguments():
     parser.add_argument("--max_grad_norm", type=float, default=1.0,
                        help="Max gradient norm")
     
-    # REMOVED: All noise scaling arguments
-    # parser.add_argument("--use_adaptive_noise_scaling", ...)  # REMOVED
-    # parser.add_argument("--fixed_noise_scale", ...)           # REMOVED
+    # NEW: Scale-aware generation parameters
+    parser.add_argument("--use_scale_aware", action="store_true", default=True,
+                       help="Enable scale-aware generation and evaluation")
+    parser.add_argument("--no_scale_aware", action="store_true",
+                       help="Disable scale-aware generation")
+    parser.add_argument("--typical_clip_norm", type=float, default=26.0,
+                       help="Typical CLIP embedding norm for scale guidance")
+    parser.add_argument("--velocity_explosion_threshold", type=float, default=100.0,
+                       help="Threshold for velocity explosion prevention")
+    parser.add_argument("--norm_guidance_strength", type=float, default=0.1,
+                       help="Strength of norm guidance during generation")
+    parser.add_argument("--norm_guidance_frequency", type=int, default=10,
+                       help="Frequency of norm guidance application")
+    parser.add_argument("--eval_use_lognormal_schedule", action="store_true", default=True,
+                       help="Use log-normal timestep schedule for evaluation")
+    parser.add_argument("--adaptive_target_norm", action="store_true", default=True,
+                       help="Adaptively estimate target norm from data")
     
     # Evaluation
     parser.add_argument("--eval_every_n_steps", type=int, default=50,
@@ -114,7 +124,7 @@ def parse_arguments():
                        help="Enable WandB logging")
     parser.add_argument("--no_wandb", action="store_true",
                        help="Disable WandB logging")
-    parser.add_argument("--wandb_project", type=str, default="blip3o-clip-no-noise-scaling",
+    parser.add_argument("--wandb_project", type=str, default="blip3o-clip-scale-aware",
                        help="WandB project name")
     parser.add_argument("--wandb_run_name", type=str, default=None,
                        help="WandB run name")
@@ -122,7 +132,7 @@ def parse_arguments():
     return parser.parse_args()
 
 def setup_device_and_model(args, logger):
-    """Setup device and create FIXED model"""
+    """Setup device and create model with scale-aware generation"""
     # Setup device
     if torch.cuda.is_available():
         device = torch.device("cuda")
@@ -136,99 +146,118 @@ def setup_device_and_model(args, logger):
     # Process architecture arguments
     use_3d_rope = args.use_3d_rope and not args.no_3d_rope
     use_sandwich_norm = args.use_sandwich_norm and not args.no_sandwich_norm
+    use_scale_aware = args.use_scale_aware and not args.no_scale_aware
     
-    logger.info("🏗️ FIXED BLIP3-o Architecture Configuration:")
+    logger.info("🏗️ BLIP3-o Architecture Configuration:")
     logger.info(f"  3D Rotary Position Embedding: {'✅ Enabled' if use_3d_rope else '❌ Disabled'}")
     logger.info(f"  Sandwich Normalization: {'✅ Enabled' if use_sandwich_norm else '❌ Disabled'}")
-    logger.info(f"  🚫 NO unwanted normalization in model")
+    logger.info(f"  🚀 Scale-Aware Generation: {'✅ Enabled' if use_scale_aware else '❌ Disabled'}")
     
-    # Import and create FIXED model
+    if use_scale_aware:
+        logger.info(f"🎯 Scale-Aware Parameters:")
+        logger.info(f"  Typical CLIP norm: {args.typical_clip_norm}")
+        logger.info(f"  Velocity explosion threshold: {args.velocity_explosion_threshold}")
+        logger.info(f"  Norm guidance strength: {args.norm_guidance_strength}")
+        logger.info(f"  Norm guidance frequency: {args.norm_guidance_frequency}")
+        logger.info(f"  Log-normal schedule: {args.eval_use_lognormal_schedule}")
+        logger.info(f"  Adaptive target norm: {args.adaptive_target_norm}")
+    
+    # Import and create model
     try:
         from src.modules.models.blip3o_dit import create_clip_reproduction_model, BLIP3oCLIPDiTConfig
-        logger.info("✅ Imported FIXED model")
+        logger.info("✅ Imported UPDATED model with scale-aware generation")
+        
+        # Create model with scale-aware parameters
+        model_kwargs = {}
+        if use_scale_aware:
+            model_kwargs.update({
+                'typical_clip_norm': args.typical_clip_norm,
+                'velocity_explosion_threshold': args.velocity_explosion_threshold,
+                'norm_guidance_strength': args.norm_guidance_strength,
+                'norm_guidance_frequency': args.norm_guidance_frequency,
+            })
         
         model = create_clip_reproduction_model(
             model_size=args.model_size,
             training_mode=args.training_mode,
             use_3d_rope=use_3d_rope,
             use_sandwich_norm=use_sandwich_norm,
+            **model_kwargs
         )
         
     except ImportError as e:
-        logger.error(f"❌ Could not import FIXED model: {e}")
-        logger.error("Make sure blip3o_dit.py is in the current directory")
+        logger.error(f"❌ Could not import model: {e}")
+        logger.error("Make sure blip3o_dit.py is updated with scale-aware generation")
         raise
     
     model = model.to(device)
-    logger.info(f"FIXED model created with {model.get_num_parameters():,} parameters")
+    logger.info(f"Model created with {model.get_num_parameters():,} parameters")
     logger.info(f"Model moved to {device}")
     
     return device, model
 
 def create_loss_function(args, logger):
-    """Create FIXED loss function with NO noise scaling"""
+    """Create loss function"""
     try:
         from src.modules.losses.blip3o_fm_loss import create_clip_reproduction_loss
-        logger.info("✅ Imported FIXED loss function")
+        logger.info("✅ Imported loss function")
         
-        # FIXED: Force NO noise scaling
         loss_fn = create_clip_reproduction_loss(
             prediction_type="velocity",
             flow_type="rectified",
             loss_weight=1.0,
-            use_adaptive_noise_scaling=False,  # ALWAYS False
-            fixed_noise_scale=1.0,            # ALWAYS 1.0 (no scaling)
+            use_adaptive_noise_scaling=False,
+            fixed_noise_scale=1.0,
             debug_mode=args.debug_mode
         )
         
-        logger.info(f"FIXED loss function created (NO NOISE SCALING):")
+        logger.info(f"Loss function created:")
         logger.info(f"  Prediction type: velocity")
         logger.info(f"  Flow type: rectified")
-        logger.info(f"  Noise scaling: DISABLED (standard Gaussian)")
-        logger.info(f"  🚫 NO noise scaling applied anywhere")
+        logger.info(f"  Standard Gaussian noise")
         
     except ImportError as e:
-        logger.error(f"❌ Could not import FIXED loss function: {e}")
+        logger.error(f"❌ Could not import loss function: {e}")
         raise
     
     return loss_fn
 
 def create_dataloaders(args, logger):
-    """Create FIXED data loaders"""
+    """Create data loaders"""
     try:
         from src.modules.datasets.blip3o_dataset import create_clip_reproduction_dataloaders
-        logger.info("✅ Imported FIXED dataset")
+        logger.info("✅ Imported dataset")
         
-        # FIXED: Use consistent settings
         train_dataloader, eval_dataloader = create_clip_reproduction_dataloaders(
             chunked_embeddings_dir=args.chunked_embeddings_dir,
             batch_size=args.batch_size,
             training_mode=args.training_mode,
             max_shards=args.max_shards,
-            normalize_embeddings=False,  # FIXED: NO normalization
-            collect_statistics=False,    # FIXED: NO statistics collection
+            normalize_embeddings=False,
+            collect_statistics=False,
             num_workers=args.num_workers,
             pin_memory=torch.cuda.is_available()
         )
         
-        logger.info(f"FIXED dataloaders created:")
-        logger.info(f"  🚫 Normalization: DISABLED (forced)")
-        logger.info(f"  Statistics collection: Disabled")
+        logger.info(f"Dataloaders created:")
+        logger.info(f"  Normalization: DISABLED")
         logger.info(f"  Max shards: {args.max_shards}")
         logger.info(f"  Raw embedding space: ✅")
         
     except ImportError as e:
-        logger.error(f"❌ Could not import FIXED dataset: {e}")
-        logger.error("Make sure blip3o_dataset.py is in the current directory")
+        logger.error(f"❌ Could not import dataset: {e}")
         raise
     
     return train_dataloader, eval_dataloader
 
 def create_trainer(model, loss_fn, train_dataloader, eval_dataloader, args, device, logger):
-    """Create FIXED trainer"""
+    """Create trainer with scale-aware evaluation"""
     try:
         from src.modules.trainers.blip3o_trainer import create_clip_trainer
-        logger.info("✅ Imported FIXED trainer")
+        logger.info("✅ Imported UPDATED trainer with scale-aware evaluation")
+        
+        # Determine scale-aware settings
+        use_scale_aware = args.use_scale_aware and not args.no_scale_aware
         
         # Create run name if not provided
         wandb_run_name = args.wandb_run_name
@@ -239,10 +268,12 @@ def create_trainer(model, loss_fn, train_dataloader, eval_dataloader, args, devi
                 arch_features.append("3drope")
             if getattr(model.config, 'use_sandwich_norm', False):
                 arch_features.append("sandwich")
+            if use_scale_aware:
+                arch_features.append("scale_aware")
             arch_str = "_".join(arch_features) if arch_features else "standard"
-            wandb_run_name = f"fixed_blip3o_{args.model_size}_{args.training_mode}_{arch_str}_{timestamp}"
+            wandb_run_name = f"blip3o_{args.model_size}_{args.training_mode}_{arch_str}_{timestamp}"
         
-        # Update the WandB config to reflect no noise scaling
+        # Update WandB config with scale-aware parameters
         wandb_config = {
             "model_size": args.model_size,
             "training_mode": args.training_mode,
@@ -250,13 +281,25 @@ def create_trainer(model, loss_fn, train_dataloader, eval_dataloader, args, devi
             "use_sandwich_norm": getattr(model.config, 'use_sandwich_norm', False),
             "batch_size": args.batch_size,
             "max_shards": args.max_shards,
-            "noise_scaling_disabled": True,      # NEW
-            "standard_gaussian_noise": True,     # NEW
-            "adaptive_noise_scaling": False,     # Always False
-            "fixed_noise_scale": 1.0,           # Always 1.0
-            "experiment_version": "no_noise_scaling_v1",
-            "consistent_noise_training_inference": True,
-            "raw_embedding_space": True,
+            "experiment_version": "scale_aware_v1",
+            
+            # Scale-aware parameters
+            "use_scale_aware_generation": use_scale_aware,
+            "typical_clip_norm": args.typical_clip_norm,
+            "velocity_explosion_threshold": args.velocity_explosion_threshold,
+            "norm_guidance_strength": args.norm_guidance_strength,
+            "norm_guidance_frequency": args.norm_guidance_frequency,
+            "eval_use_lognormal_schedule": args.eval_use_lognormal_schedule,
+            "adaptive_target_norm": args.adaptive_target_norm,
+            
+            # Key improvements
+            "key_improvements": [
+                "lognormal_timestep_schedule",
+                "velocity_explosion_prevention", 
+                "periodic_norm_guidance",
+                "adaptive_target_norm_estimation",
+                "scale_aware_evaluation"
+            ] if use_scale_aware else ["baseline"],
         }
         
         trainer = create_clip_trainer(
@@ -276,6 +319,13 @@ def create_trainer(model, loss_fn, train_dataloader, eval_dataloader, args, devi
             overfit_test_size=args.overfit_test_size,
             output_dir=args.output_dir,
             device=device,
+            
+            # Scale-aware evaluation parameters
+            use_scale_aware_eval=use_scale_aware,
+            eval_target_norm=args.typical_clip_norm if not args.adaptive_target_norm else None,
+            eval_use_lognormal_schedule=args.eval_use_lognormal_schedule,
+            adaptive_target_norm=args.adaptive_target_norm,
+            
             # WandB parameters
             use_wandb=args.use_wandb and not args.no_wandb,
             wandb_project=args.wandb_project,
@@ -283,50 +333,59 @@ def create_trainer(model, loss_fn, train_dataloader, eval_dataloader, args, devi
             wandb_config=wandb_config,
         )
         
-        logger.info("FIXED trainer created:")
+        logger.info("UPDATED trainer created with scale-aware evaluation:")
+        logger.info(f"  🚀 Scale-aware evaluation: {use_scale_aware}")
+        logger.info(f"  🎯 Adaptive target norm: {args.adaptive_target_norm}")
+        logger.info(f"  📅 Log-normal schedule: {args.eval_use_lognormal_schedule}")
         logger.info(f"  Evaluation: Every {args.eval_every_n_steps} steps")
-        logger.info(f"  Inference steps: {args.eval_inference_steps}")
         logger.info(f"  WandB enabled: {args.use_wandb and not args.no_wandb}")
-        logger.info(f"  🔧 FIXED: Overfitting test uses same data source as evaluation")
-        logger.info(f"  📊 FIXED: Enhanced norm tracking enabled")
         
     except ImportError as e:
-        logger.error(f"❌ Could not import FIXED trainer: {e}")
-        logger.error("Make sure blip3o_trainer.py is in the current directory")
+        logger.error(f"❌ Could not import trainer: {e}")
+        logger.error("Make sure blip3o_trainer.py is updated with scale-aware evaluation")
         raise
     
     return trainer
 
-# Update the main function logging
 def main():
-    """Main training function with NO noise scaling"""
+    """Main training function with scale-aware generation"""
     args = parse_arguments()
     logger = setup_logging()
     
-    logger.info("🔧 FIXED: CLIP Reproduction Training with NO NOISE SCALING")
+    use_scale_aware = args.use_scale_aware and not args.no_scale_aware
+    
+    logger.info("🚀 BLIP3-o CLIP Reproduction Training with Scale-Aware Generation")
     logger.info("=" * 90)
-    logger.info("🔧 KEY CHANGE:")
-    logger.info("  🚫 ALL NOISE SCALING DISABLED")
-    logger.info("  ✅ Using standard Gaussian noise (mean=0, std=1) everywhere")
-    logger.info("  ✅ Consistent noise distribution between training and inference")
-    logger.info("  ✅ Model learns to work with natural noise scale")
+    
+    if use_scale_aware:
+        logger.info("🎯 SCALE-AWARE GENERATION ENABLED:")
+        logger.info("  ✅ Log-normal timestep scheduling for better sampling")
+        logger.info("  ✅ Velocity explosion prevention during inference")
+        logger.info("  ✅ Periodic norm guidance for scale consistency")
+        logger.info("  ✅ Adaptive target norm estimation from data")
+        logger.info("  ✅ Enhanced evaluation with scale-aware metrics")
+    else:
+        logger.info("📊 BASELINE GENERATION:")
+        logger.info("  • Standard linear timestep scheduling")
+        logger.info("  • No scale guidance during inference")
+        logger.info("  • Basic evaluation metrics")
+    
     logger.info("=" * 90)
     logger.info("EXPERIMENT DETAILS:")
     logger.info("  📋 Task: Reproduce clean CLIP embeddings from EVA embeddings")
-    logger.info("  🧠 Model: BLIP3-o DiT with consistent noise handling")
-    logger.info("  🎯 Target: CLIP embeddings [B, N, 1024] - RAW")
-    logger.info("  🎮 Conditioning: EVA embeddings [B, N, 4096] - RAW")
-    logger.info("  🌊 Method: Rectified Flow Matching with standard Gaussian noise")
-    logger.info("  🎲 Noise: Standard Gaussian (NO SCALING) in training and inference")
-    logger.info("=" * 90)
-    logger.info("EXPERIMENT DETAILS:")
-    logger.info("  📋 Task: Reproduce clean CLIP embeddings from EVA embeddings")
-    logger.info("  🧠 Model: FIXED BLIP3-o DiT with NO unwanted normalization")
-    logger.info("  🎯 Target: CLIP embeddings [B, N, 1024] - RAW (no normalization)")
-    logger.info("  🎮 Conditioning: EVA embeddings [B, N, 4096] - RAW (no normalization)")
-    logger.info("  🌊 Method: Rectified Flow Matching in RAW embedding space")
-    logger.info("  🚫 Normalization: ONLY for cosine similarity computation")
-    logger.info("  📊 Enhanced: Detailed norm tracking and debugging")
+    logger.info("  🧠 Model: BLIP3-o DiT with 3D RoPE and Sandwich Normalization")
+    logger.info("  🎯 Target: CLIP embeddings [B, N, 1024]")
+    logger.info("  🎮 Conditioning: EVA embeddings [B, N, 4096]")
+    logger.info("  🌊 Method: Rectified Flow Matching")
+    
+    if use_scale_aware:
+        logger.info("  🚀 Generation: Scale-aware with log-normal scheduling")
+        logger.info(f"  🎯 Target norm guidance: {args.typical_clip_norm:.1f}")
+        logger.info(f"  ⚡ Velocity explosion threshold: {args.velocity_explosion_threshold:.1f}")
+        logger.info(f"  📊 Norm guidance strength: {args.norm_guidance_strength:.2f}")
+    else:
+        logger.info("  📊 Generation: Standard linear scheduling")
+    
     logger.info("=" * 90)
     logger.info(f"Configuration:")
     logger.info(f"  Model size: {args.model_size}")
@@ -337,10 +396,8 @@ def main():
     logger.info(f"  Batch size: {args.batch_size}")
     logger.info(f"  Epochs: {args.num_epochs}")
     logger.info(f"  Max shards: {args.max_shards}")
-    # logger.info(f"  Adaptive noise scaling: {args.use_adaptive_noise_scaling}")
-    # logger.info(f"  Fixed noise scale: {args.fixed_noise_scale}")
     if args.overfit_test_size:
-        logger.info(f"  🧪 FIXED OVERFITTING TEST: {args.overfit_test_size} samples (from eval data)")
+        logger.info(f"  🧪 Overfitting test: {args.overfit_test_size} samples")
     logger.info(f"  Debug mode: {args.debug_mode}")
     if args.use_wandb and not args.no_wandb:
         logger.info(f"  📊 WandB project: {args.wandb_project}")
@@ -354,13 +411,13 @@ def main():
         # Setup device and model
         device, model = setup_device_and_model(args, logger)
         
-        # Create FIXED loss function
+        # Create loss function
         loss_fn = create_loss_function(args, logger)
         
-        # Create FIXED dataloaders
+        # Create dataloaders
         train_dataloader, eval_dataloader = create_dataloaders(args, logger)
         
-        # Create FIXED trainer
+        # Create trainer
         trainer = create_trainer(model, loss_fn, train_dataloader, eval_dataloader, args, device, logger)
         
         # Save configuration
@@ -369,44 +426,48 @@ def main():
             'model_config': model.config.to_dict() if hasattr(model.config, 'to_dict') else {},
             'model_params': model.get_num_parameters() if hasattr(model, 'get_num_parameters') else 'unknown',
             'timestamp': datetime.now().isoformat(),
-            'experiment_type': 'fixed_clip_reproduction_consistent_data_no_normalization',
-            'normalization_approach': 'raw_embedding_space_with_cosine_similarity_only',
-            'fixes_applied': [
-                'consistent_overfit_test_data_source',
-                'no_unwanted_normalization_anywhere',
-                'raw_embedding_space_training',
-                'enhanced_norm_tracking',
-                'consistent_data_processing',
-                'fixed_noise_scaling',
-                'detailed_debugging_and_monitoring'
-            ],
+            'experiment_type': 'blip3o_clip_scale_aware_generation' if use_scale_aware else 'blip3o_clip_baseline',
+            
+            # Scale-aware configuration
+            'scale_aware_enabled': use_scale_aware,
+            'scale_aware_config': {
+                'typical_clip_norm': args.typical_clip_norm,
+                'velocity_explosion_threshold': args.velocity_explosion_threshold,
+                'norm_guidance_strength': args.norm_guidance_strength,
+                'norm_guidance_frequency': args.norm_guidance_frequency,
+                'use_lognormal_schedule': args.eval_use_lognormal_schedule,
+                'adaptive_target_norm': args.adaptive_target_norm,
+            } if use_scale_aware else {},
+            
+            'key_improvements': [
+                'lognormal_timestep_schedule',
+                'velocity_explosion_prevention',
+                'periodic_norm_guidance', 
+                'adaptive_target_norm_estimation',
+                'scale_aware_evaluation'
+            ] if use_scale_aware else [],
+            
             'architecture_features': {
                 '3d_rope': getattr(model.config, 'use_3d_rope', False),
                 'sandwich_normalization': getattr(model.config, 'use_sandwich_norm', False),
                 'grouped_query_attention': True,
-                'no_unwanted_normalization': True,
-                'raw_embedding_space': True,
-                'fixed_noise_scaling': True,
+                'scale_aware_generation': use_scale_aware,
             },
-            'noise_scaling': {
-                # 'adaptive': args.use_adaptive_noise_scaling,
-                # 'fixed_scale': args.fixed_noise_scale,
-                # 'method': 'target_based' if not args.use_adaptive_noise_scaling else 'adaptive',
-                'applied_during': 'training_and_inference_consistently'
+            
+            'generation_method': {
+                'timestep_schedule': 'lognormal' if use_scale_aware and args.eval_use_lognormal_schedule else 'linear',
+                'velocity_explosion_prevention': use_scale_aware,
+                'norm_guidance': use_scale_aware,
+                'adaptive_target_norm': use_scale_aware and args.adaptive_target_norm,
             },
-            'normalization_policy': {
-                'data_loading': 'none',
-                'training': 'none_except_cosine_similarity',
-                'generation': 'none_unless_explicitly_requested',
-                'evaluation': 'only_for_cosine_similarity',
-                'raw_embedding_space': True,
+            
+            'evaluation_method': {
+                'scale_aware': use_scale_aware,
+                'adaptive_target_norm': args.adaptive_target_norm,
+                'lognormal_schedule': args.eval_use_lognormal_schedule,
+                'enhanced_metrics': use_scale_aware,
             },
-            'data_consistency': {
-                'overfit_test_source': 'eval_dataloader',
-                'train_eval_identical_processing': True,
-                'consistent_shuffling': False,  # eval doesn't shuffle
-                'norm_tracking': True,
-            },
+            
             'wandb_config': {
                 'enabled': args.use_wandb and not args.no_wandb,
                 'project': args.wandb_project,
@@ -414,33 +475,39 @@ def main():
             }
         }
         
-        config_path = output_dir / 'fixed_experiment_config.json'
+        config_filename = 'scale_aware_experiment_config.json' if use_scale_aware else 'baseline_experiment_config.json'
+        config_path = output_dir / config_filename
         with open(config_path, 'w') as f:
             json.dump(config, f, indent=2)
         
-        logger.info(f"FIXED configuration saved to {config_path}")
+        logger.info(f"Configuration saved to {config_path}")
         
         # Start training
-        logger.info("\n🔧 Starting FIXED BLIP3-o training with consistent data...")
-        logger.info("Expected behavior with ALL FIXES:")
-        logger.info("  • Consistent target norms between training and evaluation")
-        logger.info("  • Overfitting test should achieve >0.8 similarity (same data as eval)")
-        logger.info("  • NO unwanted normalization anywhere in the pipeline")
-        logger.info("  • Raw embedding space training with proper scale learning")
-        logger.info("  • Enhanced norm tracking shows data distribution")
-        logger.info("  • Much better norm consistency (target vs generated)")
-        logger.info("  • Higher cosine similarity due to consistent data and scaling")
-        logger.info("  • Stable and reproducible evaluation results")
+        logger.info(f"\n🚀 Starting BLIP3-o training with {'Scale-Aware' if use_scale_aware else 'Baseline'} generation...")
+        
+        if use_scale_aware:
+            logger.info("Expected improvements with Scale-Aware Generation:")
+            logger.info("  • Better scale consistency between training and inference")
+            logger.info("  • Reduced velocity explosion issues during generation")
+            logger.info("  • More stable and consistent embedding norms")
+            logger.info("  • Improved CLIP similarity scores")
+            logger.info("  • Enhanced convergence and overfitting capability")
+            logger.info("  • More robust generation across different noise scales")
+        else:
+            logger.info("Baseline generation for comparison:")
+            logger.info("  • Standard linear timestep scheduling")
+            logger.info("  • No scale guidance mechanisms")
+            logger.info("  • Basic evaluation metrics")
         
         if args.overfit_test_size:
             logger.info(f"  • OVERFITTING TEST: Should achieve >0.8 similarity on {args.overfit_test_size} samples")
-            logger.info(f"    ✅ Uses SAME data source as evaluation for consistency")
+            logger.info(f"    ✅ Uses same data source as evaluation for consistency")
         
         logger.info("")
         
         start_time = datetime.now()
         
-        # Run FIXED training
+        # Run training
         summary = trainer.train()
         
         end_time = datetime.now()
@@ -448,42 +515,52 @@ def main():
         
         # Final summary
         logger.info("\n" + "=" * 90)
-        logger.info("🎉 FIXED BLIP3-o TRAINING COMPLETED!")
+        if use_scale_aware:
+            logger.info("🎉 SCALE-AWARE BLIP3-o TRAINING COMPLETED!")
+        else:
+            logger.info("🎉 BASELINE BLIP3-o TRAINING COMPLETED!")
         logger.info("=" * 90)
         logger.info(f"📊 RESULTS SUMMARY:")
         logger.info(f"  Duration: {duration:.1f} seconds ({duration/60:.1f} minutes)")
         logger.info(f"  Total steps: {summary.get('total_steps', 0)}")
         logger.info(f"  Best loss: {summary.get('best_loss', float('inf')):.6f}")
         logger.info(f"  Best CLIP similarity: {summary.get('best_eval_similarity', 0):.4f}")
-        logger.info(f"  🔧 FIXED version with consistent data and NO unwanted normalization")
+        logger.info(f"  🚀 Scale-aware generation: {use_scale_aware}")
         
-        # Compare with expected improvements
+        # Compare with expectations
         best_sim = summary.get('best_eval_similarity', 0)
-        if best_sim > 0.8:
-            logger.info(f"  🎉 EXCELLENT: Similarity >0.8 - All fixes worked perfectly!")
+        if best_sim > 0.9:
+            logger.info(f"  🎉 OUTSTANDING: Similarity >0.9 - Excellent results!")
+        elif best_sim > 0.8:
+            logger.info(f"  🎉 EXCELLENT: Similarity >0.8 - Great improvement!")
         elif best_sim > 0.6:
-            logger.info(f"  ✅ VERY GOOD: Similarity >0.6 - Major improvement!")
+            logger.info(f"  ✅ VERY GOOD: Similarity >0.6 - Solid results!")
         elif best_sim > 0.4:
-            logger.info(f"  ✅ GOOD: Similarity >0.4 - Significant improvement!")
+            logger.info(f"  ✅ GOOD: Similarity >0.4 - Shows promise!")
         elif best_sim > 0.3:
-            logger.info(f"  📈 BETTER: Similarity >0.3 - Some improvement seen")
+            logger.info(f"  📈 DECENT: Similarity >0.3 - Some learning observed")
         else:
-            logger.info(f"  ⚠️  STILL ISSUES: Similarity <0.3 - May need additional investigation")
+            logger.info(f"  ⚠️  NEEDS WORK: Similarity <0.3 - May need tuning")
         
         # Enhanced evaluation results analysis
         final_eval = summary.get('final_eval', {})
         if final_eval:
-            logger.info(f"📊 FINAL FIXED EVALUATION:")
+            logger.info(f"📊 FINAL EVALUATION:")
             logger.info(f"  CLIP similarity: {final_eval.get('eval_clip_similarity', 0):.4f}")
             logger.info(f"  Generated norm: {final_eval.get('eval_generated_norm_mean', 0):.3f}")
             logger.info(f"  Target norm: {final_eval.get('eval_target_norm_mean', 0):.3f}")
             logger.info(f"  Norm ratio: {final_eval.get('eval_norm_ratio', 0):.3f}")
-            logger.info(f"  Norm consistency: {final_eval.get('eval_norm_consistency', 0):.3f}")
             logger.info(f"  High quality (>0.7): {final_eval.get('eval_high_quality', 0)*100:.1f}%")
             logger.info(f"  Very high quality (>0.8): {final_eval.get('eval_very_high_quality', 0)*100:.1f}%")
             logger.info(f"  Excellent quality (>0.9): {final_eval.get('eval_excellent_quality', 0)*100:.1f}%")
             
-            # Assess norm consistency improvement
+            # Scale-aware specific metrics
+            if use_scale_aware and 'eval_scale_consistency_mean' in final_eval:
+                logger.info(f"  🎯 Scale consistency: {final_eval.get('eval_scale_consistency_mean', 0):.3f}")
+                logger.info(f"  📅 Log-normal schedule used: {final_eval.get('eval_lognormal_schedule', False)}")
+                logger.info(f"  🎛️  Target norm used: {final_eval.get('eval_target_norm_used', 0):.3f}")
+            
+            # Assess improvements
             norm_ratio = final_eval.get('eval_norm_ratio', 0)
             if 0.9 <= norm_ratio <= 1.1:
                 logger.info(f"  🎉 EXCELLENT norm consistency! (ratio: {norm_ratio:.3f})")
@@ -492,100 +569,108 @@ def main():
             elif 0.7 <= norm_ratio <= 1.3:
                 logger.info(f"  📈 IMPROVED norm consistency (ratio: {norm_ratio:.3f})")
             else:
-                logger.info(f"  ⚠️  Norm consistency still needs work (ratio: {norm_ratio:.3f})")
+                logger.info(f"  ⚠️  Norm consistency needs work (ratio: {norm_ratio:.3f})")
         
-        # Norm analysis from enhanced tracking
-        norm_stats = summary.get('norm_statistics', {})
-        if norm_stats:
-            logger.info(f"📊 ENHANCED NORM ANALYSIS:")
-            
-            if 'training_target_norm' in norm_stats:
-                train_stats = norm_stats['training_target_norm']
-                logger.info(f"  Training target norms: mean={train_stats['mean']:.3f}, std={train_stats.get('std', 0):.3f}")
-                logger.info(f"    Range: [{train_stats.get('min', 0):.3f}, {train_stats.get('max', 0):.3f}]")
-            
-            if 'eval_target_norm' in norm_stats:
-                eval_stats = norm_stats['eval_target_norm']
-                logger.info(f"  Eval target norms: mean={eval_stats['mean']:.3f}, std={eval_stats.get('std', 0):.3f}")
-                logger.info(f"    Range: [{eval_stats.get('min', 0):.3f}, {eval_stats.get('max', 0):.3f}]")
-            
-            if 'overfit_target_norm' in norm_stats:
-                overfit_stats = norm_stats['overfit_target_norm']
-                logger.info(f"  Overfit target norm: {overfit_stats['mean']:.3f}")
-            
-            # Check final consistency
-            if 'training_target_norm' in norm_stats and 'eval_target_norm' in norm_stats:
-                train_mean = norm_stats['training_target_norm']['mean']
-                eval_mean = norm_stats['eval_target_norm']['mean']
-                diff = abs(train_mean - eval_mean)
-                if diff < 1.0:
-                    logger.info(f"  🎉 EXCELLENT data consistency! (diff={diff:.3f})")
-                elif diff < 2.0:
-                    logger.info(f"  ✅ GOOD data consistency! (diff={diff:.3f})")
-                elif diff < 5.0:
-                    logger.info(f"  📈 IMPROVED data consistency (diff={diff:.3f})")
-                else:
-                    logger.info(f"  ⚠️  Data consistency still needs work (diff={diff:.3f})")
+        # Scale-aware analysis from enhanced tracking
+        if use_scale_aware:
+            norm_stats = summary.get('norm_statistics', {})
+            if norm_stats:
+                logger.info(f"📊 SCALE-AWARE ANALYSIS:")
+                
+                if 'target_norm_estimates' in norm_stats:
+                    est_stats = norm_stats['target_norm_estimates']
+                    logger.info(f"  🎯 Target norm estimates: mean={est_stats['mean']:.3f}, std={est_stats.get('std', 0):.3f}")
+                
+                if 'scale_consistency' in norm_stats:
+                    consist_stats = norm_stats['scale_consistency']
+                    logger.info(f"  📊 Scale consistency: mean={consist_stats['mean']:.3f}, std={consist_stats.get('std', 0):.3f}")
+                    
+                    if consist_stats['mean'] > 0.8:
+                        logger.info(f"    🎉 Excellent scale consistency achieved!")
+                    elif consist_stats['mean'] > 0.6:
+                        logger.info(f"    ✅ Good scale consistency!")
+                    else:
+                        logger.info(f"    📈 Scale consistency improving...")
         
         # Overfitting test results
         if args.overfit_test_size:
             overfit_success = summary.get('overfit_success', False)
-            overfit_data_source = summary.get('overfit_test_data_source', 'unknown')
-            logger.info(f"🧪 FIXED OVERFITTING TEST: {'✅ PASSED' if overfit_success else '❌ FAILED'}")
-            logger.info(f"  Data source: {overfit_data_source}")
+            logger.info(f"🧪 OVERFITTING TEST: {'✅ PASSED' if overfit_success else '❌ FAILED'}")
             if overfit_success:
-                logger.info("   ✅ FIXED model can learn and memorize effectively!")
-                logger.info("   ✅ Architecture and data pipeline are working correctly!")
+                logger.info("   ✅ Model can learn and memorize effectively!")
+                logger.info("   ✅ Architecture and generation method working correctly!")
+                if use_scale_aware:
+                    logger.info("   ✅ Scale-aware generation enables effective learning!")
             else:
                 logger.info("   ⚠️  Model still struggles - may need hyperparameter tuning")
+                if use_scale_aware:
+                    logger.info("   💡 Try adjusting scale-aware parameters:")
+                    logger.info(f"      • Increase norm guidance strength (current: {args.norm_guidance_strength})")
+                    logger.info(f"      • Adjust target norm (current: {args.typical_clip_norm})")
+                    logger.info(f"      • Modify guidance frequency (current: {args.norm_guidance_frequency})")
         
         # WandB information
         if summary.get('wandb_enabled', False):
             logger.info(f"📊 WandB Dashboard: Check your {args.wandb_project} project for detailed metrics")
-            logger.info(f"  Enhanced norm tracking available in WandB logs")
+            if use_scale_aware:
+                logger.info(f"  Scale-aware metrics available: target_norm_estimates, scale_consistency, etc.")
         
         # Save final summary
         summary['duration_seconds'] = duration
         summary['end_time'] = end_time.isoformat()
         summary['experiment_config'] = config
-        summary['fixes_applied'] = config['fixes_applied']
-        summary['consistent_data'] = True
-        summary['no_unwanted_normalization'] = True
-        summary['enhanced_norm_tracking'] = True
+        summary['scale_aware_enabled'] = use_scale_aware
+        summary['generation_method'] = config['generation_method']
+        summary['evaluation_method'] = config['evaluation_method']
         
-        summary_path = output_dir / 'fixed_final_summary.json'
+        summary_filename = 'scale_aware_training_summary.json' if use_scale_aware else 'baseline_training_summary.json'
+        summary_path = output_dir / summary_filename
         with open(summary_path, 'w') as f:
             json.dump(summary, f, indent=2)
         
-        logger.info(f"📁 FIXED summary saved to {summary_path}")
+        logger.info(f"📁 Training summary saved to {summary_path}")
         logger.info(f"📁 Model checkpoints saved to {output_dir}")
         
         logger.info("=" * 90)
-        logger.info("🔧 VERIFICATION CHECKLIST:")
-        logger.info("  ✅ Overfitting test uses same data source as evaluation")
-        logger.info("  ✅ Target norms should be consistent between training and eval")
-        logger.info("  ✅ NO normalization applied except for cosine similarity")
-        logger.info("  ✅ Raw embedding space preserved throughout pipeline")
-        logger.info("  ✅ Enhanced norm tracking shows data distribution")
-        logger.info("  ✅ Model can potentially achieve >0.8 similarity on overfitting test")
+        if use_scale_aware:
+            logger.info("🎯 SCALE-AWARE GENERATION VERIFICATION:")
+            logger.info("  ✅ Log-normal timestep scheduling applied")
+            logger.info("  ✅ Velocity explosion prevention active")
+            logger.info("  ✅ Periodic norm guidance enabled")
+            logger.info("  ✅ Scale consistency metrics tracked")
+            logger.info("  ✅ Adaptive target norm estimation used")
+        else:
+            logger.info("📊 BASELINE GENERATION SUMMARY:")
+            logger.info("  • Standard linear timestep scheduling")
+            logger.info("  • No scale-aware improvements")
+            logger.info("  • Basic evaluation metrics")
+        
         logger.info("=" * 90)
         logger.info("🔬 DEBUGGING TIPS:")
+        if use_scale_aware:
+            logger.info("  • Check WandB for scale_aware/* metrics")
+            logger.info("  • Monitor target_norm_estimates for adaptive behavior")
+            logger.info("  • Look for scale_consistency improvements over time")
+            logger.info("  • Verify velocity explosion prevention in logs")
+            logger.info("  • Compare with baseline results if available")
+        else:
+            logger.info("  • Monitor basic norm consistency")
+            logger.info("  • Check for training stability")
+            logger.info("  • Compare with scale-aware results")
+        
         logger.info("  • Check norm tracking logs for consistent target norms")
-        logger.info("  • Compare training vs eval target norm means (should be similar)")
-        logger.info("  • Look for 'CLIP norm=X.X' in shard loading logs")
-        logger.info("  • Verify overfitting test shows 'from evaluation data' message")
-        logger.info("  • Run norm analysis script: python debug_norm_analysis.py <embeddings_dir>")
+        logger.info("  • Verify overfitting test shows learning capability")
         logger.info("=" * 90)
         
         return 0
         
     except Exception as e:
-        logger.error(f"❌ FIXED training failed with error: {e}")
+        logger.error(f"❌ Training failed with error: {e}")
         traceback.print_exc()
         return 1
     
     except KeyboardInterrupt:
-        logger.info("FIXED training interrupted by user")
+        logger.info("Training interrupted by user")
         return 1
 
 if __name__ == "__main__":

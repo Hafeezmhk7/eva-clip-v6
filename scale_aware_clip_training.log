@@ -1,0 +1,296 @@
+2025-08-01 03:55:27,817 - INFO - 🚀 BLIP3-o CLIP Reproduction Training with Scale-Aware Generation
+2025-08-01 03:55:27,818 - INFO - ==========================================================================================
+2025-08-01 03:55:27,818 - INFO - 🎯 SCALE-AWARE GENERATION ENABLED:
+2025-08-01 03:55:27,818 - INFO -   ✅ Log-normal timestep scheduling for better sampling
+2025-08-01 03:55:27,818 - INFO -   ✅ Velocity explosion prevention during inference
+2025-08-01 03:55:27,818 - INFO -   ✅ Periodic norm guidance for scale consistency
+2025-08-01 03:55:27,818 - INFO -   ✅ Adaptive target norm estimation from data
+2025-08-01 03:55:27,818 - INFO -   ✅ Enhanced evaluation with scale-aware metrics
+2025-08-01 03:55:27,818 - INFO - ==========================================================================================
+2025-08-01 03:55:27,818 - INFO - EXPERIMENT DETAILS:
+2025-08-01 03:55:27,818 - INFO -   📋 Task: Reproduce clean CLIP embeddings from EVA embeddings
+2025-08-01 03:55:27,818 - INFO -   🧠 Model: BLIP3-o DiT with 3D RoPE and Sandwich Normalization
+2025-08-01 03:55:27,818 - INFO -   🎯 Target: CLIP embeddings [B, N, 1024]
+2025-08-01 03:55:27,818 - INFO -   🎮 Conditioning: EVA embeddings [B, N, 4096]
+2025-08-01 03:55:27,819 - INFO -   🌊 Method: Rectified Flow Matching
+2025-08-01 03:55:27,819 - INFO -   🚀 Generation: Scale-aware with log-normal scheduling
+2025-08-01 03:55:27,819 - INFO -   🎯 Target norm guidance: 26.0
+2025-08-01 03:55:27,819 - INFO -   ⚡ Velocity explosion threshold: 100.0
+2025-08-01 03:55:27,819 - INFO -   📊 Norm guidance strength: 0.10
+2025-08-01 03:55:27,819 - INFO - ==========================================================================================
+2025-08-01 03:55:27,819 - INFO - Configuration:
+2025-08-01 03:55:27,820 - INFO -   Model size: base
+2025-08-01 03:55:27,820 - INFO -   Training mode: patch_only
+2025-08-01 03:55:27,820 - INFO -   Embeddings dir: /scratch-shared/azadaianchuk1/blip3o_workspace/embeddings/patch_only_256_tokens
+2025-08-01 03:55:27,820 - INFO -   Output dir: ./checkpoints/clip_repro_20250801_035526
+2025-08-01 03:55:27,820 - INFO -   Learning rate: 0.0001
+2025-08-01 03:55:27,820 - INFO -   Batch size: 8
+2025-08-01 03:55:27,820 - INFO -   Epochs: 10
+2025-08-01 03:55:27,820 - INFO -   Max shards: 2
+2025-08-01 03:55:27,820 - INFO -   🧪 Overfitting test: 20 samples
+2025-08-01 03:55:27,820 - INFO -   Debug mode: False
+2025-08-01 03:55:27,820 - INFO - ==========================================================================================
+2025-08-01 03:55:28,302 - INFO - Using GPU: NVIDIA H100
+2025-08-01 03:55:28,302 - INFO - GPU Memory: 100.0 GB
+2025-08-01 03:55:28,302 - INFO - 🏗️ BLIP3-o Architecture Configuration:
+2025-08-01 03:55:28,302 - INFO -   3D Rotary Position Embedding: ✅ Enabled
+2025-08-01 03:55:28,302 - INFO -   Sandwich Normalization: ✅ Enabled
+2025-08-01 03:55:28,302 - INFO -   🚀 Scale-Aware Generation: ✅ Enabled
+2025-08-01 03:55:28,302 - INFO - 🎯 Scale-Aware Parameters:
+2025-08-01 03:55:28,302 - INFO -   Typical CLIP norm: 26.0
+2025-08-01 03:55:28,302 - INFO -   Velocity explosion threshold: 100.0
+2025-08-01 03:55:28,302 - INFO -   Norm guidance strength: 0.1
+2025-08-01 03:55:28,302 - INFO -   Norm guidance frequency: 10
+2025-08-01 03:55:28,302 - INFO -   Log-normal schedule: True
+2025-08-01 03:55:28,302 - INFO -   Adaptive target norm: True
+2025-08-01 03:55:30,723 - INFO - ✅ CLIP DiT model loaded from src/modules/models/blip3o_dit.py
+2025-08-01 03:55:30,723 - INFO - ✅ Flow matching loss loaded from src/modules/losses/blip3o_fm_loss.py
+2025-08-01 03:55:31,428 - INFO - ✅ CLIP trainer loaded from src/modules/trainers/blip3o_trainer.py
+2025-08-01 03:55:31,428 - INFO - ✅ CLIP datasets loaded from src/modules/datasets/blip3o_dataset.py
+2025-08-01 03:55:31,431 - INFO - ✅ Configuration loaded from src/modules/config/blip3o_config.py
+2025-08-01 03:55:31,431 - INFO - 🎉 All CLIP reproduction components loaded successfully!
+2025-08-01 03:55:31,431 - INFO - 🎉 BLIP3-o CLIP reproduction modules fully initialized!
+2025-08-01 03:55:31,431 - INFO - 🚫 Using minimal normalization approach
+2025-08-01 03:55:31,431 - INFO - 🎯 Ready for EVA → CLIP reproduction training
+2025-08-01 03:55:31,432 - INFO - ✅ Imported UPDATED model with scale-aware generation
+2025-08-01 03:55:33,458 - INFO - UPDATED BLIP3-o CLIP DiT model initialized with 249,339,136 parameters
+2025-08-01 03:55:33,459 - INFO -   3D RoPE: True
+2025-08-01 03:55:33,459 - INFO -   Sandwich Normalization: True
+2025-08-01 03:55:33,459 - INFO -   🎯 Typical CLIP norm: 26.0
+2025-08-01 03:55:33,459 - INFO -   🚀 Scale-aware generation enabled
+2025-08-01 03:55:33,685 - INFO - Model created with 249,339,136 parameters
+2025-08-01 03:55:33,685 - INFO - Model moved to cuda
+2025-08-01 03:55:33,685 - INFO - ✅ Imported loss function
+2025-08-01 03:55:33,685 - INFO - FIXED CLIP Flow Matching Loss initialized (NO NOISE SCALING):
+2025-08-01 03:55:33,685 - INFO -   Prediction type: velocity
+2025-08-01 03:55:33,685 - INFO -   Flow type: rectified
+2025-08-01 03:55:33,685 - INFO -   Noise scaling: DISABLED (always standard Gaussian)
+2025-08-01 03:55:33,685 - INFO -   Debug mode: False
+2025-08-01 03:55:33,685 - INFO -   🎲 Noise: Standard Gaussian (mean=0, std=1) everywhere
+2025-08-01 03:55:33,685 - INFO - Loss function created:
+2025-08-01 03:55:33,685 - INFO -   Prediction type: velocity
+2025-08-01 03:55:33,685 - INFO -   Flow type: rectified
+2025-08-01 03:55:33,685 - INFO -   Standard Gaussian noise
+2025-08-01 03:55:33,685 - INFO - ✅ Imported dataset
+2025-08-01 03:55:33,685 - INFO - FIXED: Creating CLIP reproduction dataloaders (NO NOISE SCALING):
+2025-08-01 03:55:33,685 - INFO -   Target: CLIP embeddings [B, N, 1024] - RAW (no normalization)
+2025-08-01 03:55:33,686 - INFO -   Conditioning: EVA embeddings [B, N, 4096] - RAW (no normalization)
+2025-08-01 03:55:33,686 - INFO -   🚫 Normalization: DISABLED (forced)
+2025-08-01 03:55:33,686 - INFO -   🎲 Noise: Standard Gaussian (NO SCALING)
+2025-08-01 03:55:33,686 - INFO -   Collect statistics: False
+2025-08-01 03:55:33,686 - INFO - Loaded manifest: 35 shards, 91,333 samples
+2025-08-01 03:55:33,687 - INFO - Found 35 files with pattern: embeddings_shard_*_patch_only.pkl
+2025-08-01 03:55:33,687 - INFO - Prepared 2 shard files
+2025-08-01 03:55:33,687 - INFO - Using manifest for length estimation: 5,219 samples
+2025-08-01 03:55:33,687 - INFO - FIXED CLIP Reproduction Dataset initialized:
+2025-08-01 03:55:33,687 - INFO -   Directory: /scratch-shared/azadaianchuk1/blip3o_workspace/embeddings/patch_only_256_tokens
+2025-08-01 03:55:33,687 - INFO -   Mode: patch_only (256 tokens)
+2025-08-01 03:55:33,687 - INFO -   TARGET: CLIP embeddings [B, N, 1024] - RAW (no normalization)
+2025-08-01 03:55:33,687 - INFO -   CONDITIONING: EVA embeddings [B, N, 4096] - RAW (no normalization)
+2025-08-01 03:55:33,687 - INFO -   🚫 Normalization: DISABLED (raw embedding space)
+2025-08-01 03:55:33,687 - INFO -   Shards: 2
+2025-08-01 03:55:33,687 - INFO -   Statistics collection: False
+2025-08-01 03:55:33,688 - INFO - Loaded manifest: 35 shards, 91,333 samples
+2025-08-01 03:55:33,688 - INFO - Found 35 files with pattern: embeddings_shard_*_patch_only.pkl
+2025-08-01 03:55:33,688 - INFO - Prepared 2 shard files
+2025-08-01 03:55:33,688 - INFO - Using manifest for length estimation: 5,219 samples
+2025-08-01 03:55:33,688 - INFO - FIXED CLIP Reproduction Dataset initialized:
+2025-08-01 03:55:33,688 - INFO -   Directory: /scratch-shared/azadaianchuk1/blip3o_workspace/embeddings/patch_only_256_tokens
+2025-08-01 03:55:33,688 - INFO -   Mode: patch_only (256 tokens)
+2025-08-01 03:55:33,688 - INFO -   TARGET: CLIP embeddings [B, N, 1024] - RAW (no normalization)
+2025-08-01 03:55:33,688 - INFO -   CONDITIONING: EVA embeddings [B, N, 4096] - RAW (no normalization)
+2025-08-01 03:55:33,688 - INFO -   🚫 Normalization: DISABLED (raw embedding space)
+2025-08-01 03:55:33,688 - INFO -   Shards: 2
+2025-08-01 03:55:33,688 - INFO -   Statistics collection: False
+2025-08-01 03:55:33,688 - INFO - FIXED: CLIP reproduction dataloaders created successfully
+2025-08-01 03:55:33,688 - INFO -   Training dataset length: 5,219
+2025-08-01 03:55:33,688 - INFO -   Evaluation dataset length: 5,219
+2025-08-01 03:55:33,688 - INFO -   🚫 NO normalization applied in either dataset
+2025-08-01 03:55:33,688 - INFO -   🎲 Standard Gaussian noise (NO SCALING) in collate function
+2025-08-01 03:55:33,688 - INFO -   Consistent processing: ✅
+2025-08-01 03:55:33,688 - INFO - Dataloaders created:
+2025-08-01 03:55:33,688 - INFO -   Normalization: DISABLED
+2025-08-01 03:55:33,688 - INFO -   Max shards: 2
+2025-08-01 03:55:33,688 - INFO -   Raw embedding space: ✅
+2025-08-01 03:55:33,688 - INFO - ✅ Imported UPDATED trainer with scale-aware evaluation
+2025-08-01 03:55:33,691 - INFO - Got exact dataloader length: 652
+2025-08-01 03:55:33,693 - INFO - Optimizer and scheduler setup complete
+2025-08-01 03:55:33,693 - INFO -   Total estimated steps: 6520
+2025-08-01 03:55:33,693 - INFO -   Warmup steps: 100
+2025-08-01 03:55:33,693 - INFO - 🔧 Preparing overfitting test with 20 samples from EVAL DATA...
+2025-08-01 03:55:37,991 - INFO - Loaded shard 1/2: 2646 samples, CLIP norm=26.278, EVA norm=43.618
+2025-08-01 03:55:38,032 - INFO - ✅ Using eval_dataloader for overfitting test
+2025-08-01 03:55:38,034 - INFO - ✅ Overfitting test prepared with 8 samples:
+2025-08-01 03:55:38,034 - INFO -   Overfit CLIP norm: 25.292
+2025-08-01 03:55:38,034 - INFO -   Overfit EVA norm: 42.896
+2025-08-01 03:55:38,034 - INFO - UPDATED BLIP3-o CLIP Trainer initialized with Scale-Aware Evaluation
+2025-08-01 03:55:38,034 - INFO -   Device: cuda
+2025-08-01 03:55:38,034 - INFO -   🚀 Scale-aware evaluation: True
+2025-08-01 03:55:38,034 - INFO -   🎯 Adaptive target norm: True
+2025-08-01 03:55:38,034 - INFO -   📅 Log-normal schedule: True
+2025-08-01 03:55:38,034 - INFO -   🔧 Enhanced norm tracking enabled
+2025-08-01 03:55:38,034 - INFO - UPDATED trainer created with scale-aware evaluation:
+2025-08-01 03:55:38,035 - INFO -   🚀 Scale-aware evaluation: True
+2025-08-01 03:55:38,035 - INFO -   🎯 Adaptive target norm: True
+2025-08-01 03:55:38,035 - INFO -   📅 Log-normal schedule: True
+2025-08-01 03:55:38,035 - INFO -   Evaluation: Every 50 steps
+2025-08-01 03:55:38,035 - INFO -   WandB enabled: False
+2025-08-01 03:55:38,037 - INFO - Configuration saved to checkpoints/clip_repro_20250801_035526/scale_aware_experiment_config.json
+2025-08-01 03:55:38,037 - INFO - 
+🚀 Starting BLIP3-o training with Scale-Aware generation...
+2025-08-01 03:55:38,037 - INFO - Expected improvements with Scale-Aware Generation:
+2025-08-01 03:55:38,037 - INFO -   • Better scale consistency between training and inference
+2025-08-01 03:55:38,037 - INFO -   • Reduced velocity explosion issues during generation
+2025-08-01 03:55:38,037 - INFO -   • More stable and consistent embedding norms
+2025-08-01 03:55:38,037 - INFO -   • Improved CLIP similarity scores
+2025-08-01 03:55:38,037 - INFO -   • Enhanced convergence and overfitting capability
+2025-08-01 03:55:38,037 - INFO -   • More robust generation across different noise scales
+2025-08-01 03:55:38,037 - INFO -   • OVERFITTING TEST: Should achieve >0.8 similarity on 20 samples
+2025-08-01 03:55:38,037 - INFO -     ✅ Uses same data source as evaluation for consistency
+2025-08-01 03:55:38,037 - INFO - 
+2025-08-01 03:55:38,037 - INFO - 🚀 Starting BLIP3-o training with Scale-Aware Evaluation...
+2025-08-01 03:55:38,038 - INFO -   Model parameters: 249,339,136
+2025-08-01 03:55:38,038 - INFO -   🎯 Scale-aware evaluation: True
+2025-08-01 03:55:38,038 - INFO -   📅 Log-normal schedule: True
+2025-08-01 03:55:38,039 - INFO -   🎛️  Adaptive target norm: True
+2025-08-01 03:55:38,040 - INFO - Starting epoch 1/10
+2025-08-01 03:55:42,280 - INFO - Loaded shard 1/2: 2601 samples, CLIP norm=26.319, EVA norm=43.667
+2025-08-01 03:55:45,441 - INFO - Step 10: Loss=1.764416, VelSim=0.2645 (fair), GradNorm=38301.104, LR=1.90e-05, Noise=μ0.000σ1.000✅, PredNorm=12.127, TargetNorm=41.329, BatchCLIPNorm=25.292 [OVERFIT TEST]
+2025-08-01 03:55:48,250 - INFO - Step 20: Loss=1.678469, VelSim=0.3380 (fair), GradNorm=22081.213, LR=2.80e-05, Noise=μ0.000σ1.000✅, PredNorm=11.857, TargetNorm=41.329, BatchCLIPNorm=25.292 [OVERFIT TEST]
+2025-08-01 03:55:51,057 - INFO - Step 30: Loss=1.625562, VelSim=0.3731 (fair), GradNorm=13236.770, LR=3.70e-05, Noise=μ0.000σ1.000✅, PredNorm=13.275, TargetNorm=41.329, BatchCLIPNorm=25.292 [OVERFIT TEST]
+2025-08-01 03:55:53,868 - INFO - Step 40: Loss=1.590780, VelSim=0.3938 (fair), GradNorm=14654.579, LR=4.60e-05, Noise=μ0.000σ1.000✅, PredNorm=14.983, TargetNorm=41.329, BatchCLIPNorm=25.292 [OVERFIT TEST]
+2025-08-01 03:55:56,676 - INFO - Step 50: Loss=1.540210, VelSim=0.4246 (fair), GradNorm=36490.794, LR=5.50e-05, Noise=μ0.000σ1.000✅, PredNorm=17.003, TargetNorm=41.329, BatchCLIPNorm=25.292 [OVERFIT TEST]
+2025-08-01 03:55:56,676 - INFO - 📊 NORM ANALYSIS (Scale-Aware):
+2025-08-01 03:55:56,677 - INFO -   Training Target Norms: mean=25.292, std=0.000, range=[25.292, 25.292]
+2025-08-01 03:55:56,677 - INFO - Running scale-aware evaluation at step 50...
+2025-08-01 03:56:00,810 - INFO - Loaded shard 1/2: 2646 samples, CLIP norm=26.278, EVA norm=43.618
+2025-08-01 03:56:00,832 - ERROR - Error during epoch 1: name 'np' is not defined
+2025-08-01 03:56:00,833 - INFO - Starting epoch 2/10
+2025-08-01 03:56:04,904 - INFO - Loaded shard 1/2: 2601 samples, CLIP norm=26.319, EVA norm=43.667
+2025-08-01 03:56:07,671 - INFO - Step 60: Loss=1.463226, VelSim=0.4659 (fair), GradNorm=72081.865, LR=6.40e-05, Noise=μ0.000σ1.000✅, PredNorm=18.950, TargetNorm=41.329, BatchCLIPNorm=25.292 [OVERFIT TEST]
+2025-08-01 03:56:10,448 - INFO - Step 70: Loss=1.348714, VelSim=0.5208 (good), GradNorm=89999.309, LR=7.30e-05, Noise=μ0.000σ1.000✅, PredNorm=21.340, TargetNorm=41.329, BatchCLIPNorm=25.292 [OVERFIT TEST]
+2025-08-01 03:56:13,221 - INFO - Step 80: Loss=1.226933, VelSim=0.5698 (good), GradNorm=139224.543, LR=8.20e-05, Noise=μ0.000σ1.000✅, PredNorm=23.899, TargetNorm=41.329, BatchCLIPNorm=25.292 [OVERFIT TEST]
+2025-08-01 03:56:15,999 - INFO - Step 90: Loss=1.089970, VelSim=0.6186 (good), GradNorm=155248.291, LR=9.10e-05, Noise=μ0.000σ1.000✅, PredNorm=26.582, TargetNorm=41.329, BatchCLIPNorm=25.292 [OVERFIT TEST]
+2025-08-01 03:56:18,788 - INFO - Step 100: Loss=0.967758, VelSim=0.6547 (good), GradNorm=195764.223, LR=1.00e-04, Noise=μ0.000σ1.000✅, PredNorm=28.384, TargetNorm=41.329, BatchCLIPNorm=25.292 [OVERFIT TEST]
+2025-08-01 03:56:18,788 - INFO - 📊 NORM ANALYSIS (Scale-Aware):
+2025-08-01 03:56:18,788 - INFO -   Training Target Norms: mean=25.292, std=0.000, range=[25.292, 25.292]
+2025-08-01 03:56:18,788 - INFO -   Eval Target Norms: mean=25.292, std=0.000, range=[25.292, 25.292]
+2025-08-01 03:56:18,788 - INFO -   Train vs Eval Consistency: ✅ CONSISTENT (diff=0.000)
+2025-08-01 03:56:18,788 - INFO - Running scale-aware evaluation at step 100...
+2025-08-01 03:56:22,898 - INFO - Loaded shard 1/2: 2646 samples, CLIP norm=26.278, EVA norm=43.618
+2025-08-01 03:56:22,922 - ERROR - Error during epoch 2: name 'np' is not defined
+2025-08-01 03:56:22,922 - INFO - Starting epoch 3/10
+2025-08-01 03:56:26,986 - INFO - Loaded shard 1/2: 2601 samples, CLIP norm=26.319, EVA norm=43.667
+2025-08-01 03:56:29,764 - INFO - Step 110: Loss=0.851232, VelSim=0.6918 (good), GradNorm=185450.257, LR=1.00e-04, Noise=μ0.000σ1.000✅, PredNorm=29.148, TargetNorm=41.329, BatchCLIPNorm=25.292 [OVERFIT TEST]
+2025-08-01 03:56:32,566 - INFO - Step 120: Loss=0.754256, VelSim=0.7264 (good), GradNorm=195511.759, LR=1.00e-04, Noise=μ0.000σ1.000✅, PredNorm=30.762, TargetNorm=41.329, BatchCLIPNorm=25.292 [OVERFIT TEST]
+2025-08-01 03:56:35,375 - INFO - Step 130: Loss=0.674007, VelSim=0.7586 (good), GradNorm=171091.194, LR=1.00e-04, Noise=μ0.000σ1.000✅, PredNorm=32.013, TargetNorm=41.329, BatchCLIPNorm=25.292 [OVERFIT TEST]
+2025-08-01 03:56:38,338 - INFO - Step 140: Loss=0.603613, VelSim=0.7855 (good), GradNorm=170426.582, LR=1.00e-04, Noise=μ0.000σ1.000✅, PredNorm=32.695, TargetNorm=41.329, BatchCLIPNorm=25.292 [OVERFIT TEST]
+2025-08-01 03:56:41,148 - INFO - Step 150: Loss=0.545309, VelSim=0.8079 (excellent), GradNorm=189277.478, LR=1.00e-04, Noise=μ0.000σ1.000✅, PredNorm=33.936, TargetNorm=41.329, BatchCLIPNorm=25.292 [OVERFIT TEST]
+2025-08-01 03:56:41,149 - INFO - 📊 NORM ANALYSIS (Scale-Aware):
+2025-08-01 03:56:41,149 - INFO -   Training Target Norms: mean=25.292, std=0.000, range=[25.292, 25.292]
+2025-08-01 03:56:41,149 - INFO -   Eval Target Norms: mean=25.292, std=0.000, range=[25.292, 25.292]
+2025-08-01 03:56:41,149 - INFO -   🎯 Target Norm Estimates: mean=25.292, std=0.000
+2025-08-01 03:56:41,149 - INFO -   Train vs Eval Consistency: ✅ CONSISTENT (diff=0.000)
+2025-08-01 03:56:41,149 - INFO - Running scale-aware evaluation at step 150...
+2025-08-01 03:56:45,287 - INFO - Loaded shard 1/2: 2646 samples, CLIP norm=26.278, EVA norm=43.618
+2025-08-01 03:56:45,308 - ERROR - Error during epoch 3: name 'np' is not defined
+2025-08-01 03:56:45,308 - INFO - Starting epoch 4/10
+2025-08-01 03:56:49,351 - INFO - Loaded shard 1/2: 2601 samples, CLIP norm=26.319, EVA norm=43.667
+2025-08-01 03:56:52,157 - INFO - Step 160: Loss=0.493342, VelSim=0.8280 (excellent), GradNorm=177347.409, LR=1.00e-04, Noise=μ0.000σ1.000✅, PredNorm=34.221, TargetNorm=41.329, BatchCLIPNorm=25.292 [OVERFIT TEST]
+2025-08-01 03:56:54,968 - INFO - Step 170: Loss=0.461754, VelSim=0.8399 (excellent), GradNorm=189304.200, LR=1.00e-04, Noise=μ0.000σ1.000✅, PredNorm=35.450, TargetNorm=41.329, BatchCLIPNorm=25.292 [OVERFIT TEST]
+2025-08-01 03:56:57,777 - INFO - Step 180: Loss=0.418758, VelSim=0.8562 (excellent), GradNorm=155342.283, LR=1.00e-04, Noise=μ0.000σ1.000✅, PredNorm=35.623, TargetNorm=41.329, BatchCLIPNorm=25.292 [OVERFIT TEST]
+2025-08-01 03:57:00,592 - INFO - Step 190: Loss=0.382936, VelSim=0.8695 (excellent), GradNorm=122173.727, LR=1.00e-04, Noise=μ0.000σ1.000✅, PredNorm=35.706, TargetNorm=41.329, BatchCLIPNorm=25.292 [OVERFIT TEST]
+2025-08-01 03:57:03,408 - INFO - Step 200: Loss=0.359862, VelSim=0.8779 (excellent), GradNorm=126364.077, LR=9.99e-05, Noise=μ0.000σ1.000✅, PredNorm=36.357, TargetNorm=41.329, BatchCLIPNorm=25.292 [OVERFIT TEST]
+2025-08-01 03:57:03,409 - INFO - 📊 NORM ANALYSIS (Scale-Aware):
+2025-08-01 03:57:03,409 - INFO -   Training Target Norms: mean=25.292, std=0.000, range=[25.292, 25.292]
+2025-08-01 03:57:03,409 - INFO -   Eval Target Norms: mean=25.292, std=0.000, range=[25.292, 25.292]
+2025-08-01 03:57:03,409 - INFO -   🎯 Target Norm Estimates: mean=25.292, std=0.000
+2025-08-01 03:57:03,409 - INFO -   Train vs Eval Consistency: ✅ CONSISTENT (diff=0.000)
+2025-08-01 03:57:03,409 - INFO - Running scale-aware evaluation at step 200...
+2025-08-01 03:57:07,534 - INFO - Loaded shard 1/2: 2646 samples, CLIP norm=26.278, EVA norm=43.618
+2025-08-01 03:57:07,557 - ERROR - Error during epoch 4: name 'np' is not defined
+2025-08-01 03:57:07,558 - INFO - Starting epoch 5/10
+2025-08-01 03:57:11,609 - INFO - Loaded shard 1/2: 2601 samples, CLIP norm=26.319, EVA norm=43.667
+2025-08-01 03:57:14,412 - INFO - Step 210: Loss=0.334103, VelSim=0.8872 (excellent), GradNorm=137998.447, LR=9.99e-05, Noise=μ0.000σ1.000✅, PredNorm=36.668, TargetNorm=41.329, BatchCLIPNorm=25.292 [OVERFIT TEST]
+2025-08-01 03:57:17,221 - INFO - Step 220: Loss=0.307234, VelSim=0.8967 (excellent), GradNorm=96971.458, LR=9.99e-05, Noise=μ0.000σ1.000✅, PredNorm=37.048, TargetNorm=41.329, BatchCLIPNorm=25.292 [OVERFIT TEST]
+2025-08-01 03:57:20,032 - INFO - Step 230: Loss=0.299388, VelSim=0.8996 (excellent), GradNorm=106574.616, LR=9.99e-05, Noise=μ0.000σ1.000✅, PredNorm=37.094, TargetNorm=41.329, BatchCLIPNorm=25.292 [OVERFIT TEST]
+2025-08-01 03:57:20,873 - INFO - 🎉 OVERFITTING TEST PASSED! Model can learn effectively with scale-aware generation.
+2025-08-01 03:57:20,874 - INFO - Epoch 5 completed:
+2025-08-01 03:57:20,874 - INFO -   Average loss: 0.326135
+2025-08-01 03:57:20,874 - INFO -   Best loss: 0.292921
+2025-08-01 03:57:20,874 - INFO -   Best similarity: 0.9019
+2025-08-01 03:57:20,874 - INFO -   Steps in epoch: 33
+2025-08-01 03:57:20,874 - INFO -   Epoch time: 13.3s
+2025-08-01 03:57:20,874 - INFO -   📊 Scale-Aware Epoch Analysis:
+2025-08-01 03:57:20,875 - INFO -     Training target norm: 25.292
+2025-08-01 03:57:20,875 - INFO -     Eval target norm: 25.292
+2025-08-01 03:57:20,875 - INFO -     🎯 Estimated target norm: 25.292
+2025-08-01 03:57:20,875 - INFO - Starting epoch 6/10
+2025-08-01 03:57:24,923 - INFO - Loaded shard 1/2: 2601 samples, CLIP norm=26.319, EVA norm=43.667
+2025-08-01 03:57:25,206 - INFO - 🎉 OVERFITTING TEST PASSED! Model can learn effectively with scale-aware generation.
+2025-08-01 03:57:25,206 - INFO - Epoch 6 completed:
+2025-08-01 03:57:25,206 - INFO -   Average loss: 0.296759
+2025-08-01 03:57:25,206 - INFO -   Best loss: 0.292921
+2025-08-01 03:57:25,206 - INFO -   Best similarity: 0.9019
+2025-08-01 03:57:25,207 - INFO -   Steps in epoch: 1
+2025-08-01 03:57:25,207 - INFO -   Epoch time: 4.3s
+2025-08-01 03:57:25,207 - INFO -   📊 Scale-Aware Epoch Analysis:
+2025-08-01 03:57:25,207 - INFO -     Training target norm: 25.292
+2025-08-01 03:57:25,207 - INFO -     Eval target norm: 25.292
+2025-08-01 03:57:25,207 - INFO -     🎯 Estimated target norm: 25.292
+2025-08-01 03:57:25,207 - INFO - Starting epoch 7/10
+2025-08-01 03:57:29,263 - INFO - Loaded shard 1/2: 2601 samples, CLIP norm=26.319, EVA norm=43.667
+2025-08-01 03:57:29,548 - INFO - 🎉 OVERFITTING TEST PASSED! Model can learn effectively with scale-aware generation.
+2025-08-01 03:57:29,548 - INFO - Epoch 7 completed:
+2025-08-01 03:57:29,549 - INFO -   Average loss: 0.287834
+2025-08-01 03:57:29,549 - INFO -   Best loss: 0.287834
+2025-08-01 03:57:29,549 - INFO -   Best similarity: 0.9037
+2025-08-01 03:57:29,549 - INFO -   Steps in epoch: 1
+2025-08-01 03:57:29,549 - INFO -   Epoch time: 4.3s
+2025-08-01 03:57:29,549 - INFO -   📊 Scale-Aware Epoch Analysis:
+2025-08-01 03:57:29,549 - INFO -     Training target norm: 25.292
+2025-08-01 03:57:29,549 - INFO -     Eval target norm: 25.292
+2025-08-01 03:57:29,549 - INFO -     🎯 Estimated target norm: 25.292
+2025-08-01 03:57:29,550 - INFO - Starting epoch 8/10
+2025-08-01 03:57:33,601 - INFO - Loaded shard 1/2: 2601 samples, CLIP norm=26.319, EVA norm=43.667
+2025-08-01 03:57:33,882 - INFO - 🎉 OVERFITTING TEST PASSED! Model can learn effectively with scale-aware generation.
+2025-08-01 03:57:33,882 - INFO - Epoch 8 completed:
+2025-08-01 03:57:33,882 - INFO -   Average loss: 0.297744
+2025-08-01 03:57:33,882 - INFO -   Best loss: 0.287834
+2025-08-01 03:57:33,882 - INFO -   Best similarity: 0.9037
+2025-08-01 03:57:33,882 - INFO -   Steps in epoch: 1
+2025-08-01 03:57:33,882 - INFO -   Epoch time: 4.3s
+2025-08-01 03:57:33,882 - INFO -   📊 Scale-Aware Epoch Analysis:
+2025-08-01 03:57:33,882 - INFO -     Training target norm: 25.292
+2025-08-01 03:57:33,883 - INFO -     Eval target norm: 25.292
+2025-08-01 03:57:33,883 - INFO -     🎯 Estimated target norm: 25.292
+2025-08-01 03:57:33,883 - INFO - Starting epoch 9/10
+2025-08-01 03:57:37,946 - INFO - Loaded shard 1/2: 2601 samples, CLIP norm=26.319, EVA norm=43.667
+2025-08-01 03:57:38,222 - INFO - 🎉 OVERFITTING TEST PASSED! Model can learn effectively with scale-aware generation.
+2025-08-01 03:57:38,223 - INFO - Epoch 9 completed:
+2025-08-01 03:57:38,223 - INFO -   Average loss: 0.283430
+2025-08-01 03:57:38,223 - INFO -   Best loss: 0.283430
+2025-08-01 03:57:38,223 - INFO -   Best similarity: 0.9053
+2025-08-01 03:57:38,223 - INFO -   Steps in epoch: 1
+2025-08-01 03:57:38,223 - INFO -   Epoch time: 4.3s
+2025-08-01 03:57:38,223 - INFO -   📊 Scale-Aware Epoch Analysis:
+2025-08-01 03:57:38,223 - INFO -     Training target norm: 25.292
+2025-08-01 03:57:38,223 - INFO -     Eval target norm: 25.292
+2025-08-01 03:57:38,223 - INFO -     🎯 Estimated target norm: 25.292
+2025-08-01 03:57:38,223 - INFO - Starting epoch 10/10
+2025-08-01 03:57:42,263 - INFO - Loaded shard 1/2: 2601 samples, CLIP norm=26.319, EVA norm=43.667
+2025-08-01 03:57:42,543 - INFO - 🎉 OVERFITTING TEST PASSED! Model can learn effectively with scale-aware generation.
+2025-08-01 03:57:42,543 - INFO - Epoch 10 completed:
+2025-08-01 03:57:42,543 - INFO -   Average loss: 0.295290
+2025-08-01 03:57:42,543 - INFO -   Best loss: 0.283430
+2025-08-01 03:57:42,544 - INFO -   Best similarity: 0.9053
+2025-08-01 03:57:42,544 - INFO -   Steps in epoch: 1
+2025-08-01 03:57:42,544 - INFO -   Epoch time: 4.3s
+2025-08-01 03:57:42,544 - INFO -   📊 Scale-Aware Epoch Analysis:
+2025-08-01 03:57:42,544 - INFO -     Training target norm: 25.292
+2025-08-01 03:57:42,544 - INFO -     Eval target norm: 25.292
+2025-08-01 03:57:42,544 - INFO -     🎯 Estimated target norm: 25.292
+2025-08-01 03:57:44,230 - INFO - Checkpoint saved: checkpoints/clip_repro_20250801_035526/checkpoint_step_238.pt
+2025-08-01 03:57:44,230 - INFO - Running final scale-aware evaluation...
+2025-08-01 03:57:48,368 - INFO - Loaded shard 1/2: 2646 samples, CLIP norm=26.278, EVA norm=43.618
+2025-08-01 03:57:48,388 - ERROR - ❌ Training failed with error: name 'np' is not defined
