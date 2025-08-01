@@ -40,9 +40,10 @@ def setup_logging():
     )
     return logging.getLogger(__name__)
 
+# Update argument parser to remove noise scaling options
 def parse_arguments():
     """Parse command line arguments"""
-    parser = argparse.ArgumentParser(description="FIXED CLIP Reproduction from EVA Embeddings with Consistent Data")
+    parser = argparse.ArgumentParser(description="FIXED CLIP Reproduction with NO Noise Scaling")
     
     # Required arguments
     parser.add_argument("--chunked_embeddings_dir", type=str, required=True,
@@ -82,11 +83,9 @@ def parse_arguments():
     parser.add_argument("--max_grad_norm", type=float, default=1.0,
                        help="Max gradient norm")
     
-    # FIXED: Noise scaling options
-    parser.add_argument("--use_adaptive_noise_scaling", action="store_true",
-                       help="Enable adaptive noise scaling (not recommended)")
-    parser.add_argument("--fixed_noise_scale", type=float, default=1.0,
-                       help="Fixed noise scale to use")
+    # REMOVED: All noise scaling arguments
+    # parser.add_argument("--use_adaptive_noise_scaling", ...)  # REMOVED
+    # parser.add_argument("--fixed_noise_scale", ...)           # REMOVED
     
     # Evaluation
     parser.add_argument("--eval_every_n_steps", type=int, default=50,
@@ -115,7 +114,7 @@ def parse_arguments():
                        help="Enable WandB logging")
     parser.add_argument("--no_wandb", action="store_true",
                        help="Disable WandB logging")
-    parser.add_argument("--wandb_project", type=str, default="fixed-blip3o-clip-reproduction-consistent",
+    parser.add_argument("--wandb_project", type=str, default="blip3o-clip-no-noise-scaling",
                        help="WandB project name")
     parser.add_argument("--wandb_run_name", type=str, default=None,
                        help="WandB run name")
@@ -167,29 +166,29 @@ def setup_device_and_model(args, logger):
     return device, model
 
 def create_loss_function(args, logger):
-    """Create FIXED loss function"""
+    """Create FIXED loss function with NO noise scaling"""
     try:
         from src.modules.losses.blip3o_fm_loss import create_clip_reproduction_loss
         logger.info("✅ Imported FIXED loss function")
         
-        # FIXED: Use consistent noise scaling settings
+        # FIXED: Force NO noise scaling
         loss_fn = create_clip_reproduction_loss(
             prediction_type="velocity",
             flow_type="rectified",
             loss_weight=1.0,
-            use_adaptive_noise_scaling=args.use_adaptive_noise_scaling,  # Usually False
-            fixed_noise_scale=args.fixed_noise_scale,
+            use_adaptive_noise_scaling=False,  # ALWAYS False
+            fixed_noise_scale=1.0,            # ALWAYS 1.0 (no scaling)
             debug_mode=args.debug_mode
         )
         
-        logger.info(f"FIXED loss function created:")
-        logger.info(f"  Adaptive noise scaling: {args.use_adaptive_noise_scaling}")
-        logger.info(f"  Fixed noise scale: {args.fixed_noise_scale}")
-        logger.info(f"  🚫 NO unwanted normalization during training")
+        logger.info(f"FIXED loss function created (NO NOISE SCALING):")
+        logger.info(f"  Prediction type: velocity")
+        logger.info(f"  Flow type: rectified")
+        logger.info(f"  Noise scaling: DISABLED (standard Gaussian)")
+        logger.info(f"  🚫 NO noise scaling applied anywhere")
         
     except ImportError as e:
         logger.error(f"❌ Could not import FIXED loss function: {e}")
-        logger.error("Make sure blip3o_fm_loss.py is in the current directory")
         raise
     
     return loss_fn
@@ -243,7 +242,7 @@ def create_trainer(model, loss_fn, train_dataloader, eval_dataloader, args, devi
             arch_str = "_".join(arch_features) if arch_features else "standard"
             wandb_run_name = f"fixed_blip3o_{args.model_size}_{args.training_mode}_{arch_str}_{timestamp}"
         
-        # WandB configuration
+        # Update the WandB config to reflect no noise scaling
         wandb_config = {
             "model_size": args.model_size,
             "training_mode": args.training_mode,
@@ -251,13 +250,12 @@ def create_trainer(model, loss_fn, train_dataloader, eval_dataloader, args, devi
             "use_sandwich_norm": getattr(model.config, 'use_sandwich_norm', False),
             "batch_size": args.batch_size,
             "max_shards": args.max_shards,
-            "fixed_version": True,
-            "adaptive_noise_scaling": args.use_adaptive_noise_scaling,
-            "fixed_noise_scale": args.fixed_noise_scale,
-            "experiment_version": "fixed_v2_consistent_data_no_normalization",
-            "consistent_overfit_test": True,
-            "enhanced_norm_tracking": True,
-            "no_unwanted_normalization": True,
+            "noise_scaling_disabled": True,      # NEW
+            "standard_gaussian_noise": True,     # NEW
+            "adaptive_noise_scaling": False,     # Always False
+            "fixed_noise_scale": 1.0,           # Always 1.0
+            "experiment_version": "no_noise_scaling_v1",
+            "consistent_noise_training_inference": True,
             "raw_embedding_space": True,
         }
         
@@ -299,21 +297,27 @@ def create_trainer(model, loss_fn, train_dataloader, eval_dataloader, args, devi
     
     return trainer
 
+# Update the main function logging
 def main():
-    """Main FIXED training function"""
+    """Main training function with NO noise scaling"""
     args = parse_arguments()
     logger = setup_logging()
     
-    logger.info("🔧 FIXED: CLIP Reproduction Training with Consistent Data and NO Unwanted Normalization")
+    logger.info("🔧 FIXED: CLIP Reproduction Training with NO NOISE SCALING")
     logger.info("=" * 90)
-    logger.info("🔧 FIXES APPLIED:")
-    logger.info("  ✅ Overfitting test uses SAME data source as evaluation")
-    logger.info("  ✅ NO normalization applied during data loading (raw embedding space)")
-    logger.info("  ✅ NO normalization applied during training (except for cosine similarity)")
-    logger.info("  ✅ NO normalization applied during generation (unless explicitly requested)")
-    logger.info("  ✅ Enhanced norm tracking for debugging")
-    logger.info("  ✅ Consistent data processing between train and eval")
-    logger.info("  ✅ Fixed noise scaling for training/inference consistency")
+    logger.info("🔧 KEY CHANGE:")
+    logger.info("  🚫 ALL NOISE SCALING DISABLED")
+    logger.info("  ✅ Using standard Gaussian noise (mean=0, std=1) everywhere")
+    logger.info("  ✅ Consistent noise distribution between training and inference")
+    logger.info("  ✅ Model learns to work with natural noise scale")
+    logger.info("=" * 90)
+    logger.info("EXPERIMENT DETAILS:")
+    logger.info("  📋 Task: Reproduce clean CLIP embeddings from EVA embeddings")
+    logger.info("  🧠 Model: BLIP3-o DiT with consistent noise handling")
+    logger.info("  🎯 Target: CLIP embeddings [B, N, 1024] - RAW")
+    logger.info("  🎮 Conditioning: EVA embeddings [B, N, 4096] - RAW")
+    logger.info("  🌊 Method: Rectified Flow Matching with standard Gaussian noise")
+    logger.info("  🎲 Noise: Standard Gaussian (NO SCALING) in training and inference")
     logger.info("=" * 90)
     logger.info("EXPERIMENT DETAILS:")
     logger.info("  📋 Task: Reproduce clean CLIP embeddings from EVA embeddings")
@@ -333,8 +337,8 @@ def main():
     logger.info(f"  Batch size: {args.batch_size}")
     logger.info(f"  Epochs: {args.num_epochs}")
     logger.info(f"  Max shards: {args.max_shards}")
-    logger.info(f"  Adaptive noise scaling: {args.use_adaptive_noise_scaling}")
-    logger.info(f"  Fixed noise scale: {args.fixed_noise_scale}")
+    # logger.info(f"  Adaptive noise scaling: {args.use_adaptive_noise_scaling}")
+    # logger.info(f"  Fixed noise scale: {args.fixed_noise_scale}")
     if args.overfit_test_size:
         logger.info(f"  🧪 FIXED OVERFITTING TEST: {args.overfit_test_size} samples (from eval data)")
     logger.info(f"  Debug mode: {args.debug_mode}")
@@ -385,9 +389,9 @@ def main():
                 'fixed_noise_scaling': True,
             },
             'noise_scaling': {
-                'adaptive': args.use_adaptive_noise_scaling,
-                'fixed_scale': args.fixed_noise_scale,
-                'method': 'target_based' if not args.use_adaptive_noise_scaling else 'adaptive',
+                # 'adaptive': args.use_adaptive_noise_scaling,
+                # 'fixed_scale': args.fixed_noise_scale,
+                # 'method': 'target_based' if not args.use_adaptive_noise_scaling else 'adaptive',
                 'applied_during': 'training_and_inference_consistently'
             },
             'normalization_policy': {

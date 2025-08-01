@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-FIXED: BLIP3-o Dataset with NO Unwanted Normalization
+FIXED: BLIP3-o Dataset with NO Noise Scaling
 Key fixes:
-1. NO normalization applied during data loading (keep raw embeddings)
-2. Consistent data processing between train and eval
-3. Enhanced debugging for norm analysis
-4. Clear separation of raw embeddings vs normalized embeddings
+1. NO noise scaling applied during data loading (keep raw embeddings)
+2. Standard Gaussian noise in collate function (NO SCALING)
+3. Consistent data processing between train and eval
+4. Enhanced debugging for norm analysis
 """
 
 import torch
@@ -460,13 +460,13 @@ class BLIP3oCLIPReproductionDataset(IterableDataset):
 
 def clip_reproduction_collate_fn(batch: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
-    FIXED: Collate function for CLIP reproduction with NO unwanted normalization
+    FIXED: Collate function for CLIP reproduction with NO noise scaling
     
     This function:
     1. Takes clean CLIP embeddings as targets (RAW, no normalization)
     2. Uses EVA embeddings for conditioning (RAW, no normalization)
-    3. Creates noise scaled to target distribution for consistency
-    4. Focuses on clean data preparation WITHOUT normalization
+    3. Creates STANDARD GAUSSIAN NOISE (NO SCALING)
+    4. Focuses on clean data preparation WITHOUT any scaling
     """
     if not batch:
         raise ValueError("Empty batch")
@@ -496,9 +496,8 @@ def clip_reproduction_collate_fn(batch: List[Dict[str, Any]]) -> Dict[str, Any]:
         # Sample random timesteps for each sample in batch
         timesteps = torch.rand(batch_size, device=device, dtype=dtype)
         
-        # FIXED: Create noise scaled to target distribution for consistency (NO normalization)
-        target_std = clip_embeddings.std()
-        noise = torch.randn_like(clip_embeddings, device=device, dtype=dtype) * target_std
+        # FIXED: Create STANDARD GAUSSIAN NOISE (NO SCALING)
+        noise = torch.randn_like(clip_embeddings, device=device, dtype=dtype)
         
         # Linear interpolation for rectified flow: x_t = (1-t) * noise + t * clip_clean (RAW)
         t_expanded = timesteps.view(batch_size, 1, 1)  # [B, 1, 1]
@@ -527,7 +526,7 @@ def clip_reproduction_collate_fn(batch: List[Dict[str, Any]]) -> Dict[str, Any]:
             # Training targets (RAW embeddings, no normalization)
             'clip_embeddings': clip_embeddings,          # [B, N, 1024] - Clean CLIP (target) (RAW)
             'velocity_target': velocity_target,          # [B, N, 1024] - Velocity for flow matching (RAW)
-            'noise': noise,                              # [B, N, 1024] - Noise used (RAW)
+            'noise': noise,                              # [B, N, 1024] - STANDARD GAUSSIAN NOISE (NO SCALING)
             
             # Metadata
             'captions': captions,
@@ -542,13 +541,17 @@ def clip_reproduction_collate_fn(batch: List[Dict[str, Any]]) -> Dict[str, Any]:
             'clip_embeddings_normalized': False,  # Always False
             'raw_embedding_space': True,  # Always True
             'normalization_applied': False,  # Always False
+            'noise_scaling_applied': False,  # NEW: Always False - no noise scaling
             
-            # FIXED: Embedding statistics
+            # FIXED: Embedding statistics (standard Gaussian noise)
             'eva_norm_mean': torch.norm(eva_embeddings, dim=-1).mean().item(),
             'clip_norm_mean': torch.norm(clip_embeddings, dim=-1).mean().item(),
             'noise_norm_mean': torch.norm(noise, dim=-1).mean().item(),
-            'target_std_used': target_std.item(),
-            'noise_scale_ratio': torch.norm(noise, dim=-1).mean().item() / torch.norm(clip_embeddings, dim=-1).mean().item(),
+            'noise_std': noise.std().item(),  # Should be ~1.0 for standard Gaussian
+            'noise_mean': noise.mean().item(),  # Should be ~0.0 for standard Gaussian
+            
+            # Verify standard Gaussian properties
+            'noise_is_standard_gaussian': abs(noise.std().item() - 1.0) < 0.2 and abs(noise.mean().item()) < 0.2,
             
             # Individual sample norms for analysis
             'batch_clip_norms': clip_norms,
@@ -586,7 +589,7 @@ def create_clip_reproduction_dataloaders(
     collect_statistics: bool = False,
     **kwargs
 ) -> Tuple[DataLoader, Optional[DataLoader]]:
-    """FIXED: Create dataloaders for CLIP reproduction with NO unwanted normalization"""
+    """FIXED: Create dataloaders for CLIP reproduction with NO unwanted normalization and NO noise scaling"""
     
     if eval_batch_size is None:
         eval_batch_size = batch_size
@@ -596,10 +599,11 @@ def create_clip_reproduction_dataloaders(
         logger.warning("🚫 Normalization was requested but FORCED TO FALSE to prevent unwanted normalization")
     normalize_embeddings = False
     
-    logger.info(f"FIXED: Creating CLIP reproduction dataloaders:")
+    logger.info(f"FIXED: Creating CLIP reproduction dataloaders (NO NOISE SCALING):")
     logger.info(f"  Target: CLIP embeddings [B, N, 1024] - RAW (no normalization)")
     logger.info(f"  Conditioning: EVA embeddings [B, N, 4096] - RAW (no normalization)")
     logger.info(f"  🚫 Normalization: DISABLED (forced)")
+    logger.info(f"  🎲 Noise: Standard Gaussian (NO SCALING)")
     logger.info(f"  Collect statistics: {collect_statistics}")
     
     # FIXED: Use identical settings for both train and eval
@@ -653,6 +657,7 @@ def create_clip_reproduction_dataloaders(
     logger.info(f"  Training dataset length: {len(train_dataset):,}")
     logger.info(f"  Evaluation dataset length: {len(eval_dataset):,}")
     logger.info(f"  🚫 NO normalization applied in either dataset")
+    logger.info(f"  🎲 Standard Gaussian noise (NO SCALING) in collate function")
     logger.info(f"  Consistent processing: ✅")
     
     return train_dataloader, eval_dataloader
