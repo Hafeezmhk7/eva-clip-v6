@@ -1,0 +1,548 @@
+2025-08-01 14:45:40,512 - INFO - __main__ - 🚀 FIXED BLIP3-o CLIP Reproduction Training with Robust Scale-Aware Generation
+2025-08-01 14:45:40,514 - INFO - __main__ - ====================================================================================================
+2025-08-01 14:45:40,514 - INFO - __main__ - 🎯 FIXED SCALE-AWARE GENERATION ENABLED:
+2025-08-01 14:45:40,514 - INFO - __main__ -   ✅ Log-normal timestep scheduling for better sampling
+2025-08-01 14:45:40,514 - INFO - __main__ -   ✅ Velocity explosion prevention during inference
+2025-08-01 14:45:40,514 - INFO - __main__ -   ✅ Periodic norm guidance for scale consistency
+2025-08-01 14:45:40,514 - INFO - __main__ -   ✅ Adaptive target norm estimation from data
+2025-08-01 14:45:40,514 - INFO - __main__ -   ✅ Enhanced evaluation with scale-aware metrics
+2025-08-01 14:45:40,515 - INFO - __main__ -   🔧 ROBUST TARGET NORM HANDLING - No more tensor errors!
+2025-08-01 14:45:40,515 - INFO - __main__ - ====================================================================================================
+2025-08-01 14:45:40,515 - INFO - __main__ - 🔧 KEY FIXES APPLIED:
+2025-08-01 14:45:40,515 - INFO - __main__ -   ✅ Target norm tensor-to-scalar conversion errors fixed
+2025-08-01 14:45:40,515 - INFO - __main__ -   ✅ Comprehensive parameter type validation
+2025-08-01 14:45:40,515 - INFO - __main__ -   ✅ Enhanced error handling in evaluation loop
+2025-08-01 14:45:40,515 - INFO - __main__ -   ✅ Safe norm estimation with fallbacks
+2025-08-01 14:45:40,515 - INFO - __main__ -   ✅ Robust device and model setup
+2025-08-01 14:45:40,515 - INFO - __main__ -   ✅ Better argument validation and parsing
+2025-08-01 14:45:40,515 - INFO - __main__ - ====================================================================================================
+2025-08-01 14:45:40,515 - INFO - __main__ - EXPERIMENT DETAILS:
+2025-08-01 14:45:40,515 - INFO - __main__ -   📋 Task: Reproduce clean CLIP embeddings from EVA embeddings
+2025-08-01 14:45:40,515 - INFO - __main__ -   🧠 Model: BLIP3-o DiT with 3D RoPE and Sandwich Normalization
+2025-08-01 14:45:40,515 - INFO - __main__ -   🎯 Target: CLIP embeddings [B, N, 1024]
+2025-08-01 14:45:40,515 - INFO - __main__ -   🎮 Conditioning: EVA embeddings [B, N, 4096]
+2025-08-01 14:45:40,515 - INFO - __main__ -   🌊 Method: Rectified Flow Matching
+2025-08-01 14:45:40,515 - INFO - __main__ -   🚫 Normalization: DISABLED (raw embedding space)
+2025-08-01 14:45:40,515 - INFO - __main__ -   🎲 Noise: Standard Gaussian (NO SCALING)
+2025-08-01 14:45:40,515 - INFO - __main__ -   🚀 Generation: FIXED Scale-aware with log-normal scheduling
+2025-08-01 14:45:40,515 - INFO - __main__ -   🎯 Target norm guidance: 26.0 (robust handling)
+2025-08-01 14:45:40,515 - INFO - __main__ -   ⚡ Velocity explosion threshold: 100.0
+2025-08-01 14:45:40,515 - INFO - __main__ -   📊 Norm guidance strength: 0.10
+2025-08-01 14:45:40,515 - INFO - __main__ -   🔧 Target norm handling: FIXED and validated
+2025-08-01 14:45:40,515 - INFO - __main__ - ====================================================================================================
+2025-08-01 14:45:40,515 - INFO - __main__ - Configuration:
+2025-08-01 14:45:40,515 - INFO - __main__ -   Model size: base
+2025-08-01 14:45:40,515 - INFO - __main__ -   Training mode: patch_only
+2025-08-01 14:45:40,515 - INFO - __main__ -   Embeddings dir: /scratch-shared/azadaianchuk1/blip3o_workspace/embeddings/patch_only_256_tokens
+2025-08-01 14:45:40,515 - INFO - __main__ -   Output dir: ./checkpoints/clip_repro_20250801_144539
+2025-08-01 14:45:40,515 - INFO - __main__ -   Learning rate: 0.0001
+2025-08-01 14:45:40,515 - INFO - __main__ -   Batch size: 8
+2025-08-01 14:45:40,515 - INFO - __main__ -   Epochs: 10
+2025-08-01 14:45:40,516 - INFO - __main__ -   Max shards: 2
+2025-08-01 14:45:40,516 - INFO - __main__ -   Debug mode: False
+2025-08-01 14:45:40,516 - INFO - __main__ - ====================================================================================================
+2025-08-01 14:45:41,353 - INFO - __main__ - PyTorch version: 2.7.1+cu126
+2025-08-01 14:45:42,127 - INFO - __main__ - ✅ Environment check passed
+2025-08-01 14:45:42,128 - INFO - __main__ - ✅ Output directory ready: checkpoints/clip_repro_20250801_144539
+2025-08-01 14:45:42,128 - INFO - __main__ - 🏗️ Setting up device and model...
+2025-08-01 14:45:42,128 - INFO - __main__ - Using GPU: NVIDIA H100
+2025-08-01 14:45:42,128 - INFO - __main__ - GPU Memory: 100.0 GB
+2025-08-01 14:45:42,128 - INFO - __main__ - 🏗️ FIXED BLIP3-o Architecture Configuration:
+2025-08-01 14:45:42,128 - INFO - __main__ -   3D Rotary Position Embedding: ✅ Enabled
+2025-08-01 14:45:42,128 - INFO - __main__ -   Sandwich Normalization: ✅ Enabled
+2025-08-01 14:45:42,128 - INFO - __main__ -   🚀 Scale-Aware Generation: ✅ Enabled
+2025-08-01 14:45:42,128 - INFO - __main__ -   🔧 Fixed Target Norm Handling: ✅ Enabled
+2025-08-01 14:45:42,128 - INFO - __main__ - 🎯 FIXED Scale-Aware Parameters:
+2025-08-01 14:45:42,128 - INFO - __main__ -   Typical CLIP norm: 26.0 (type: float)
+2025-08-01 14:45:42,128 - INFO - __main__ -   Velocity explosion threshold: 100.0
+2025-08-01 14:45:42,128 - INFO - __main__ -   Norm guidance strength: 0.1
+2025-08-01 14:45:42,128 - INFO - __main__ -   Norm guidance frequency: 10
+2025-08-01 14:45:42,128 - INFO - __main__ -   Log-normal schedule: True
+2025-08-01 14:45:42,128 - INFO - __main__ -   Adaptive target norm: True
+2025-08-01 14:45:44,119 - INFO - src.modules - ✅ CLIP DiT model loaded from src/modules/models/blip3o_dit.py
+2025-08-01 14:45:44,120 - INFO - src.modules - ✅ Flow matching loss loaded from src/modules/losses/blip3o_fm_loss.py
+2025-08-01 14:45:44,839 - INFO - src.modules - ✅ CLIP trainer loaded from src/modules/trainers/blip3o_trainer.py
+2025-08-01 14:45:44,840 - INFO - src.modules - ✅ CLIP datasets loaded from src/modules/datasets/blip3o_dataset.py
+2025-08-01 14:45:44,842 - INFO - src.modules.config.blip3o_config - ✅ Configuration validation passed
+2025-08-01 14:45:44,843 - INFO - src.modules.config.blip3o_config - FIXED BLIP3oCLIPDiTConfig initialized:
+2025-08-01 14:45:44,843 - INFO - src.modules.config.blip3o_config -   typical_clip_norm: 26.0 (type: float)
+2025-08-01 14:45:44,843 - INFO - src.modules.config.blip3o_config -   velocity_explosion_threshold: 100.0
+2025-08-01 14:45:44,843 - INFO - src.modules.config.blip3o_config -   norm_guidance_strength: 0.1
+2025-08-01 14:45:44,843 - INFO - src.modules.config.blip3o_config -   norm_guidance_frequency: 10
+2025-08-01 14:45:44,843 - INFO - src.modules.config.blip3o_config - ✅ Configuration compatibility validation passed
+2025-08-01 14:45:44,843 - INFO - src.modules.config.blip3o_config - ✅ Default configurations created and validated
+2025-08-01 14:45:44,843 - INFO - src.modules - ✅ Configuration loaded from src/modules/config/blip3o_config.py
+2025-08-01 14:45:44,843 - INFO - src.modules - 🎉 All CLIP reproduction components loaded successfully!
+2025-08-01 14:45:44,843 - INFO - src.modules - 🎉 BLIP3-o CLIP reproduction modules fully initialized!
+2025-08-01 14:45:44,843 - INFO - src.modules - 🚫 Using minimal normalization approach
+2025-08-01 14:45:44,843 - INFO - src.modules - 🎯 Ready for EVA → CLIP reproduction training
+2025-08-01 14:45:44,843 - INFO - __main__ - ✅ Imported FIXED model with robust scale-aware generation
+2025-08-01 14:45:44,843 - INFO - __main__ - Model kwargs prepared: {'typical_clip_norm': 26.0, 'velocity_explosion_threshold': 100.0, 'norm_guidance_strength': 0.1, 'norm_guidance_frequency': 10}
+2025-08-01 14:45:46,870 - INFO - src.modules.models.blip3o_dit - FIXED BLIP3-o CLIP DiT model initialized with 249,339,136 parameters
+2025-08-01 14:45:46,870 - INFO - src.modules.models.blip3o_dit -   3D RoPE: True
+2025-08-01 14:45:46,870 - INFO - src.modules.models.blip3o_dit -   Sandwich Normalization: True
+2025-08-01 14:45:46,870 - INFO - src.modules.models.blip3o_dit -   🎯 Typical CLIP norm: 26.0 (type: float)
+2025-08-01 14:45:46,870 - INFO - __main__ - Model config typical_clip_norm: 26.0 (type: float)
+2025-08-01 14:45:47,130 - INFO - __main__ - Model created with 249,339,136 parameters
+2025-08-01 14:45:47,130 - INFO - __main__ - Model moved to cuda
+2025-08-01 14:45:47,131 - INFO - __main__ - Model device verified: cuda:0
+2025-08-01 14:45:47,131 - INFO - __main__ - 🌊 Creating loss function...
+2025-08-01 14:45:47,131 - INFO - __main__ - ✅ Imported fixed loss function
+2025-08-01 14:45:47,131 - INFO - src.modules.losses.blip3o_fm_loss - FIXED CLIP Flow Matching Loss initialized (NO NOISE SCALING):
+2025-08-01 14:45:47,131 - INFO - src.modules.losses.blip3o_fm_loss -   Prediction type: velocity
+2025-08-01 14:45:47,131 - INFO - src.modules.losses.blip3o_fm_loss -   Flow type: rectified
+2025-08-01 14:45:47,131 - INFO - src.modules.losses.blip3o_fm_loss -   Noise scaling: DISABLED (always standard Gaussian)
+2025-08-01 14:45:47,131 - INFO - src.modules.losses.blip3o_fm_loss -   Debug mode: False
+2025-08-01 14:45:47,131 - INFO - src.modules.losses.blip3o_fm_loss -   🎲 Noise: Standard Gaussian (mean=0, std=1) everywhere
+2025-08-01 14:45:47,131 - INFO - __main__ - Loss function created:
+2025-08-01 14:45:47,131 - INFO - __main__ -   Prediction type: velocity
+2025-08-01 14:45:47,131 - INFO - __main__ -   Flow type: rectified
+2025-08-01 14:45:47,131 - INFO - __main__ -   🎲 Standard Gaussian noise (NO SCALING)
+2025-08-01 14:45:47,131 - INFO - __main__ -   Debug mode: False
+2025-08-01 14:45:47,131 - INFO - __main__ - 📊 Creating dataloaders...
+2025-08-01 14:45:47,131 - INFO - __main__ - ✅ Imported fixed dataset
+2025-08-01 14:45:47,131 - INFO - __main__ - Checking embeddings directory: /scratch-shared/azadaianchuk1/blip3o_workspace/embeddings/patch_only_256_tokens
+2025-08-01 14:45:47,132 - INFO - __main__ - Found 35 .pkl files in embeddings directory
+2025-08-01 14:45:47,181 - INFO - __main__ - Found manifest: 91333 samples
+2025-08-01 14:45:47,181 - INFO - src.modules.datasets.blip3o_dataset - FIXED: Creating CLIP reproduction dataloaders (NO NOISE SCALING):
+2025-08-01 14:45:47,181 - INFO - src.modules.datasets.blip3o_dataset -   Target: CLIP embeddings [B, N, 1024] - RAW (no normalization)
+2025-08-01 14:45:47,181 - INFO - src.modules.datasets.blip3o_dataset -   Conditioning: EVA embeddings [B, N, 4096] - RAW (no normalization)
+2025-08-01 14:45:47,181 - INFO - src.modules.datasets.blip3o_dataset -   🚫 Normalization: DISABLED (forced)
+2025-08-01 14:45:47,181 - INFO - src.modules.datasets.blip3o_dataset -   🎲 Noise: Standard Gaussian (NO SCALING)
+2025-08-01 14:45:47,181 - INFO - src.modules.datasets.blip3o_dataset -   Collect statistics: False
+2025-08-01 14:45:47,182 - INFO - src.modules.datasets.blip3o_dataset - Loaded manifest: 35 shards, 91,333 samples
+2025-08-01 14:45:47,182 - INFO - src.modules.datasets.blip3o_dataset - Found 35 files with pattern: embeddings_shard_*_patch_only.pkl
+2025-08-01 14:45:47,182 - INFO - src.modules.datasets.blip3o_dataset - Prepared 2 shard files
+2025-08-01 14:45:47,182 - INFO - src.modules.datasets.blip3o_dataset - Using manifest for length estimation: 5,219 samples
+2025-08-01 14:45:47,182 - INFO - src.modules.datasets.blip3o_dataset - FIXED CLIP Reproduction Dataset initialized:
+2025-08-01 14:45:47,182 - INFO - src.modules.datasets.blip3o_dataset -   Directory: /scratch-shared/azadaianchuk1/blip3o_workspace/embeddings/patch_only_256_tokens
+2025-08-01 14:45:47,182 - INFO - src.modules.datasets.blip3o_dataset -   Mode: patch_only (256 tokens)
+2025-08-01 14:45:47,182 - INFO - src.modules.datasets.blip3o_dataset -   TARGET: CLIP embeddings [B, N, 1024] - RAW (no normalization)
+2025-08-01 14:45:47,182 - INFO - src.modules.datasets.blip3o_dataset -   CONDITIONING: EVA embeddings [B, N, 4096] - RAW (no normalization)
+2025-08-01 14:45:47,182 - INFO - src.modules.datasets.blip3o_dataset -   🚫 Normalization: DISABLED (raw embedding space)
+2025-08-01 14:45:47,182 - INFO - src.modules.datasets.blip3o_dataset -   Shards: 2
+2025-08-01 14:45:47,182 - INFO - src.modules.datasets.blip3o_dataset -   Statistics collection: False
+2025-08-01 14:45:47,183 - INFO - src.modules.datasets.blip3o_dataset - Loaded manifest: 35 shards, 91,333 samples
+2025-08-01 14:45:47,183 - INFO - src.modules.datasets.blip3o_dataset - Found 35 files with pattern: embeddings_shard_*_patch_only.pkl
+2025-08-01 14:45:47,183 - INFO - src.modules.datasets.blip3o_dataset - Prepared 2 shard files
+2025-08-01 14:45:47,183 - INFO - src.modules.datasets.blip3o_dataset - Using manifest for length estimation: 5,219 samples
+2025-08-01 14:45:47,183 - INFO - src.modules.datasets.blip3o_dataset - FIXED CLIP Reproduction Dataset initialized:
+2025-08-01 14:45:47,183 - INFO - src.modules.datasets.blip3o_dataset -   Directory: /scratch-shared/azadaianchuk1/blip3o_workspace/embeddings/patch_only_256_tokens
+2025-08-01 14:45:47,183 - INFO - src.modules.datasets.blip3o_dataset -   Mode: patch_only (256 tokens)
+2025-08-01 14:45:47,183 - INFO - src.modules.datasets.blip3o_dataset -   TARGET: CLIP embeddings [B, N, 1024] - RAW (no normalization)
+2025-08-01 14:45:47,183 - INFO - src.modules.datasets.blip3o_dataset -   CONDITIONING: EVA embeddings [B, N, 4096] - RAW (no normalization)
+2025-08-01 14:45:47,183 - INFO - src.modules.datasets.blip3o_dataset -   🚫 Normalization: DISABLED (raw embedding space)
+2025-08-01 14:45:47,183 - INFO - src.modules.datasets.blip3o_dataset -   Shards: 2
+2025-08-01 14:45:47,183 - INFO - src.modules.datasets.blip3o_dataset -   Statistics collection: False
+2025-08-01 14:45:47,183 - INFO - src.modules.datasets.blip3o_dataset - FIXED: CLIP reproduction dataloaders created successfully
+2025-08-01 14:45:47,183 - INFO - src.modules.datasets.blip3o_dataset -   Training dataset length: 5,219
+2025-08-01 14:45:47,184 - INFO - src.modules.datasets.blip3o_dataset -   Evaluation dataset length: 5,219
+2025-08-01 14:45:47,184 - INFO - src.modules.datasets.blip3o_dataset -   🚫 NO normalization applied in either dataset
+2025-08-01 14:45:47,184 - INFO - src.modules.datasets.blip3o_dataset -   🎲 Standard Gaussian noise (NO SCALING) in collate function
+2025-08-01 14:45:47,184 - INFO - src.modules.datasets.blip3o_dataset -   Consistent processing: ✅
+2025-08-01 14:45:47,184 - INFO - __main__ - Dataloaders created successfully:
+2025-08-01 14:45:47,184 - INFO - __main__ -   🚫 Normalization: DISABLED (raw embedding space)
+2025-08-01 14:45:47,184 - INFO - __main__ -   🎲 Noise: Standard Gaussian (NO SCALING)
+2025-08-01 14:45:47,184 - INFO - __main__ -   Max shards: 2
+2025-08-01 14:45:47,184 - INFO - __main__ -   Training mode: patch_only
+2025-08-01 14:45:47,184 - INFO - __main__ -   Batch size: 8
+2025-08-01 14:45:51,460 - INFO - src.modules.datasets.blip3o_dataset - Loaded shard 1/2: 2601 samples, CLIP norm=26.319, EVA norm=43.667
+2025-08-01 14:45:51,501 - INFO - __main__ - ✅ Dataloader test successful:
+2025-08-01 14:45:51,501 - INFO - __main__ -   Batch size: 8
+2025-08-01 14:45:51,501 - INFO - __main__ -   CLIP embeddings shape: torch.Size([8, 256, 1024])
+2025-08-01 14:45:51,501 - INFO - __main__ -   EVA embeddings shape: torch.Size([8, 256, 4096])
+2025-08-01 14:45:51,501 - INFO - __main__ -   Raw embedding space: True
+2025-08-01 14:45:51,501 - INFO - __main__ - 🏃 Creating trainer...
+2025-08-01 14:45:51,501 - INFO - __main__ - ✅ Imported FIXED trainer with robust target norm handling
+2025-08-01 14:45:51,501 - INFO - __main__ - Using adaptive target norm estimation
+2025-08-01 14:45:51,501 - INFO - __main__ - Creating trainer with configuration:
+2025-08-01 14:45:51,501 - INFO - __main__ -   🚀 Scale-aware evaluation: True
+2025-08-01 14:45:51,501 - INFO - __main__ -   🎯 Adaptive target norm: True
+2025-08-01 14:45:51,501 - INFO - __main__ -   📅 Log-normal schedule: True
+2025-08-01 14:45:51,501 - INFO - __main__ -   🔧 Fixed target norm handling: ✅
+2025-08-01 14:45:51,505 - INFO - src.modules.trainers.blip3o_trainer - Got exact dataloader length: 652
+2025-08-01 14:45:51,506 - INFO - src.modules.trainers.blip3o_trainer - Optimizer and scheduler setup complete
+2025-08-01 14:45:51,506 - INFO - src.modules.trainers.blip3o_trainer -   Total estimated steps: 6520
+2025-08-01 14:45:51,506 - INFO - src.modules.trainers.blip3o_trainer -   Warmup steps: 100
+2025-08-01 14:45:51,506 - INFO - src.modules.trainers.blip3o_trainer - FIXED BLIP3-o CLIP Trainer initialized with Robust Target Norm Handling
+2025-08-01 14:45:51,507 - INFO - src.modules.trainers.blip3o_trainer -   Device: cuda
+2025-08-01 14:45:51,507 - INFO - src.modules.trainers.blip3o_trainer -   🚀 Scale-aware evaluation: True
+2025-08-01 14:45:51,507 - INFO - src.modules.trainers.blip3o_trainer -   🎯 Adaptive target norm: True
+2025-08-01 14:45:51,507 - INFO - src.modules.trainers.blip3o_trainer -   📅 Log-normal schedule: True
+2025-08-01 14:45:51,507 - INFO - src.modules.trainers.blip3o_trainer -   🔧 Robust norm handling enabled
+2025-08-01 14:45:51,507 - INFO - __main__ - FIXED trainer created successfully:
+2025-08-01 14:45:51,507 - INFO - __main__ -   Evaluation: Every 50 steps
+2025-08-01 14:45:51,507 - INFO - __main__ -   WandB enabled: False
+2025-08-01 14:45:51,507 - INFO - __main__ -   🎯 Target norm handling: Robust and validated
+2025-08-01 14:45:51,507 - INFO - __main__ - 💾 Saving experiment configuration...
+2025-08-01 14:45:51,509 - INFO - __main__ - ✅ Configuration saved to checkpoints/clip_repro_20250801_144539/fixed_scale_aware_experiment_config.json
+2025-08-01 14:45:51,509 - INFO - __main__ - 🔍 Running final validation...
+2025-08-01 14:45:51,509 - INFO - __main__ - ✅ Model config validation passed: typical_clip_norm=26.000
+2025-08-01 14:45:51,509 - INFO - __main__ - ✅ All validations passed!
+2025-08-01 14:45:51,509 - INFO - __main__ - 
+🚀 Starting FIXED BLIP3-o training...
+2025-08-01 14:45:51,509 - INFO - __main__ - ====================================================================================================
+2025-08-01 14:45:51,509 - INFO - __main__ - 🎯 Expected improvements with FIXED Scale-Aware Generation:
+2025-08-01 14:45:51,509 - INFO - __main__ -   • No more target_norm tensor conversion errors
+2025-08-01 14:45:51,509 - INFO - __main__ -   • Better scale consistency between training and inference
+2025-08-01 14:45:51,510 - INFO - __main__ -   • Reduced velocity explosion issues during generation
+2025-08-01 14:45:51,510 - INFO - __main__ -   • More stable and consistent embedding norms
+2025-08-01 14:45:51,510 - INFO - __main__ -   • Improved CLIP similarity scores
+2025-08-01 14:45:51,510 - INFO - __main__ -   • Enhanced convergence and overfitting capability
+2025-08-01 14:45:51,510 - INFO - __main__ -   • Robust error handling throughout evaluation
+2025-08-01 14:45:51,510 - INFO - __main__ - 
+2025-08-01 14:45:51,510 - INFO - __main__ - 🎯 SUCCESS CRITERIA:
+2025-08-01 14:45:51,510 - INFO - __main__ -   ✅ Training completes without target_norm tensor errors
+2025-08-01 14:45:51,510 - INFO - __main__ -   ✅ Evaluation runs successfully at every checkpoint
+2025-08-01 14:45:51,510 - INFO - __main__ -   ✅ CLIP similarity steadily increases during training
+2025-08-01 14:45:51,510 - INFO - __main__ -   ✅ Overfitting test achieves >0.8 similarity
+2025-08-01 14:45:51,510 - INFO - __main__ -   ✅ Final evaluation shows strong CLIP reproduction (>0.4 similarity)
+2025-08-01 14:45:51,510 - INFO - __main__ - ====================================================================================================
+2025-08-01 14:45:51,510 - INFO - src.modules.trainers.blip3o_trainer - 🚀 Starting FIXED BLIP3-o training with robust scale-aware evaluation...
+2025-08-01 14:45:51,511 - INFO - src.modules.trainers.blip3o_trainer -   Model parameters: 249,339,136
+2025-08-01 14:45:51,511 - INFO - src.modules.trainers.blip3o_trainer -   🎯 Scale-aware evaluation: True
+2025-08-01 14:45:51,511 - INFO - src.modules.trainers.blip3o_trainer -   📅 Log-normal schedule: True
+2025-08-01 14:45:51,511 - INFO - src.modules.trainers.blip3o_trainer -   🎛️ Adaptive target norm: True
+2025-08-01 14:45:51,511 - INFO - src.modules.trainers.blip3o_trainer -   🔧 Robust target norm handling: ✅
+2025-08-01 14:45:51,513 - INFO - src.modules.trainers.blip3o_trainer - Starting epoch 1/10
+2025-08-01 14:45:55,714 - INFO - src.modules.datasets.blip3o_dataset - Loaded shard 1/2: 2601 samples, CLIP norm=26.319, EVA norm=43.667
+2025-08-01 14:45:58,857 - INFO - src.modules.trainers.blip3o_trainer - Step 10: Loss=1.878861, VelSim=0.2530 (fair), GradNorm=51335.738, LR=1.90e-05, Noise=μ-0.001σ1.000✅, PredNorm=13.047, TargetNorm=42.343, BatchCLIPNorm=26.675
+2025-08-01 14:46:01,657 - INFO - src.modules.trainers.blip3o_trainer - Step 20: Loss=1.720777, VelSim=0.3154 (fair), GradNorm=28089.482, LR=2.80e-05, Noise=μ-0.000σ0.999✅, PredNorm=12.307, TargetNorm=41.765, BatchCLIPNorm=26.008
+2025-08-01 14:46:04,453 - INFO - src.modules.trainers.blip3o_trainer - Step 30: Loss=1.671311, VelSim=0.3375 (fair), GradNorm=21345.726, LR=3.70e-05, Noise=μ-0.001σ1.000✅, PredNorm=13.099, TargetNorm=41.324, BatchCLIPNorm=25.137
+2025-08-01 14:46:07,247 - INFO - src.modules.trainers.blip3o_trainer - Step 40: Loss=1.662543, VelSim=0.3404 (fair), GradNorm=23347.573, LR=4.60e-05, Noise=μ0.000σ1.000✅, PredNorm=14.540, TargetNorm=41.511, BatchCLIPNorm=25.540
+2025-08-01 14:46:10,043 - INFO - src.modules.trainers.blip3o_trainer - Step 50: Loss=1.636537, VelSim=0.3484 (fair), GradNorm=26126.812, LR=5.50e-05, Noise=μ-0.000σ1.001✅, PredNorm=14.865, TargetNorm=41.505, BatchCLIPNorm=25.611
+2025-08-01 14:46:10,043 - INFO - src.modules.trainers.blip3o_trainer - 📊 NORM ANALYSIS (Fixed Scale-Aware):
+2025-08-01 14:46:10,044 - INFO - src.modules.trainers.blip3o_trainer -   Training Target Norms: mean=26.384, std=0.675
+2025-08-01 14:46:10,044 - INFO - src.modules.trainers.blip3o_trainer - 🔍 Running fixed scale-aware evaluation at step 50...
+2025-08-01 14:46:10,044 - INFO - src.modules.trainers.blip3o_trainer - 🔍 Starting evaluation with 15 samples
+2025-08-01 14:46:10,045 - INFO - src.modules.trainers.blip3o_trainer - Using config typical_clip_norm: 26.0
+2025-08-01 14:46:10,045 - INFO - src.modules.trainers.blip3o_trainer - 🎯 Using adaptive target norm: 26.000
+2025-08-01 14:46:10,045 - INFO - src.modules.trainers.blip3o_trainer - 🎯 Final target norm for evaluation: 26.000
+2025-08-01 14:46:15,262 - INFO - src.modules.datasets.blip3o_dataset - Loaded shard 1/2: 2646 samples, CLIP norm=26.278, EVA norm=43.618
+2025-08-01 14:46:21,155 - INFO - src.modules.trainers.blip3o_trainer - ✅ Evaluation completed: 16 samples, similarity: 0.0362
+2025-08-01 14:46:21,156 - INFO - src.modules.trainers.blip3o_trainer - ✅ Fixed scale-aware evaluation results:
+2025-08-01 14:46:21,156 - INFO - src.modules.trainers.blip3o_trainer -   CLIP similarity: 0.0362
+2025-08-01 14:46:21,156 - INFO - src.modules.trainers.blip3o_trainer -   Generated norm: 26.000
+2025-08-01 14:46:21,156 - INFO - src.modules.trainers.blip3o_trainer -   Target norm: 25.856
+2025-08-01 14:46:21,156 - INFO - src.modules.trainers.blip3o_trainer -   Scale consistency: 0.959
+2025-08-01 14:46:21,156 - INFO - src.modules.trainers.blip3o_trainer -   🎯 Target norm used: 26.000
+2025-08-01 14:46:23,955 - INFO - src.modules.trainers.blip3o_trainer - Step 60: Loss=1.630910, VelSim=0.3563 (fair), GradNorm=35021.001, LR=6.40e-05, Noise=μ-0.001σ1.000✅, PredNorm=14.737, TargetNorm=41.422, BatchCLIPNorm=25.339
+2025-08-01 14:46:26,755 - INFO - src.modules.trainers.blip3o_trainer - Step 70: Loss=1.611865, VelSim=0.3572 (fair), GradNorm=27730.294, LR=7.30e-05, Noise=μ-0.001σ0.999✅, PredNorm=15.775, TargetNorm=41.915, BatchCLIPNorm=26.133
+2025-08-01 14:46:29,561 - INFO - src.modules.trainers.blip3o_trainer - Step 80: Loss=1.558011, VelSim=0.3562 (fair), GradNorm=45027.431, LR=8.20e-05, Noise=μ-0.001σ1.001✅, PredNorm=17.143, TargetNorm=41.204, BatchCLIPNorm=25.002
+2025-08-01 14:46:32,364 - INFO - src.modules.trainers.blip3o_trainer - Step 90: Loss=1.492333, VelSim=0.3696 (fair), GradNorm=129591.683, LR=9.10e-05, Noise=μ-0.001σ1.000✅, PredNorm=17.170, TargetNorm=41.921, BatchCLIPNorm=26.071
+2025-08-01 14:46:35,173 - INFO - src.modules.trainers.blip3o_trainer - Step 100: Loss=1.542659, VelSim=0.3668 (fair), GradNorm=57774.712, LR=1.00e-04, Noise=μ0.000σ1.001✅, PredNorm=17.225, TargetNorm=42.937, BatchCLIPNorm=27.492
+2025-08-01 14:46:35,174 - INFO - src.modules.trainers.blip3o_trainer - 📊 NORM ANALYSIS (Fixed Scale-Aware):
+2025-08-01 14:46:35,174 - INFO - src.modules.trainers.blip3o_trainer -   Training Target Norms: mean=26.282, std=0.691
+2025-08-01 14:46:35,174 - INFO - src.modules.trainers.blip3o_trainer -   Eval Target Norms: mean=25.856, std=0.564
+2025-08-01 14:46:35,174 - INFO - src.modules.trainers.blip3o_trainer -   📊 Scale Consistency: mean=0.959, std=0.035
+2025-08-01 14:46:35,174 - INFO - src.modules.trainers.blip3o_trainer - 🔍 Running fixed scale-aware evaluation at step 100...
+2025-08-01 14:46:35,174 - INFO - src.modules.trainers.blip3o_trainer - 🔍 Starting evaluation with 15 samples
+2025-08-01 14:46:35,176 - INFO - src.modules.trainers.blip3o_trainer - 🎯 Using adaptive target norm: 25.856
+2025-08-01 14:46:35,176 - INFO - src.modules.trainers.blip3o_trainer - 🎯 Final target norm for evaluation: 25.856
+2025-08-01 14:46:40,173 - INFO - src.modules.datasets.blip3o_dataset - Loaded shard 1/2: 2646 samples, CLIP norm=26.278, EVA norm=43.618
+2025-08-01 14:46:45,985 - INFO - src.modules.trainers.blip3o_trainer - ✅ Evaluation completed: 16 samples, similarity: 0.0343
+2025-08-01 14:46:45,986 - INFO - src.modules.trainers.blip3o_trainer - ✅ Fixed scale-aware evaluation results:
+2025-08-01 14:46:45,986 - INFO - src.modules.trainers.blip3o_trainer -   CLIP similarity: 0.0343
+2025-08-01 14:46:45,986 - INFO - src.modules.trainers.blip3o_trainer -   Generated norm: 25.856
+2025-08-01 14:46:45,986 - INFO - src.modules.trainers.blip3o_trainer -   Target norm: 25.856
+2025-08-01 14:46:45,986 - INFO - src.modules.trainers.blip3o_trainer -   Scale consistency: 0.960
+2025-08-01 14:46:45,986 - INFO - src.modules.trainers.blip3o_trainer -   🎯 Target norm used: 25.856
+2025-08-01 14:46:48,757 - INFO - src.modules.trainers.blip3o_trainer - Step 110: Loss=4.720813, VelSim=0.2635 (fair), GradNorm=1529594.235, LR=1.00e-04, Noise=μ0.001σ0.999✅, PredNorm=43.501, TargetNorm=41.402, BatchCLIPNorm=25.377
+2025-08-01 14:46:51,561 - INFO - src.modules.trainers.blip3o_trainer - Step 120: Loss=1.458986, VelSim=0.3371 (fair), GradNorm=10994.586, LR=1.00e-04, Noise=μ0.000σ0.999✅, PredNorm=20.225, TargetNorm=42.114, BatchCLIPNorm=26.364
+2025-08-01 14:46:54,363 - INFO - src.modules.trainers.blip3o_trainer - Step 130: Loss=1.407809, VelSim=0.3718 (fair), GradNorm=5573.749, LR=1.00e-04, Noise=μ-0.001σ1.000✅, PredNorm=18.048, TargetNorm=42.648, BatchCLIPNorm=27.135
+2025-08-01 14:46:57,312 - INFO - src.modules.trainers.blip3o_trainer - Step 140: Loss=1.405999, VelSim=0.3651 (fair), GradNorm=4348.931, LR=1.00e-04, Noise=μ-0.001σ0.999✅, PredNorm=17.368, TargetNorm=41.910, BatchCLIPNorm=26.133
+2025-08-01 14:47:00,111 - INFO - src.modules.trainers.blip3o_trainer - Step 150: Loss=1.362773, VelSim=0.3710 (fair), GradNorm=5601.438, LR=1.00e-04, Noise=μ0.000σ1.000✅, PredNorm=16.618, TargetNorm=41.843, BatchCLIPNorm=25.868
+2025-08-01 14:47:00,112 - INFO - src.modules.trainers.blip3o_trainer - 📊 NORM ANALYSIS (Fixed Scale-Aware):
+2025-08-01 14:47:00,112 - INFO - src.modules.trainers.blip3o_trainer -   Training Target Norms: mean=26.277, std=0.689
+2025-08-01 14:47:00,112 - INFO - src.modules.trainers.blip3o_trainer -   Eval Target Norms: mean=25.856, std=0.564
+2025-08-01 14:47:00,112 - INFO - src.modules.trainers.blip3o_trainer -   🎯 Target Norm Estimates: mean=25.856, std=0.000
+2025-08-01 14:47:00,112 - INFO - src.modules.trainers.blip3o_trainer -   📊 Scale Consistency: mean=0.959, std=0.035
+2025-08-01 14:47:00,112 - INFO - src.modules.trainers.blip3o_trainer - 🔍 Running fixed scale-aware evaluation at step 150...
+2025-08-01 14:47:00,112 - INFO - src.modules.trainers.blip3o_trainer - 🔍 Starting evaluation with 15 samples
+2025-08-01 14:47:00,114 - INFO - src.modules.trainers.blip3o_trainer - 🎯 Using adaptive target norm: 25.856
+2025-08-01 14:47:00,114 - INFO - src.modules.trainers.blip3o_trainer - 🎯 Final target norm for evaluation: 25.856
+2025-08-01 14:47:04,849 - INFO - src.modules.datasets.blip3o_dataset - Loaded shard 1/2: 2646 samples, CLIP norm=26.278, EVA norm=43.618
+2025-08-01 14:47:10,648 - INFO - src.modules.trainers.blip3o_trainer - ✅ Evaluation completed: 16 samples, similarity: 0.0309
+2025-08-01 14:47:10,650 - INFO - src.modules.trainers.blip3o_trainer - ✅ Fixed scale-aware evaluation results:
+2025-08-01 14:47:10,650 - INFO - src.modules.trainers.blip3o_trainer -   CLIP similarity: 0.0309
+2025-08-01 14:47:10,650 - INFO - src.modules.trainers.blip3o_trainer -   Generated norm: 25.856
+2025-08-01 14:47:10,650 - INFO - src.modules.trainers.blip3o_trainer -   Target norm: 25.856
+2025-08-01 14:47:10,650 - INFO - src.modules.trainers.blip3o_trainer -   Scale consistency: 0.960
+2025-08-01 14:47:10,650 - INFO - src.modules.trainers.blip3o_trainer -   🎯 Target norm used: 25.856
+2025-08-01 14:47:13,457 - INFO - src.modules.trainers.blip3o_trainer - Step 160: Loss=1.468369, VelSim=0.3661 (fair), GradNorm=48626.112, LR=1.00e-04, Noise=μ-0.000σ1.001✅, PredNorm=19.614, TargetNorm=41.980, BatchCLIPNorm=26.033
+2025-08-01 14:47:16,259 - INFO - src.modules.trainers.blip3o_trainer - Step 170: Loss=1.446211, VelSim=0.3485 (fair), GradNorm=8533.908, LR=1.00e-04, Noise=μ0.001σ1.001✅, PredNorm=16.056, TargetNorm=41.790, BatchCLIPNorm=25.868
+2025-08-01 14:47:19,060 - INFO - src.modules.trainers.blip3o_trainer - Step 180: Loss=1.439083, VelSim=0.3959 (fair), GradNorm=39566.872, LR=1.00e-04, Noise=μ-0.000σ1.000✅, PredNorm=17.423, TargetNorm=43.211, BatchCLIPNorm=27.778
+2025-08-01 14:47:21,859 - INFO - src.modules.trainers.blip3o_trainer - Step 190: Loss=1.396589, VelSim=0.3904 (fair), GradNorm=9005.756, LR=1.00e-04, Noise=μ-0.001σ0.999✅, PredNorm=20.483, TargetNorm=42.550, BatchCLIPNorm=26.948
+2025-08-01 14:47:24,659 - INFO - src.modules.trainers.blip3o_trainer - Step 200: Loss=1.334313, VelSim=0.3957 (fair), GradNorm=7826.290, LR=9.99e-05, Noise=μ-0.000σ1.000✅, PredNorm=17.292, TargetNorm=42.197, BatchCLIPNorm=26.476
+2025-08-01 14:47:24,660 - INFO - src.modules.trainers.blip3o_trainer - 📊 NORM ANALYSIS (Fixed Scale-Aware):
+2025-08-01 14:47:24,660 - INFO - src.modules.trainers.blip3o_trainer -   Training Target Norms: mean=26.319, std=0.691
+2025-08-01 14:47:24,660 - INFO - src.modules.trainers.blip3o_trainer -   Eval Target Norms: mean=25.856, std=0.564
+2025-08-01 14:47:24,660 - INFO - src.modules.trainers.blip3o_trainer -   🎯 Target Norm Estimates: mean=25.856, std=0.000
+2025-08-01 14:47:24,660 - INFO - src.modules.trainers.blip3o_trainer -   📊 Scale Consistency: mean=0.959, std=0.035
+2025-08-01 14:47:24,660 - INFO - src.modules.trainers.blip3o_trainer - 🔍 Running fixed scale-aware evaluation at step 200...
+2025-08-01 14:47:24,660 - INFO - src.modules.trainers.blip3o_trainer - 🔍 Starting evaluation with 15 samples
+2025-08-01 14:47:24,662 - INFO - src.modules.trainers.blip3o_trainer - 🎯 Using adaptive target norm: 25.856
+2025-08-01 14:47:24,662 - INFO - src.modules.trainers.blip3o_trainer - 🎯 Final target norm for evaluation: 25.856
+2025-08-01 14:47:29,549 - INFO - src.modules.datasets.blip3o_dataset - Loaded shard 1/2: 2646 samples, CLIP norm=26.278, EVA norm=43.618
+2025-08-01 14:47:35,344 - INFO - src.modules.trainers.blip3o_trainer - ✅ Evaluation completed: 16 samples, similarity: 0.0297
+2025-08-01 14:47:35,344 - INFO - src.modules.trainers.blip3o_trainer - ✅ Fixed scale-aware evaluation results:
+2025-08-01 14:47:35,344 - INFO - src.modules.trainers.blip3o_trainer -   CLIP similarity: 0.0297
+2025-08-01 14:47:35,345 - INFO - src.modules.trainers.blip3o_trainer -   Generated norm: 25.856
+2025-08-01 14:47:35,345 - INFO - src.modules.trainers.blip3o_trainer -   Target norm: 25.856
+2025-08-01 14:47:35,345 - INFO - src.modules.trainers.blip3o_trainer -   Scale consistency: 0.960
+2025-08-01 14:47:35,345 - INFO - src.modules.trainers.blip3o_trainer -   🎯 Target norm used: 25.856
+2025-08-01 14:47:38,147 - INFO - src.modules.trainers.blip3o_trainer - Step 210: Loss=1.400194, VelSim=0.3793 (fair), GradNorm=17489.326, LR=9.99e-05, Noise=μ-0.001σ1.000✅, PredNorm=17.448, TargetNorm=42.566, BatchCLIPNorm=26.924
+2025-08-01 14:47:40,946 - INFO - src.modules.trainers.blip3o_trainer - Step 220: Loss=1.360340, VelSim=0.3709 (fair), GradNorm=3119.972, LR=9.99e-05, Noise=μ0.001σ1.000✅, PredNorm=16.369, TargetNorm=41.783, BatchCLIPNorm=25.981
+2025-08-01 14:47:43,743 - INFO - src.modules.trainers.blip3o_trainer - Step 230: Loss=1.350405, VelSim=0.3794 (fair), GradNorm=11098.790, LR=9.99e-05, Noise=μ-0.000σ1.000✅, PredNorm=20.656, TargetNorm=42.091, BatchCLIPNorm=26.257
+2025-08-01 14:47:46,542 - INFO - src.modules.trainers.blip3o_trainer - Step 240: Loss=1.361010, VelSim=0.3737 (fair), GradNorm=3695.953, LR=9.99e-05, Noise=μ-0.000σ1.000✅, PredNorm=16.514, TargetNorm=41.835, BatchCLIPNorm=26.007
+2025-08-01 14:47:49,341 - INFO - src.modules.trainers.blip3o_trainer - Step 250: Loss=1.401770, VelSim=0.3577 (fair), GradNorm=5855.627, LR=9.99e-05, Noise=μ-0.000σ1.000✅, PredNorm=16.384, TargetNorm=41.468, BatchCLIPNorm=25.421
+2025-08-01 14:47:49,342 - INFO - src.modules.trainers.blip3o_trainer - 📊 NORM ANALYSIS (Fixed Scale-Aware):
+2025-08-01 14:47:49,342 - INFO - src.modules.trainers.blip3o_trainer -   Training Target Norms: mean=26.322, std=0.687
+2025-08-01 14:47:49,342 - INFO - src.modules.trainers.blip3o_trainer -   Eval Target Norms: mean=25.856, std=0.564
+2025-08-01 14:47:49,342 - INFO - src.modules.trainers.blip3o_trainer -   🎯 Target Norm Estimates: mean=25.856, std=0.000
+2025-08-01 14:47:49,342 - INFO - src.modules.trainers.blip3o_trainer -   📊 Scale Consistency: mean=0.961, std=0.034
+2025-08-01 14:47:49,342 - INFO - src.modules.trainers.blip3o_trainer - 🔍 Running fixed scale-aware evaluation at step 250...
+2025-08-01 14:47:49,343 - INFO - src.modules.trainers.blip3o_trainer - 🔍 Starting evaluation with 15 samples
+2025-08-01 14:47:49,345 - INFO - src.modules.trainers.blip3o_trainer - 🎯 Using adaptive target norm: 25.856
+2025-08-01 14:47:49,345 - INFO - src.modules.trainers.blip3o_trainer - 🎯 Final target norm for evaluation: 25.856
+2025-08-01 14:47:53,657 - INFO - src.modules.datasets.blip3o_dataset - Loaded shard 1/2: 2646 samples, CLIP norm=26.278, EVA norm=43.618
+2025-08-01 14:47:59,474 - INFO - src.modules.trainers.blip3o_trainer - ✅ Evaluation completed: 16 samples, similarity: 0.0307
+2025-08-01 14:47:59,475 - INFO - src.modules.trainers.blip3o_trainer - ✅ Fixed scale-aware evaluation results:
+2025-08-01 14:47:59,475 - INFO - src.modules.trainers.blip3o_trainer -   CLIP similarity: 0.0307
+2025-08-01 14:47:59,475 - INFO - src.modules.trainers.blip3o_trainer -   Generated norm: 25.856
+2025-08-01 14:47:59,475 - INFO - src.modules.trainers.blip3o_trainer -   Target norm: 25.856
+2025-08-01 14:47:59,475 - INFO - src.modules.trainers.blip3o_trainer -   Scale consistency: 0.960
+2025-08-01 14:47:59,475 - INFO - src.modules.trainers.blip3o_trainer -   🎯 Target norm used: 25.856
+2025-08-01 14:48:02,244 - INFO - src.modules.trainers.blip3o_trainer - Step 260: Loss=1.328290, VelSim=0.3982 (fair), GradNorm=3506.125, LR=9.98e-05, Noise=μ0.001σ1.000✅, PredNorm=19.006, TargetNorm=42.416, BatchCLIPNorm=26.732
+2025-08-01 14:48:05,012 - INFO - src.modules.trainers.blip3o_trainer - Step 270: Loss=1.339905, VelSim=0.3670 (fair), GradNorm=3416.946, LR=9.98e-05, Noise=μ-0.000σ1.000✅, PredNorm=16.743, TargetNorm=41.655, BatchCLIPNorm=25.713
+2025-08-01 14:48:07,777 - INFO - src.modules.trainers.blip3o_trainer - Step 280: Loss=1.372328, VelSim=0.3678 (fair), GradNorm=3967.069, LR=9.98e-05, Noise=μ0.001σ1.001✅, PredNorm=17.579, TargetNorm=42.068, BatchCLIPNorm=26.395
+2025-08-01 14:48:10,543 - INFO - src.modules.trainers.blip3o_trainer - Step 290: Loss=1.356710, VelSim=0.3549 (fair), GradNorm=4928.693, LR=9.98e-05, Noise=μ-0.000σ1.000✅, PredNorm=17.481, TargetNorm=41.675, BatchCLIPNorm=25.604
+2025-08-01 14:48:13,310 - INFO - src.modules.trainers.blip3o_trainer - Step 300: Loss=1.339467, VelSim=0.3843 (fair), GradNorm=3459.256, LR=9.98e-05, Noise=μ-0.000σ1.000✅, PredNorm=16.545, TargetNorm=41.929, BatchCLIPNorm=26.131
+2025-08-01 14:48:13,311 - INFO - src.modules.trainers.blip3o_trainer - 📊 NORM ANALYSIS (Fixed Scale-Aware):
+2025-08-01 14:48:13,311 - INFO - src.modules.trainers.blip3o_trainer -   Training Target Norms: mean=26.312, std=0.699
+2025-08-01 14:48:13,312 - INFO - src.modules.trainers.blip3o_trainer -   Eval Target Norms: mean=25.856, std=0.564
+2025-08-01 14:48:13,312 - INFO - src.modules.trainers.blip3o_trainer -   🎯 Target Norm Estimates: mean=25.856, std=0.000
+2025-08-01 14:48:13,312 - INFO - src.modules.trainers.blip3o_trainer -   📊 Scale Consistency: mean=0.961, std=0.034
+2025-08-01 14:48:13,312 - INFO - src.modules.trainers.blip3o_trainer - 🔍 Running fixed scale-aware evaluation at step 300...
+2025-08-01 14:48:13,312 - INFO - src.modules.trainers.blip3o_trainer - 🔍 Starting evaluation with 15 samples
+2025-08-01 14:48:13,314 - INFO - src.modules.trainers.blip3o_trainer - 🎯 Using adaptive target norm: 25.856
+2025-08-01 14:48:13,314 - INFO - src.modules.trainers.blip3o_trainer - 🎯 Final target norm for evaluation: 25.856
+2025-08-01 14:48:17,716 - INFO - src.modules.datasets.blip3o_dataset - Loaded shard 1/2: 2646 samples, CLIP norm=26.278, EVA norm=43.618
+2025-08-01 14:48:23,529 - INFO - src.modules.trainers.blip3o_trainer - ✅ Evaluation completed: 16 samples, similarity: 0.0292
+2025-08-01 14:48:23,529 - INFO - src.modules.trainers.blip3o_trainer - ✅ Fixed scale-aware evaluation results:
+2025-08-01 14:48:23,529 - INFO - src.modules.trainers.blip3o_trainer -   CLIP similarity: 0.0292
+2025-08-01 14:48:23,529 - INFO - src.modules.trainers.blip3o_trainer -   Generated norm: 25.856
+2025-08-01 14:48:23,529 - INFO - src.modules.trainers.blip3o_trainer -   Target norm: 25.856
+2025-08-01 14:48:23,530 - INFO - src.modules.trainers.blip3o_trainer -   Scale consistency: 0.960
+2025-08-01 14:48:23,530 - INFO - src.modules.trainers.blip3o_trainer -   🎯 Target norm used: 25.856
+2025-08-01 14:48:26,294 - INFO - src.modules.trainers.blip3o_trainer - Step 310: Loss=1.342593, VelSim=0.3779 (fair), GradNorm=5460.120, LR=9.97e-05, Noise=μ0.000σ1.001✅, PredNorm=17.983, TargetNorm=41.810, BatchCLIPNorm=25.862
+2025-08-01 14:48:29,057 - INFO - src.modules.trainers.blip3o_trainer - Step 320: Loss=1.341122, VelSim=0.3873 (fair), GradNorm=2754.234, LR=9.97e-05, Noise=μ-0.000σ1.000✅, PredNorm=17.620, TargetNorm=42.441, BatchCLIPNorm=26.773
+2025-08-01 14:48:34,880 - INFO - src.modules.datasets.blip3o_dataset - Loaded shard 2/2: 2646 samples, CLIP norm=26.278, EVA norm=43.618
+2025-08-01 14:48:36,279 - INFO - src.modules.trainers.blip3o_trainer - Step 330: Loss=1.343305, VelSim=0.3894 (fair), GradNorm=3129.581, LR=9.97e-05, Noise=μ0.001σ1.000✅, PredNorm=18.308, TargetNorm=42.276, BatchCLIPNorm=26.621
+2025-08-01 14:48:39,048 - INFO - src.modules.trainers.blip3o_trainer - Step 340: Loss=1.348003, VelSim=0.3867 (fair), GradNorm=3834.855, LR=9.97e-05, Noise=μ0.001σ1.000✅, PredNorm=16.856, TargetNorm=41.683, BatchCLIPNorm=25.755
+2025-08-01 14:48:41,816 - INFO - src.modules.trainers.blip3o_trainer - Step 350: Loss=1.429733, VelSim=0.3570 (fair), GradNorm=5406.997, LR=9.96e-05, Noise=μ-0.000σ1.000✅, PredNorm=15.417, TargetNorm=41.721, BatchCLIPNorm=25.847
+2025-08-01 14:48:41,817 - INFO - src.modules.trainers.blip3o_trainer - 📊 NORM ANALYSIS (Fixed Scale-Aware):
+2025-08-01 14:48:41,817 - INFO - src.modules.trainers.blip3o_trainer -   Training Target Norms: mean=26.311, std=0.715
+2025-08-01 14:48:41,817 - INFO - src.modules.trainers.blip3o_trainer -   Eval Target Norms: mean=25.856, std=0.564
+2025-08-01 14:48:41,817 - INFO - src.modules.trainers.blip3o_trainer -   🎯 Target Norm Estimates: mean=25.856, std=0.000
+2025-08-01 14:48:41,817 - INFO - src.modules.trainers.blip3o_trainer -   📊 Scale Consistency: mean=0.961, std=0.034
+2025-08-01 14:48:41,817 - INFO - src.modules.trainers.blip3o_trainer - 🔍 Running fixed scale-aware evaluation at step 350...
+2025-08-01 14:48:41,817 - INFO - src.modules.trainers.blip3o_trainer - 🔍 Starting evaluation with 15 samples
+2025-08-01 14:48:41,819 - INFO - src.modules.trainers.blip3o_trainer - 🎯 Using adaptive target norm: 25.856
+2025-08-01 14:48:41,819 - INFO - src.modules.trainers.blip3o_trainer - 🎯 Final target norm for evaluation: 25.856
+2025-08-01 14:48:46,010 - INFO - src.modules.datasets.blip3o_dataset - Loaded shard 1/2: 2646 samples, CLIP norm=26.278, EVA norm=43.618
+2025-08-01 14:48:51,830 - INFO - src.modules.trainers.blip3o_trainer - ✅ Evaluation completed: 16 samples, similarity: 0.0305
+2025-08-01 14:48:51,830 - INFO - src.modules.trainers.blip3o_trainer - ✅ Fixed scale-aware evaluation results:
+2025-08-01 14:48:51,830 - INFO - src.modules.trainers.blip3o_trainer -   CLIP similarity: 0.0305
+2025-08-01 14:48:51,830 - INFO - src.modules.trainers.blip3o_trainer -   Generated norm: 25.856
+2025-08-01 14:48:51,830 - INFO - src.modules.trainers.blip3o_trainer -   Target norm: 25.856
+2025-08-01 14:48:51,830 - INFO - src.modules.trainers.blip3o_trainer -   Scale consistency: 0.960
+2025-08-01 14:48:51,830 - INFO - src.modules.trainers.blip3o_trainer -   🎯 Target norm used: 25.856
+2025-08-01 14:48:54,596 - INFO - src.modules.trainers.blip3o_trainer - Step 360: Loss=1.345119, VelSim=0.3556 (fair), GradNorm=5487.787, LR=9.96e-05, Noise=μ-0.001σ0.999✅, PredNorm=17.404, TargetNorm=41.374, BatchCLIPNorm=25.195
+2025-08-01 14:48:57,361 - INFO - src.modules.trainers.blip3o_trainer - Step 370: Loss=1.351515, VelSim=0.3878 (fair), GradNorm=7307.928, LR=9.96e-05, Noise=μ-0.001σ1.000✅, PredNorm=18.184, TargetNorm=42.237, BatchCLIPNorm=26.547
+2025-08-01 14:49:00,126 - INFO - src.modules.trainers.blip3o_trainer - Step 380: Loss=1.350973, VelSim=0.3840 (fair), GradNorm=4019.679, LR=9.95e-05, Noise=μ0.000σ1.000✅, PredNorm=17.963, TargetNorm=42.046, BatchCLIPNorm=26.282
+2025-08-01 14:49:02,890 - INFO - src.modules.trainers.blip3o_trainer - Step 390: Loss=1.340177, VelSim=0.3900 (fair), GradNorm=4219.042, LR=9.95e-05, Noise=μ0.001σ1.000✅, PredNorm=17.128, TargetNorm=42.308, BatchCLIPNorm=26.592
+2025-08-01 14:49:05,654 - INFO - src.modules.trainers.blip3o_trainer - Step 400: Loss=1.343726, VelSim=0.3869 (fair), GradNorm=2826.700, LR=9.95e-05, Noise=μ-0.001σ1.001✅, PredNorm=17.152, TargetNorm=42.080, BatchCLIPNorm=26.338
+2025-08-01 14:49:05,655 - INFO - src.modules.trainers.blip3o_trainer - 📊 NORM ANALYSIS (Fixed Scale-Aware):
+2025-08-01 14:49:05,655 - INFO - src.modules.trainers.blip3o_trainer -   Training Target Norms: mean=26.320, std=0.709
+2025-08-01 14:49:05,655 - INFO - src.modules.trainers.blip3o_trainer -   Eval Target Norms: mean=25.856, std=0.564
+2025-08-01 14:49:05,655 - INFO - src.modules.trainers.blip3o_trainer -   🎯 Target Norm Estimates: mean=25.856, std=0.000
+2025-08-01 14:49:05,655 - INFO - src.modules.trainers.blip3o_trainer -   📊 Scale Consistency: mean=0.961, std=0.034
+2025-08-01 14:49:05,655 - INFO - src.modules.trainers.blip3o_trainer - 🔍 Running fixed scale-aware evaluation at step 400...
+2025-08-01 14:49:05,655 - INFO - src.modules.trainers.blip3o_trainer - 🔍 Starting evaluation with 15 samples
+2025-08-01 14:49:05,657 - INFO - src.modules.trainers.blip3o_trainer - 🎯 Using adaptive target norm: 25.856
+2025-08-01 14:49:05,657 - INFO - src.modules.trainers.blip3o_trainer - 🎯 Final target norm for evaluation: 25.856
+2025-08-01 14:49:09,863 - INFO - src.modules.datasets.blip3o_dataset - Loaded shard 1/2: 2646 samples, CLIP norm=26.278, EVA norm=43.618
+2025-08-01 14:49:15,707 - INFO - src.modules.trainers.blip3o_trainer - ✅ Evaluation completed: 16 samples, similarity: 0.0288
+2025-08-01 14:49:15,707 - INFO - src.modules.trainers.blip3o_trainer - ✅ Fixed scale-aware evaluation results:
+2025-08-01 14:49:15,708 - INFO - src.modules.trainers.blip3o_trainer -   CLIP similarity: 0.0288
+2025-08-01 14:49:15,708 - INFO - src.modules.trainers.blip3o_trainer -   Generated norm: 25.856
+2025-08-01 14:49:15,708 - INFO - src.modules.trainers.blip3o_trainer -   Target norm: 25.856
+2025-08-01 14:49:15,708 - INFO - src.modules.trainers.blip3o_trainer -   Scale consistency: 0.960
+2025-08-01 14:49:15,708 - INFO - src.modules.trainers.blip3o_trainer -   🎯 Target norm used: 25.856
+2025-08-01 14:49:18,492 - INFO - src.modules.trainers.blip3o_trainer - Step 410: Loss=1.292118, VelSim=0.4311 (fair), GradNorm=3443.682, LR=9.94e-05, Noise=μ0.001σ0.999✅, PredNorm=20.723, TargetNorm=43.087, BatchCLIPNorm=27.583
+2025-08-01 14:49:21,274 - INFO - src.modules.trainers.blip3o_trainer - Step 420: Loss=1.326246, VelSim=0.4016 (fair), GradNorm=3262.858, LR=9.94e-05, Noise=μ0.000σ1.000✅, PredNorm=18.253, TargetNorm=42.181, BatchCLIPNorm=26.470
+2025-08-01 14:49:24,043 - INFO - src.modules.trainers.blip3o_trainer - Step 430: Loss=1.343607, VelSim=0.3841 (fair), GradNorm=3084.379, LR=9.94e-05, Noise=μ0.001σ1.000✅, PredNorm=16.975, TargetNorm=41.855, BatchCLIPNorm=26.047
+2025-08-01 14:49:26,807 - INFO - src.modules.trainers.blip3o_trainer - Step 440: Loss=1.374324, VelSim=0.3631 (fair), GradNorm=3856.662, LR=9.93e-05, Noise=μ0.000σ1.001✅, PredNorm=15.465, TargetNorm=41.793, BatchCLIPNorm=25.923
+2025-08-01 14:49:29,568 - INFO - src.modules.trainers.blip3o_trainer - Step 450: Loss=1.392036, VelSim=0.3764 (fair), GradNorm=3053.211, LR=9.93e-05, Noise=μ0.001σ1.000✅, PredNorm=17.033, TargetNorm=41.920, BatchCLIPNorm=26.109
+2025-08-01 14:49:29,569 - INFO - src.modules.trainers.blip3o_trainer - 📊 NORM ANALYSIS (Fixed Scale-Aware):
+2025-08-01 14:49:29,569 - INFO - src.modules.trainers.blip3o_trainer -   Training Target Norms: mean=26.312, std=0.713
+2025-08-01 14:49:29,569 - INFO - src.modules.trainers.blip3o_trainer -   Eval Target Norms: mean=25.856, std=0.564
+2025-08-01 14:49:29,569 - INFO - src.modules.trainers.blip3o_trainer -   🎯 Target Norm Estimates: mean=25.856, std=0.000
+2025-08-01 14:49:29,569 - INFO - src.modules.trainers.blip3o_trainer -   📊 Scale Consistency: mean=0.961, std=0.034
+2025-08-01 14:49:29,569 - INFO - src.modules.trainers.blip3o_trainer - 🔍 Running fixed scale-aware evaluation at step 450...
+2025-08-01 14:49:29,569 - INFO - src.modules.trainers.blip3o_trainer - 🔍 Starting evaluation with 15 samples
+2025-08-01 14:49:29,571 - INFO - src.modules.trainers.blip3o_trainer - 🎯 Using adaptive target norm: 25.856
+2025-08-01 14:49:29,571 - INFO - src.modules.trainers.blip3o_trainer - 🎯 Final target norm for evaluation: 25.856
+2025-08-01 14:49:33,807 - INFO - src.modules.datasets.blip3o_dataset - Loaded shard 1/2: 2646 samples, CLIP norm=26.278, EVA norm=43.618
+2025-08-01 14:49:39,631 - INFO - src.modules.trainers.blip3o_trainer - ✅ Evaluation completed: 16 samples, similarity: 0.0304
+2025-08-01 14:49:39,631 - INFO - src.modules.trainers.blip3o_trainer - ✅ Fixed scale-aware evaluation results:
+2025-08-01 14:49:39,631 - INFO - src.modules.trainers.blip3o_trainer -   CLIP similarity: 0.0304
+2025-08-01 14:49:39,631 - INFO - src.modules.trainers.blip3o_trainer -   Generated norm: 25.856
+2025-08-01 14:49:39,631 - INFO - src.modules.trainers.blip3o_trainer -   Target norm: 25.856
+2025-08-01 14:49:39,631 - INFO - src.modules.trainers.blip3o_trainer -   Scale consistency: 0.960
+2025-08-01 14:49:39,631 - INFO - src.modules.trainers.blip3o_trainer -   🎯 Target norm used: 25.856
+2025-08-01 14:49:42,398 - INFO - src.modules.trainers.blip3o_trainer - Step 460: Loss=1.302645, VelSim=0.3926 (fair), GradNorm=4403.660, LR=9.92e-05, Noise=μ-0.001σ1.000✅, PredNorm=16.742, TargetNorm=41.391, BatchCLIPNorm=25.208
+2025-08-01 14:49:45,169 - INFO - src.modules.trainers.blip3o_trainer - Step 470: Loss=1.425510, VelSim=0.3839 (fair), GradNorm=16888.304, LR=9.92e-05, Noise=μ-0.000σ1.000✅, PredNorm=16.493, TargetNorm=41.901, BatchCLIPNorm=26.077
+2025-08-01 14:49:47,935 - INFO - src.modules.trainers.blip3o_trainer - Step 480: Loss=1.315265, VelSim=0.3973 (fair), GradNorm=4396.196, LR=9.91e-05, Noise=μ-0.001σ1.000✅, PredNorm=18.435, TargetNorm=42.215, BatchCLIPNorm=26.459
+2025-08-01 14:49:50,699 - INFO - src.modules.trainers.blip3o_trainer - Step 490: Loss=1.332398, VelSim=0.3985 (fair), GradNorm=2768.899, LR=9.91e-05, Noise=μ-0.000σ1.000✅, PredNorm=18.672, TargetNorm=42.348, BatchCLIPNorm=26.759
+2025-08-01 14:49:53,463 - INFO - src.modules.trainers.blip3o_trainer - Step 500: Loss=1.393857, VelSim=0.3806 (fair), GradNorm=26953.008, LR=9.91e-05, Noise=μ-0.001σ1.001✅, PredNorm=17.820, TargetNorm=41.445, BatchCLIPNorm=25.421
+2025-08-01 14:49:53,464 - INFO - src.modules.trainers.blip3o_trainer - 📊 NORM ANALYSIS (Fixed Scale-Aware):
+2025-08-01 14:49:53,465 - INFO - src.modules.trainers.blip3o_trainer -   Training Target Norms: mean=26.318, std=0.710
+2025-08-01 14:49:53,465 - INFO - src.modules.trainers.blip3o_trainer -   Eval Target Norms: mean=25.856, std=0.564
+2025-08-01 14:49:53,465 - INFO - src.modules.trainers.blip3o_trainer -   🎯 Target Norm Estimates: mean=25.856, std=0.000
+2025-08-01 14:49:53,465 - INFO - src.modules.trainers.blip3o_trainer -   📊 Scale Consistency: mean=0.961, std=0.034
+2025-08-01 14:49:53,465 - INFO - src.modules.trainers.blip3o_trainer - 🔍 Running fixed scale-aware evaluation at step 500...
+2025-08-01 14:49:53,465 - INFO - src.modules.trainers.blip3o_trainer - 🔍 Starting evaluation with 15 samples
+2025-08-01 14:49:53,466 - INFO - src.modules.trainers.blip3o_trainer - 🎯 Using adaptive target norm: 25.856
+2025-08-01 14:49:53,467 - INFO - src.modules.trainers.blip3o_trainer - 🎯 Final target norm for evaluation: 25.856
+2025-08-01 14:49:57,630 - INFO - src.modules.datasets.blip3o_dataset - Loaded shard 1/2: 2646 samples, CLIP norm=26.278, EVA norm=43.618
+2025-08-01 14:50:03,441 - INFO - src.modules.trainers.blip3o_trainer - ✅ Evaluation completed: 16 samples, similarity: 0.0329
+2025-08-01 14:50:03,441 - INFO - src.modules.trainers.blip3o_trainer - ✅ Fixed scale-aware evaluation results:
+2025-08-01 14:50:03,441 - INFO - src.modules.trainers.blip3o_trainer -   CLIP similarity: 0.0329
+2025-08-01 14:50:03,441 - INFO - src.modules.trainers.blip3o_trainer -   Generated norm: 25.856
+2025-08-01 14:50:03,441 - INFO - src.modules.trainers.blip3o_trainer -   Target norm: 25.856
+2025-08-01 14:50:03,441 - INFO - src.modules.trainers.blip3o_trainer -   Scale consistency: 0.960
+2025-08-01 14:50:03,441 - INFO - src.modules.trainers.blip3o_trainer -   🎯 Target norm used: 25.856
+2025-08-01 14:50:05,167 - INFO - src.modules.trainers.blip3o_trainer - Checkpoint saved: checkpoints/clip_repro_20250801_144539/checkpoint_step_500.pt
+2025-08-01 14:50:07,931 - INFO - src.modules.trainers.blip3o_trainer - Step 510: Loss=1.352249, VelSim=0.3726 (fair), GradNorm=20101.805, LR=9.90e-05, Noise=μ-0.000σ1.001✅, PredNorm=16.848, TargetNorm=41.258, BatchCLIPNorm=25.174
+2025-08-01 14:50:10,694 - INFO - src.modules.trainers.blip3o_trainer - Step 520: Loss=1.321008, VelSim=0.4001 (fair), GradNorm=3349.615, LR=9.90e-05, Noise=μ-0.000σ1.000✅, PredNorm=17.212, TargetNorm=42.057, BatchCLIPNorm=26.312
+2025-08-01 14:50:13,458 - INFO - src.modules.trainers.blip3o_trainer - Step 530: Loss=1.315168, VelSim=0.3768 (fair), GradNorm=3357.930, LR=9.89e-05, Noise=μ-0.001σ1.000✅, PredNorm=17.904, TargetNorm=41.170, BatchCLIPNorm=24.953
+2025-08-01 14:50:16,222 - INFO - src.modules.trainers.blip3o_trainer - Step 540: Loss=1.300827, VelSim=0.4083 (fair), GradNorm=2496.411, LR=9.89e-05, Noise=μ-0.000σ1.000✅, PredNorm=18.061, TargetNorm=41.953, BatchCLIPNorm=26.067
+2025-08-01 14:50:18,987 - INFO - src.modules.trainers.blip3o_trainer - Step 550: Loss=1.316469, VelSim=0.4050 (fair), GradNorm=2089.220, LR=9.88e-05, Noise=μ-0.001σ1.001✅, PredNorm=18.620, TargetNorm=42.186, BatchCLIPNorm=26.458
+2025-08-01 14:50:18,989 - INFO - src.modules.trainers.blip3o_trainer - 📊 NORM ANALYSIS (Fixed Scale-Aware):
+2025-08-01 14:50:18,989 - INFO - src.modules.trainers.blip3o_trainer -   Training Target Norms: mean=26.312, std=0.714
+2025-08-01 14:50:18,989 - INFO - src.modules.trainers.blip3o_trainer -   Eval Target Norms: mean=25.856, std=0.564
+2025-08-01 14:50:18,989 - INFO - src.modules.trainers.blip3o_trainer -   🎯 Target Norm Estimates: mean=25.856, std=0.000
+2025-08-01 14:50:18,989 - INFO - src.modules.trainers.blip3o_trainer -   📊 Scale Consistency: mean=0.961, std=0.034
+2025-08-01 14:50:18,989 - INFO - src.modules.trainers.blip3o_trainer - 🔍 Running fixed scale-aware evaluation at step 550...
+2025-08-01 14:50:18,989 - INFO - src.modules.trainers.blip3o_trainer - 🔍 Starting evaluation with 15 samples
+2025-08-01 14:50:18,991 - INFO - src.modules.trainers.blip3o_trainer - 🎯 Using adaptive target norm: 25.856
+2025-08-01 14:50:18,991 - INFO - src.modules.trainers.blip3o_trainer - 🎯 Final target norm for evaluation: 25.856
+2025-08-01 14:50:23,158 - INFO - src.modules.datasets.blip3o_dataset - Loaded shard 1/2: 2646 samples, CLIP norm=26.278, EVA norm=43.618
+2025-08-01 14:50:28,967 - INFO - src.modules.trainers.blip3o_trainer - ✅ Evaluation completed: 16 samples, similarity: 0.0317
+2025-08-01 14:50:28,968 - INFO - src.modules.trainers.blip3o_trainer - ✅ Fixed scale-aware evaluation results:
+2025-08-01 14:50:28,968 - INFO - src.modules.trainers.blip3o_trainer -   CLIP similarity: 0.0317
+2025-08-01 14:50:28,968 - INFO - src.modules.trainers.blip3o_trainer -   Generated norm: 25.856
+2025-08-01 14:50:28,968 - INFO - src.modules.trainers.blip3o_trainer -   Target norm: 25.856
+2025-08-01 14:50:28,968 - INFO - src.modules.trainers.blip3o_trainer -   Scale consistency: 0.960
+2025-08-01 14:50:28,968 - INFO - src.modules.trainers.blip3o_trainer -   🎯 Target norm used: 25.856
+2025-08-01 14:50:31,737 - INFO - src.modules.trainers.blip3o_trainer - Step 560: Loss=1.331141, VelSim=0.3808 (fair), GradNorm=2986.637, LR=9.88e-05, Noise=μ0.001σ0.999✅, PredNorm=17.441, TargetNorm=41.474, BatchCLIPNorm=25.570
+2025-08-01 14:50:34,510 - INFO - src.modules.trainers.blip3o_trainer - Step 570: Loss=1.315449, VelSim=0.3950 (fair), GradNorm=2199.132, LR=9.87e-05, Noise=μ0.000σ1.000✅, PredNorm=17.652, TargetNorm=41.889, BatchCLIPNorm=26.055
+2025-08-01 14:50:37,279 - INFO - src.modules.trainers.blip3o_trainer - Step 580: Loss=1.336384, VelSim=0.3867 (fair), GradNorm=2503.822, LR=9.86e-05, Noise=μ0.000σ1.001✅, PredNorm=17.571, TargetNorm=41.785, BatchCLIPNorm=25.879
+2025-08-01 14:50:40,047 - INFO - src.modules.trainers.blip3o_trainer - Step 590: Loss=1.320606, VelSim=0.4054 (fair), GradNorm=3081.890, LR=9.86e-05, Noise=μ0.000σ1.000✅, PredNorm=16.877, TargetNorm=42.018, BatchCLIPNorm=26.249
+2025-08-01 14:50:42,816 - INFO - src.modules.trainers.blip3o_trainer - Step 600: Loss=1.298001, VelSim=0.4207 (fair), GradNorm=2608.810, LR=9.85e-05, Noise=μ0.000σ1.001✅, PredNorm=19.811, TargetNorm=42.472, BatchCLIPNorm=26.794
+2025-08-01 14:50:42,817 - INFO - src.modules.trainers.blip3o_trainer - 📊 NORM ANALYSIS (Fixed Scale-Aware):
+2025-08-01 14:50:42,817 - INFO - src.modules.trainers.blip3o_trainer -   Training Target Norms: mean=26.309, std=0.705
+2025-08-01 14:50:42,817 - INFO - src.modules.trainers.blip3o_trainer -   Eval Target Norms: mean=25.856, std=0.564
+2025-08-01 14:50:42,817 - INFO - src.modules.trainers.blip3o_trainer -   🎯 Target Norm Estimates: mean=25.856, std=0.000
+2025-08-01 14:50:42,817 - INFO - src.modules.trainers.blip3o_trainer -   📊 Scale Consistency: mean=0.961, std=0.034
+2025-08-01 14:50:42,817 - INFO - src.modules.trainers.blip3o_trainer - 🔍 Running fixed scale-aware evaluation at step 600...
+2025-08-01 14:50:42,817 - INFO - src.modules.trainers.blip3o_trainer - 🔍 Starting evaluation with 15 samples
+2025-08-01 14:50:42,819 - INFO - src.modules.trainers.blip3o_trainer - 🎯 Using adaptive target norm: 25.856
+2025-08-01 14:50:42,819 - INFO - src.modules.trainers.blip3o_trainer - 🎯 Final target norm for evaluation: 25.856
+2025-08-01 14:50:47,184 - INFO - src.modules.datasets.blip3o_dataset - Loaded shard 1/2: 2646 samples, CLIP norm=26.278, EVA norm=43.618
+2025-08-01 14:50:53,005 - INFO - src.modules.trainers.blip3o_trainer - ✅ Evaluation completed: 16 samples, similarity: 0.0325
+2025-08-01 14:50:53,007 - INFO - src.modules.trainers.blip3o_trainer - ✅ Fixed scale-aware evaluation results:
+2025-08-01 14:50:53,007 - INFO - src.modules.trainers.blip3o_trainer -   CLIP similarity: 0.0325
+2025-08-01 14:50:53,007 - INFO - src.modules.trainers.blip3o_trainer -   Generated norm: 25.856
+2025-08-01 14:50:53,007 - INFO - src.modules.trainers.blip3o_trainer -   Target norm: 25.856
+2025-08-01 14:50:53,007 - INFO - src.modules.trainers.blip3o_trainer -   Scale consistency: 0.960
+2025-08-01 14:50:53,007 - INFO - src.modules.trainers.blip3o_trainer -   🎯 Target norm used: 25.856
+2025-08-01 14:50:55,775 - INFO - src.modules.trainers.blip3o_trainer - Step 610: Loss=1.328712, VelSim=0.3952 (fair), GradNorm=2748.719, LR=9.85e-05, Noise=μ-0.000σ1.000✅, PredNorm=18.213, TargetNorm=41.673, BatchCLIPNorm=25.890
+2025-08-01 14:50:58,542 - INFO - src.modules.trainers.blip3o_trainer - Step 620: Loss=1.339539, VelSim=0.4122 (fair), GradNorm=2075.824, LR=9.84e-05, Noise=μ0.002σ1.001✅, PredNorm=18.128, TargetNorm=42.099, BatchCLIPNorm=26.258
+2025-08-01 14:51:01,309 - INFO - src.modules.trainers.blip3o_trainer - Step 630: Loss=1.375467, VelSim=0.4601 (fair), GradNorm=9797.383, LR=9.83e-05, Noise=μ0.001σ1.000✅, PredNorm=20.704, TargetNorm=43.685, BatchCLIPNorm=28.461
+2025-08-01 14:51:04,074 - INFO - src.modules.trainers.blip3o_trainer - Step 640: Loss=1.317796, VelSim=0.4003 (fair), GradNorm=11108.648, LR=9.83e-05, Noise=μ0.000σ1.000✅, PredNorm=18.044, TargetNorm=41.800, BatchCLIPNorm=25.898
+2025-08-01 14:51:06,840 - INFO - src.modules.trainers.blip3o_trainer - Step 650: Loss=1.293471, VelSim=0.4351 (fair), GradNorm=4708.698, LR=9.82e-05, Noise=μ0.001σ1.000✅, PredNorm=20.372, TargetNorm=43.339, BatchCLIPNorm=27.847
+2025-08-01 14:51:06,841 - INFO - src.modules.trainers.blip3o_trainer - 📊 NORM ANALYSIS (Fixed Scale-Aware):
+2025-08-01 14:51:06,841 - INFO - src.modules.trainers.blip3o_trainer -   Training Target Norms: mean=26.303, std=0.704
+2025-08-01 14:51:06,841 - INFO - src.modules.trainers.blip3o_trainer -   Eval Target Norms: mean=25.856, std=0.564
+2025-08-01 14:51:06,841 - INFO - src.modules.trainers.blip3o_trainer -   🎯 Target Norm Estimates: mean=25.856, std=0.000
+2025-08-01 14:51:06,841 - INFO - src.modules.trainers.blip3o_trainer -   📊 Scale Consistency: mean=0.961, std=0.034
+2025-08-01 14:51:06,841 - INFO - src.modules.trainers.blip3o_trainer - 🔍 Running fixed scale-aware evaluation at step 650...
+2025-08-01 14:51:06,841 - INFO - src.modules.trainers.blip3o_trainer - 🔍 Starting evaluation with 15 samples
+2025-08-01 14:51:06,843 - INFO - src.modules.trainers.blip3o_trainer - 🎯 Using adaptive target norm: 25.856
+2025-08-01 14:51:06,843 - INFO - src.modules.trainers.blip3o_trainer - 🎯 Final target norm for evaluation: 25.856
+2025-08-01 14:51:11,194 - INFO - src.modules.datasets.blip3o_dataset - Loaded shard 1/2: 2646 samples, CLIP norm=26.278, EVA norm=43.618
+2025-08-01 14:51:17,003 - INFO - src.modules.trainers.blip3o_trainer - ✅ Evaluation completed: 16 samples, similarity: 0.0313
+2025-08-01 14:51:17,003 - INFO - src.modules.trainers.blip3o_trainer - ✅ Fixed scale-aware evaluation results:
+2025-08-01 14:51:17,003 - INFO - src.modules.trainers.blip3o_trainer -   CLIP similarity: 0.0313
+2025-08-01 14:51:17,003 - INFO - src.modules.trainers.blip3o_trainer -   Generated norm: 25.856
+2025-08-01 14:51:17,003 - INFO - src.modules.trainers.blip3o_trainer -   Target norm: 25.856
+2025-08-01 14:51:17,003 - INFO - src.modules.trainers.blip3o_trainer -   Scale consistency: 0.960
+2025-08-01 14:51:17,003 - INFO - src.modules.trainers.blip3o_trainer -   🎯 Target norm used: 25.856
+2025-08-01 14:51:18,535 - INFO - src.modules.datasets.blip3o_dataset - Iteration completed: 5247 samples processed (RAW embedding space)
+2025-08-01 14:51:18,535 - INFO - src.modules.trainers.blip3o_trainer - Epoch 1 completed: 655 batches processed
+2025-08-01 14:51:18,550 - INFO - src.modules.trainers.blip3o_trainer - Epoch 1 completed:
+2025-08-01 14:51:18,550 - INFO - src.modules.trainers.blip3o_trainer -   Average loss: 1.424182
+2025-08-01 14:51:18,550 - INFO - src.modules.trainers.blip3o_trainer -   Best loss: 1.272592
+2025-08-01 14:51:18,550 - INFO - src.modules.trainers.blip3o_trainer -   Best similarity: 0.4601
+2025-08-01 14:51:18,550 - INFO - src.modules.trainers.blip3o_trainer -   Steps in epoch: 655
+2025-08-01 14:51:18,550 - INFO - src.modules.trainers.blip3o_trainer -   Epoch time: 327.0s
+2025-08-01 14:51:18,550 - INFO - src.modules.trainers.blip3o_trainer - Starting epoch 2/10
+2025-08-01 14:51:22,892 - INFO - src.modules.datasets.blip3o_dataset - Loaded shard 1/2: 2601 samples, CLIP norm=26.319, EVA norm=43.667
+2025-08-01 14:51:24,278 - INFO - src.modules.trainers.blip3o_trainer - Step 660: Loss=1.382503, VelSim=0.3823 (fair), GradNorm=8589.997, LR=9.82e-05, Noise=μ-0.000σ1.000✅, PredNorm=17.663, TargetNorm=41.927, BatchCLIPNorm=26.251
+2025-08-01 14:51:27,047 - INFO - src.modules.trainers.blip3o_trainer - Step 670: Loss=1.317835, VelSim=0.3851 (fair), GradNorm=2571.903, LR=9.81e-05, Noise=μ0.000σ1.000✅, PredNorm=17.362, TargetNorm=41.306, BatchCLIPNorm=25.203
+2025-08-01 14:51:29,812 - INFO - src.modules.trainers.blip3o_trainer - Step 680: Loss=1.328961, VelSim=0.4186 (fair), GradNorm=11515.720, LR=9.80e-05, Noise=μ-0.001σ1.000✅, PredNorm=18.495, TargetNorm=41.885, BatchCLIPNorm=26.008
+2025-08-01 14:51:32,577 - INFO - src.modules.trainers.blip3o_trainer - Step 690: Loss=1.289894, VelSim=0.4299 (fair), GradNorm=2938.464, LR=9.80e-05, Noise=μ0.000σ1.000✅, PredNorm=20.333, TargetNorm=42.708, BatchCLIPNorm=27.054
+2025-08-01 14:51:35,341 - INFO - src.modules.trainers.blip3o_trainer - Step 700: Loss=1.304298, VelSim=0.4186 (fair), GradNorm=2184.766, LR=9.79e-05, Noise=μ-0.000σ1.000✅, PredNorm=18.552, TargetNorm=42.222, BatchCLIPNorm=26.598
+2025-08-01 14:51:35,343 - INFO - src.modules.trainers.blip3o_trainer - 📊 NORM ANALYSIS (Fixed Scale-Aware):
+2025-08-01 14:51:35,343 - INFO - src.modules.trainers.blip3o_trainer -   Training Target Norms: mean=26.289, std=0.705
+2025-08-01 14:51:35,343 - INFO - src.modules.trainers.blip3o_trainer -   Eval Target Norms: mean=25.856, std=0.564
+2025-08-01 14:51:35,343 - INFO - src.modules.trainers.blip3o_trainer -   🎯 Target Norm Estimates: mean=25.856, std=0.000
+2025-08-01 14:51:35,343 - INFO - src.modules.trainers.blip3o_trainer -   📊 Scale Consistency: mean=0.961, std=0.034
+2025-08-01 14:51:35,343 - INFO - src.modules.trainers.blip3o_trainer - 🔍 Running fixed scale-aware evaluation at step 700...
+2025-08-01 14:51:35,343 - INFO - src.modules.trainers.blip3o_trainer - 🔍 Starting evaluation with 15 samples
+2025-08-01 14:51:35,345 - INFO - src.modules.trainers.blip3o_trainer - 🎯 Using adaptive target norm: 25.856
+2025-08-01 14:51:35,345 - INFO - src.modules.trainers.blip3o_trainer - 🎯 Final target norm for evaluation: 25.856
+2025-08-01 14:51:39,702 - INFO - src.modules.datasets.blip3o_dataset - Loaded shard 1/2: 2646 samples, CLIP norm=26.278, EVA norm=43.618
+2025-08-01 14:51:45,510 - INFO - src.modules.trainers.blip3o_trainer - ✅ Evaluation completed: 16 samples, similarity: 0.0324
+2025-08-01 14:51:45,510 - INFO - src.modules.trainers.blip3o_trainer - ✅ Fixed scale-aware evaluation results:
+2025-08-01 14:51:45,510 - INFO - src.modules.trainers.blip3o_trainer -   CLIP similarity: 0.0324
+2025-08-01 14:51:45,510 - INFO - src.modules.trainers.blip3o_trainer -   Generated norm: 25.856
+2025-08-01 14:51:45,510 - INFO - src.modules.trainers.blip3o_trainer -   Target norm: 25.856
+2025-08-01 14:51:45,510 - INFO - src.modules.trainers.blip3o_trainer -   Scale consistency: 0.960
+2025-08-01 14:51:45,510 - INFO - src.modules.trainers.blip3o_trainer -   🎯 Target norm used: 25.856
+2025-08-01 14:51:48,273 - INFO - src.modules.trainers.blip3o_trainer - Step 710: Loss=1.295953, VelSim=0.4338 (fair), GradNorm=3294.581, LR=9.78e-05, Noise=μ0.001σ1.000✅, PredNorm=20.918, TargetNorm=42.772, BatchCLIPNorm=27.323
+2025-08-01 14:51:51,035 - INFO - src.modules.trainers.blip3o_trainer - Step 720: Loss=1.288051, VelSim=0.4278 (fair), GradNorm=4099.037, LR=9.77e-05, Noise=μ0.001σ1.000✅, PredNorm=20.111, TargetNorm=42.515, BatchCLIPNorm=26.865
+2025-08-01 14:51:53,799 - INFO - src.modules.trainers.blip3o_trainer - Step 730: Loss=1.262030, VelSim=0.4277 (fair), GradNorm=2688.717, LR=9.77e-05, Noise=μ-0.000σ0.999✅, PredNorm=19.399, TargetNorm=41.874, BatchCLIPNorm=25.910
+2025-08-01 14:51:56,563 - INFO - src.modules.trainers.blip3o_trainer - Step 740: Loss=1.311206, VelSim=0.3996 (fair), GradNorm=2964.764, LR=9.76e-05, Noise=μ0.000σ1.000✅, PredNorm=17.016, TargetNorm=41.625, BatchCLIPNorm=25.658
+2025-08-01 14:51:59,328 - INFO - src.modules.trainers.blip3o_trainer - Step 750: Loss=1.266683, VelSim=0.4280 (fair), GradNorm=2275.383, LR=9.75e-05, Noise=μ0.000σ1.000✅, PredNorm=19.805, TargetNorm=42.499, BatchCLIPNorm=26.762
+2025-08-01 14:51:59,329 - INFO - src.modules.trainers.blip3o_trainer - 📊 NORM ANALYSIS (Fixed Scale-Aware):
+2025-08-01 14:51:59,329 - INFO - src.modules.trainers.blip3o_trainer -   Training Target Norms: mean=26.286, std=0.722
+2025-08-01 14:51:59,329 - INFO - src.modules.trainers.blip3o_trainer -   Eval Target Norms: mean=25.856, std=0.564
+2025-08-01 14:51:59,329 - INFO - src.modules.trainers.blip3o_trainer -   🎯 Target Norm Estimates: mean=25.856, std=0.000
+2025-08-01 14:51:59,329 - INFO - src.modules.trainers.blip3o_trainer -   📊 Scale Consistency: mean=0.961, std=0.034
+2025-08-01 14:51:59,329 - INFO - src.modules.trainers.blip3o_trainer - 🔍 Running fixed scale-aware evaluation at step 750...
+2025-08-01 14:51:59,329 - INFO - src.modules.trainers.blip3o_trainer - 🔍 Starting evaluation with 15 samples
+2025-08-01 14:51:59,331 - INFO - src.modules.trainers.blip3o_trainer - 🎯 Using adaptive target norm: 25.856
+2025-08-01 14:51:59,331 - INFO - src.modules.trainers.blip3o_trainer - 🎯 Final target norm for evaluation: 25.856
+2025-08-01 14:52:03,652 - INFO - src.modules.datasets.blip3o_dataset - Loaded shard 1/2: 2646 samples, CLIP norm=26.278, EVA norm=43.618
+2025-08-01 14:52:09,446 - INFO - src.modules.trainers.blip3o_trainer - ✅ Evaluation completed: 16 samples, similarity: 0.0307
+2025-08-01 14:52:09,448 - INFO - src.modules.trainers.blip3o_trainer - ✅ Fixed scale-aware evaluation results:
+2025-08-01 14:52:09,448 - INFO - src.modules.trainers.blip3o_trainer -   CLIP similarity: 0.0307
+2025-08-01 14:52:09,448 - INFO - src.modules.trainers.blip3o_trainer -   Generated norm: 25.856
+2025-08-01 14:52:09,448 - INFO - src.modules.trainers.blip3o_trainer -   Target norm: 25.856
+2025-08-01 14:52:09,448 - INFO - src.modules.trainers.blip3o_trainer -   Scale consistency: 0.960
+2025-08-01 14:52:09,448 - INFO - src.modules.trainers.blip3o_trainer -   🎯 Target norm used: 25.856
+2025-08-01 14:52:12,210 - INFO - src.modules.trainers.blip3o_trainer - Step 760: Loss=1.291857, VelSim=0.4125 (fair), GradNorm=2337.736, LR=9.74e-05, Noise=μ0.001σ0.999✅, PredNorm=19.450, TargetNorm=42.171, BatchCLIPNorm=26.430

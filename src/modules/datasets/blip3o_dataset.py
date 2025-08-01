@@ -45,9 +45,11 @@ class BLIP3oCLIPReproductionDataset(IterableDataset):
         shuffle_shards: bool = True,
         shuffle_within_shard: bool = True,
         expected_tokens: Optional[int] = None,
-        # Error handling
+        # Error handling - FIXED: Accept both parameter name variants
         skip_corrupted: bool = True,
+        skip_corrupted_samples: Optional[bool] = None,  # Alternative parameter name
         validate_shapes: bool = True,
+        validate_tensor_shapes: Optional[bool] = None,  # Alternative parameter name
         max_retries: int = 3,
         # FIXED: Remove statistics collection for consistency
         collect_statistics: bool = False,

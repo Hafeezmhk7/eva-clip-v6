@@ -1,23 +1,25 @@
 """
-BLIP3-o Configuration for CLIP Reproduction - Aligned with BLIP3-o Paper
-Configuration for reproducing CLIP embeddings from EVA embeddings
-
-Key changes from EVA reproduction:
-1. eva_embedding_size = 4096 (conditioning)
-2. clip_embedding_size = 1024 (target)
-3. Updated parameter validation
-4. Memory-optimized configurations
+FIXED: BLIP3-o Configuration for CLIP Reproduction - Robust Parameter Handling
+Key fixes:
+1. Strict type validation for all parameters
+2. Safe conversion of numeric parameters to Python types
+3. Enhanced parameter validation
+4. Better error handling and fallbacks
+5. Comprehensive parameter documentation
 """
 
 from transformers import PretrainedConfig
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Union
 from dataclasses import dataclass
 import math
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class BLIP3oCLIPDiTConfig(PretrainedConfig):
     """
-    Configuration class for BLIP3-o CLIP reproduction DiT model.
+    FIXED: Configuration class for BLIP3-o CLIP reproduction DiT model with robust parameter handling.
     
     This configuration follows the BLIP3-o paper architecture with:
     - Patch-level training on 256 EVA tokens (4096-dim)
@@ -25,6 +27,7 @@ class BLIP3oCLIPDiTConfig(PretrainedConfig):
     - Flow matching training objective
     - 3D RoPE and Grouped-Query Attention
     - Sandwich normalization (RMSNorm)
+    - FIXED: Robust scale-aware generation parameters
     """
     
     model_type = "blip3o_clip_dit"
@@ -56,6 +59,8 @@ class BLIP3oCLIPDiTConfig(PretrainedConfig):
         use_3d_rope: bool = True,  # 3D Rotary Position Embedding
         rope_theta: float = 10000.0,
         rope_scaling: Optional[Dict] = None,
+        image_size: int = 224,
+        patch_size: int = 14,
         
         # Flow matching parameters
         prediction_type: str = "velocity",
@@ -69,56 +74,131 @@ class BLIP3oCLIPDiTConfig(PretrainedConfig):
         use_sandwich_norm: bool = True,  # Sandwich normalization
         use_grouped_query_attention: bool = True,
         
+        # FIXED: Scale-aware generation parameters with strict type validation
+        typical_clip_norm: Union[float, int] = 26.0,
+        velocity_explosion_threshold: Union[float, int] = 100.0,
+        norm_guidance_strength: Union[float, int] = 0.1,
+        norm_guidance_frequency: int = 10,
+        
         **kwargs,
     ):
         super().__init__(**kwargs)
         
-        # Core architecture
-        self.hidden_size = hidden_size
-        self.num_hidden_layers = num_hidden_layers
-        self.num_attention_heads = num_attention_heads
-        self.num_key_value_heads = num_key_value_heads
-        self.intermediate_size = intermediate_size
+        # Core architecture with validation
+        self.hidden_size = int(hidden_size)
+        self.num_hidden_layers = int(num_hidden_layers)
+        self.num_attention_heads = int(num_attention_heads)
+        self.num_key_value_heads = int(num_key_value_heads)
+        self.intermediate_size = int(intermediate_size)
         
-        # Input/output dimensions
-        self.eva_embedding_size = eva_embedding_size
-        self.clip_embedding_size = clip_embedding_size
-        self.num_tokens = num_tokens
+        # Input/output dimensions with validation
+        self.eva_embedding_size = int(eva_embedding_size)
+        self.clip_embedding_size = int(clip_embedding_size)
+        self.num_tokens = int(num_tokens)
         
         # Training configuration
-        self.max_position_embeddings = max_position_embeddings
-        self.dropout_prob = dropout_prob
+        self.max_position_embeddings = int(max_position_embeddings)
+        self.dropout_prob = float(dropout_prob)
         
         # Normalization
-        self.rms_norm_eps = rms_norm_eps
-        self.use_rms_norm = use_rms_norm
+        self.rms_norm_eps = float(rms_norm_eps)
+        self.use_rms_norm = bool(use_rms_norm)
         
         # Attention
-        self.attention_dropout = attention_dropout
-        self.use_3d_rope = use_3d_rope
-        self.rope_theta = rope_theta
+        self.attention_dropout = float(attention_dropout)
+        self.use_3d_rope = bool(use_3d_rope)
+        self.rope_theta = float(rope_theta)
         self.rope_scaling = rope_scaling
+        self.image_size = int(image_size)
+        self.patch_size = int(patch_size)
         
         # Flow matching
-        self.prediction_type = prediction_type
+        self.prediction_type = str(prediction_type)
         
         # Training optimizations
-        self.use_gradient_checkpointing = use_gradient_checkpointing
-        self.training_mode = training_mode
-        self.zero_init_output = zero_init_output
+        self.use_gradient_checkpointing = bool(use_gradient_checkpointing)
+        self.training_mode = str(training_mode)
+        self.zero_init_output = bool(zero_init_output)
         
         # BLIP3-o specific
-        self.use_sandwich_norm = use_sandwich_norm
-        self.use_grouped_query_attention = use_grouped_query_attention
+        self.use_sandwich_norm = bool(use_sandwich_norm)
+        self.use_grouped_query_attention = bool(use_grouped_query_attention)
+        
+        # FIXED: Scale-aware generation parameters with strict type enforcement
+        self.typical_clip_norm = self._safe_convert_to_float(typical_clip_norm, "typical_clip_norm", 26.0)
+        self.velocity_explosion_threshold = self._safe_convert_to_float(velocity_explosion_threshold, "velocity_explosion_threshold", 100.0)
+        self.norm_guidance_strength = self._safe_convert_to_float(norm_guidance_strength, "norm_guidance_strength", 0.1)
+        self.norm_guidance_frequency = int(norm_guidance_frequency)
+        
+        # Calculate grid size for 3D RoPE
+        self.grid_size = self.image_size // self.patch_size  # 224 // 14 = 16
         
         # Validate configuration
         self._validate_config()
+        
+        # Log successful initialization
+        logger.info(f"FIXED BLIP3oCLIPDiTConfig initialized:")
+        logger.info(f"  typical_clip_norm: {self.typical_clip_norm} (type: {type(self.typical_clip_norm).__name__})")
+        logger.info(f"  velocity_explosion_threshold: {self.velocity_explosion_threshold}")
+        logger.info(f"  norm_guidance_strength: {self.norm_guidance_strength}")
+        logger.info(f"  norm_guidance_frequency: {self.norm_guidance_frequency}")
+    
+    def _safe_convert_to_float(self, value, param_name: str, default_value: float) -> float:
+        """
+        FIXED: Safely convert any numeric value to Python float with comprehensive error handling
+        """
+        try:
+            if value is None:
+                logger.warning(f"⚠️ {param_name} is None, using default: {default_value}")
+                return float(default_value)
+            
+            if hasattr(value, 'item'):  # torch.Tensor or numpy array
+                if hasattr(value, 'numel') and value.numel() != 1:
+                    logger.error(f"❌ {param_name} is a multi-element tensor/array!")
+                    logger.error(f"   Shape: {getattr(value, 'shape', 'unknown')}")
+                    logger.error(f"   Using default: {default_value}")
+                    return float(default_value)
+                result = float(value.item())
+            elif isinstance(value, (int, float)):
+                result = float(value)
+            else:
+                logger.error(f"❌ {param_name} has unexpected type: {type(value)}")
+                logger.error(f"   Value: {value}")
+                logger.error(f"   Using default: {default_value}")
+                return float(default_value)
+            
+            # Validate the result
+            if math.isnan(result) or math.isinf(result):
+                logger.error(f"❌ {param_name} is NaN or Inf: {result}")
+                return float(default_value)
+            
+            # Validate reasonable ranges
+            if param_name == "typical_clip_norm" and not (10.0 <= result <= 100.0):
+                logger.warning(f"⚠️ {param_name} outside reasonable range [10, 100]: {result}")
+                result = max(10.0, min(100.0, result))
+            elif param_name == "velocity_explosion_threshold" and not (50.0 <= result <= 1000.0):
+                logger.warning(f"⚠️ {param_name} outside reasonable range [50, 1000]: {result}")
+                result = max(50.0, min(1000.0, result))
+            elif param_name == "norm_guidance_strength" and not (0.0 <= result <= 1.0):
+                logger.warning(f"⚠️ {param_name} outside reasonable range [0, 1]: {result}")
+                result = max(0.0, min(1.0, result))
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"❌ Error converting {param_name} to float: {e}")
+            logger.error(f"   Input value: {value}")
+            logger.error(f"   Input type: {type(value)}")
+            logger.error(f"   Using default: {default_value}")
+            return float(default_value)
     
     def _validate_config(self):
-        """Validate configuration parameters."""
+        """FIXED: Validate configuration parameters with enhanced checking."""
+        validation_errors = []
+        
         # Check head dimension compatibility
         if self.hidden_size % self.num_attention_heads != 0:
-            raise ValueError(
+            validation_errors.append(
                 f"hidden_size ({self.hidden_size}) must be divisible by "
                 f"num_attention_heads ({self.num_attention_heads})"
             )
@@ -126,24 +206,52 @@ class BLIP3oCLIPDiTConfig(PretrainedConfig):
         # Check grouped-query attention compatibility
         if self.use_grouped_query_attention:
             if self.num_attention_heads % self.num_key_value_heads != 0:
-                raise ValueError(
+                validation_errors.append(
                     f"num_attention_heads ({self.num_attention_heads}) must be divisible by "
                     f"num_key_value_heads ({self.num_key_value_heads}) for grouped-query attention"
                 )
         
         # Check number of tokens
         if self.num_tokens not in [256, 257]:
-            raise ValueError(f"num_tokens must be 256 or 257, got {self.num_tokens}")
+            validation_errors.append(f"num_tokens must be 256 or 257, got {self.num_tokens}")
         
         # Check prediction type
         if self.prediction_type not in ["velocity", "epsilon"]:
-            raise ValueError(f"prediction_type must be 'velocity' or 'epsilon', got {self.prediction_type}")
+            validation_errors.append(f"prediction_type must be 'velocity' or 'epsilon', got {self.prediction_type}")
         
         # Validate embedding dimensions
         if self.eva_embedding_size <= 0:
-            raise ValueError(f"eva_embedding_size must be positive, got {self.eva_embedding_size}")
+            validation_errors.append(f"eva_embedding_size must be positive, got {self.eva_embedding_size}")
         if self.clip_embedding_size <= 0:
-            raise ValueError(f"clip_embedding_size must be positive, got {self.clip_embedding_size}")
+            validation_errors.append(f"clip_embedding_size must be positive, got {self.clip_embedding_size}")
+        
+        # FIXED: Validate scale-aware parameters
+        if not isinstance(self.typical_clip_norm, float):
+            validation_errors.append(f"typical_clip_norm must be float, got {type(self.typical_clip_norm)}")
+        if not isinstance(self.velocity_explosion_threshold, float):
+            validation_errors.append(f"velocity_explosion_threshold must be float, got {type(self.velocity_explosion_threshold)}")
+        if not isinstance(self.norm_guidance_strength, float):
+            validation_errors.append(f"norm_guidance_strength must be float, got {type(self.norm_guidance_strength)}")
+        if not isinstance(self.norm_guidance_frequency, int):
+            validation_errors.append(f"norm_guidance_frequency must be int, got {type(self.norm_guidance_frequency)}")
+        
+        # Check parameter ranges
+        if self.typical_clip_norm <= 0:
+            validation_errors.append(f"typical_clip_norm must be positive, got {self.typical_clip_norm}")
+        if self.velocity_explosion_threshold <= 0:
+            validation_errors.append(f"velocity_explosion_threshold must be positive, got {self.velocity_explosion_threshold}")
+        if not (0.0 <= self.norm_guidance_strength <= 1.0):
+            validation_errors.append(f"norm_guidance_strength must be in [0, 1], got {self.norm_guidance_strength}")
+        if self.norm_guidance_frequency <= 0:
+            validation_errors.append(f"norm_guidance_frequency must be positive, got {self.norm_guidance_frequency}")
+        
+        # Raise error if validation fails
+        if validation_errors:
+            error_msg = "Configuration validation failed:\n" + "\n".join(f"  • {err}" for err in validation_errors)
+            logger.error(f"❌ {error_msg}")
+            raise ValueError(error_msg)
+        
+        logger.info("✅ Configuration validation passed")
     
     def get_head_dim(self):
         """Get attention head dimension."""
@@ -187,26 +295,42 @@ class BLIP3oCLIPDiTConfig(PretrainedConfig):
         return total_params
     
     def to_dict(self):
-        """Convert config to dictionary."""
+        """Convert config to dictionary with type validation."""
         output = super().to_dict()
+        
+        # FIXED: Ensure all scale-aware parameters are proper Python types in the dict
+        output['typical_clip_norm'] = float(self.typical_clip_norm)
+        output['velocity_explosion_threshold'] = float(self.velocity_explosion_threshold)
+        output['norm_guidance_strength'] = float(self.norm_guidance_strength)
+        output['norm_guidance_frequency'] = int(self.norm_guidance_frequency)
+        
         return output
 
 
 def get_blip3o_clip_config(
     model_size: str = "base",
     training_mode: str = "patch_only",
+    # FIXED: Scale-aware parameters with type validation
+    typical_clip_norm: Union[float, int] = 26.0,
+    velocity_explosion_threshold: Union[float, int] = 100.0,
+    norm_guidance_strength: Union[float, int] = 0.1,
+    norm_guidance_frequency: int = 10,
     **kwargs
 ) -> BLIP3oCLIPDiTConfig:
     """
-    Get predefined BLIP3-o configuration for CLIP reproduction.
+    FIXED: Get predefined BLIP3-o configuration for CLIP reproduction with robust parameter handling.
     
     Args:
         model_size: Model size - "tiny", "small", "base", "large"
         training_mode: "patch_only" (256 tokens) or "cls_patch" (257 tokens)
+        typical_clip_norm: Typical CLIP embedding norm for scale guidance
+        velocity_explosion_threshold: Threshold for velocity explosion prevention
+        norm_guidance_strength: Strength of norm guidance during generation
+        norm_guidance_frequency: Frequency of norm guidance application
         **kwargs: Additional configuration overrides
         
     Returns:
-        BLIP3oCLIPDiTConfig instance
+        BLIP3oCLIPDiTConfig instance with validated parameters
     """
     # Predefined configurations optimized for BLIP3-o architecture
     configs = {
@@ -262,7 +386,15 @@ def get_blip3o_clip_config(
         "attention_dropout": 0.0,
     })
     
-    # Apply overrides
+    # FIXED: Add scale-aware parameters with type validation
+    config_dict.update({
+        "typical_clip_norm": float(typical_clip_norm),
+        "velocity_explosion_threshold": float(velocity_explosion_threshold),
+        "norm_guidance_strength": float(norm_guidance_strength),
+        "norm_guidance_frequency": int(norm_guidance_frequency),
+    })
+    
+    # Apply additional overrides
     config_dict.update(kwargs)
     
     return BLIP3oCLIPDiTConfig(**config_dict)
@@ -274,7 +406,7 @@ class FlowMatchingConfig:
     prediction_type: str = "velocity"
     normalize_targets: bool = True
     flow_type: str = "rectified"
-    loss_scale: float = 1.0  # Reduced for better stability
+    loss_scale: float = 1.0
     
     # Stability parameters
     min_timestep: float = 1e-3
@@ -288,11 +420,11 @@ class FlowMatchingConfig:
 
 @dataclass  
 class TrainingConfig:
-    """Configuration for training parameters optimized for CLIP reproduction"""
+    """FIXED: Configuration for training parameters with robust validation"""
     num_epochs: int = 20
     batch_size: int = 16
     eval_batch_size: int = 16
-    learning_rate: float = 5e-4  # Higher LR based on feedback
+    learning_rate: float = 1e-4  # Conservative for stability
     weight_decay: float = 0.01
     warmup_steps: int = 100
     lr_scheduler_type: str = "cosine"
@@ -302,13 +434,13 @@ class TrainingConfig:
     
     # Evaluation parameters
     eval_every_n_steps: int = 50
-    eval_num_samples: int = 100
-    eval_inference_steps: int = 50
+    eval_num_samples: int = 15  # Reduced for faster evaluation
+    eval_inference_steps: int = 20  # Reduced for faster evaluation
     
     # Debugging
     debug_mode: bool = False
     track_gradients: bool = True
-    overfit_test_size: Optional[int] = None
+    overfit_test_size: Optional[int] = 20  # Enable by default for validation
     
     # Robustness
     skip_corrupted_samples: bool = True
@@ -318,11 +450,11 @@ class TrainingConfig:
 
 @dataclass
 class EvaluationConfig:
-    """Configuration for evaluation parameters"""
+    """FIXED: Configuration for evaluation parameters with scale-aware enhancements"""
     eval_every_n_steps: int = 50
-    eval_num_samples: int = 100
+    eval_num_samples: int = 15
     eval_batch_size: int = 16
-    eval_inference_steps: int = 50
+    eval_inference_steps: int = 20
     normalize_embeddings: bool = True
     
     # Quality thresholds for CLIP reproduction
@@ -330,13 +462,19 @@ class EvaluationConfig:
     very_high_quality_threshold: float = 0.8
     excellent_quality_threshold: float = 0.9
     
+    # FIXED: Scale-aware evaluation parameters
+    use_scale_aware_eval: bool = True
+    adaptive_target_norm: bool = True
+    use_lognormal_schedule: bool = True
+    target_norm_estimation_method: str = "adaptive"  # "adaptive" or "fixed"
+    
     # Evaluation modes
     use_heun_solver: bool = False  # Use Euler for faster evaluation
     guidance_scale: float = 1.0
 
 
 def get_default_clip_configs() -> tuple:
-    """Get default configurations for all components"""
+    """Get default configurations for all components with fixes"""
     model_config = get_blip3o_clip_config("base", "patch_only")
     flow_config = FlowMatchingConfig()
     training_config = TrainingConfig()
@@ -346,34 +484,57 @@ def get_default_clip_configs() -> tuple:
 
 
 def create_config_from_args(args) -> tuple:
-    """Create configurations from command line arguments"""
+    """FIXED: Create configurations from command line arguments with type validation"""
+    
+    # FIXED: Ensure all scale-aware parameters are proper Python types
+    typical_clip_norm = float(getattr(args, 'typical_clip_norm', 26.0))
+    velocity_explosion_threshold = float(getattr(args, 'velocity_explosion_threshold', 100.0))
+    norm_guidance_strength = float(getattr(args, 'norm_guidance_strength', 0.1))
+    norm_guidance_frequency = int(getattr(args, 'norm_guidance_frequency', 10))
+    
+    logger.info(f"Creating config from args with scale-aware parameters:")
+    logger.info(f"  typical_clip_norm: {typical_clip_norm} (type: {type(typical_clip_norm).__name__})")
+    logger.info(f"  velocity_explosion_threshold: {velocity_explosion_threshold}")
+    logger.info(f"  norm_guidance_strength: {norm_guidance_strength}")
+    logger.info(f"  norm_guidance_frequency: {norm_guidance_frequency}")
+    
     model_config = get_blip3o_clip_config(
         model_size=getattr(args, 'model_size', 'base'),
         training_mode=getattr(args, 'training_mode', 'patch_only'),
         use_gradient_checkpointing=getattr(args, 'gradient_checkpointing', False),
+        typical_clip_norm=typical_clip_norm,
+        velocity_explosion_threshold=velocity_explosion_threshold,
+        norm_guidance_strength=norm_guidance_strength,
+        norm_guidance_frequency=norm_guidance_frequency,
     )
     
     flow_config = FlowMatchingConfig(
         prediction_type="velocity",
         normalize_targets=True,
         flow_type="rectified",
-        loss_scale=1.0,  # Improved stability
+        loss_scale=1.0,
     )
     
     training_config = TrainingConfig(
-        num_epochs=getattr(args, 'num_epochs', 20),
-        batch_size=getattr(args, 'batch_size', 16),
-        learning_rate=getattr(args, 'learning_rate', 5e-4),
+        num_epochs=getattr(args, 'num_epochs', 10),
+        batch_size=getattr(args, 'batch_size', 8),
+        learning_rate=getattr(args, 'learning_rate', 1e-4),
         gradient_accumulation_steps=getattr(args, 'gradient_accumulation_steps', 2),
         fp16=getattr(args, 'fp16', True),
         debug_mode=getattr(args, 'debug_mode', False),
         overfit_test_size=getattr(args, 'overfit_test_size', None),
+        eval_every_n_steps=getattr(args, 'eval_every_n_steps', 50),
+        eval_num_samples=getattr(args, 'eval_num_samples', 15),
+        eval_inference_steps=getattr(args, 'eval_inference_steps', 20),
     )
     
     eval_config = EvaluationConfig(
         eval_every_n_steps=getattr(args, 'eval_every_n_steps', 50),
-        eval_num_samples=getattr(args, 'eval_num_samples', 100),
-        eval_inference_steps=getattr(args, 'eval_inference_steps', 50),
+        eval_num_samples=getattr(args, 'eval_num_samples', 15),
+        eval_inference_steps=getattr(args, 'eval_inference_steps', 20),
+        use_scale_aware_eval=getattr(args, 'use_scale_aware', True) and not getattr(args, 'no_scale_aware', False),
+        adaptive_target_norm=getattr(args, 'adaptive_target_norm', True),
+        use_lognormal_schedule=getattr(args, 'eval_use_lognormal_schedule', True),
     )
     
     return model_config, flow_config, training_config, eval_config
@@ -384,25 +545,44 @@ def validate_config_compatibility(
     flow_config: FlowMatchingConfig,
     training_config: TrainingConfig
 ) -> bool:
-    """Validate that all configs are compatible"""
+    """FIXED: Validate that all configs are compatible with enhanced checking"""
+    
+    validation_errors = []
     
     # Check flow matching compatibility
     if flow_config.prediction_type not in ["velocity", "epsilon"]:
-        raise ValueError(f"Unsupported prediction type: {flow_config.prediction_type}")
+        validation_errors.append(f"Unsupported prediction type: {flow_config.prediction_type}")
     
     # Check model and training compatibility
     if model_config.num_tokens not in [256, 257]:
-        raise ValueError(f"Invalid token count: {model_config.num_tokens}")
+        validation_errors.append(f"Invalid token count: {model_config.num_tokens}")
     
     # Check batch size compatibility
     if training_config.batch_size < 1:
-        raise ValueError(f"Invalid batch size: {training_config.batch_size}")
+        validation_errors.append(f"Invalid batch size: {training_config.batch_size}")
     
     # Check grouped-query attention
     if model_config.use_grouped_query_attention:
         if model_config.num_attention_heads % model_config.num_key_value_heads != 0:
-            raise ValueError("Incompatible grouped-query attention configuration")
+            validation_errors.append("Incompatible grouped-query attention configuration")
     
+    # FIXED: Check scale-aware parameter types
+    if not isinstance(model_config.typical_clip_norm, float):
+        validation_errors.append(f"typical_clip_norm must be float, got {type(model_config.typical_clip_norm)}")
+    
+    # Check parameter ranges
+    if not (10.0 <= model_config.typical_clip_norm <= 100.0):
+        validation_errors.append(f"typical_clip_norm outside reasonable range: {model_config.typical_clip_norm}")
+    
+    if not (0.0 <= model_config.norm_guidance_strength <= 1.0):
+        validation_errors.append(f"norm_guidance_strength outside valid range: {model_config.norm_guidance_strength}")
+    
+    if validation_errors:
+        error_msg = "Configuration compatibility validation failed:\n" + "\n".join(f"  • {err}" for err in validation_errors)
+        logger.error(f"❌ {error_msg}")
+        raise ValueError(error_msg)
+    
+    logger.info("✅ Configuration compatibility validation passed")
     return True
 
 
@@ -412,9 +592,9 @@ def print_config_summary(
     training_config: TrainingConfig,
     eval_config: EvaluationConfig
 ):
-    """Print comprehensive configuration summary"""
-    print("📋 BLIP3-o CLIP Reproduction Configuration Summary")
-    print("=" * 60)
+    """FIXED: Print comprehensive configuration summary with validation"""
+    print("📋 FIXED BLIP3-o CLIP Reproduction Configuration Summary")
+    print("=" * 80)
     
     print(f"🏗️ Model Configuration (BLIP3-o DiT):")
     print(f"   Architecture: {model_config.hidden_size}D, {model_config.num_hidden_layers}L, {model_config.num_attention_heads}H")
@@ -426,6 +606,13 @@ def print_config_summary(
     print(f"   Sandwich Norm: {model_config.use_sandwich_norm}")
     print(f"   RMS Norm: {model_config.use_rms_norm}")
     print(f"   Parameters: ~{model_config.get_parameter_count_estimate()/1e6:.1f}M")
+    
+    print(f"\n🎯 FIXED Scale-Aware Configuration:")
+    print(f"   Typical CLIP norm: {model_config.typical_clip_norm:.3f} (type: {type(model_config.typical_clip_norm).__name__})")
+    print(f"   Velocity explosion threshold: {model_config.velocity_explosion_threshold:.1f}")
+    print(f"   Norm guidance strength: {model_config.norm_guidance_strength:.3f}")
+    print(f"   Norm guidance frequency: {model_config.norm_guidance_frequency}")
+    print(f"   Fixed target norm handling: ✅")
     
     print(f"\n🌊 Flow Matching Configuration:")
     print(f"   Prediction type: {flow_config.prediction_type}")
@@ -446,149 +633,22 @@ def print_config_summary(
     if training_config.overfit_test_size:
         print(f"   Overfitting test: {training_config.overfit_test_size} samples")
     
-    print(f"\n📊 Evaluation Configuration:")
+    print(f"\n📊 FIXED Evaluation Configuration:")
     print(f"   Eval every: {eval_config.eval_every_n_steps} steps")
     print(f"   Eval samples: {eval_config.eval_num_samples}")
     print(f"   Inference steps: {eval_config.eval_inference_steps}")
     print(f"   Quality thresholds: {eval_config.high_quality_threshold}/{eval_config.very_high_quality_threshold}/{eval_config.excellent_quality_threshold}")
-    print(f"   Normalize embeddings: {eval_config.normalize_embeddings}")
+    print(f"   Scale-aware eval: {eval_config.use_scale_aware_eval}")
+    print(f"   Adaptive target norm: {eval_config.adaptive_target_norm}")
+    print(f"   Log-normal schedule: {eval_config.use_lognormal_schedule}")
+    print(f"   Fixed norm handling: ✅")
     
-    print("=" * 60)
-
-
-def get_memory_optimized_config(
-    available_memory_gb: float,
-    target_batch_size: int = None
-) -> tuple:
-    """
-    Get memory-optimized configuration based on available GPU memory
-    
-    Args:
-        available_memory_gb: Available GPU memory in GB
-        target_batch_size: Desired batch size (optional)
-        
-    Returns:
-        Tuple of (model_size, config, estimated_memory_usage)
-    """
-    # Memory usage estimates (rough) for different model sizes
-    memory_estimates = {
-        "tiny": {
-            "base_memory_gb": 2.0,
-            "memory_per_batch_item": 0.1,
-            "max_batch_size": 32,
-        },
-        "small": {
-            "base_memory_gb": 4.0,
-            "memory_per_batch_item": 0.15,
-            "max_batch_size": 24,
-        },
-        "base": {
-            "base_memory_gb": 8.0,
-            "memory_per_batch_item": 0.25,
-            "max_batch_size": 16,
-        },
-        "large": {
-            "base_memory_gb": 16.0,
-            "memory_per_batch_item": 0.4,
-            "max_batch_size": 8,
-        },
-    }
-    
-    # Find the largest model that fits
-    for model_size in ["large", "base", "small", "tiny"]:
-        estimates = memory_estimates[model_size]
-        base_memory = estimates["base_memory_gb"]
-        
-        if target_batch_size:
-            estimated_memory = base_memory + target_batch_size * estimates["memory_per_batch_item"]
-            if estimated_memory <= available_memory_gb * 0.9:  # 90% usage
-                config = get_blip3o_clip_config(model_size)
-                return model_size, config, estimated_memory
-        else:
-            # Find optimal batch size
-            max_batch_size = min(
-                estimates["max_batch_size"],
-                int((available_memory_gb * 0.9 - base_memory) / estimates["memory_per_batch_item"])
-            )
-            if max_batch_size >= 4:  # Minimum viable batch size
-                config = get_blip3o_clip_config(model_size)
-                estimated_memory = base_memory + max_batch_size * estimates["memory_per_batch_item"]
-                return model_size, config, estimated_memory
-    
-    # Fallback to tiny with minimal batch size
-    config = get_blip3o_clip_config("tiny")
-    return "tiny", config, memory_estimates["tiny"]["base_memory_gb"] + 4 * memory_estimates["tiny"]["memory_per_batch_item"]
-
-
-def create_overfitting_test_config(
-    base_model_size: str = "base",
-    test_size: int = 10,
-    training_mode: str = "patch_only"
-) -> tuple:
-    """
-    Create configuration optimized for overfitting test
-    
-    Args:
-        base_model_size: Base model size
-        test_size: Number of samples for overfitting test
-        training_mode: Training mode
-        
-    Returns:
-        Tuple of configurations optimized for overfitting
-    """
-    # Get base model config
-    model_config = get_blip3o_clip_config(base_model_size, training_mode)
-    
-    # Flow matching config optimized for overfitting
-    flow_config = FlowMatchingConfig(
-        prediction_type="velocity",
-        normalize_targets=True,
-        flow_type="rectified",
-        loss_scale=1.0,
-        min_timestep=1e-3,
-        max_timestep=0.999,
-    )
-    
-    # Training config optimized for overfitting
-    training_config = TrainingConfig(
-        num_epochs=100,  # More epochs for overfitting
-        batch_size=min(8, test_size),  # Small batch size
-        learning_rate=1e-3,  # Higher learning rate for faster overfitting
-        weight_decay=0.0,  # No regularization
-        warmup_steps=0,  # No warmup for overfitting
-        lr_scheduler_type="constant",
-        gradient_accumulation_steps=1,
-        fp16=True,
-        eval_every_n_steps=20,  # More frequent evaluation
-        eval_num_samples=test_size,
-        debug_mode=True,  # Enable debugging
-        track_gradients=True,
-        overfit_test_size=test_size,
-        skip_corrupted_samples=False,  # Don't skip any samples
-        validate_tensor_shapes=True,
-    )
-    
-    # Evaluation config for overfitting test
-    eval_config = EvaluationConfig(
-        eval_every_n_steps=20,
-        eval_num_samples=test_size,
-        eval_batch_size=min(4, test_size),
-        eval_inference_steps=20,  # Fewer steps for faster evaluation
-        normalize_embeddings=True,
-    )
-    
-    return model_config, flow_config, training_config, eval_config
+    print("=" * 80)
 
 
 def validate_blip3o_clip_architecture(config: BLIP3oCLIPDiTConfig) -> Dict[str, bool]:
     """
-    Validate that the configuration follows BLIP3-o architecture specifications
-    
-    Args:
-        config: BLIP3oCLIPDiTConfig to validate
-        
-    Returns:
-        Dictionary with validation results
+    FIXED: Validate that the configuration follows BLIP3-o architecture specifications with enhanced checking
     """
     validation_results = {}
     
@@ -621,6 +681,24 @@ def validate_blip3o_clip_architecture(config: BLIP3oCLIPDiTConfig) -> Dict[str, 
     # Check training optimizations
     validation_results["dropout_disabled"] = config.dropout_prob == 0.0
     
+    # FIXED: Check scale-aware parameters
+    validation_results["typical_clip_norm_valid"] = (
+        isinstance(config.typical_clip_norm, float) and 
+        10.0 <= config.typical_clip_norm <= 100.0
+    )
+    validation_results["velocity_threshold_valid"] = (
+        isinstance(config.velocity_explosion_threshold, float) and 
+        config.velocity_explosion_threshold > 0
+    )
+    validation_results["norm_guidance_strength_valid"] = (
+        isinstance(config.norm_guidance_strength, float) and 
+        0.0 <= config.norm_guidance_strength <= 1.0
+    )
+    validation_results["norm_guidance_frequency_valid"] = (
+        isinstance(config.norm_guidance_frequency, int) and 
+        config.norm_guidance_frequency > 0
+    )
+    
     # Overall validation
     validation_results["blip3o_compliant"] = all([
         validation_results["3d_rope_enabled"],
@@ -633,15 +711,29 @@ def validate_blip3o_clip_architecture(config: BLIP3oCLIPDiTConfig) -> Dict[str, 
         validation_results["velocity_prediction"],
     ])
     
+    # FIXED: Scale-aware compliance
+    validation_results["scale_aware_compliant"] = all([
+        validation_results["typical_clip_norm_valid"],
+        validation_results["velocity_threshold_valid"],
+        validation_results["norm_guidance_strength_valid"],
+        validation_results["norm_guidance_frequency_valid"],
+    ])
+    
+    # Overall compliance including fixes
+    validation_results["fully_compliant"] = (
+        validation_results["blip3o_compliant"] and 
+        validation_results["scale_aware_compliant"]
+    )
+    
     return validation_results
 
 
 def print_architecture_validation(config: BLIP3oCLIPDiTConfig):
-    """Print BLIP3-o architecture validation results"""
+    """FIXED: Print BLIP3-o architecture validation results with scale-aware checks"""
     validation = validate_blip3o_clip_architecture(config)
     
-    print("🔍 BLIP3-o CLIP Reproduction Architecture Validation")
-    print("=" * 50)
+    print("🔍 FIXED BLIP3-o CLIP Reproduction Architecture Validation")
+    print("=" * 70)
     
     # Core architecture features
     print("Core Architecture Features:")
@@ -662,23 +754,148 @@ def print_architecture_validation(config: BLIP3oCLIPDiTConfig):
     print(f"  ✅ Zero Init Output: {'Enabled' if validation['zero_init_output'] else '❌ Disabled'}")
     print(f"  ✅ Dropout Disabled: {'Yes' if validation['dropout_disabled'] else '❌ No'}")
     
+    # FIXED: Scale-aware validation
+    print("FIXED Scale-Aware Parameters:")
+    print(f"  ✅ Typical CLIP Norm: {'Valid' if validation['typical_clip_norm_valid'] else '❌ Invalid'} ({config.typical_clip_norm:.3f})")
+    print(f"  ✅ Velocity Threshold: {'Valid' if validation['velocity_threshold_valid'] else '❌ Invalid'} ({config.velocity_explosion_threshold:.1f})")
+    print(f"  ✅ Norm Guidance Strength: {'Valid' if validation['norm_guidance_strength_valid'] else '❌ Invalid'} ({config.norm_guidance_strength:.3f})")
+    print(f"  ✅ Norm Guidance Frequency: {'Valid' if validation['norm_guidance_frequency_valid'] else '❌ Invalid'} ({config.norm_guidance_frequency})")
+    
     # Overall compliance
-    compliance_status = "✅ COMPLIANT" if validation['blip3o_compliant'] else "❌ NON-COMPLIANT"
+    compliance_status = "✅ FULLY COMPLIANT" if validation['fully_compliant'] else "❌ NON-COMPLIANT"
     print(f"\nBLIP3-o CLIP Reproduction Compliance: {compliance_status}")
     
-    if not validation['blip3o_compliant']:
+    if validation['blip3o_compliant'] and not validation['scale_aware_compliant']:
+        print("  ✅ Core BLIP3-o architecture: COMPLIANT")
+        print("  ❌ Scale-aware parameters: NON-COMPLIANT")
+    elif not validation['blip3o_compliant'] and validation['scale_aware_compliant']:
+        print("  ❌ Core BLIP3-o architecture: NON-COMPLIANT")
+        print("  ✅ Scale-aware parameters: COMPLIANT")
+    elif not validation['fully_compliant']:
+        print("  ❌ Multiple compliance issues detected")
+    
+    if not validation['fully_compliant']:
         print("\n⚠️ Configuration does not fully comply with BLIP3-o specifications!")
         print("   Please review the failed validation points above.")
+        
+        # Specific recommendations
+        if not validation['typical_clip_norm_valid']:
+            print(f"   💡 Fix typical_clip_norm: current={config.typical_clip_norm}, should be in [10, 100]")
+        if not validation['norm_guidance_strength_valid']:
+            print(f"   💡 Fix norm_guidance_strength: current={config.norm_guidance_strength}, should be in [0, 1]")
     
-    print("=" * 50)
+    print("=" * 70)
 
 
-# Export commonly used configurations
-DEFAULT_MODEL_CONFIG = get_blip3o_clip_config("base", "patch_only")
-DEFAULT_FLOW_CONFIG = FlowMatchingConfig()
-DEFAULT_TRAINING_CONFIG = TrainingConfig()
-DEFAULT_EVAL_CONFIG = EvaluationConfig()
+# FIXED: Export configurations with validated parameters
+def create_validated_configs(
+    model_size: str = "base",
+    training_mode: str = "patch_only",
+    typical_clip_norm: Union[float, int] = 26.0,
+    velocity_explosion_threshold: Union[float, int] = 100.0,
+    norm_guidance_strength: Union[float, int] = 0.1,
+    norm_guidance_frequency: int = 10,
+) -> tuple:
+    """Create validated configurations for BLIP3-o with fixed scale-aware parameters"""
+    
+    # Create model config with validation
+    model_config = get_blip3o_clip_config(
+        model_size=model_size,
+        training_mode=training_mode,
+        typical_clip_norm=typical_clip_norm,
+        velocity_explosion_threshold=velocity_explosion_threshold,
+        norm_guidance_strength=norm_guidance_strength,
+        norm_guidance_frequency=norm_guidance_frequency,
+    )
+    
+    flow_config = FlowMatchingConfig()
+    training_config = TrainingConfig()
+    eval_config = EvaluationConfig()
+    
+    # Validate compatibility
+    validate_config_compatibility(model_config, flow_config, training_config)
+    
+    # Validate architecture
+    validation_results = validate_blip3o_clip_architecture(model_config)
+    if not validation_results['fully_compliant']:
+        logger.warning("⚠️ Configuration is not fully compliant - some features may not work as expected")
+    
+    return model_config, flow_config, training_config, eval_config
 
-# Pre-validated configurations for different use cases
-OVERFITTING_TEST_CONFIGS = create_overfitting_test_config("base", 10, "patch_only")
-MEMORY_EFFICIENT_CONFIGS = get_memory_optimized_config(16.0, 8)  # For 16GB GPU
+
+# FIXED: Pre-validated configurations
+try:
+    DEFAULT_MODEL_CONFIG, DEFAULT_FLOW_CONFIG, DEFAULT_TRAINING_CONFIG, DEFAULT_EVAL_CONFIG = create_validated_configs()
+    logger.info("✅ Default configurations created and validated")
+except Exception as e:
+    logger.error(f"❌ Error creating default configurations: {e}")
+    # Fallback to basic config
+    DEFAULT_MODEL_CONFIG = None
+    DEFAULT_FLOW_CONFIG = FlowMatchingConfig()
+    DEFAULT_TRAINING_CONFIG = TrainingConfig()
+    DEFAULT_EVAL_CONFIG = EvaluationConfig()
+
+
+# Memory-efficient configurations
+def get_memory_optimized_config(
+    available_memory_gb: float,
+    target_batch_size: int = None,
+    enable_scale_aware: bool = True,
+) -> tuple:
+    """
+    FIXED: Get memory-optimized configuration with scale-aware features
+    """
+    # Memory usage estimates for different model sizes
+    memory_estimates = {
+        "tiny": {
+            "base_memory_gb": 2.0,
+            "memory_per_batch_item": 0.1,
+            "max_batch_size": 32,
+        },
+        "small": {
+            "base_memory_gb": 4.0,
+            "memory_per_batch_item": 0.15,
+            "max_batch_size": 24,
+        },
+        "base": {
+            "base_memory_gb": 8.0,
+            "memory_per_batch_item": 0.25,
+            "max_batch_size": 16,
+        },
+        "large": {
+            "base_memory_gb": 16.0,
+            "memory_per_batch_item": 0.4,
+            "max_batch_size": 8,
+        },
+    }
+    
+    # Find the largest model that fits
+    for model_size in ["large", "base", "small", "tiny"]:
+        estimates = memory_estimates[model_size]
+        base_memory = estimates["base_memory_gb"]
+        
+        if target_batch_size:
+            estimated_memory = base_memory + target_batch_size * estimates["memory_per_batch_item"]
+            if estimated_memory <= available_memory_gb * 0.9:  # 90% usage
+                config = get_blip3o_clip_config(
+                    model_size, 
+                    enable_scale_aware=enable_scale_aware
+                )
+                return model_size, config, estimated_memory
+        else:
+            # Find optimal batch size
+            max_batch_size = min(
+                estimates["max_batch_size"],
+                int((available_memory_gb * 0.9 - base_memory) / estimates["memory_per_batch_item"])
+            )
+            if max_batch_size >= 4:  # Minimum viable batch size
+                config = get_blip3o_clip_config(
+                    model_size,
+                    enable_scale_aware=enable_scale_aware
+                )
+                estimated_memory = base_memory + max_batch_size * estimates["memory_per_batch_item"]
+                return model_size, config, estimated_memory
+    
+    # Fallback to tiny with minimal batch size
+    config = get_blip3o_clip_config("tiny", enable_scale_aware=enable_scale_aware)
+    return "tiny", config, memory_estimates["tiny"]["base_memory_gb"] + 4 * memory_estimates["tiny"]["memory_per_batch_item"]

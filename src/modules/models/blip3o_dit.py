@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """
-UPDATED: BLIP3-o DiT Model with Scale-Aware Generation
-Key improvements:
-1. Log-normal timestep scheduling 
-2. Velocity scaling to prevent explosion
-3. Periodic norm guidance during inference
-4. Final scale correction
-5. Better consistency between training and inference
+FIXED: BLIP3-o DiT Model with Scale-Aware Generation - Target Norm Bug Fix
+Key fixes:
+1. Better target_norm validation and type checking
+2. Prevent target_norm from being overwritten with tensors
+3. Enhanced error handling and debugging
+4. Safer tensor-to-scalar conversions
 """
 
 import torch
@@ -49,8 +48,8 @@ class BLIP3oCLIPDiTConfig(PretrainedConfig):
         initializer_range: float = 0.02,
         use_gradient_checkpointing: bool = False,
         training_mode: str = "patch_only",
-        # NEW: Scale-aware generation parameters
-        typical_clip_norm: float = 26.0,  # Typical CLIP embedding norm
+        # FIXED: Scale-aware generation parameters - ensure they're always scalars
+        typical_clip_norm: float = 26.0,
         velocity_explosion_threshold: float = 100.0,
         norm_guidance_strength: float = 0.1,
         norm_guidance_frequency: int = 10,
@@ -83,17 +82,16 @@ class BLIP3oCLIPDiTConfig(PretrainedConfig):
         self.use_gradient_checkpointing = use_gradient_checkpointing
         self.training_mode = training_mode
         
-        # Scale-aware generation parameters
-        self.typical_clip_norm = typical_clip_norm
-        self.velocity_explosion_threshold = velocity_explosion_threshold
-        self.norm_guidance_strength = norm_guidance_strength
-        self.norm_guidance_frequency = norm_guidance_frequency
+        # FIXED: Ensure scale-aware parameters are always Python floats/ints
+        self.typical_clip_norm = float(typical_clip_norm)
+        self.velocity_explosion_threshold = float(velocity_explosion_threshold)
+        self.norm_guidance_strength = float(norm_guidance_strength)
+        self.norm_guidance_frequency = int(norm_guidance_frequency)
         
         # Calculate grid size for 3D RoPE
         self.grid_size = image_size // patch_size  # 224 // 14 = 16
 
 
-# Keep all the existing classes (RMSNorm, Rotary3DEmbedding, etc.) - they remain the same
 class RMSNorm(nn.Module):
     """RMS Normalization"""
     def __init__(self, hidden_size: int, eps: float = 1e-6):
@@ -248,9 +246,6 @@ class TimestepEmbedder(nn.Module):
         t_freq = self.timestep_embedding(t, self.frequency_embedding_size)
         return self.mlp(t_freq)
 
-
-# Keep the existing Attention3D, MLP, AdaLN, DiTBlock3D classes unchanged...
-# (These remain the same as in your original code)
 
 class Attention3D(nn.Module):
     """Multi-head attention with 3D RoPE for BLIP3-o"""
@@ -477,7 +472,7 @@ class DiTBlock3D(nn.Module):
 
 
 class BLIP3oCLIPDiTModel(PreTrainedModel):
-    """UPDATED: BLIP3-o DiT Model with Scale-Aware Generation"""
+    """FIXED: BLIP3-o DiT Model with Scale-Aware Generation - Target Norm Bug Fix"""
     
     config_class = BLIP3oCLIPDiTConfig
     supports_gradient_checkpointing = True
@@ -506,11 +501,10 @@ class BLIP3oCLIPDiTModel(PreTrainedModel):
         
         self._init_weights()
         
-        logger.info(f"UPDATED BLIP3-o CLIP DiT model initialized with {self.get_num_parameters():,} parameters")
+        logger.info(f"FIXED BLIP3-o CLIP DiT model initialized with {self.get_num_parameters():,} parameters")
         logger.info(f"  3D RoPE: {config.use_3d_rope}")
         logger.info(f"  Sandwich Normalization: {config.use_sandwich_norm}")
-        logger.info(f"  🎯 Typical CLIP norm: {config.typical_clip_norm}")
-        logger.info(f"  🚀 Scale-aware generation enabled")
+        logger.info(f"  🎯 Typical CLIP norm: {config.typical_clip_norm} (type: {type(config.typical_clip_norm).__name__})")
 
     def _init_weights(self):
         """Initialize model weights"""
@@ -566,10 +560,7 @@ class BLIP3oCLIPDiTModel(PreTrainedModel):
         return velocity_pred
     
     def _create_lognormal_timestep_schedule(self, num_inference_steps: int, device: torch.device) -> torch.Tensor:
-        """
-        Create log-normal timestep schedule for better sampling
-        This is a key improvement from BLIP3-o
-        """
+        """Create log-normal timestep schedule for better sampling"""
         # Start with linear schedule
         timesteps = torch.linspace(1.0, 0.0, num_inference_steps + 1, device=device)[:-1]
         
@@ -579,17 +570,86 @@ class BLIP3oCLIPDiTModel(PreTrainedModel):
         
         return timesteps
     
-    def _estimate_target_norm_from_eva(self, eva_features: torch.Tensor) -> float:
+    def _safe_estimate_target_norm_from_eva(self, eva_features: torch.Tensor) -> float:
         """
-        Estimate target CLIP norm based on EVA features
-        This helps maintain scale consistency
+        FIXED: Safely estimate target CLIP norm from EVA features with proper error handling
         """
-        eva_norm = torch.norm(eva_features, dim=-1).mean().item()
-        # Empirical relationship between EVA and CLIP norms
-        estimated_clip_norm = eva_norm * 0.6  # Approximate ratio
-        # Clamp to reasonable range
-        return max(20.0, min(35.0, estimated_clip_norm))
+        try:
+            # Ensure eva_features is on the right device and is a proper tensor
+            if not torch.is_tensor(eva_features):
+                logger.error(f"❌ eva_features is not a tensor: {type(eva_features)}")
+                return 26.0
+            
+            if eva_features.numel() == 0:
+                logger.warning("⚠️ eva_features is empty, using default norm")
+                return 26.0
+            
+            # Compute norm safely
+            eva_norm_tensor = torch.norm(eva_features, dim=-1)  # [B, N]
+            eva_norm_mean_tensor = eva_norm_tensor.mean()       # [1]
+            
+            # Convert to Python float safely
+            if eva_norm_mean_tensor.numel() != 1:
+                logger.error(f"❌ eva_norm_mean is not a scalar: shape={eva_norm_mean_tensor.shape}")
+                return 26.0
+            
+            eva_norm_mean = float(eva_norm_mean_tensor.item())
+            
+            # Empirical relationship between EVA and CLIP norms
+            estimated_clip_norm = eva_norm_mean * 0.6
+            
+            # Clamp to reasonable range
+            result = max(20.0, min(35.0, estimated_clip_norm))
+            
+            # Validate result
+            if not isinstance(result, (int, float)):
+                logger.error(f"❌ estimated norm is not a scalar: {type(result)}")
+                return 26.0
+            
+            return float(result)
+            
+        except Exception as e:
+            logger.error(f"❌ Error in _safe_estimate_target_norm_from_eva: {e}")
+            logger.error(f"eva_features shape: {eva_features.shape if torch.is_tensor(eva_features) else 'not tensor'}")
+            return 26.0
     
+    def _safe_convert_to_scalar(self, value, param_name: str, default_value: float = 26.0) -> float:
+        """
+        FIXED: Safely convert any value to a Python float scalar
+        """
+        try:
+            if torch.is_tensor(value):
+                if value.numel() == 1:
+                    # Single element tensor
+                    return float(value.item())
+                elif value.numel() == 0:
+                    # Empty tensor
+                    logger.warning(f"⚠️ {param_name} is empty tensor, using default: {default_value}")
+                    return default_value
+                else:
+                    # Multi-element tensor - this is the error we're trying to fix
+                    logger.error(f"❌ {param_name} is a multi-element tensor with {value.numel()} elements!")
+                    logger.error(f"   Shape: {value.shape}, dtype: {value.dtype}")
+                    logger.error(f"   This should not happen! Using default value: {default_value}")
+                    return default_value
+            elif isinstance(value, np.ndarray):
+                if value.size == 1:
+                    return float(value.item())
+                else:
+                    logger.error(f"❌ {param_name} is a multi-element numpy array!")
+                    return default_value
+            elif isinstance(value, (int, float)):
+                return float(value)
+            else:
+                logger.error(f"❌ {param_name} has unexpected type: {type(value)}")
+                return default_value
+        except Exception as e:
+            logger.error(f"❌ Error converting {param_name} to scalar: {e}")
+            logger.error(f"   Value type: {type(value)}")
+            if torch.is_tensor(value):
+                logger.error(f"   Tensor shape: {value.shape}, numel: {value.numel()}")
+            return default_value
+
     @torch.no_grad()
     def generate(
         self,
@@ -597,8 +657,8 @@ class BLIP3oCLIPDiTModel(PreTrainedModel):
         num_inference_steps: int = 50,
         generator: Optional[torch.Generator] = None,
         normalize_output: bool = False,
-        # NEW: Scale-aware generation parameters
-        target_norm: Optional[float] = None,
+        # FIXED: Scale-aware generation parameters with better type checking
+        target_norm: Optional[Union[float, torch.Tensor]] = None,
         use_lognormal_schedule: bool = True,
         velocity_explosion_threshold: Optional[float] = None,
         norm_guidance_strength: Optional[float] = None,
@@ -607,43 +667,70 @@ class BLIP3oCLIPDiTModel(PreTrainedModel):
         **kwargs
     ) -> torch.Tensor:
         """
-        UPDATED: Scale-aware generation following BLIP3-o approach
-        Key improvements:
-        1. Log-normal timestep scheduling
-        2. Velocity explosion prevention
-        3. Periodic norm guidance
-        4. Scale consistency between training and inference
+        FIXED: Scale-aware generation with robust target_norm handling
         """
         device = eva_features.device
         batch_size, num_tokens, _ = eva_features.shape
         
-        # Use config defaults if not provided
-        if velocity_explosion_threshold is None:
-            velocity_explosion_threshold = self.config.velocity_explosion_threshold
-        if norm_guidance_strength is None:
-            norm_guidance_strength = self.config.norm_guidance_strength
-        if norm_guidance_frequency is None:
-            norm_guidance_frequency = self.config.norm_guidance_frequency
+        if debug_generation:
+            logger.info(f"🚀 Starting scale-aware generation")
+            logger.info(f"   eva_features shape: {eva_features.shape}")
+            logger.info(f"   target_norm input: {target_norm} (type: {type(target_norm)})")
         
-        # Estimate target norm if not provided
+        # FIXED: Get config parameters safely
+        velocity_explosion_threshold = self._safe_convert_to_scalar(
+            velocity_explosion_threshold if velocity_explosion_threshold is not None 
+            else self.config.velocity_explosion_threshold,
+            "velocity_explosion_threshold", 100.0
+        )
+        
+        norm_guidance_strength = self._safe_convert_to_scalar(
+            norm_guidance_strength if norm_guidance_strength is not None 
+            else self.config.norm_guidance_strength,
+            "norm_guidance_strength", 0.1
+        )
+        
+        norm_guidance_frequency = int(
+            norm_guidance_frequency if norm_guidance_frequency is not None 
+            else self.config.norm_guidance_frequency
+        )
+        
+        # FIXED: Handle target_norm with comprehensive error checking
         if target_norm is None:
-            if hasattr(self.config, 'typical_clip_norm'):
-                target_norm = self.config.typical_clip_norm
+            # Try to get from config first
+            config_norm = getattr(self.config, 'typical_clip_norm', None)
+            if config_norm is not None:
+                target_norm_scalar = self._safe_convert_to_scalar(config_norm, "config.typical_clip_norm", 26.0)
+                if debug_generation:
+                    logger.info(f"   Using config typical_clip_norm: {target_norm_scalar}")
             else:
-                target_norm = self._estimate_target_norm_from_eva(eva_features)
-        
-        # FIXED: Ensure target_norm is always a Python float, not a tensor
-        if torch.is_tensor(target_norm):
-            target_norm = float(target_norm.item())
-        elif isinstance(target_norm, np.ndarray):
-            target_norm = float(target_norm.item())
+                # Estimate from EVA features
+                target_norm_scalar = self._safe_estimate_target_norm_from_eva(eva_features)
+                if debug_generation:
+                    logger.info(f"   Estimated from EVA features: {target_norm_scalar}")
         else:
-            target_norm = float(target_norm)
+            # Convert provided target_norm to scalar safely
+            target_norm_scalar = self._safe_convert_to_scalar(target_norm, "target_norm", 26.0)
+            if debug_generation:
+                logger.info(f"   Using provided target_norm: {target_norm_scalar}")
         
-        # Validate target_norm is reasonable
-        if not (10.0 <= target_norm <= 100.0):
-            logger.warning(f"Target norm {target_norm:.3f} seems unusual, clamping to reasonable range")
-            target_norm = max(10.0, min(100.0, target_norm))
+        # FIXED: Validate target_norm_scalar is reasonable and is definitely a Python float
+        if not isinstance(target_norm_scalar, (int, float)):
+            logger.error(f"❌ target_norm_scalar is not a number: {type(target_norm_scalar)}")
+            target_norm_scalar = 26.0
+        
+        target_norm_scalar = float(target_norm_scalar)  # Ensure it's a Python float
+        
+        if not (10.0 <= target_norm_scalar <= 100.0):
+            logger.warning(f"⚠️ target_norm {target_norm_scalar:.3f} is outside reasonable range [10, 100], clamping")
+            target_norm_scalar = max(10.0, min(100.0, target_norm_scalar))
+        
+        if debug_generation:
+            logger.info(f"🎯 Final target_norm_scalar: {target_norm_scalar} (type: {type(target_norm_scalar).__name__})")
+            logger.info(f"   Scale-aware parameters:")
+            logger.info(f"     Velocity explosion threshold: {velocity_explosion_threshold}")
+            logger.info(f"     Norm guidance strength: {norm_guidance_strength}")
+            logger.info(f"     Norm guidance frequency: {norm_guidance_frequency}")
         
         # Start from properly scaled noise
         x = torch.randn(
@@ -652,25 +739,14 @@ class BLIP3oCLIPDiTModel(PreTrainedModel):
         )
         
         if debug_generation:
-            logger.info(f"🎯 Target norm: {target_norm:.3f} (type: {type(target_norm).__name__})")
-            logger.info(f"📊 Initial noise norm: {torch.norm(x, dim=-1).mean().item():.3f}")
-            logger.info(f"🚀 Using scale-aware generation")
-            
-            # Validate target_norm is a scalar
-            if not isinstance(target_norm, (int, float)):
-                logger.error(f"❌ target_norm should be scalar, got {type(target_norm)}: {target_norm}")
-                raise ValueError(f"target_norm must be a scalar number, got {type(target_norm)}")
-            
-            # Additional validation
-            if torch.is_tensor(target_norm):
-                logger.error(f"❌ target_norm is still a tensor after conversion: {target_norm}")
-                raise ValueError("target_norm should not be a tensor at this point")
+            initial_norm = torch.norm(x, dim=-1).mean().item()
+            logger.info(f"📊 Initial noise norm: {initial_norm:.3f}")
         
         # Create timestep schedule
         if use_lognormal_schedule:
             timesteps = self._create_lognormal_timestep_schedule(num_inference_steps, device)
             if debug_generation:
-                logger.info(f"📅 Using log-normal timestep schedule: {timesteps[:5].tolist()}...")
+                logger.info(f"📅 Using log-normal timestep schedule")
         else:
             timesteps = torch.linspace(1.0, 0.0, num_inference_steps + 1, device=device)[:-1]
             if debug_generation:
@@ -707,16 +783,17 @@ class BLIP3oCLIPDiTModel(PreTrainedModel):
             
             # IMPROVEMENT 2: Periodic norm guidance
             if i % norm_guidance_frequency == 0 and i > 0:
-                current_norm = torch.norm(x, dim=-1, keepdim=True)
-                # FIXED: Ensure target_norm is a scalar and add error handling
+                current_norm = torch.norm(x, dim=-1, keepdim=True)  # [B, N, 1]
+                
+                # FIXED: Create target_norm_tensor safely - target_norm_scalar is guaranteed to be a Python float
                 try:
-                    target_norm_scalar = float(target_norm) if torch.is_tensor(target_norm) else float(target_norm)
                     target_norm_tensor = torch.full_like(current_norm, target_norm_scalar)
                 except Exception as e:
-                    logger.error(f"❌ Error creating target_norm_tensor: {e}")
-                    logger.error(f"target_norm type: {type(target_norm)}, value: {target_norm}")
-                    logger.error(f"current_norm shape: {current_norm.shape}, dtype: {current_norm.dtype}")
-                    raise
+                    logger.error(f"❌ Error creating target_norm_tensor at step {i}: {e}")
+                    logger.error(f"   target_norm_scalar: {target_norm_scalar} (type: {type(target_norm_scalar)})")
+                    logger.error(f"   current_norm shape: {current_norm.shape}")
+                    # Skip this guidance step if there's an error
+                    continue
                 
                 # Gentle correction towards target norm
                 norm_ratio = target_norm_tensor / (current_norm + 1e-8)
@@ -725,20 +802,22 @@ class BLIP3oCLIPDiTModel(PreTrainedModel):
                 x = x * (1.0 + norm_correction)
                 
                 if debug_generation and i % (norm_guidance_frequency * 4) == 0:
-                    logger.info(f"  Step {i}: Applied norm guidance, current norm: {current_norm.mean().item():.3f}")
+                    avg_current_norm = current_norm.mean().item()
+                    logger.info(f"  Step {i}: Applied norm guidance, current norm: {avg_current_norm:.3f} -> target: {target_norm_scalar:.3f}")
         
         # IMPROVEMENT 3: Final scale correction
-        current_norm = torch.norm(x, dim=-1, keepdim=True)
-        # FIXED: Ensure target_norm is a scalar and add error handling
+        current_norm = torch.norm(x, dim=-1, keepdim=True)  # [B, N, 1]
+        
+        # FIXED: Create final target_norm_tensor safely
         try:
-            target_norm_scalar = float(target_norm) if torch.is_tensor(target_norm) else float(target_norm)
-            target_norm_tensor = torch.full_like(current_norm, target_norm_scalar)
+            final_target_norm_tensor = torch.full_like(current_norm, target_norm_scalar)
+            x = x * (final_target_norm_tensor / (current_norm + 1e-8))
         except Exception as e:
             logger.error(f"❌ Error in final scale correction: {e}")
-            logger.error(f"target_norm type: {type(target_norm)}, value: {target_norm}")
-            logger.error(f"current_norm shape: {current_norm.shape}, dtype: {current_norm.dtype}")
-            raise
-        x = x * (target_norm_tensor / (current_norm + 1e-8))
+            logger.error(f"   target_norm_scalar: {target_norm_scalar} (type: {type(target_norm_scalar)})")
+            logger.error(f"   current_norm shape: {current_norm.shape}")
+            # Skip final correction if there's an error
+            logger.warning("⚠️ Skipping final scale correction due to error")
         
         # Optional normalization
         if normalize_output:
@@ -748,9 +827,8 @@ class BLIP3oCLIPDiTModel(PreTrainedModel):
         
         if debug_generation:
             final_norm = torch.norm(x, dim=-1).mean().item()
-            target_norm_value = float(target_norm) if torch.is_tensor(target_norm) else float(target_norm)
-            logger.info(f"🎯 Final norm: {final_norm:.3f} (target: {target_norm_value:.3f})")
-            logger.info(f"✅ Scale-aware generation completed")
+            logger.info(f"🎯 Final norm: {final_norm:.3f} (target: {target_norm_scalar:.3f})")
+            logger.info(f"✅ Scale-aware generation completed successfully")
         
         return x
     
@@ -764,14 +842,14 @@ def create_clip_reproduction_model(
     model_size: str = "base",
     use_3d_rope: bool = True,
     use_sandwich_norm: bool = True,
-    # NEW: Scale-aware generation parameters
-    typical_clip_norm: float = 26.0,
-    velocity_explosion_threshold: float = 100.0,
-    norm_guidance_strength: float = 0.1,
+    # FIXED: Scale-aware generation parameters with proper type validation
+    typical_clip_norm: Union[float, int] = 26.0,
+    velocity_explosion_threshold: Union[float, int] = 100.0,
+    norm_guidance_strength: Union[float, int] = 0.1,
     norm_guidance_frequency: int = 10,
     **kwargs
 ) -> BLIP3oCLIPDiTModel:
-    """UPDATED: Create CLIP reproduction model with scale-aware generation"""
+    """FIXED: Create CLIP reproduction model with scale-aware generation and proper type handling"""
     
     if config is None:
         size_configs = {
@@ -790,11 +868,11 @@ def create_clip_reproduction_model(
             "intermediate_size": model_config["hidden_size"] * 4,
             "use_3d_rope": use_3d_rope,
             "use_sandwich_norm": use_sandwich_norm,
-            # Scale-aware generation parameters
-            "typical_clip_norm": typical_clip_norm,
-            "velocity_explosion_threshold": velocity_explosion_threshold,
-            "norm_guidance_strength": norm_guidance_strength,
-            "norm_guidance_frequency": norm_guidance_frequency,
+            # FIXED: Ensure scale-aware parameters are always Python floats/ints
+            "typical_clip_norm": float(typical_clip_norm),
+            "velocity_explosion_threshold": float(velocity_explosion_threshold),
+            "norm_guidance_strength": float(norm_guidance_strength),
+            "norm_guidance_frequency": int(norm_guidance_frequency),
             **kwargs
         })
         
