@@ -1,128 +1,82 @@
-2025-08-01 20:52:11,674 - INFO - 🚀 Clean BLIP3-o CLIP Reproduction Training
-2025-08-01 20:52:11,675 - INFO - ============================================================
-2025-08-01 20:52:11,675 - INFO - 📋 Task: Reproduce CLIP embeddings from EVA embeddings
-2025-08-01 20:52:11,675 - INFO - 🧠 Model: BLIP3-o DiT with 3D RoPE and Sandwich Normalization
-2025-08-01 20:52:11,675 - INFO - 🌊 Method: Rectified Flow Matching
-2025-08-01 20:52:11,675 - INFO - 🎯 Target: CLIP embeddings [B, N, 1024]
-2025-08-01 20:52:11,675 - INFO - 🎮 Conditioning: EVA embeddings [B, N, 4096]
-2025-08-01 20:52:11,675 - INFO - ============================================================
-2025-08-01 20:52:11,676 - INFO - Configuration:
-2025-08-01 20:52:11,676 - INFO -   Model size: base
-2025-08-01 20:52:11,676 - INFO -   Training mode: patch_only
-2025-08-01 20:52:11,676 - INFO -   Embeddings dir: /scratch-shared/azadaianchuk1/blip3o_workspace/embeddings/patch_only_256_tokens
-2025-08-01 20:52:11,676 - INFO -   Output dir: ./checkpoints/blip3o_clean_20250801_205210
-2025-08-01 20:52:11,676 - INFO -   Learning rate: 0.0001
-2025-08-01 20:52:11,676 - INFO -   Batch size: 8
-2025-08-01 20:52:11,676 - INFO -   Epochs: 5
-2025-08-01 20:52:11,676 - INFO -   Max shards: 1
-2025-08-01 20:52:12,101 - INFO - Using GPU: NVIDIA H100
-2025-08-01 20:52:12,102 - INFO - GPU Memory: 100.0 GB
-2025-08-01 20:52:12,102 - INFO - PyTorch version: 2.7.1+cu126
-2025-08-01 20:52:12,102 - INFO - ✅ Environment check passed
-2025-08-01 20:52:12,102 - INFO - ✅ Output directory ready: checkpoints/blip3o_clean_20250801_205210
-2025-08-01 20:52:12,102 - INFO - 🏗️ Creating model...
-2025-08-01 20:52:15,052 - INFO - ✅ CLIP DiT model loaded successfully
-2025-08-01 20:52:15,054 - INFO - ✅ Flow matching loss loaded successfully
-2025-08-01 20:52:15,801 - INFO - ✅ CLIP trainer loaded successfully
-2025-08-01 20:52:15,802 - INFO - ✅ CLIP datasets loaded successfully
-2025-08-01 20:52:15,804 - INFO - ✅ Configuration loaded successfully
-2025-08-01 20:52:15,805 - INFO - 🎉 All CLIP reproduction components loaded successfully!
-2025-08-01 20:52:15,805 - INFO - 🎉 Clean BLIP3-o CLIP reproduction modules fully initialized!
-2025-08-01 20:52:15,805 - INFO - 🎯 Ready for EVA → CLIP reproduction training
-2025-08-01 20:52:17,838 - INFO - BLIP3-o CLIP DiT model initialized with 249,339,136 parameters
-2025-08-01 20:52:18,088 - INFO - Model created with 249,339,136 parameters
-2025-08-01 20:52:18,088 - INFO -   Model size: base
-2025-08-01 20:52:18,088 - INFO -   Training mode: patch_only
-2025-08-01 20:52:18,088 - INFO -   3D RoPE: Enabled
-2025-08-01 20:52:18,088 - INFO -   Sandwich Norm: Enabled
-2025-08-01 20:52:18,088 - INFO - 🌊 Creating loss function...
-2025-08-01 20:52:18,088 - INFO - Clean CLIP Flow Matching Loss initialized:
-2025-08-01 20:52:18,088 - INFO -   Prediction type: velocity
-2025-08-01 20:52:18,088 - INFO -   Flow type: rectified
-2025-08-01 20:52:18,088 - INFO - Loss function created:
-2025-08-01 20:52:18,088 - INFO -   Prediction type: velocity
-2025-08-01 20:52:18,088 - INFO -   Flow type: rectified
-2025-08-01 20:52:18,088 - INFO - 📊 Creating dataloaders...
-2025-08-01 20:52:18,088 - INFO - Loading embeddings from: /scratch-shared/azadaianchuk1/blip3o_workspace/embeddings/patch_only_256_tokens
-2025-08-01 20:52:18,089 - INFO - Found 35 .pkl files in embeddings directory
-2025-08-01 20:52:18,089 - INFO - Creating clean CLIP reproduction dataloaders:
-2025-08-01 20:52:18,089 - INFO -   Target: CLIP embeddings [B, N, 1024]
-2025-08-01 20:52:18,089 - INFO -   Conditioning: EVA embeddings [B, N, 4096]
-2025-08-01 20:52:18,089 - INFO -   Noise: Standard Gaussian
-2025-08-01 20:52:18,102 - INFO - Loaded manifest: 35 shards, 91,333 samples
-2025-08-01 20:52:18,102 - INFO - Found 35 files with pattern: embeddings_shard_*_patch_only.pkl
-2025-08-01 20:52:18,102 - INFO - Prepared 1 shard files
-2025-08-01 20:52:18,103 - INFO - Using manifest for length estimation: 2,609 samples
-2025-08-01 20:52:18,103 - INFO - Clean CLIP Reproduction Dataset initialized:
-2025-08-01 20:52:18,103 - INFO -   Directory: /scratch-shared/azadaianchuk1/blip3o_workspace/embeddings/patch_only_256_tokens
-2025-08-01 20:52:18,103 - INFO -   Mode: patch_only (256 tokens)
-2025-08-01 20:52:18,103 - INFO -   TARGET: CLIP embeddings [B, N, 1024]
-2025-08-01 20:52:18,103 - INFO -   CONDITIONING: EVA embeddings [B, N, 4096]
-2025-08-01 20:52:18,103 - INFO -   Shards: 1
-2025-08-01 20:52:18,103 - INFO - Loaded manifest: 35 shards, 91,333 samples
-2025-08-01 20:52:18,104 - INFO - Found 35 files with pattern: embeddings_shard_*_patch_only.pkl
-2025-08-01 20:52:18,104 - INFO - Prepared 1 shard files
-2025-08-01 20:52:18,104 - INFO - Using manifest for length estimation: 2,609 samples
-2025-08-01 20:52:18,104 - INFO - Clean CLIP Reproduction Dataset initialized:
-2025-08-01 20:52:18,104 - INFO -   Directory: /scratch-shared/azadaianchuk1/blip3o_workspace/embeddings/patch_only_256_tokens
-2025-08-01 20:52:18,104 - INFO -   Mode: patch_only (256 tokens)
-2025-08-01 20:52:18,104 - INFO -   TARGET: CLIP embeddings [B, N, 1024]
-2025-08-01 20:52:18,104 - INFO -   CONDITIONING: EVA embeddings [B, N, 4096]
-2025-08-01 20:52:18,104 - INFO -   Shards: 1
-2025-08-01 20:52:18,104 - INFO - Clean CLIP reproduction dataloaders created successfully
-2025-08-01 20:52:18,104 - INFO -   Training dataset length: 2,609
-2025-08-01 20:52:18,104 - INFO -   Evaluation dataset length: 2,609
-2025-08-01 20:52:18,104 - INFO - Dataloaders created successfully:
-2025-08-01 20:52:18,104 - INFO -   Training mode: patch_only
-2025-08-01 20:52:18,104 - INFO -   Batch size: 8
-2025-08-01 20:52:18,104 - INFO -   Max shards: 1
-2025-08-01 20:52:22,485 - INFO - ✅ Dataloader test successful:
-2025-08-01 20:52:22,486 - INFO -   Batch size: 8
-2025-08-01 20:52:22,486 - INFO -   CLIP embeddings shape: torch.Size([8, 256, 1024])
-2025-08-01 20:52:22,486 - INFO -   EVA embeddings shape: torch.Size([8, 256, 4096])
-2025-08-01 20:52:22,486 - INFO - 🏃 Creating trainer...
-2025-08-01 20:52:22,489 - INFO - Got exact dataloader length: 326
-2025-08-01 20:52:22,491 - INFO - Optimizer and scheduler setup complete
-2025-08-01 20:52:22,491 - INFO -   Total estimated steps: 1630
-2025-08-01 20:52:22,491 - INFO -   Warmup steps: 100
-2025-08-01 20:52:22,491 - INFO - Clean BLIP3-o CLIP Trainer initialized
-2025-08-01 20:52:22,491 - INFO -   Device: cuda
-2025-08-01 20:52:22,492 - INFO -   Parameters: 249,339,136
-2025-08-01 20:52:22,492 - INFO - Trainer created successfully:
-2025-08-01 20:52:22,492 - INFO -   Evaluation: Every 50 steps
-2025-08-01 20:52:22,492 - INFO -   WandB enabled: False
-2025-08-01 20:52:22,492 - INFO - 💾 Saving experiment configuration...
-2025-08-01 20:52:22,495 - INFO - ✅ Configuration saved to checkpoints/blip3o_clean_20250801_205210/experiment_config.json
-2025-08-01 20:52:22,495 - INFO - 
-🚀 Starting clean BLIP3-o training...
-2025-08-01 20:52:22,495 - INFO - ============================================================
-2025-08-01 20:52:22,495 - INFO - 🚀 Starting clean BLIP3-o training...
-2025-08-01 20:52:22,496 - INFO -   Model parameters: 249,339,136
-2025-08-01 20:52:22,497 - INFO - Starting epoch 1/5
-2025-08-01 20:52:29,688 - INFO - Step 10: Loss=1.846236, VelSim=0.2314, GradNorm=51846.795, LR=1.90e-05
-2025-08-01 20:52:32,436 - INFO - Step 20: Loss=1.795195, VelSim=0.3067, GradNorm=29456.467, LR=2.80e-05
-2025-08-01 20:52:35,175 - INFO - Step 30: Loss=1.712332, VelSim=0.3332, GradNorm=22209.026, LR=3.70e-05
-2025-08-01 20:52:37,914 - INFO - Step 40: Loss=1.708928, VelSim=0.3687, GradNorm=28882.955, LR=4.60e-05
-2025-08-01 20:52:40,652 - INFO - Step 50: Loss=1.642964, VelSim=0.3419, GradNorm=19938.290, LR=5.50e-05
-2025-08-01 20:52:40,653 - INFO - Running evaluation at step 50...
-2025-08-01 20:52:40,653 - INFO - Starting evaluation with 100 samples
-2025-08-01 20:54:19,659 - INFO - ✅ Evaluation completed: 104 samples, similarity: 0.2299
-2025-08-01 20:54:19,662 - INFO - ✅ Evaluation results:
-2025-08-01 20:54:19,662 - INFO -   CLIP similarity: 0.2299
-2025-08-01 20:54:22,415 - INFO - Step 60: Loss=1.668203, VelSim=0.3684, GradNorm=20369.605, LR=6.40e-05
-2025-08-01 20:54:25,163 - INFO - Step 70: Loss=1.680492, VelSim=0.3709, GradNorm=35704.300, LR=7.30e-05
-2025-08-01 20:54:27,909 - INFO - Step 80: Loss=1.553996, VelSim=0.3714, GradNorm=39563.438, LR=8.20e-05
-2025-08-01 20:54:30,624 - INFO - Step 90: Loss=1.674789, VelSim=0.3685, GradNorm=76114.044, LR=9.10e-05
-2025-08-01 20:54:33,333 - INFO - Step 100: Loss=1.457419, VelSim=0.3527, GradNorm=56032.260, LR=1.00e-04
-2025-08-01 20:54:33,333 - INFO - Running evaluation at step 100...
-2025-08-01 20:54:33,333 - INFO - Starting evaluation with 100 samples
-2025-08-01 20:56:11,412 - INFO - ✅ Evaluation completed: 104 samples, similarity: 0.2341
-2025-08-01 20:56:11,415 - INFO - ✅ Evaluation results:
-2025-08-01 20:56:11,415 - INFO -   CLIP similarity: 0.2341
-2025-08-01 20:56:14,132 - INFO - Step 110: Loss=1.425405, VelSim=0.3512, GradNorm=98325.637, LR=1.00e-04
-2025-08-01 20:56:16,840 - INFO - Step 120: Loss=1.421745, VelSim=0.3549, GradNorm=58833.827, LR=1.00e-04
-2025-08-01 20:56:19,526 - INFO - Step 130: Loss=1.461532, VelSim=0.3446, GradNorm=13838.458, LR=9.99e-05
-2025-08-01 20:56:22,235 - INFO - Step 140: Loss=1.338513, VelSim=0.4217, GradNorm=12675.955, LR=9.98e-05
-2025-08-01 20:56:25,089 - INFO - Step 150: Loss=1.439936, VelSim=0.3748, GradNorm=163763.801, LR=9.97e-05
-2025-08-01 20:56:25,089 - INFO - Running evaluation at step 150...
-2025-08-01 20:56:25,089 - INFO - Starting evaluation with 100 samples
+2025-08-01 21:29:47,676 - INFO - 🚀 Clean BLIP3-o CLIP Reproduction Training
+2025-08-01 21:29:47,677 - INFO - ============================================================
+2025-08-01 21:29:47,677 - INFO - 📋 Task: Reproduce CLIP embeddings from EVA embeddings
+2025-08-01 21:29:47,678 - INFO - 🧠 Model: BLIP3-o DiT with 3D RoPE and Sandwich Normalization
+2025-08-01 21:29:47,678 - INFO - 🌊 Method: Rectified Flow Matching
+2025-08-01 21:29:47,678 - INFO - 🎯 Target: CLIP embeddings [B, N, 1024]
+2025-08-01 21:29:47,678 - INFO - 🎮 Conditioning: EVA embeddings [B, N, 4096]
+2025-08-01 21:29:47,678 - INFO - ============================================================
+2025-08-01 21:29:47,679 - INFO - Configuration:
+2025-08-01 21:29:47,679 - INFO -   Model size: base
+2025-08-01 21:29:47,679 - INFO -   Training mode: patch_only
+2025-08-01 21:29:47,679 - INFO -   Embeddings dir: /scratch-shared/azadaianchuk1/blip3o_workspace/embeddings/patch_only_256_tokens
+2025-08-01 21:29:47,679 - INFO -   Output dir: ./checkpoints/blip3o_clean_20250801_212944
+2025-08-01 21:29:47,680 - INFO -   Learning rate: 0.0001
+2025-08-01 21:29:47,680 - INFO -   Batch size: 64
+2025-08-01 21:29:47,680 - INFO -   Epochs: 3
+2025-08-01 21:29:47,680 - INFO -   Max shards: 1
+2025-08-01 21:29:48,098 - INFO - Using GPU: NVIDIA H100
+2025-08-01 21:29:48,099 - INFO - GPU Memory: 100.0 GB
+2025-08-01 21:29:48,099 - INFO - PyTorch version: 2.7.1+cu126
+2025-08-01 21:29:48,099 - INFO - ✅ Environment check passed
+2025-08-01 21:29:48,099 - INFO - ✅ Output directory ready: checkpoints/blip3o_clean_20250801_212944
+2025-08-01 21:29:48,099 - INFO - 🏗️ Creating model...
+2025-08-01 21:29:54,557 - INFO - ✅ CLIP DiT model loaded successfully
+2025-08-01 21:29:54,560 - INFO - ✅ Flow matching loss loaded successfully
+2025-08-01 21:29:55,869 - INFO - ✅ CLIP trainer loaded successfully
+2025-08-01 21:29:55,875 - INFO - ✅ CLIP datasets loaded successfully
+2025-08-01 21:29:55,881 - INFO - ✅ Configuration loaded successfully
+2025-08-01 21:29:55,882 - INFO - 🎉 All CLIP reproduction components loaded successfully!
+2025-08-01 21:29:55,882 - INFO - 🎉 Clean BLIP3-o CLIP reproduction modules fully initialized!
+2025-08-01 21:29:55,882 - INFO - 🎯 Ready for EVA → CLIP reproduction training
+2025-08-01 21:29:57,635 - INFO - CORRECTED BLIP3-o CLIP DiT model with SwiGLU initialized: 221,027,584 parameters
+2025-08-01 21:29:57,635 - INFO -   ✅ 3D RoPE: True
+2025-08-01 21:29:57,635 - INFO -   ✅ Sandwich Normalization: True
+2025-08-01 21:29:57,635 - INFO -   ✅ Grouped-Query Attention: 12/4 heads
+2025-08-01 21:29:57,635 - INFO -   ✅ SwiGLU activation: Now properly implemented!
+2025-08-01 21:29:57,859 - INFO - Model created with 221,027,584 parameters
+2025-08-01 21:29:57,859 - INFO -   Model size: base
+2025-08-01 21:29:57,859 - INFO -   Training mode: patch_only
+2025-08-01 21:29:57,859 - INFO -   3D RoPE: Enabled
+2025-08-01 21:29:57,859 - INFO -   Sandwich Norm: Enabled
+2025-08-01 21:29:57,859 - INFO - 🌊 Creating loss function...
+2025-08-01 21:29:57,859 - INFO - Clean CLIP Flow Matching Loss initialized:
+2025-08-01 21:29:57,859 - INFO -   Prediction type: velocity
+2025-08-01 21:29:57,860 - INFO -   Flow type: rectified
+2025-08-01 21:29:57,860 - INFO - Loss function created:
+2025-08-01 21:29:57,860 - INFO -   Prediction type: velocity
+2025-08-01 21:29:57,860 - INFO -   Flow type: rectified
+2025-08-01 21:29:57,860 - INFO - 📊 Creating dataloaders...
+2025-08-01 21:29:57,860 - INFO - Loading embeddings from: /scratch-shared/azadaianchuk1/blip3o_workspace/embeddings/patch_only_256_tokens
+2025-08-01 21:29:57,860 - INFO - Found 35 .pkl files in embeddings directory
+2025-08-01 21:29:57,860 - INFO - Creating clean CLIP reproduction dataloaders:
+2025-08-01 21:29:57,860 - INFO -   Target: CLIP embeddings [B, N, 1024]
+2025-08-01 21:29:57,860 - INFO -   Conditioning: EVA embeddings [B, N, 4096]
+2025-08-01 21:29:57,861 - INFO -   Noise: Standard Gaussian
+2025-08-01 21:29:57,887 - INFO - Loaded manifest: 35 shards, 91,333 samples
+2025-08-01 21:29:57,888 - INFO - Found 35 files with pattern: embeddings_shard_*_patch_only.pkl
+2025-08-01 21:29:57,888 - INFO - Prepared 1 shard files
+2025-08-01 21:29:57,888 - INFO - Using manifest for length estimation: 2,609 samples
+2025-08-01 21:29:57,888 - INFO - Clean CLIP Reproduction Dataset initialized:
+2025-08-01 21:29:57,888 - INFO -   Directory: /scratch-shared/azadaianchuk1/blip3o_workspace/embeddings/patch_only_256_tokens
+2025-08-01 21:29:57,888 - INFO -   Mode: patch_only (256 tokens)
+2025-08-01 21:29:57,888 - INFO -   TARGET: CLIP embeddings [B, N, 1024]
+2025-08-01 21:29:57,888 - INFO -   CONDITIONING: EVA embeddings [B, N, 4096]
+2025-08-01 21:29:57,888 - INFO -   Shards: 1
+2025-08-01 21:29:57,889 - INFO - Loaded manifest: 35 shards, 91,333 samples
+2025-08-01 21:29:57,889 - INFO - Found 35 files with pattern: embeddings_shard_*_patch_only.pkl
+2025-08-01 21:29:57,889 - INFO - Prepared 1 shard files
+2025-08-01 21:29:57,889 - INFO - Using manifest for length estimation: 2,609 samples
+2025-08-01 21:29:57,889 - INFO - Clean CLIP Reproduction Dataset initialized:
+2025-08-01 21:29:57,889 - INFO -   Directory: /scratch-shared/azadaianchuk1/blip3o_workspace/embeddings/patch_only_256_tokens
+2025-08-01 21:29:57,889 - INFO -   Mode: patch_only (256 tokens)
+2025-08-01 21:29:57,889 - INFO -   TARGET: CLIP embeddings [B, N, 1024]
+2025-08-01 21:29:57,890 - INFO -   CONDITIONING: EVA embeddings [B, N, 4096]
+2025-08-01 21:29:57,890 - INFO -   Shards: 1
+2025-08-01 21:29:57,890 - INFO - Clean CLIP reproduction dataloaders created successfully
+2025-08-01 21:29:57,890 - INFO -   Training dataset length: 2,609
+2025-08-01 21:29:57,890 - INFO -   Evaluation dataset length: 2,609
+2025-08-01 21:29:57,890 - INFO - Dataloaders created successfully:
+2025-08-01 21:29:57,890 - INFO -   Training mode: patch_only
+2025-08-01 21:29:57,890 - INFO -   Batch size: 64
+2025-08-01 21:29:57,890 - INFO -   Max shards: 1
