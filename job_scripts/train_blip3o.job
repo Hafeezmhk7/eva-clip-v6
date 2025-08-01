@@ -40,7 +40,7 @@ TRAINING_MODE="patch_only"
 MODEL_SIZE="base"
 
 # Training hyperparameters
-NUM_EPOCHS=10
+NUM_EPOCHS=5
 BATCH_SIZE=8
 LEARNING_RATE=1e-4
 WEIGHT_DECAY=0.01
@@ -53,7 +53,7 @@ EVAL_NUM_SAMPLES=100
 EVAL_INFERENCE_STEPS=50
 
 # Data configuration
-MAX_SHARDS=5
+MAX_SHARDS=1
 
 # Create output directory
 mkdir -p "${OUTPUT_DIR}"
