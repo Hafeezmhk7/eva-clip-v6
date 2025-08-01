@@ -7,8 +7,8 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --time=12:00:00
 #SBATCH --mem=64G
-#SBATCH --output=./slurm_out/blip3o_clean_%j.out
-#SBATCH --error=./slurm_out/blip3o_clean_%j.err
+#SBATCH --output=./slurm_out/blip3o_5shards_%j.out
+#SBATCH --error=./slurm_out/blip3o_5shards_%j.err
 
 # =============================================================================
 # Clean BLIP3-o CLIP Reproduction Training
@@ -40,20 +40,20 @@ TRAINING_MODE="patch_only"
 MODEL_SIZE="base"
 
 # Training hyperparameters
-NUM_EPOCHS=3
-BATCH_SIZE=64
-LEARNING_RATE=1e-4
+NUM_EPOCHS=10
+BATCH_SIZE=128
+LEARNING_RATE=5e-4
 WEIGHT_DECAY=0.01
-WARMUP_STEPS=100
+WARMUP_STEPS=500
 MAX_GRAD_NORM=1.0
 
 # Evaluation parameters
-EVAL_EVERY_N_STEPS=500
+EVAL_EVERY_N_STEPS=100
 EVAL_NUM_SAMPLES=100
 EVAL_INFERENCE_STEPS=50
 
 # Data configuration
-MAX_SHARDS=1
+MAX_SHARDS=5
 
 # Create output directory
 mkdir -p "${OUTPUT_DIR}"
