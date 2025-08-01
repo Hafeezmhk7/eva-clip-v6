@@ -1,0 +1,269 @@
+2025-08-01 15:09:43,038 - INFO - __main__ - 🚀 Clean BLIP3-o CLIP Reproduction Training
+2025-08-01 15:09:43,038 - INFO - __main__ - ============================================================
+2025-08-01 15:09:43,038 - INFO - __main__ - EXPERIMENT DETAILS:
+2025-08-01 15:09:43,038 - INFO - __main__ -   📋 Task: Reproduce clean CLIP embeddings from EVA embeddings
+2025-08-01 15:09:43,038 - INFO - __main__ -   🧠 Model: BLIP3-o DiT with 3D RoPE and Sandwich Normalization
+2025-08-01 15:09:43,038 - INFO - __main__ -   🎯 Target: CLIP embeddings [B, N, 1024]
+2025-08-01 15:09:43,038 - INFO - __main__ -   🎮 Conditioning: EVA embeddings [B, N, 4096]
+2025-08-01 15:09:43,038 - INFO - __main__ -   🌊 Method: Rectified Flow Matching
+2025-08-01 15:09:43,038 - INFO - __main__ -   🎲 Noise: Standard Gaussian
+2025-08-01 15:09:43,038 - INFO - __main__ -   📊 Generation: Simple linear scheduling
+2025-08-01 15:09:43,038 - INFO - __main__ - ============================================================
+2025-08-01 15:09:43,038 - INFO - __main__ - Configuration:
+2025-08-01 15:09:43,038 - INFO - __main__ -   Model size: base
+2025-08-01 15:09:43,038 - INFO - __main__ -   Training mode: patch_only
+2025-08-01 15:09:43,038 - INFO - __main__ -   Embeddings dir: /scratch-shared/azadaianchuk1/blip3o_workspace/embeddings/patch_only_256_tokens
+2025-08-01 15:09:43,038 - INFO - __main__ -   Output dir: ./checkpoints/clip_repro_20250801_150940
+2025-08-01 15:09:43,039 - INFO - __main__ -   Learning rate: 0.0001
+2025-08-01 15:09:43,039 - INFO - __main__ -   Batch size: 8
+2025-08-01 15:09:43,039 - INFO - __main__ -   Epochs: 10
+2025-08-01 15:09:43,039 - INFO - __main__ -   Max shards: 2
+2025-08-01 15:09:43,039 - INFO - __main__ -   Debug mode: False
+2025-08-01 15:09:43,039 - INFO - __main__ -   Overfitting test: 20 samples
+2025-08-01 15:09:43,039 - INFO - __main__ - ============================================================
+2025-08-01 15:09:43,932 - INFO - __main__ - PyTorch version: 2.7.1+cu126
+2025-08-01 15:09:46,213 - INFO - __main__ - ✅ Environment check passed
+2025-08-01 15:09:46,213 - INFO - __main__ - ✅ Output directory ready: checkpoints/clip_repro_20250801_150940
+2025-08-01 15:09:46,213 - INFO - __main__ - 🏗️ Setting up device and model...
+2025-08-01 15:09:46,213 - INFO - __main__ - Using GPU: NVIDIA H100
+2025-08-01 15:09:46,213 - INFO - __main__ - GPU Memory: 100.0 GB
+2025-08-01 15:09:46,213 - INFO - __main__ - 🏗️ Clean BLIP3-o Architecture Configuration:
+2025-08-01 15:09:46,214 - INFO - __main__ -   3D Rotary Position Embedding: ✅ Enabled
+2025-08-01 15:09:46,214 - INFO - __main__ -   Sandwich Normalization: ✅ Enabled
+2025-08-01 15:09:50,212 - INFO - src.modules - ✅ CLIP DiT model loaded from src/modules/models/blip3o_dit.py
+2025-08-01 15:09:50,224 - INFO - src.modules - ✅ Flow matching loss loaded from src/modules/losses/blip3o_fm_loss.py
+2025-08-01 15:09:51,525 - INFO - src.modules - ✅ CLIP trainer loaded from src/modules/trainers/blip3o_trainer.py
+2025-08-01 15:09:51,537 - INFO - src.modules - ✅ CLIP datasets loaded from src/modules/datasets/blip3o_dataset.py
+2025-08-01 15:09:51,547 - INFO - src.modules.config.blip3o_config - ✅ Configuration validation passed
+2025-08-01 15:09:51,547 - INFO - src.modules.config.blip3o_config - ✅ Configuration compatibility validation passed
+2025-08-01 15:09:51,548 - INFO - src.modules.config.blip3o_config - ✅ Default clean configurations created and validated
+2025-08-01 15:09:51,548 - INFO - src.modules - ✅ Configuration loaded from src/modules/config/blip3o_config.py
+2025-08-01 15:09:51,548 - INFO - src.modules - 🎉 All CLIP reproduction components loaded successfully!
+2025-08-01 15:09:51,548 - INFO - src.modules - 🎉 BLIP3-o CLIP reproduction modules fully initialized!
+2025-08-01 15:09:51,548 - INFO - src.modules - 🚫 Using minimal normalization approach
+2025-08-01 15:09:51,548 - INFO - src.modules - 🎯 Ready for EVA → CLIP reproduction training
+2025-08-01 15:09:51,548 - INFO - __main__ - ✅ Imported clean model
+2025-08-01 15:09:53,579 - INFO - src.modules.models.blip3o_dit - FIXED BLIP3-o CLIP DiT model initialized with 249,339,136 parameters
+2025-08-01 15:09:53,581 - INFO - src.modules.models.blip3o_dit -   3D RoPE: True
+2025-08-01 15:09:53,581 - INFO - src.modules.models.blip3o_dit -   Sandwich Normalization: True
+2025-08-01 15:09:53,581 - INFO - src.modules.models.blip3o_dit -   🎯 Typical CLIP norm: 26.0 (type: float)
+2025-08-01 15:09:53,821 - INFO - __main__ - Model created with 249,339,136 parameters
+2025-08-01 15:09:53,821 - INFO - __main__ - Model moved to cuda
+2025-08-01 15:09:53,822 - INFO - __main__ - Model device verified: cuda:0
+2025-08-01 15:09:53,822 - INFO - __main__ - 🌊 Creating loss function...
+2025-08-01 15:09:53,822 - INFO - __main__ - ✅ Imported clean loss function
+2025-08-01 15:09:53,822 - INFO - src.modules.losses.blip3o_fm_loss - Clean CLIP Flow Matching Loss initialized:
+2025-08-01 15:09:53,822 - INFO - src.modules.losses.blip3o_fm_loss -   Prediction type: velocity
+2025-08-01 15:09:53,822 - INFO - src.modules.losses.blip3o_fm_loss -   Flow type: rectified
+2025-08-01 15:09:53,822 - INFO - src.modules.losses.blip3o_fm_loss -   Debug mode: False
+2025-08-01 15:09:53,822 - INFO - __main__ - Loss function created:
+2025-08-01 15:09:53,822 - INFO - __main__ -   Prediction type: velocity
+2025-08-01 15:09:53,822 - INFO - __main__ -   Flow type: rectified
+2025-08-01 15:09:53,822 - INFO - __main__ -   Debug mode: False
+2025-08-01 15:09:53,822 - INFO - __main__ - 📊 Creating dataloaders...
+2025-08-01 15:09:53,822 - INFO - __main__ - ✅ Imported clean dataset
+2025-08-01 15:09:53,822 - INFO - __main__ - Checking embeddings directory: /scratch-shared/azadaianchuk1/blip3o_workspace/embeddings/patch_only_256_tokens
+2025-08-01 15:09:53,823 - INFO - __main__ - Found 35 .pkl files in embeddings directory
+2025-08-01 15:09:53,839 - INFO - __main__ - Found manifest: 91333 samples
+2025-08-01 15:09:53,839 - INFO - src.modules.datasets.blip3o_dataset - Creating clean CLIP reproduction dataloaders:
+2025-08-01 15:09:53,839 - INFO - src.modules.datasets.blip3o_dataset -   Target: CLIP embeddings [B, N, 1024] - raw
+2025-08-01 15:09:53,840 - INFO - src.modules.datasets.blip3o_dataset -   Conditioning: EVA embeddings [B, N, 4096] - raw
+2025-08-01 15:09:53,840 - INFO - src.modules.datasets.blip3o_dataset -   Noise: Standard Gaussian
+2025-08-01 15:09:53,840 - INFO - src.modules.datasets.blip3o_dataset - Loaded manifest: 35 shards, 91,333 samples
+2025-08-01 15:09:53,840 - INFO - src.modules.datasets.blip3o_dataset - Found 35 files with pattern: embeddings_shard_*_patch_only.pkl
+2025-08-01 15:09:53,841 - INFO - src.modules.datasets.blip3o_dataset - Prepared 2 shard files
+2025-08-01 15:09:53,841 - INFO - src.modules.datasets.blip3o_dataset - Using manifest for length estimation: 5,219 samples
+2025-08-01 15:09:53,841 - INFO - src.modules.datasets.blip3o_dataset - Clean CLIP Reproduction Dataset initialized:
+2025-08-01 15:09:53,841 - INFO - src.modules.datasets.blip3o_dataset -   Directory: /scratch-shared/azadaianchuk1/blip3o_workspace/embeddings/patch_only_256_tokens
+2025-08-01 15:09:53,841 - INFO - src.modules.datasets.blip3o_dataset -   Mode: patch_only (256 tokens)
+2025-08-01 15:09:53,842 - INFO - src.modules.datasets.blip3o_dataset -   TARGET: CLIP embeddings [B, N, 1024] - raw
+2025-08-01 15:09:53,842 - INFO - src.modules.datasets.blip3o_dataset -   CONDITIONING: EVA embeddings [B, N, 4096] - raw
+2025-08-01 15:09:53,842 - INFO - src.modules.datasets.blip3o_dataset -   Shards: 2
+2025-08-01 15:09:53,842 - INFO - src.modules.datasets.blip3o_dataset - Loaded manifest: 35 shards, 91,333 samples
+2025-08-01 15:09:53,842 - INFO - src.modules.datasets.blip3o_dataset - Found 35 files with pattern: embeddings_shard_*_patch_only.pkl
+2025-08-01 15:09:53,842 - INFO - src.modules.datasets.blip3o_dataset - Prepared 2 shard files
+2025-08-01 15:09:53,842 - INFO - src.modules.datasets.blip3o_dataset - Using manifest for length estimation: 5,219 samples
+2025-08-01 15:09:53,843 - INFO - src.modules.datasets.blip3o_dataset - Clean CLIP Reproduction Dataset initialized:
+2025-08-01 15:09:53,843 - INFO - src.modules.datasets.blip3o_dataset -   Directory: /scratch-shared/azadaianchuk1/blip3o_workspace/embeddings/patch_only_256_tokens
+2025-08-01 15:09:53,843 - INFO - src.modules.datasets.blip3o_dataset -   Mode: patch_only (256 tokens)
+2025-08-01 15:09:53,843 - INFO - src.modules.datasets.blip3o_dataset -   TARGET: CLIP embeddings [B, N, 1024] - raw
+2025-08-01 15:09:53,843 - INFO - src.modules.datasets.blip3o_dataset -   CONDITIONING: EVA embeddings [B, N, 4096] - raw
+2025-08-01 15:09:53,843 - INFO - src.modules.datasets.blip3o_dataset -   Shards: 2
+2025-08-01 15:09:53,843 - INFO - src.modules.datasets.blip3o_dataset - Clean CLIP reproduction dataloaders created successfully
+2025-08-01 15:09:53,843 - INFO - src.modules.datasets.blip3o_dataset -   Training dataset length: 5,219
+2025-08-01 15:09:53,843 - INFO - src.modules.datasets.blip3o_dataset -   Evaluation dataset length: 5,219
+2025-08-01 15:09:53,843 - INFO - src.modules.datasets.blip3o_dataset -   No normalization applied in either dataset
+2025-08-01 15:09:53,843 - INFO - src.modules.datasets.blip3o_dataset -   Standard Gaussian noise in collate function
+2025-08-01 15:09:53,843 - INFO - __main__ - Clean dataloaders created successfully:
+2025-08-01 15:09:53,843 - INFO - __main__ -   No normalization applied
+2025-08-01 15:09:53,843 - INFO - __main__ -   Standard Gaussian noise
+2025-08-01 15:09:53,843 - INFO - __main__ -   Max shards: 2
+2025-08-01 15:09:53,843 - INFO - __main__ -   Training mode: patch_only
+2025-08-01 15:09:53,843 - INFO - __main__ -   Batch size: 8
+2025-08-01 15:09:58,999 - INFO - src.modules.datasets.blip3o_dataset - Loaded shard 1/2: 2601 samples, CLIP norm=26.319, EVA norm=43.667
+2025-08-01 15:09:59,048 - INFO - __main__ - ✅ Dataloader test successful:
+2025-08-01 15:09:59,049 - INFO - __main__ -   Batch size: 8
+2025-08-01 15:09:59,049 - INFO - __main__ -   CLIP embeddings shape: torch.Size([8, 256, 1024])
+2025-08-01 15:09:59,049 - INFO - __main__ -   EVA embeddings shape: torch.Size([8, 256, 4096])
+2025-08-01 15:09:59,049 - INFO - __main__ -   Raw embedding space: True
+2025-08-01 15:09:59,049 - INFO - __main__ - 🏃 Creating trainer...
+2025-08-01 15:09:59,049 - INFO - __main__ - ✅ Imported clean trainer
+2025-08-01 15:09:59,049 - INFO - __main__ - Creating clean trainer
+2025-08-01 15:09:59,052 - INFO - src.modules.trainers.blip3o_trainer - Got exact dataloader length: 652
+2025-08-01 15:09:59,054 - INFO - src.modules.trainers.blip3o_trainer - Optimizer and scheduler setup complete
+2025-08-01 15:09:59,054 - INFO - src.modules.trainers.blip3o_trainer -   Total estimated steps: 6520
+2025-08-01 15:09:59,054 - INFO - src.modules.trainers.blip3o_trainer -   Warmup steps: 100
+2025-08-01 15:09:59,054 - INFO - src.modules.trainers.blip3o_trainer - Preparing overfitting test with 20 samples...
+2025-08-01 15:10:03,660 - INFO - src.modules.datasets.blip3o_dataset - Loaded shard 1/2: 2646 samples, CLIP norm=26.278, EVA norm=43.618
+2025-08-01 15:10:03,682 - INFO - src.modules.trainers.blip3o_trainer - Using eval_dataloader for overfitting test
+2025-08-01 15:10:03,694 - INFO - src.modules.trainers.blip3o_trainer - ✅ Overfitting test prepared with 8 samples:
+2025-08-01 15:10:03,694 - INFO - src.modules.trainers.blip3o_trainer -   Overfit CLIP norm: 25.292
+2025-08-01 15:10:03,694 - INFO - src.modules.trainers.blip3o_trainer -   Overfit EVA norm: 42.896
+2025-08-01 15:10:03,694 - INFO - src.modules.trainers.blip3o_trainer - Clean BLIP3-o CLIP Trainer initialized
+2025-08-01 15:10:03,694 - INFO - src.modules.trainers.blip3o_trainer -   Device: cuda
+2025-08-01 15:10:03,695 - INFO - src.modules.trainers.blip3o_trainer -   Parameters: 249,339,136
+2025-08-01 15:10:03,695 - INFO - __main__ - Clean trainer created successfully:
+2025-08-01 15:10:03,695 - INFO - __main__ -   Evaluation: Every 50 steps
+2025-08-01 15:10:03,695 - INFO - __main__ -   WandB enabled: False
+2025-08-01 15:10:03,695 - INFO - __main__ -   Overfitting test: 20 samples
+2025-08-01 15:10:03,695 - INFO - __main__ - 💾 Saving experiment configuration...
+2025-08-01 15:10:03,698 - INFO - __main__ - ✅ Configuration saved to checkpoints/clip_repro_20250801_150940/clean_experiment_config.json
+2025-08-01 15:10:03,698 - INFO - __main__ - 
+🚀 Starting clean BLIP3-o training...
+2025-08-01 15:10:03,698 - INFO - __main__ - ============================================================
+2025-08-01 15:10:03,698 - INFO - __main__ - 🧪 EXPECTED BEHAVIOR:
+2025-08-01 15:10:03,698 - INFO - __main__ -   ✅ Non-zero gradients from first step
+2025-08-01 15:10:03,698 - INFO - __main__ -   ✅ Decreasing loss within first few epochs
+2025-08-01 15:10:03,698 - INFO - __main__ -   ✅ Velocity similarity increasing from ~0.01 to >0.1
+2025-08-01 15:10:03,698 - INFO - __main__ -   ✅ CLIP similarity during evaluation >0.1 (good), >0.4 (excellent)
+2025-08-01 15:10:03,699 - INFO - __main__ -   ✅ Overfitting test should achieve >0.8 similarity
+2025-08-01 15:10:03,699 - INFO - __main__ -   ✅ No NaN/Inf issues or tensor shape mismatches
+2025-08-01 15:10:03,699 - INFO - __main__ - 
+🎯 SUCCESS CRITERIA:
+2025-08-01 15:10:03,699 - INFO - __main__ -   ✅ Training completes without errors
+2025-08-01 15:10:03,699 - INFO - __main__ -   ✅ Evaluation runs successfully at every checkpoint
+2025-08-01 15:10:03,699 - INFO - __main__ -   ✅ CLIP similarity steadily increases during training
+2025-08-01 15:10:03,699 - INFO - __main__ -   ✅ Overfitting test achieves >0.8 similarity
+2025-08-01 15:10:03,699 - INFO - __main__ -   ✅ Final evaluation shows strong CLIP reproduction (>0.4 similarity)
+2025-08-01 15:10:03,699 - INFO - __main__ - ============================================================
+2025-08-01 15:10:03,699 - INFO - src.modules.trainers.blip3o_trainer - 🚀 Starting clean BLIP3-o training...
+2025-08-01 15:10:03,700 - INFO - src.modules.trainers.blip3o_trainer -   Model parameters: 249,339,136
+2025-08-01 15:10:03,701 - INFO - src.modules.trainers.blip3o_trainer - Starting epoch 1/10
+2025-08-01 15:10:07,889 - INFO - src.modules.datasets.blip3o_dataset - Loaded shard 1/2: 2601 samples, CLIP norm=26.319, EVA norm=43.667
+2025-08-01 15:10:11,302 - INFO - src.modules.trainers.blip3o_trainer - Step 10: Loss=1.763444, VelSim=0.2668 (fair), GradNorm=38368.656, LR=1.90e-05, PredNorm=12.285, TargetNorm=41.364 [OVERFIT TEST]
+2025-08-01 15:10:14,127 - INFO - src.modules.trainers.blip3o_trainer - Step 20: Loss=1.676471, VelSim=0.3398 (fair), GradNorm=21225.590, LR=2.80e-05, PredNorm=12.102, TargetNorm=41.364 [OVERFIT TEST]
+2025-08-01 15:10:16,951 - INFO - src.modules.trainers.blip3o_trainer - Step 30: Loss=1.628332, VelSim=0.3725 (fair), GradNorm=12414.937, LR=3.70e-05, PredNorm=13.516, TargetNorm=41.364 [OVERFIT TEST]
+2025-08-01 15:10:19,775 - INFO - src.modules.trainers.blip3o_trainer - Step 40: Loss=1.602838, VelSim=0.3876 (fair), GradNorm=99543.469, LR=4.60e-05, PredNorm=15.356, TargetNorm=41.364 [OVERFIT TEST]
+2025-08-01 15:10:22,599 - INFO - src.modules.trainers.blip3o_trainer - Step 50: Loss=1.543872, VelSim=0.4260 (fair), GradNorm=46631.372, LR=5.50e-05, PredNorm=16.709, TargetNorm=41.364 [OVERFIT TEST]
+2025-08-01 15:10:22,599 - INFO - src.modules.trainers.blip3o_trainer - Running evaluation at step 50...
+2025-08-01 15:10:22,599 - INFO - src.modules.trainers.blip3o_trainer - Starting evaluation with 15 samples
+2025-08-01 15:10:28,075 - INFO - src.modules.datasets.blip3o_dataset - Loaded shard 1/2: 2646 samples, CLIP norm=26.278, EVA norm=43.618
+2025-08-01 15:10:34,067 - INFO - src.modules.trainers.blip3o_trainer - ✅ Evaluation completed: 16 samples, similarity: 0.0175
+2025-08-01 15:10:34,068 - INFO - src.modules.trainers.blip3o_trainer - ✅ Evaluation results:
+2025-08-01 15:10:34,068 - INFO - src.modules.trainers.blip3o_trainer -   CLIP similarity: 0.0175
+2025-08-01 15:10:34,068 - INFO - src.modules.trainers.blip3o_trainer -   Generated norm: 26.000
+2025-08-01 15:10:34,068 - INFO - src.modules.trainers.blip3o_trainer -   Target norm: 25.856
+2025-08-01 15:10:36,901 - INFO - src.modules.trainers.blip3o_trainer - Step 60: Loss=1.464028, VelSim=0.4707 (fair), GradNorm=77869.152, LR=6.40e-05, PredNorm=18.733, TargetNorm=41.364 [OVERFIT TEST]
+2025-08-01 15:10:39,735 - INFO - src.modules.trainers.blip3o_trainer - Step 70: Loss=1.348118, VelSim=0.5283 (good), GradNorm=98544.883, LR=7.30e-05, PredNorm=21.654, TargetNorm=41.364 [OVERFIT TEST]
+2025-08-01 15:10:42,566 - INFO - src.modules.trainers.blip3o_trainer - Step 80: Loss=1.219624, VelSim=0.5825 (good), GradNorm=150262.102, LR=8.20e-05, PredNorm=24.347, TargetNorm=41.364 [OVERFIT TEST]
+2025-08-01 15:10:45,387 - INFO - src.modules.trainers.blip3o_trainer - Step 90: Loss=1.087784, VelSim=0.6322 (good), GradNorm=142462.333, LR=9.10e-05, PredNorm=27.090, TargetNorm=41.364 [OVERFIT TEST]
+2025-08-01 15:10:48,215 - INFO - src.modules.trainers.blip3o_trainer - Step 100: Loss=0.962317, VelSim=0.6710 (good), GradNorm=175504.288, LR=1.00e-04, PredNorm=28.172, TargetNorm=41.364 [OVERFIT TEST]
+2025-08-01 15:10:48,215 - INFO - src.modules.trainers.blip3o_trainer - Running evaluation at step 100...
+2025-08-01 15:10:48,216 - INFO - src.modules.trainers.blip3o_trainer - Starting evaluation with 15 samples
+2025-08-01 15:10:53,012 - INFO - src.modules.datasets.blip3o_dataset - Loaded shard 1/2: 2646 samples, CLIP norm=26.278, EVA norm=43.618
+2025-08-01 15:10:58,845 - INFO - src.modules.trainers.blip3o_trainer - ✅ Evaluation completed: 16 samples, similarity: 0.0300
+2025-08-01 15:10:58,847 - INFO - src.modules.trainers.blip3o_trainer - ✅ Evaluation results:
+2025-08-01 15:10:58,847 - INFO - src.modules.trainers.blip3o_trainer -   CLIP similarity: 0.0300
+2025-08-01 15:10:58,847 - INFO - src.modules.trainers.blip3o_trainer -   Generated norm: 26.000
+2025-08-01 15:10:58,847 - INFO - src.modules.trainers.blip3o_trainer -   Target norm: 25.856
+2025-08-01 15:11:01,668 - INFO - src.modules.trainers.blip3o_trainer - Step 110: Loss=0.844793, VelSim=0.7059 (good), GradNorm=189249.374, LR=1.00e-04, PredNorm=29.764, TargetNorm=41.364 [OVERFIT TEST]
+2025-08-01 15:11:04,465 - INFO - src.modules.trainers.blip3o_trainer - Step 120: Loss=0.741424, VelSim=0.7388 (good), GradNorm=201037.880, LR=1.00e-04, PredNorm=31.205, TargetNorm=41.364 [OVERFIT TEST]
+2025-08-01 15:11:07,260 - INFO - src.modules.trainers.blip3o_trainer - Step 130: Loss=0.656862, VelSim=0.7686 (good), GradNorm=175149.981, LR=1.00e-04, PredNorm=31.593, TargetNorm=41.364 [OVERFIT TEST]
+2025-08-01 15:11:10,059 - INFO - src.modules.trainers.blip3o_trainer - Step 140: Loss=0.598921, VelSim=0.7895 (good), GradNorm=198417.691, LR=1.00e-04, PredNorm=33.464, TargetNorm=41.364 [OVERFIT TEST]
+2025-08-01 15:11:13,002 - INFO - src.modules.trainers.blip3o_trainer - Step 150: Loss=0.532419, VelSim=0.8144 (excellent), GradNorm=184474.630, LR=1.00e-04, PredNorm=34.133, TargetNorm=41.364 [OVERFIT TEST]
+2025-08-01 15:11:13,002 - INFO - src.modules.trainers.blip3o_trainer - Running evaluation at step 150...
+2025-08-01 15:11:13,002 - INFO - src.modules.trainers.blip3o_trainer - Starting evaluation with 15 samples
+2025-08-01 15:11:17,668 - INFO - src.modules.datasets.blip3o_dataset - Loaded shard 1/2: 2646 samples, CLIP norm=26.278, EVA norm=43.618
+2025-08-01 15:11:23,492 - INFO - src.modules.trainers.blip3o_trainer - ✅ Evaluation completed: 16 samples, similarity: 0.0295
+2025-08-01 15:11:23,493 - INFO - src.modules.trainers.blip3o_trainer - ✅ Evaluation results:
+2025-08-01 15:11:23,493 - INFO - src.modules.trainers.blip3o_trainer -   CLIP similarity: 0.0295
+2025-08-01 15:11:23,493 - INFO - src.modules.trainers.blip3o_trainer -   Generated norm: 26.000
+2025-08-01 15:11:23,493 - INFO - src.modules.trainers.blip3o_trainer -   Target norm: 25.856
+2025-08-01 15:11:26,317 - INFO - src.modules.trainers.blip3o_trainer - Step 160: Loss=0.491184, VelSim=0.8298 (excellent), GradNorm=183306.086, LR=1.00e-04, PredNorm=34.549, TargetNorm=41.364 [OVERFIT TEST]
+2025-08-01 15:11:29,107 - INFO - src.modules.trainers.blip3o_trainer - Step 170: Loss=0.443809, VelSim=0.8476 (excellent), GradNorm=155367.304, LR=1.00e-04, PredNorm=35.258, TargetNorm=41.364 [OVERFIT TEST]
+2025-08-01 15:11:31,900 - INFO - src.modules.trainers.blip3o_trainer - Step 180: Loss=0.406587, VelSim=0.8612 (excellent), GradNorm=141078.249, LR=1.00e-04, PredNorm=35.660, TargetNorm=41.364 [OVERFIT TEST]
+2025-08-01 15:11:34,691 - INFO - src.modules.trainers.blip3o_trainer - Step 190: Loss=0.380982, VelSim=0.8706 (excellent), GradNorm=151762.977, LR=1.00e-04, PredNorm=36.011, TargetNorm=41.364 [OVERFIT TEST]
+2025-08-01 15:11:37,484 - INFO - src.modules.trainers.blip3o_trainer - Step 200: Loss=0.365105, VelSim=0.8764 (excellent), GradNorm=185075.070, LR=9.99e-05, PredNorm=37.093, TargetNorm=41.364 [OVERFIT TEST]
+2025-08-01 15:11:37,484 - INFO - src.modules.trainers.blip3o_trainer - Running evaluation at step 200...
+2025-08-01 15:11:37,484 - INFO - src.modules.trainers.blip3o_trainer - Starting evaluation with 15 samples
+2025-08-01 15:11:42,138 - INFO - src.modules.datasets.blip3o_dataset - Loaded shard 1/2: 2646 samples, CLIP norm=26.278, EVA norm=43.618
+2025-08-01 15:11:47,952 - INFO - src.modules.trainers.blip3o_trainer - ✅ Evaluation completed: 16 samples, similarity: 0.0284
+2025-08-01 15:11:47,952 - INFO - src.modules.trainers.blip3o_trainer - ✅ Evaluation results:
+2025-08-01 15:11:47,952 - INFO - src.modules.trainers.blip3o_trainer -   CLIP similarity: 0.0284
+2025-08-01 15:11:47,952 - INFO - src.modules.trainers.blip3o_trainer -   Generated norm: 26.000
+2025-08-01 15:11:47,952 - INFO - src.modules.trainers.blip3o_trainer -   Target norm: 25.856
+2025-08-01 15:11:50,769 - INFO - src.modules.trainers.blip3o_trainer - Step 210: Loss=0.345403, VelSim=0.8836 (excellent), GradNorm=140856.193, LR=9.99e-05, PredNorm=36.941, TargetNorm=41.364 [OVERFIT TEST]
+2025-08-01 15:11:53,563 - INFO - src.modules.trainers.blip3o_trainer - Step 220: Loss=0.320259, VelSim=0.8927 (excellent), GradNorm=154458.423, LR=9.99e-05, PredNorm=37.484, TargetNorm=41.364 [OVERFIT TEST]
+2025-08-01 15:11:55,231 - INFO - src.modules.trainers.blip3o_trainer - 🎉 OVERFITTING TEST PASSED! Model can learn effectively.
+2025-08-01 15:11:55,232 - INFO - src.modules.trainers.blip3o_trainer - Epoch 1 completed:
+2025-08-01 15:11:55,232 - INFO - src.modules.trainers.blip3o_trainer -   Average loss: 0.945341
+2025-08-01 15:11:55,232 - INFO - src.modules.trainers.blip3o_trainer -   Best loss: 0.292785
+2025-08-01 15:11:55,232 - INFO - src.modules.trainers.blip3o_trainer -   Best similarity: 0.9022
+2025-08-01 15:11:55,232 - INFO - src.modules.trainers.blip3o_trainer -   Steps in epoch: 226
+2025-08-01 15:11:55,232 - INFO - src.modules.trainers.blip3o_trainer -   Epoch time: 111.5s
+2025-08-01 15:11:55,232 - INFO - src.modules.trainers.blip3o_trainer - Starting epoch 2/10
+2025-08-01 15:11:59,753 - INFO - src.modules.datasets.blip3o_dataset - Loaded shard 1/2: 2601 samples, CLIP norm=26.319, EVA norm=43.667
+2025-08-01 15:12:00,311 - INFO - src.modules.trainers.blip3o_trainer - 🎉 OVERFITTING TEST PASSED! Model can learn effectively.
+2025-08-01 15:12:00,311 - INFO - src.modules.trainers.blip3o_trainer - Epoch 2 completed:
+2025-08-01 15:12:00,311 - INFO - src.modules.trainers.blip3o_trainer -   Average loss: 0.297739
+2025-08-01 15:12:00,311 - INFO - src.modules.trainers.blip3o_trainer -   Best loss: 0.292647
+2025-08-01 15:12:00,311 - INFO - src.modules.trainers.blip3o_trainer -   Best similarity: 0.9023
+2025-08-01 15:12:00,311 - INFO - src.modules.trainers.blip3o_trainer -   Steps in epoch: 2
+2025-08-01 15:12:00,311 - INFO - src.modules.trainers.blip3o_trainer -   Epoch time: 5.1s
+2025-08-01 15:12:00,311 - INFO - src.modules.trainers.blip3o_trainer - Starting epoch 3/10
+2025-08-01 15:12:04,586 - INFO - src.modules.datasets.blip3o_dataset - Loaded shard 1/2: 2601 samples, CLIP norm=26.319, EVA norm=43.667
+2025-08-01 15:12:05,145 - INFO - src.modules.trainers.blip3o_trainer - Step 230: Loss=0.290635, VelSim=0.9030 (excellent), GradNorm=97858.680, LR=9.99e-05, PredNorm=37.391, TargetNorm=41.364 [OVERFIT TEST]
+2025-08-01 15:12:05,146 - INFO - src.modules.trainers.blip3o_trainer - 🎉 OVERFITTING TEST PASSED! Model can learn effectively.
+2025-08-01 15:12:05,146 - INFO - src.modules.trainers.blip3o_trainer - Epoch 3 completed:
+2025-08-01 15:12:05,146 - INFO - src.modules.trainers.blip3o_trainer -   Average loss: 0.295514
+2025-08-01 15:12:05,147 - INFO - src.modules.trainers.blip3o_trainer -   Best loss: 0.290635
+2025-08-01 15:12:05,147 - INFO - src.modules.trainers.blip3o_trainer -   Best similarity: 0.9030
+2025-08-01 15:12:05,147 - INFO - src.modules.trainers.blip3o_trainer -   Steps in epoch: 2
+2025-08-01 15:12:05,147 - INFO - src.modules.trainers.blip3o_trainer -   Epoch time: 4.8s
+2025-08-01 15:12:05,147 - INFO - src.modules.trainers.blip3o_trainer - Starting epoch 4/10
+2025-08-01 15:12:09,305 - INFO - src.modules.datasets.blip3o_dataset - Loaded shard 1/2: 2601 samples, CLIP norm=26.319, EVA norm=43.667
+2025-08-01 15:12:09,585 - INFO - src.modules.trainers.blip3o_trainer - 🎉 OVERFITTING TEST PASSED! Model can learn effectively.
+2025-08-01 15:12:09,586 - INFO - src.modules.trainers.blip3o_trainer - Epoch 4 completed:
+2025-08-01 15:12:09,586 - INFO - src.modules.trainers.blip3o_trainer -   Average loss: 0.293665
+2025-08-01 15:12:09,586 - INFO - src.modules.trainers.blip3o_trainer -   Best loss: 0.290635
+2025-08-01 15:12:09,586 - INFO - src.modules.trainers.blip3o_trainer -   Best similarity: 0.9030
+2025-08-01 15:12:09,586 - INFO - src.modules.trainers.blip3o_trainer -   Steps in epoch: 1
+2025-08-01 15:12:09,586 - INFO - src.modules.trainers.blip3o_trainer -   Epoch time: 4.4s
+2025-08-01 15:12:09,586 - INFO - src.modules.trainers.blip3o_trainer - Starting epoch 5/10
+2025-08-01 15:12:13,875 - INFO - src.modules.datasets.blip3o_dataset - Loaded shard 1/2: 2601 samples, CLIP norm=26.319, EVA norm=43.667
+2025-08-01 15:12:14,159 - INFO - src.modules.trainers.blip3o_trainer - 🎉 OVERFITTING TEST PASSED! Model can learn effectively.
+2025-08-01 15:12:14,159 - INFO - src.modules.trainers.blip3o_trainer - Epoch 5 completed:
+2025-08-01 15:12:14,159 - INFO - src.modules.trainers.blip3o_trainer -   Average loss: 0.289133
+2025-08-01 15:12:14,159 - INFO - src.modules.trainers.blip3o_trainer -   Best loss: 0.289133
+2025-08-01 15:12:14,159 - INFO - src.modules.trainers.blip3o_trainer -   Best similarity: 0.9035
+2025-08-01 15:12:14,159 - INFO - src.modules.trainers.blip3o_trainer -   Steps in epoch: 1
+2025-08-01 15:12:14,160 - INFO - src.modules.trainers.blip3o_trainer -   Epoch time: 4.6s
+2025-08-01 15:12:14,160 - INFO - src.modules.trainers.blip3o_trainer - Starting epoch 6/10
+2025-08-01 15:12:18,228 - INFO - src.modules.datasets.blip3o_dataset - Loaded shard 1/2: 2601 samples, CLIP norm=26.319, EVA norm=43.667
+2025-08-01 15:12:18,510 - INFO - src.modules.trainers.blip3o_trainer - 🎉 OVERFITTING TEST PASSED! Model can learn effectively.
+2025-08-01 15:12:18,511 - INFO - src.modules.trainers.blip3o_trainer - Epoch 6 completed:
+2025-08-01 15:12:18,511 - INFO - src.modules.trainers.blip3o_trainer -   Average loss: 0.287801
+2025-08-01 15:12:18,511 - INFO - src.modules.trainers.blip3o_trainer -   Best loss: 0.287801
+2025-08-01 15:12:18,511 - INFO - src.modules.trainers.blip3o_trainer -   Best similarity: 0.9039
+2025-08-01 15:12:18,511 - INFO - src.modules.trainers.blip3o_trainer -   Steps in epoch: 1
+2025-08-01 15:12:18,511 - INFO - src.modules.trainers.blip3o_trainer -   Epoch time: 4.4s
+2025-08-01 15:12:18,511 - INFO - src.modules.trainers.blip3o_trainer - Starting epoch 7/10
+2025-08-01 15:12:22,636 - INFO - src.modules.datasets.blip3o_dataset - Loaded shard 1/2: 2601 samples, CLIP norm=26.319, EVA norm=43.667
+2025-08-01 15:12:22,920 - INFO - src.modules.trainers.blip3o_trainer - 🎉 OVERFITTING TEST PASSED! Model can learn effectively.
+2025-08-01 15:12:22,921 - INFO - src.modules.trainers.blip3o_trainer - Epoch 7 completed:
+2025-08-01 15:12:22,921 - INFO - src.modules.trainers.blip3o_trainer -   Average loss: 0.283831
+2025-08-01 15:12:22,921 - INFO - src.modules.trainers.blip3o_trainer -   Best loss: 0.283831
+2025-08-01 15:12:22,921 - INFO - src.modules.trainers.blip3o_trainer -   Best similarity: 0.9053
+2025-08-01 15:12:22,921 - INFO - src.modules.trainers.blip3o_trainer -   Steps in epoch: 1
+2025-08-01 15:12:22,921 - INFO - src.modules.trainers.blip3o_trainer -   Epoch time: 4.4s
+2025-08-01 15:12:22,921 - INFO - src.modules.trainers.blip3o_trainer - Starting epoch 8/10
