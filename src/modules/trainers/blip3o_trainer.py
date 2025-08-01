@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
 """
 Clean BLIP3-o Trainer for CLIP Reproduction
-Simple implementation without scale-aware complexities
+Simple implementation aligned with BLIP3-o paper
 """
 
 import torch
 import torch.nn.functional as F
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, SequentialLR
-from typing import Dict, Any, Optional, List, Tuple, Union
+from typing import Dict, Any, Optional, List, Tuple
 import logging
 import time
 import numpy as np
 from pathlib import Path
 import json
 import gc
-from collections import deque, defaultdict
+from collections import deque
 import math
 import os
 
@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 class BLIP3oCLIPTrainer:
     """
     Clean Trainer for BLIP3-o CLIP Reproduction
-    Simple implementation without scale-aware complexities
+    Simple implementation following BLIP3-o paper
     """
     
     def __init__(
@@ -53,9 +53,7 @@ class BLIP3oCLIPTrainer:
         eval_every_n_steps: int = 100,
         eval_num_samples: int = 500,
         eval_inference_steps: int = 50,
-        # Debugging
-        debug_mode: bool = False,
-        overfit_test_size: Optional[int] = None,
+        # Logging
         log_every_n_steps: int = 10,
         save_every_n_steps: int = 500,
         # Output
@@ -64,7 +62,7 @@ class BLIP3oCLIPTrainer:
         device: Optional[torch.device] = None,
         # WandB configuration
         use_wandb: bool = False,
-        wandb_project: str = "blip3o-clip-clean",
+        wandb_project: str = "blip3o-clip",
         wandb_run_name: Optional[str] = None,
         wandb_config: Optional[Dict] = None,
         wandb_api_key: Optional[str] = None,
@@ -87,9 +85,7 @@ class BLIP3oCLIPTrainer:
         self.eval_num_samples = eval_num_samples
         self.eval_inference_steps = eval_inference_steps
         
-        # Debugging config
-        self.debug_mode = debug_mode
-        self.overfit_test_size = overfit_test_size
+        # Logging config
         self.log_every_n_steps = log_every_n_steps
         self.save_every_n_steps = save_every_n_steps
         
@@ -137,11 +133,6 @@ class BLIP3oCLIPTrainer:
             self._setup_wandb()
         elif use_wandb and not WANDB_AVAILABLE:
             logger.warning("WandB requested but not available. Install with: pip install wandb")
-        
-        # Overfitting test data
-        self.overfit_batch = None
-        if self.overfit_test_size:
-            self._prepare_overfit_test()
         
         logger.info("Clean BLIP3-o CLIP Trainer initialized")
         logger.info(f"  Device: {self.device}")
@@ -235,7 +226,7 @@ class BLIP3oCLIPTrainer:
                 'eval_inference_steps': self.eval_inference_steps,
                 'experiment_type': 'blip3o_clip_clean',
                 'task': 'EVA_to_CLIP_embedding_reproduction',
-                'method': 'BLIP3o_DiT_clean_implementation',
+                'method': 'BLIP3o_DiT_with_rectified_flow_matching',
                 **model_config,
                 **self.wandb_config,
             }
@@ -261,56 +252,11 @@ class BLIP3oCLIPTrainer:
             logger.error(f"❌ Failed to setup WandB: {e}")
             self.use_wandb = False
 
-    def _prepare_overfit_test(self):
-        """Prepare overfitting test batch"""
-        logger.info(f"Preparing overfitting test with {self.overfit_test_size} samples...")
-        
-        try:
-            if self.eval_dataloader is not None:
-                eval_batch = next(iter(self.eval_dataloader))
-                logger.info("Using eval_dataloader for overfitting test")
-            else:
-                eval_batch = next(iter(self.train_dataloader))
-                logger.warning("No eval_dataloader available, using train_dataloader")
-            
-            actual_size = min(self.overfit_test_size, eval_batch['batch_size'])
-            
-            self.overfit_batch = {}
-            for key, value in eval_batch.items():
-                if torch.is_tensor(value) and value.dim() > 0:
-                    self.overfit_batch[key] = value[:actual_size].clone().detach()
-                elif isinstance(value, list):
-                    self.overfit_batch[key] = value[:actual_size]
-                else:
-                    self.overfit_batch[key] = value
-            
-            self.overfit_batch['batch_size'] = actual_size
-            
-            overfit_clip_norm = torch.norm(self.overfit_batch['clip_embeddings'], dim=-1).mean().item()
-            overfit_eva_norm = torch.norm(self.overfit_batch['encoder_hidden_states'], dim=-1).mean().item()
-            
-            logger.info(f"✅ Overfitting test prepared with {actual_size} samples:")
-            logger.info(f"  Overfit CLIP norm: {overfit_clip_norm:.3f}")
-            logger.info(f"  Overfit EVA norm: {overfit_eva_norm:.3f}")
-            
-        except Exception as e:
-            logger.error(f"Failed to prepare overfitting test: {e}")
-            self.overfit_batch = None
-
     def _compute_loss(self, batch: Dict[str, Any]) -> Tuple[torch.Tensor, Dict[str, float]]:
         """Compute loss for a batch"""
         for key, value in batch.items():
             if torch.is_tensor(value):
                 batch[key] = value.to(self.device)
-        
-        using_overfit = False
-        if self.overfit_batch is not None:
-            for key, value in self.overfit_batch.items():
-                if torch.is_tensor(value):
-                    batch[key] = value.to(self.device)
-                else:
-                    batch[key] = value
-            using_overfit = True
         
         hidden_states = batch['hidden_states']
         timestep = batch['timestep']
@@ -351,9 +297,6 @@ class BLIP3oCLIPTrainer:
                 noise=noise,
                 return_metrics=True
             )
-        
-        if metrics:
-            metrics['using_overfit_test'] = using_overfit
         
         return loss, metrics
 
@@ -418,11 +361,10 @@ class BLIP3oCLIPTrainer:
                         eva_features = batch['encoder_hidden_states'].to(self.device)
                         target_clip = batch['clip_embeddings'].to(self.device)
                         
-                        # Simple generation
+                        # Generate CLIP embeddings using clean inference
                         generated_clip = self.model.generate(
                             eva_features=eva_features,
                             num_inference_steps=self.eval_inference_steps,
-                            normalize_output=False,
                         )
                         
                         # Compute similarity (normalize only for similarity computation)
@@ -443,9 +385,6 @@ class BLIP3oCLIPTrainer:
                         all_generated_norms.append(generated_norms.cpu())
                         all_target_norms.append(target_norms.cpu())
                         samples_processed += eva_features.shape[0]
-                        
-                        if self.debug_mode and batch_idx < 3:
-                            logger.info(f"  Batch {batch_idx}: similarity={per_image_similarity.mean().item():.4f}")
                     
                     except Exception as e:
                         logger.error(f"Error processing evaluation batch {batch_idx}: {e}")
@@ -555,17 +494,10 @@ class BLIP3oCLIPTrainer:
             
             if 'velocity_similarity' in metrics:
                 sim = metrics['velocity_similarity']
-                quality = metrics.get('quality_assessment', 'unknown')
-                log_msg += f", VelSim={sim:.4f} ({quality})"
+                log_msg += f", VelSim={sim:.4f}"
             
             log_msg += f", GradNorm={grad_norm:.3f}"
             log_msg += f", LR={self.optimizer.param_groups[0]['lr']:.2e}"
-            
-            if 'pred_norm' in metrics and 'target_norm' in metrics:
-                log_msg += f", PredNorm={metrics['pred_norm']:.3f}, TargetNorm={metrics['target_norm']:.3f}"
-            
-            if self.overfit_batch is not None:
-                log_msg += " [OVERFIT TEST]"
             
             logger.info(log_msg)
 
@@ -669,8 +601,6 @@ class BLIP3oCLIPTrainer:
                                 if eval_metrics:
                                     logger.info(f"✅ Evaluation results:")
                                     logger.info(f"  CLIP similarity: {eval_metrics.get('eval_clip_similarity', 0):.4f}")
-                                    logger.info(f"  Generated norm: {eval_metrics.get('eval_generated_norm_mean', 0):.3f}")
-                                    logger.info(f"  Target norm: {eval_metrics.get('eval_target_norm_mean', 0):.3f}")
                                     
                                     if self.use_wandb:
                                         wandb_eval_metrics = {f"eval/{k}": v for k, v in eval_metrics.items()}
@@ -697,19 +627,6 @@ class BLIP3oCLIPTrainer:
                         # Save checkpoint
                         if self.global_step % self.save_every_n_steps == 0:
                             self._save_checkpoint()
-                        
-                        # Check for early success in overfitting test
-                        if (self.overfit_batch is not None and 
-                            metrics and 
-                            metrics.get('velocity_similarity', 0) > 0.9):
-                            logger.info("🎉 OVERFITTING TEST PASSED! Model can learn effectively.")
-                            if self.use_wandb:
-                                wandb.log({
-                                    "overfit_test/passed": True,
-                                    "overfit_test/final_similarity": metrics['velocity_similarity'],
-                                    "overfit_test/steps_to_pass": self.global_step,
-                                }, step=self.global_step)
-                            break
                 
                 except Exception as e:
                     logger.error(f"Error during epoch {epoch + 1}: {e}")
@@ -768,10 +685,6 @@ class BLIP3oCLIPTrainer:
                 'best_loss': self.best_loss,
                 'best_eval_similarity': self.best_eval_similarity,
                 'final_eval': final_eval,
-                'overfit_test': self.overfit_batch is not None,
-                'overfit_success': (self.overfit_batch is not None and 
-                                  len(self.similarity_history) > 0 and 
-                                  max(self.similarity_history) > 0.8),
                 'loss_history': list(self.loss_history),
                 'similarity_history': list(self.similarity_history),
                 'estimated_steps_per_epoch': self.estimated_steps_per_epoch,
@@ -802,7 +715,7 @@ class BLIP3oCLIPTrainer:
             with open(summary_path, 'w') as f:
                 json.dump(summary, f, indent=2)
             
-            logger.info("🚀 Clean Training completed!")
+            logger.info("🎉 Clean Training completed!")
             logger.info(f"  Total time: {total_time:.1f} seconds")
             logger.info(f"  Total steps: {self.global_step}")
             logger.info(f"  Best loss: {self.best_loss:.6f}")
@@ -824,10 +737,8 @@ def create_clip_trainer(
     learning_rate: float = 1e-4,
     num_epochs: int = 10,
     output_dir: str = "./checkpoints",
-    overfit_test_size: Optional[int] = None,
-    debug_mode: bool = False,
     use_wandb: bool = False,
-    wandb_project: str = "blip3o-clip-clean",
+    wandb_project: str = "blip3o-clip",
     wandb_run_name: Optional[str] = None,
     wandb_config: Optional[Dict] = None,
     **kwargs
@@ -842,8 +753,6 @@ def create_clip_trainer(
         learning_rate=learning_rate,
         num_epochs=num_epochs,
         output_dir=output_dir,
-        overfit_test_size=overfit_test_size,
-        debug_mode=debug_mode,
         use_wandb=use_wandb,
         wandb_project=wandb_project,
         wandb_run_name=wandb_run_name,

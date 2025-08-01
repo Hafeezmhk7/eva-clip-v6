@@ -1,8 +1,7 @@
 # src/modules/__init__.py
 """
-BLIP3-o Modules - CLIP Reproduction from EVA Embeddings
-Single comprehensive module init that handles all components
-FIXED: Updated for correct file paths in subdirectories
+Clean BLIP3-o Modules for CLIP Reproduction
+Simplified module initialization
 """
 
 import logging
@@ -41,9 +40,9 @@ try:
         'BLIP3oCLIPDiTConfig': BLIP3oCLIPDiTConfig,
         'create_clip_reproduction_model': create_clip_reproduction_model,
     })
-    logger.info("✅ CLIP DiT model loaded from src/modules/models/blip3o_dit.py")
+    logger.info("✅ CLIP DiT model loaded successfully")
 except ImportError as e:
-    logger.warning(f"⚠️ Failed to import from src/modules/models/blip3o_dit.py: {e}")
+    logger.warning(f"⚠️ Failed to import model: {e}")
 
 # =============================================================================
 # LOSS IMPORTS (src/modules/losses/blip3o_fm_loss.py)
@@ -58,9 +57,9 @@ try:
         'BLIP3oCLIPFlowMatchingLoss': BLIP3oCLIPFlowMatchingLoss,
         'create_clip_reproduction_loss': create_clip_reproduction_loss,
     })
-    logger.info("✅ Flow matching loss loaded from src/modules/losses/blip3o_fm_loss.py")
+    logger.info("✅ Flow matching loss loaded successfully")
 except ImportError as e:
-    logger.warning(f"⚠️ Failed to import from src/modules/losses/blip3o_fm_loss.py: {e}")
+    logger.warning(f"⚠️ Failed to import loss: {e}")
 
 # =============================================================================
 # TRAINER IMPORTS (src/modules/trainers/blip3o_trainer.py) 
@@ -75,9 +74,9 @@ try:
         'BLIP3oCLIPTrainer': BLIP3oCLIPTrainer,
         'create_clip_trainer': create_clip_trainer,
     })
-    logger.info("✅ CLIP trainer loaded from src/modules/trainers/blip3o_trainer.py")
+    logger.info("✅ CLIP trainer loaded successfully")
 except ImportError as e:
-    logger.warning(f"⚠️ Failed to import from src/modules/trainers/blip3o_trainer.py: {e}")
+    logger.warning(f"⚠️ Failed to import trainer: {e}")
 
 # =============================================================================
 # DATASET IMPORTS (src/modules/datasets/blip3o_dataset.py)
@@ -94,9 +93,9 @@ try:
         'BLIP3oCLIPReproductionDataset': BLIP3oCLIPReproductionDataset,
         'clip_reproduction_collate_fn': clip_reproduction_collate_fn,
     })
-    logger.info("✅ CLIP datasets loaded from src/modules/datasets/blip3o_dataset.py")
+    logger.info("✅ CLIP datasets loaded successfully")
 except ImportError as e:
-    logger.warning(f"⚠️ Failed to import from src/modules/datasets/blip3o_dataset.py: {e}")
+    logger.warning(f"⚠️ Failed to import dataset: {e}")
 
 # =============================================================================
 # CONFIG IMPORTS (src/modules/config/blip3o_config.py)
@@ -106,8 +105,6 @@ try:
         get_blip3o_clip_config,
         create_config_from_args,
         BLIP3oCLIPDiTConfig,
-        print_config_summary,
-        validate_blip3o_clip_architecture,
         FlowMatchingConfig,
         TrainingConfig,
         EvaluationConfig
@@ -117,15 +114,13 @@ try:
         'get_blip3o_clip_config': get_blip3o_clip_config,
         'create_config_from_args': create_config_from_args,
         'BLIP3oCLIPDiTConfig': BLIP3oCLIPDiTConfig,
-        'print_config_summary': print_config_summary,
-        'validate_blip3o_clip_architecture': validate_blip3o_clip_architecture,
         'FlowMatchingConfig': FlowMatchingConfig,
         'TrainingConfig': TrainingConfig,
         'EvaluationConfig': EvaluationConfig,
     })
-    logger.info("✅ Configuration loaded from src/modules/config/blip3o_config.py")
+    logger.info("✅ Configuration loaded successfully")
 except ImportError as e:
-    logger.warning(f"⚠️ Failed to import from src/modules/config/blip3o_config.py: {e}")
+    logger.warning(f"⚠️ Failed to import config: {e}")
 
 # =============================================================================
 # EXPORT ALL COMPONENTS
@@ -157,7 +152,6 @@ if DATASET_AVAILABLE:
 if CONFIG_AVAILABLE:
     __all__.extend([
         "get_blip3o_clip_config", "create_config_from_args", "BLIP3oCLIPDiTConfig",
-        "print_config_summary", "validate_blip3o_clip_architecture",
         "FlowMatchingConfig", "TrainingConfig", "EvaluationConfig"
     ])
 
@@ -195,7 +189,7 @@ def check_environment():
 
 def print_environment_status():
     """Print detailed environment status"""
-    print("🔍 BLIP3-o CLIP Reproduction Environment Status")
+    print("🔍 Clean BLIP3-o CLIP Reproduction Environment Status")
     print("=" * 60)
     
     status = check_environment()
@@ -221,8 +215,8 @@ def print_environment_status():
     
     if status['all_available']:
         print(f"\n🎉 All components available! Ready for training.")
-        print(f"🚫 Using minimal normalization approach")
         print(f"🎯 Task: EVA [4096] → CLIP [1024] reproduction")
+        print(f"🌊 Method: Clean rectified flow matching with BLIP3-o DiT")
     else:
         print(f"\n⚠️ Missing components: {', '.join(status['missing_components'])}")
         print(f"Available components: {', '.join(status['available_components'])}")
@@ -238,8 +232,7 @@ _env_status = check_environment()
 
 # Log initialization status
 if _env_status['all_available']:
-    logger.info("🎉 BLIP3-o CLIP reproduction modules fully initialized!")
-    logger.info("🚫 Using minimal normalization approach")
+    logger.info("🎉 Clean BLIP3-o CLIP reproduction modules fully initialized!")
     logger.info("🎯 Ready for EVA → CLIP reproduction training")
 else:
     logger.warning(f"⚠️ Partial initialization. Missing: {_env_status['missing_components']}")

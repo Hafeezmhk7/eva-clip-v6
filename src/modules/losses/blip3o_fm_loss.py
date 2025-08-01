@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 """
 Clean Flow Matching Loss for CLIP Reproduction
-Simple implementation without noise scaling complexities
+Simple rectified flow matching aligned with BLIP3-o paper
 """
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from typing import Optional, Dict, Any, Tuple
-import math
 import logging
 
 logger = logging.getLogger(__name__)
@@ -17,7 +16,7 @@ logger = logging.getLogger(__name__)
 class BLIP3oCLIPFlowMatchingLoss(nn.Module):
     """
     Clean Flow Matching Loss for CLIP reproduction
-    Simple rectified flow matching without complexities
+    Rectified flow matching implementation following BLIP3-o paper
     """
     
     def __init__(
@@ -28,7 +27,6 @@ class BLIP3oCLIPFlowMatchingLoss(nn.Module):
         eps: float = 1e-8,
         min_timestep: float = 1e-3,
         max_timestep: float = 1.0 - 1e-3,
-        debug_mode: bool = False,
     ):
         super().__init__()
         
@@ -38,32 +36,18 @@ class BLIP3oCLIPFlowMatchingLoss(nn.Module):
         self.eps = eps
         self.min_timestep = min_timestep
         self.max_timestep = max_timestep
-        self.debug_mode = debug_mode
         
         # Validate inputs
         assert prediction_type in ["velocity", "noise", "sample"]
         assert flow_type in ["rectified", "reflow"]
         
-        # Running statistics for monitoring
-        self.register_buffer('step_count', torch.tensor(0))
-        self.register_buffer('loss_ema', torch.tensor(0.0))
-        self.register_buffer('similarity_ema', torch.tensor(0.0))
-        
         logger.info(f"Clean CLIP Flow Matching Loss initialized:")
         logger.info(f"  Prediction type: {prediction_type}")
         logger.info(f"  Flow type: {flow_type}")
-        logger.info(f"  Debug mode: {debug_mode}")
 
     def _clamp_timesteps(self, timesteps: torch.Tensor) -> torch.Tensor:
         """Clamp timesteps to avoid numerical issues"""
         return torch.clamp(timesteps, min=self.min_timestep, max=self.max_timestep)
-
-    def _update_ema(self, tensor_buffer: torch.Tensor, new_value: float, alpha: float = 0.01):
-        """Update exponential moving average"""
-        if tensor_buffer.item() == 0.0:
-            tensor_buffer.data = torch.tensor(new_value)
-        else:
-            tensor_buffer.data = alpha * new_value + (1 - alpha) * tensor_buffer.data
 
     def forward(
         self,
@@ -76,15 +60,12 @@ class BLIP3oCLIPFlowMatchingLoss(nn.Module):
         **kwargs
     ) -> Tuple[torch.Tensor, Optional[Dict[str, float]]]:
         """
-        Compute flow matching loss with standard Gaussian noise
+        Compute rectified flow matching loss
         """
         
         batch_size, num_tokens, embed_dim = model_output.shape
         device = model_output.device
         dtype = model_output.dtype
-        
-        # Update step count
-        self.step_count += 1
         
         # Clamp timesteps
         timesteps = self._clamp_timesteps(timesteps)
@@ -102,12 +83,13 @@ class BLIP3oCLIPFlowMatchingLoss(nn.Module):
         # RECTIFIED FLOW COMPUTATION
         if self.flow_type == "rectified":
             # Linear interpolation: x_t = (1-t) * noise + t * target
+            # Velocity target: v = target - noise (for rectified flow)
             true_velocity = target_clean - noise
             target_for_loss = true_velocity
-        else:  # reflow
-            raise NotImplementedError("Reflow not implemented yet")
+        else:
+            raise NotImplementedError("Only rectified flow is implemented")
         
-        # LOSS COMPUTATION in raw space
+        # LOSS COMPUTATION
         if self.prediction_type == "velocity":
             # Direct velocity prediction loss
             prediction_loss = F.mse_loss(model_output, target_for_loss, reduction='none')
@@ -128,39 +110,24 @@ class BLIP3oCLIPFlowMatchingLoss(nn.Module):
         if return_metrics:
             with torch.no_grad():
                 # Normalize only for cosine similarity computation
-                pred_normalized = F.normalize(model_output + self.eps, p=2, dim=-1)
-                target_norm = F.normalize(target_for_loss + self.eps, p=2, dim=-1)
+                pred_normalized = F.normalize(model_output, p=2, dim=-1)
+                target_norm = F.normalize(target_for_loss, p=2, dim=-1)
                 
                 # Cosine similarity (requires normalization)
                 cosine_sim = F.cosine_similarity(pred_normalized, target_norm, dim=-1)
                 per_image_sim = cosine_sim.mean(dim=1)  # [B]
                 mean_similarity = per_image_sim.mean().item()
                 
-                # Update EMAs
-                self._update_ema(self.loss_ema, main_loss.item())
-                self._update_ema(self.similarity_ema, mean_similarity)
-                
                 # Compute norms for monitoring (raw, unnormalized)
                 pred_norm = torch.norm(model_output, dim=-1).mean().item()
                 target_norm_val = torch.norm(target_for_loss, dim=-1).mean().item()
                 clip_norm = torch.norm(target_clean, dim=-1).mean().item()
                 noise_norm = torch.norm(noise, dim=-1).mean().item()
-                eva_norm = torch.norm(eva_conditioning, dim=-1).mean().item()
                 
                 # Error analysis
                 error = model_output - target_for_loss
                 error_norm = torch.norm(error, dim=-1).mean().item()
                 relative_error = error_norm / (target_norm_val + self.eps)
-                
-                # Quality assessment
-                if mean_similarity > 0.8:
-                    quality = "excellent"
-                elif mean_similarity > 0.5:
-                    quality = "good"
-                elif mean_similarity > 0.2:
-                    quality = "fair"
-                else:
-                    quality = "poor"
                 
                 metrics = {
                     # Core metrics
@@ -174,40 +141,20 @@ class BLIP3oCLIPFlowMatchingLoss(nn.Module):
                     'target_norm': target_norm_val,
                     'clip_norm': clip_norm,
                     'noise_norm': noise_norm,
-                    'eva_norm': eva_norm,
-                    
-                    # Noise statistics
-                    'noise_mean': noise.mean().item(),
-                    'noise_std': noise.std().item(),
                     
                     # Error analysis
                     'error_norm': error_norm,
                     'relative_error': relative_error,
                     
-                    # Training progress
-                    'step_count': self.step_count.item(),
-                    'loss_ema': self.loss_ema.item(),
-                    'similarity_ema': self.similarity_ema.item(),
-                    'quality_assessment': quality,
-                    
                     # Flow matching specific
                     'timestep_mean': timesteps.mean().item(),
                     'timestep_std': timesteps.std().item(),
-                    'interpolation_weight': t.mean().item(),
                 }
                 
                 # Check for numerical issues
                 if torch.isnan(total_loss) or torch.isinf(total_loss):
                     metrics['numerical_issue'] = True
-                    logger.error(f"[Step {self.step_count}] Numerical issue detected!")
-                
-                # Debug logging
-                if self.debug_mode and self.step_count % 50 == 0:
-                    logger.info(f"[Step {self.step_count}] Clean CLIP Flow Matching Debug:")
-                    logger.info(f"  Loss: {main_loss.item():.6f} (quality: {quality})")
-                    logger.info(f"  Velocity Sim: {mean_similarity:.4f}")
-                    logger.info(f"  Noise: mean={noise.mean().item():.6f}, std={noise.std().item():.6f}")
-                    logger.info(f"  Raw Norms - Pred: {pred_norm:.3f}, Target: {target_norm_val:.3f}, CLIP: {clip_norm:.3f}")
+                    logger.error("Numerical issue detected in loss computation!")
         
         return total_loss, metrics
 
@@ -216,7 +163,7 @@ class BLIP3oCLIPFlowMatchingLoss(nn.Module):
         generated: torch.Tensor,  # Generated CLIP embeddings
         target: torch.Tensor,     # Target CLIP embeddings
     ) -> Dict[str, float]:
-        """Compute evaluation metrics"""
+        """Compute evaluation metrics for generated embeddings"""
         with torch.no_grad():
             # Normalize only for cosine similarity computation
             generated_norm = F.normalize(generated, p=2, dim=-1)
@@ -241,9 +188,9 @@ class BLIP3oCLIPFlowMatchingLoss(nn.Module):
             return {
                 'eval_clip_similarity': per_image_sim.mean().item(),
                 'eval_mse_loss': mse_loss.item(),
-                'eval_high_quality_ratio': high_quality,
-                'eval_very_high_quality_ratio': very_high_quality,
-                'eval_excellent_quality_ratio': excellent_quality,
+                'eval_high_quality': high_quality,
+                'eval_very_high_quality': very_high_quality,
+                'eval_excellent_quality': excellent_quality,
                 'eval_similarity_std': per_image_sim.std().item(),
                 
                 # Raw embedding norms
@@ -257,7 +204,6 @@ def create_clip_reproduction_loss(
     prediction_type: str = "velocity",
     flow_type: str = "rectified", 
     loss_weight: float = 1.0,
-    debug_mode: bool = False,
     **kwargs
 ) -> BLIP3oCLIPFlowMatchingLoss:
     """Factory function for CLIP reproduction loss"""
@@ -266,6 +212,5 @@ def create_clip_reproduction_loss(
         prediction_type=prediction_type,
         flow_type=flow_type,
         loss_weight=loss_weight,
-        debug_mode=debug_mode,
         **kwargs
     )

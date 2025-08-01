@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Clean BLIP3-o Dataset for CLIP Reproduction
-Simple implementation without normalization complexities
+Simple implementation for loading EVA-CLIP embedding pairs
 """
 
 import torch
@@ -15,20 +15,17 @@ import json
 import random
 import time
 import gc
-import torch.nn.functional as F
 
 logger = logging.getLogger(__name__)
 
 
 class BLIP3oCLIPReproductionDataset(IterableDataset):
     """
-    Clean Dataset for CLIP reproduction
+    Clean Dataset for CLIP reproduction from EVA embeddings
     
     This dataset loads:
     - CLIP embeddings [B, N, 1024] as TARGET (what we want to reproduce)
     - EVA embeddings [B, N, 4096] as CONDITIONING (guidance)
-    
-    No normalization applied during data loading
     """
     
     def __init__(
@@ -81,8 +78,8 @@ class BLIP3oCLIPReproductionDataset(IterableDataset):
         logger.info(f"Clean CLIP Reproduction Dataset initialized:")
         logger.info(f"  Directory: {self.chunked_embeddings_dir}")
         logger.info(f"  Mode: {self.training_mode} ({self.expected_tokens} tokens)")
-        logger.info(f"  TARGET: CLIP embeddings [B, N, 1024] - raw")
-        logger.info(f"  CONDITIONING: EVA embeddings [B, N, 4096] - raw")
+        logger.info(f"  TARGET: CLIP embeddings [B, N, 1024]")
+        logger.info(f"  CONDITIONING: EVA embeddings [B, N, 4096]")
         logger.info(f"  Shards: {len(self.shard_files) if hasattr(self, 'shard_files') else 'Unknown'}")
 
     def _load_manifest(self):
@@ -233,8 +230,6 @@ class BLIP3oCLIPReproductionDataset(IterableDataset):
         # Handle token count adaptation
         current_tokens = clip_emb.shape[1]
         if current_tokens != self.expected_tokens:
-            logger.debug(f"Adapting from {current_tokens} to {self.expected_tokens} tokens")
-            
             if current_tokens == 256 and self.expected_tokens == 257:
                 # Add CLS token (average of patches)
                 clip_cls = clip_emb.mean(dim=1, keepdim=True)
@@ -247,10 +242,6 @@ class BLIP3oCLIPReproductionDataset(IterableDataset):
                 shard_data['eva_blip3o_embeddings'] = eva_emb[:, 1:, :]
             else:
                 raise ValueError(f"Cannot adapt from {current_tokens} to {self.expected_tokens} tokens")
-        
-        # Mark that no normalization was applied
-        shard_data['normalization_applied'] = False
-        shard_data['raw_embedding_space'] = True
 
     def _load_next_shard(self) -> bool:
         """Load next shard"""
@@ -279,12 +270,6 @@ class BLIP3oCLIPReproductionDataset(IterableDataset):
                     self.rng.shuffle(self.current_samples)
                 
                 self.current_sample_idx = 0
-                
-                # Log shard loading
-                clip_norm = torch.norm(self.current_shard_data['clip_blip3o_embeddings'], dim=-1).mean().item()
-                eva_norm = torch.norm(self.current_shard_data['eva_blip3o_embeddings'], dim=-1).mean().item()
-                logger.info(f"Loaded shard {self.current_shard_idx + 1}/{len(self.shard_files)}: {num_samples} samples, CLIP norm={clip_norm:.3f}, EVA norm={eva_norm:.3f}")
-                
                 self.current_shard_idx += 1
                 return True
             else:
@@ -300,8 +285,6 @@ class BLIP3oCLIPReproductionDataset(IterableDataset):
         self.current_shard_data = None
         self.current_sample_idx = 0
         self.total_samples_processed = 0
-        
-        logger.debug(f"Starting iteration over {len(self.shard_files)} shards")
         
         if not self._load_next_shard():
             return
@@ -340,14 +323,6 @@ class BLIP3oCLIPReproductionDataset(IterableDataset):
                         'sample_idx': sample_idx,
                         'training_mode': self.training_mode,
                         'num_tokens': self.expected_tokens,
-                        'normalized': False,  # Always False - no normalization applied
-                        'raw_embedding_space': True,  # Always True - keep in raw space
-                        
-                        # Embedding statistics for debugging
-                        'clip_norm': torch.norm(clip_emb, dim=-1).mean().item(),
-                        'eva_norm': torch.norm(eva_emb, dim=-1).mean().item(),
-                        'clip_std': clip_emb.std().item(),
-                        'eva_std': eva_emb.std().item(),
                     }
                     
                     self.current_sample_idx += 1
@@ -377,7 +352,7 @@ def clip_reproduction_collate_fn(batch: List[Dict[str, Any]]) -> Dict[str, Any]:
     1. Takes clean CLIP embeddings as targets
     2. Uses EVA embeddings for conditioning  
     3. Creates standard Gaussian noise
-    4. Simple data preparation without scaling
+    4. Applies rectified flow interpolation
     """
     if not batch:
         raise ValueError("Empty batch")
@@ -424,10 +399,6 @@ def clip_reproduction_collate_fn(batch: List[Dict[str, Any]]) -> Dict[str, Any]:
         assert velocity_target.shape == (batch_size, seq_len, 1024), f"Velocity target shape: {velocity_target.shape}"
         assert timesteps.shape == (batch_size,), f"Timesteps shape: {timesteps.shape}"
         
-        # Collect embedding statistics for debugging
-        clip_norms = [item.get('clip_norm', 0) for item in valid_batch]
-        eva_norms = [item.get('eva_norm', 0) for item in valid_batch]
-        
         return {
             # Model inputs
             'encoder_hidden_states': eva_embeddings,     # [B, N, 4096] - EVA conditioning
@@ -446,25 +417,6 @@ def clip_reproduction_collate_fn(batch: List[Dict[str, Any]]) -> Dict[str, Any]:
             'training_mode': valid_batch[0]['training_mode'],
             'num_tokens': valid_batch[0]['num_tokens'],
             'seq_len': seq_len,
-            
-            # Data characteristics for debugging
-            'eva_embeddings_normalized': False,  # Always False
-            'clip_embeddings_normalized': False,  # Always False
-            'raw_embedding_space': True,  # Always True
-            'normalization_applied': False,  # Always False
-            
-            # Embedding statistics
-            'eva_norm_mean': torch.norm(eva_embeddings, dim=-1).mean().item(),
-            'clip_norm_mean': torch.norm(clip_embeddings, dim=-1).mean().item(),
-            'noise_norm_mean': torch.norm(noise, dim=-1).mean().item(),
-            'noise_std': noise.std().item(),  # Should be ~1.0 for standard Gaussian
-            'noise_mean': noise.mean().item(),  # Should be ~0.0 for standard Gaussian
-            
-            # Individual sample norms for analysis
-            'batch_clip_norms': clip_norms,
-            'batch_eva_norms': eva_norms,
-            'clip_norm_std_in_batch': np.std(clip_norms) if clip_norms else 0.0,
-            'eva_norm_std_in_batch': np.std(eva_norms) if eva_norms else 0.0,
         }
         
     except Exception as e:
@@ -499,8 +451,8 @@ def create_clip_reproduction_dataloaders(
         eval_batch_size = batch_size
     
     logger.info(f"Creating clean CLIP reproduction dataloaders:")
-    logger.info(f"  Target: CLIP embeddings [B, N, 1024] - raw")
-    logger.info(f"  Conditioning: EVA embeddings [B, N, 4096] - raw")
+    logger.info(f"  Target: CLIP embeddings [B, N, 1024]")
+    logger.info(f"  Conditioning: EVA embeddings [B, N, 4096]")
     logger.info(f"  Noise: Standard Gaussian")
     
     # Use identical settings for both train and eval
@@ -551,7 +503,5 @@ def create_clip_reproduction_dataloaders(
     logger.info(f"Clean CLIP reproduction dataloaders created successfully")
     logger.info(f"  Training dataset length: {len(train_dataset):,}")
     logger.info(f"  Evaluation dataset length: {len(eval_dataset):,}")
-    logger.info(f"  No normalization applied in either dataset")
-    logger.info(f"  Standard Gaussian noise in collate function")
     
     return train_dataloader, eval_dataloader

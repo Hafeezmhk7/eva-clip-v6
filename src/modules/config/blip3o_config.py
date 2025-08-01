@@ -1,12 +1,11 @@
 """
 Clean BLIP3-o Configuration for CLIP Reproduction
-Simple configuration without scale-aware complexities
+Simplified configuration aligned with BLIP3-o paper
 """
 
 from transformers import PretrainedConfig
-from typing import Dict, Any, Optional, Union
+from typing import Dict, Any, Optional
 from dataclasses import dataclass
-import math
 import logging
 
 logger = logging.getLogger(__name__)
@@ -52,7 +51,6 @@ class BLIP3oCLIPDiTConfig(PretrainedConfig):
         attention_dropout: float = 0.0,
         use_3d_rope: bool = True,  # 3D Rotary Position Embedding
         rope_theta: float = 10000.0,
-        rope_scaling: Optional[Dict] = None,
         image_size: int = 224,
         patch_size: int = 14,
         
@@ -96,7 +94,6 @@ class BLIP3oCLIPDiTConfig(PretrainedConfig):
         self.attention_dropout = float(attention_dropout)
         self.use_3d_rope = bool(use_3d_rope)
         self.rope_theta = float(rope_theta)
-        self.rope_scaling = rope_scaling
         self.image_size = int(image_size)
         self.patch_size = int(patch_size)
         
@@ -158,47 +155,6 @@ class BLIP3oCLIPDiTConfig(PretrainedConfig):
             raise ValueError(error_msg)
         
         logger.info("✅ Configuration validation passed")
-    
-    def get_head_dim(self):
-        """Get attention head dimension."""
-        return self.hidden_size // self.num_attention_heads
-    
-    def get_num_tokens(self):
-        """Get number of tokens."""
-        return self.num_tokens
-    
-    def get_parameter_count_estimate(self):
-        """Estimate total parameter count"""
-        # Input/output projections
-        input_params = self.clip_embedding_size * self.hidden_size
-        output_params = self.hidden_size * self.clip_embedding_size
-        
-        # Embeddings
-        pos_embed_params = self.max_position_embeddings * self.hidden_size
-        timestep_embed_params = 256 * self.hidden_size + self.hidden_size * self.hidden_size
-        
-        # Transformer layers
-        layer_params = self.num_hidden_layers * (
-            # Self-attention
-            self.hidden_size * self.hidden_size * 3 +  # Q, K, V
-            self.hidden_size * self.hidden_size +       # Output projection
-            # Cross-attention
-            self.hidden_size * self.hidden_size +       # Q projection
-            self.eva_embedding_size * self.hidden_size * 2 +  # K, V projections for EVA
-            self.hidden_size * self.hidden_size +       # Output projection
-            # FFN
-            self.hidden_size * self.intermediate_size +   # Up projection
-            self.intermediate_size * self.hidden_size +   # Down projection
-            # Norms (RMSNorm parameters)
-            self.hidden_size * 6                          # Multiple norms per layer
-        )
-        
-        total_params = (
-            input_params + output_params + pos_embed_params + 
-            timestep_embed_params + layer_params
-        )
-        
-        return total_params
 
 
 def get_blip3o_clip_config(
@@ -305,13 +261,8 @@ class TrainingConfig:
     
     # Evaluation parameters
     eval_every_n_steps: int = 50
-    eval_num_samples: int = 15  # Reduced for faster evaluation
-    eval_inference_steps: int = 20  # Reduced for faster evaluation
-    
-    # Debugging
-    debug_mode: bool = False
-    track_gradients: bool = True
-    overfit_test_size: Optional[int] = 20  # Enable by default for validation
+    eval_num_samples: int = 15
+    eval_inference_steps: int = 20
     
     # Robustness
     skip_corrupted_samples: bool = True
@@ -332,20 +283,6 @@ class EvaluationConfig:
     high_quality_threshold: float = 0.7
     very_high_quality_threshold: float = 0.8
     excellent_quality_threshold: float = 0.9
-    
-    # Evaluation modes
-    use_heun_solver: bool = False  # Use Euler for faster evaluation
-    guidance_scale: float = 1.0
-
-
-def get_default_clip_configs() -> tuple:
-    """Get default configurations for all components"""
-    model_config = get_blip3o_clip_config("base", "patch_only")
-    flow_config = FlowMatchingConfig()
-    training_config = TrainingConfig()
-    eval_config = EvaluationConfig()
-    
-    return model_config, flow_config, training_config, eval_config
 
 
 def create_config_from_args(args) -> tuple:
@@ -369,8 +306,6 @@ def create_config_from_args(args) -> tuple:
         learning_rate=getattr(args, 'learning_rate', 1e-4),
         gradient_accumulation_steps=getattr(args, 'gradient_accumulation_steps', 2),
         fp16=getattr(args, 'fp16', True),
-        debug_mode=getattr(args, 'debug_mode', False),
-        overfit_test_size=getattr(args, 'overfit_test_size', None),
         eval_every_n_steps=getattr(args, 'eval_every_n_steps', 50),
         eval_num_samples=getattr(args, 'eval_num_samples', 15),
         eval_inference_steps=getattr(args, 'eval_inference_steps', 20),
@@ -383,214 +318,3 @@ def create_config_from_args(args) -> tuple:
     )
     
     return model_config, flow_config, training_config, eval_config
-
-
-def validate_config_compatibility(
-    model_config: BLIP3oCLIPDiTConfig, 
-    flow_config: FlowMatchingConfig,
-    training_config: TrainingConfig
-) -> bool:
-    """Validate that all configs are compatible"""
-    
-    validation_errors = []
-    
-    # Check flow matching compatibility
-    if flow_config.prediction_type not in ["velocity", "epsilon"]:
-        validation_errors.append(f"Unsupported prediction type: {flow_config.prediction_type}")
-    
-    # Check model and training compatibility
-    if model_config.num_tokens not in [256, 257]:
-        validation_errors.append(f"Invalid token count: {model_config.num_tokens}")
-    
-    # Check batch size compatibility
-    if training_config.batch_size < 1:
-        validation_errors.append(f"Invalid batch size: {training_config.batch_size}")
-    
-    # Check grouped-query attention
-    if model_config.use_grouped_query_attention:
-        if model_config.num_attention_heads % model_config.num_key_value_heads != 0:
-            validation_errors.append("Incompatible grouped-query attention configuration")
-    
-    if validation_errors:
-        error_msg = "Configuration compatibility validation failed:\n" + "\n".join(f"  • {err}" for err in validation_errors)
-        logger.error(f"❌ {error_msg}")
-        raise ValueError(error_msg)
-    
-    logger.info("✅ Configuration compatibility validation passed")
-    return True
-
-
-def print_config_summary(
-    model_config: BLIP3oCLIPDiTConfig,
-    flow_config: FlowMatchingConfig,
-    training_config: TrainingConfig,
-    eval_config: EvaluationConfig
-):
-    """Print comprehensive configuration summary"""
-    print("📋 Clean BLIP3-o CLIP Reproduction Configuration Summary")
-    print("=" * 80)
-    
-    print(f"🏗️ Model Configuration (BLIP3-o DiT):")
-    print(f"   Architecture: {model_config.hidden_size}D, {model_config.num_hidden_layers}L, {model_config.num_attention_heads}H")
-    print(f"   Grouped-Query Attention: {model_config.num_attention_heads}/{model_config.num_key_value_heads} heads")
-    print(f"   Tokens: {model_config.num_tokens} ({model_config.training_mode})")
-    print(f"   EVA conditioning: {model_config.eva_embedding_size}D")
-    print(f"   CLIP target: {model_config.clip_embedding_size}D")
-    print(f"   3D RoPE: {model_config.use_3d_rope}")
-    print(f"   Sandwich Norm: {model_config.use_sandwich_norm}")
-    print(f"   RMS Norm: {model_config.use_rms_norm}")
-    print(f"   Parameters: ~{model_config.get_parameter_count_estimate()/1e6:.1f}M")
-    
-    print(f"\n🌊 Flow Matching Configuration:")
-    print(f"   Prediction type: {flow_config.prediction_type}")
-    print(f"   Flow type: {flow_config.flow_type}")
-    print(f"   Loss scale: {flow_config.loss_scale}")
-    print(f"   Timestep range: [{flow_config.min_timestep}, {flow_config.max_timestep}]")
-    
-    print(f"\n🏃 Training Configuration:")
-    print(f"   Epochs: {training_config.num_epochs}")
-    print(f"   Batch size: {training_config.batch_size}")
-    print(f"   Learning rate: {training_config.learning_rate}")
-    print(f"   Weight decay: {training_config.weight_decay}")
-    print(f"   LR scheduler: {training_config.lr_scheduler_type}")
-    print(f"   Gradient accumulation: {training_config.gradient_accumulation_steps}")
-    print(f"   Mixed precision: {training_config.fp16}")
-    print(f"   Debug mode: {training_config.debug_mode}")
-    if training_config.overfit_test_size:
-        print(f"   Overfitting test: {training_config.overfit_test_size} samples")
-    
-    print(f"\n📊 Evaluation Configuration:")
-    print(f"   Eval every: {eval_config.eval_every_n_steps} steps")
-    print(f"   Eval samples: {eval_config.eval_num_samples}")
-    print(f"   Inference steps: {eval_config.eval_inference_steps}")
-    print(f"   Quality thresholds: {eval_config.high_quality_threshold}/{eval_config.very_high_quality_threshold}/{eval_config.excellent_quality_threshold}")
-    
-    print("=" * 80)
-
-
-def validate_blip3o_clip_architecture(config: BLIP3oCLIPDiTConfig) -> Dict[str, bool]:
-    """
-    Validate that the configuration follows BLIP3-o architecture specifications
-    """
-    validation_results = {}
-    
-    # Check 3D RoPE
-    validation_results["3d_rope_enabled"] = config.use_3d_rope
-    
-    # Check Grouped-Query Attention
-    validation_results["grouped_query_attention"] = (
-        config.use_grouped_query_attention and 
-        config.num_attention_heads % config.num_key_value_heads == 0
-    )
-    
-    # Check Sandwich Normalization
-    validation_results["sandwich_normalization"] = config.use_sandwich_norm
-    
-    # Check RMS Normalization
-    validation_results["rms_normalization"] = config.use_rms_norm
-    
-    # Check input/output dimensions
-    validation_results["correct_eva_dim"] = config.eva_embedding_size == 4096
-    validation_results["correct_clip_dim"] = config.clip_embedding_size == 1024
-    
-    # Check token count
-    validation_results["valid_token_count"] = config.num_tokens in [256, 257]
-    
-    # Check flow matching setup
-    validation_results["velocity_prediction"] = config.prediction_type == "velocity"
-    validation_results["zero_init_output"] = config.zero_init_output
-    
-    # Check training optimizations
-    validation_results["dropout_disabled"] = config.dropout_prob == 0.0
-    
-    # Overall validation
-    validation_results["blip3o_compliant"] = all([
-        validation_results["3d_rope_enabled"],
-        validation_results["grouped_query_attention"],
-        validation_results["sandwich_normalization"],
-        validation_results["rms_normalization"],
-        validation_results["correct_eva_dim"],
-        validation_results["correct_clip_dim"],
-        validation_results["valid_token_count"],
-        validation_results["velocity_prediction"],
-    ])
-    
-    return validation_results
-
-
-def print_architecture_validation(config: BLIP3oCLIPDiTConfig):
-    """Print BLIP3-o architecture validation results"""
-    validation = validate_blip3o_clip_architecture(config)
-    
-    print("🔍 Clean BLIP3-o CLIP Reproduction Architecture Validation")
-    print("=" * 70)
-    
-    # Core architecture features
-    print("Core Architecture Features:")
-    print(f"  ✅ 3D RoPE: {'Enabled' if validation['3d_rope_enabled'] else '❌ Disabled'}")
-    print(f"  ✅ Grouped-Query Attention: {'Enabled' if validation['grouped_query_attention'] else '❌ Disabled'}")
-    print(f"  ✅ Sandwich Normalization: {'Enabled' if validation['sandwich_normalization'] else '❌ Disabled'}")
-    print(f"  ✅ RMS Normalization: {'Enabled' if validation['rms_normalization'] else '❌ Disabled'}")
-    
-    # Dimensions
-    print("Input/Output Dimensions:")
-    print(f"  ✅ EVA Conditioning (4096): {'Correct' if validation['correct_eva_dim'] else '❌ Incorrect'}")
-    print(f"  ✅ CLIP Target (1024): {'Correct' if validation['correct_clip_dim'] else '❌ Incorrect'}")
-    print(f"  ✅ Token Count: {'Valid' if validation['valid_token_count'] else '❌ Invalid'}")
-    
-    # Training setup
-    print("Training Configuration:")
-    print(f"  ✅ Velocity Prediction: {'Enabled' if validation['velocity_prediction'] else '❌ Disabled'}")
-    print(f"  ✅ Zero Init Output: {'Enabled' if validation['zero_init_output'] else '❌ Disabled'}")
-    print(f"  ✅ Dropout Disabled: {'Yes' if validation['dropout_disabled'] else '❌ No'}")
-    
-    # Overall compliance
-    compliance_status = "✅ FULLY COMPLIANT" if validation['blip3o_compliant'] else "❌ NON-COMPLIANT"
-    print(f"\nBLIP3-o CLIP Reproduction Compliance: {compliance_status}")
-    
-    if not validation['blip3o_compliant']:
-        print("\n⚠️ Configuration does not fully comply with BLIP3-o specifications!")
-        print("   Please review the failed validation points above.")
-    
-    print("=" * 70)
-
-
-# Export configurations
-def create_clean_configs(
-    model_size: str = "base",
-    training_mode: str = "patch_only",
-) -> tuple:
-    """Create clean configurations for BLIP3-o"""
-    
-    # Create model config
-    model_config = get_blip3o_clip_config(
-        model_size=model_size,
-        training_mode=training_mode,
-    )
-    
-    flow_config = FlowMatchingConfig()
-    training_config = TrainingConfig()
-    eval_config = EvaluationConfig()
-    
-    # Validate compatibility
-    validate_config_compatibility(model_config, flow_config, training_config)
-    
-    # Validate architecture
-    validation_results = validate_blip3o_clip_architecture(model_config)
-    if not validation_results['blip3o_compliant']:
-        logger.warning("⚠️ Configuration is not fully compliant - some features may not work as expected")
-    
-    return model_config, flow_config, training_config, eval_config
-
-
-# Pre-validated configurations
-try:
-    DEFAULT_MODEL_CONFIG, DEFAULT_FLOW_CONFIG, DEFAULT_TRAINING_CONFIG, DEFAULT_EVAL_CONFIG = create_clean_configs()
-    logger.info("✅ Default clean configurations created and validated")
-except Exception as e:
-    logger.error(f"❌ Error creating default configurations: {e}")
-    # Fallback to basic config
-    DEFAULT_MODEL_CONFIG = None
-    DEFAULT_FLOW_CONFIG = FlowMatchingConfig()
-    DEFAULT_TRAINING_CONFIG = TrainingConfig()
-    DEFAULT_EVAL_CONFIG = EvaluationConfig()

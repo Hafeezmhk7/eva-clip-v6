@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Clean CLIP Reproduction Training Script
-Simple implementation without scale-aware complexities
+Clean BLIP3-o CLIP Reproduction Training Script
+Simple implementation aligned with BLIP3-o paper
 
 Usage:
     python train_dit_clean.py --chunked_embeddings_dir /path/to/embeddings --output_dir ./checkpoints
@@ -16,81 +16,21 @@ import logging
 from pathlib import Path
 from datetime import datetime
 import traceback
-import numpy as np
 
 # Setup paths
 sys.path.insert(0, str(Path(__file__).parent))
 
-def setup_logging(debug_mode: bool = False):
-    """Setup logging configuration"""
-    log_level = logging.DEBUG if debug_mode else logging.INFO
-    
-    # Create formatters
-    detailed_formatter = logging.Formatter(
-        '%(asctime)s - %(levelname)s - %(name)s - %(message)s'
+def setup_logging():
+    """Setup simple logging configuration"""
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.StreamHandler(sys.stdout),
+            logging.FileHandler('clean_clip_training.log', mode='w')
+        ]
     )
-    simple_formatter = logging.Formatter(
-        '%(asctime)s - %(levelname)s - %(message)s'
-    )
-    
-    # Setup root logger
-    root_logger = logging.getLogger()
-    root_logger.setLevel(log_level)
-    
-    # Clear any existing handlers
-    for handler in root_logger.handlers[:]:
-        root_logger.removeHandler(handler)
-    
-    # Console handler
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(log_level)
-    console_handler.setFormatter(simple_formatter)
-    root_logger.addHandler(console_handler)
-    
-    # File handler
-    try:
-        log_file = 'clean_clip_training.log'
-        file_handler = logging.FileHandler(log_file, mode='w')
-        file_handler.setLevel(log_level)
-        file_handler.setFormatter(detailed_formatter)
-        root_logger.addHandler(file_handler)
-        print(f"✅ Logging to file: {log_file}")
-    except Exception as e:
-        print(f"⚠️ Could not setup file logging: {e}")
-    
     return logging.getLogger(__name__)
-
-def validate_arguments(args):
-    """Validate command line arguments"""
-    errors = []
-    warnings = []
-    
-    # Validate paths
-    embeddings_dir = Path(args.chunked_embeddings_dir)
-    if not embeddings_dir.exists():
-        errors.append(f"Embeddings directory does not exist: {embeddings_dir}")
-    elif not embeddings_dir.is_dir():
-        errors.append(f"Embeddings path is not a directory: {embeddings_dir}")
-    
-    # Validate model size
-    if args.model_size not in ["tiny", "small", "base", "large"]:
-        errors.append(f"Invalid model size: {args.model_size}")
-    
-    # Validate training mode
-    if args.training_mode not in ["patch_only", "cls_patch"]:
-        errors.append(f"Invalid training mode: {args.training_mode}")
-    
-    # Validate numeric parameters
-    if args.learning_rate <= 0:
-        errors.append(f"Learning rate must be positive: {args.learning_rate}")
-    
-    if args.batch_size <= 0:
-        errors.append(f"Batch size must be positive: {args.batch_size}")
-    
-    if args.num_epochs <= 0:
-        errors.append(f"Number of epochs must be positive: {args.num_epochs}")
-    
-    return errors, warnings
 
 def parse_arguments():
     """Parse command line arguments"""
@@ -113,16 +53,6 @@ def parse_arguments():
                        choices=["patch_only", "cls_patch"],
                        help="Training mode")
     
-    # BLIP3-o architecture features
-    parser.add_argument("--use_3d_rope", action="store_true", default=True,
-                       help="Use 3D Rotary Position Embedding")
-    parser.add_argument("--use_sandwich_norm", action="store_true", default=True,
-                       help="Use sandwich normalization")
-    parser.add_argument("--no_3d_rope", action="store_true",
-                       help="Disable 3D RoPE")
-    parser.add_argument("--no_sandwich_norm", action="store_true",
-                       help="Disable sandwich normalization")
-    
     # Training hyperparameters
     parser.add_argument("--learning_rate", type=float, default=1e-4,
                        help="Learning rate")
@@ -140,17 +70,13 @@ def parse_arguments():
     # Evaluation
     parser.add_argument("--eval_every_n_steps", type=int, default=50,
                        help="Evaluate every N steps")
-    parser.add_argument("--eval_num_samples", type=int, default=15,
+    parser.add_argument("--eval_num_samples", type=int, default=100,
                        help="Number of samples for evaluation")
-    parser.add_argument("--eval_inference_steps", type=int, default=20,
+    parser.add_argument("--eval_inference_steps", type=int, default=50,
                        help="Number of inference steps for evaluation")
     
-    # Debugging and testing
-    parser.add_argument("--debug_mode", action="store_true",
-                       help="Enable debug mode")
-    parser.add_argument("--overfit_test_size", type=int, default=20,
-                       help="Number of samples for overfitting test")
-    parser.add_argument("--max_shards", type=int, default=2,
+    # Data
+    parser.add_argument("--max_shards", type=int, default=None,
                        help="Maximum number of shards to use")
     
     # System
@@ -167,57 +93,49 @@ def parse_arguments():
     parser.add_argument("--wandb_run_name", type=str, default=None,
                        help="WandB run name")
     
-    args = parser.parse_args()
+    return parser.parse_args()
+
+def validate_arguments(args, logger):
+    """Validate command line arguments"""
+    errors = []
     
-    # Validate arguments
-    errors, warnings = validate_arguments(args)
+    # Validate paths
+    embeddings_dir = Path(args.chunked_embeddings_dir)
+    if not embeddings_dir.exists():
+        errors.append(f"Embeddings directory does not exist: {embeddings_dir}")
     
-    if warnings:
-        print("⚠️ WARNINGS:")
-        for warning in warnings:
-            print(f"   • {warning}")
-        print()
+    # Validate numeric parameters
+    if args.learning_rate <= 0:
+        errors.append(f"Learning rate must be positive: {args.learning_rate}")
+    
+    if args.batch_size <= 0:
+        errors.append(f"Batch size must be positive: {args.batch_size}")
     
     if errors:
-        print("❌ ERRORS:")
+        logger.error("❌ Validation errors:")
         for error in errors:
-            print(f"   • {error}")
-        print()
-        sys.exit(1)
+            logger.error(f"   • {error}")
+        return False
     
-    return args
+    return True
 
-def check_environment():
+def check_environment(logger):
     """Check environment and system requirements"""
-    logger = logging.getLogger(__name__)
-    
     issues = []
     
     # Check CUDA
     if not torch.cuda.is_available():
         issues.append("CUDA not available - training will be very slow on CPU")
-    
-    # Check Python version
-    if sys.version_info < (3, 8):
-        issues.append(f"Python 3.8+ recommended, using {sys.version}")
-    
-    # Check PyTorch version
-    torch_version = torch.__version__
-    logger.info(f"PyTorch version: {torch_version}")
-    
-    # Check available memory
-    if torch.cuda.is_available():
+    else:
+        logger.info(f"Using GPU: {torch.cuda.get_device_name(0)}")
         total_memory = torch.cuda.get_device_properties(0).total_memory / 1e9
+        logger.info(f"GPU Memory: {total_memory:.1f} GB")
+        
         if total_memory < 16:
             issues.append(f"Low GPU memory: {total_memory:.1f} GB (16+ GB recommended)")
     
-    # Check import availability
-    required_modules = ['transformers', 'numpy']
-    for module in required_modules:
-        try:
-            __import__(module)
-        except ImportError:
-            issues.append(f"Required module not available: {module}")
+    # Check PyTorch version
+    logger.info(f"PyTorch version: {torch.__version__}")
     
     if issues:
         logger.warning("Environment issues detected:")
@@ -226,39 +144,30 @@ def check_environment():
     else:
         logger.info("✅ Environment check passed")
     
-    return issues
+    return len(issues) == 0
 
-def setup_device_and_model(args, logger):
-    """Setup device and create model"""
-    # Setup device
-    if torch.cuda.is_available():
-        device = torch.device("cuda")
-        logger.info(f"Using GPU: {torch.cuda.get_device_name(0)}")
-        logger.info(f"GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
-        torch.cuda.empty_cache()
-    else:
-        device = torch.device("cpu")
-        logger.warning("⚠️ Using CPU - training will be very slow!")
-    
-    # Process architecture arguments
-    use_3d_rope = args.use_3d_rope and not args.no_3d_rope
-    use_sandwich_norm = args.use_sandwich_norm and not args.no_sandwich_norm
-    
-    logger.info("🏗️ Clean BLIP3-o Architecture Configuration:")
-    logger.info(f"  3D Rotary Position Embedding: {'✅ Enabled' if use_3d_rope else '❌ Disabled'}")
-    logger.info(f"  Sandwich Normalization: {'✅ Enabled' if use_sandwich_norm else '❌ Disabled'}")
-    
-    # Import and create model
+def create_model(args, logger):
+    """Create BLIP3-o model"""
     try:
         from src.modules.models.blip3o_dit import create_clip_reproduction_model
-        logger.info("✅ Imported clean model")
         
         model = create_clip_reproduction_model(
             model_size=args.model_size,
             training_mode=args.training_mode,
-            use_3d_rope=use_3d_rope,
-            use_sandwich_norm=use_sandwich_norm,
+            use_3d_rope=True,
+            use_sandwich_norm=True,
         )
+        
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        model = model.to(device)
+        
+        logger.info(f"Model created with {model.get_num_parameters():,} parameters")
+        logger.info(f"  Model size: {args.model_size}")
+        logger.info(f"  Training mode: {args.training_mode}")
+        logger.info(f"  3D RoPE: Enabled")
+        logger.info(f"  Sandwich Norm: Enabled")
+        
+        return model, device
         
     except ImportError as e:
         logger.error(f"❌ Could not import model: {e}")
@@ -266,41 +175,23 @@ def setup_device_and_model(args, logger):
     except Exception as e:
         logger.error(f"❌ Error creating model: {e}")
         raise
-    
-    # Move model to device
-    try:
-        model = model.to(device)
-        logger.info(f"Model created with {model.get_num_parameters():,} parameters")
-        logger.info(f"Model moved to {device}")
-        
-        # Verify model is on correct device
-        if torch.cuda.is_available():
-            model_device = next(model.parameters()).device
-            logger.info(f"Model device verified: {model_device}")
-        
-    except Exception as e:
-        logger.error(f"❌ Error moving model to device: {e}")
-        raise
-    
-    return device, model
 
-def create_loss_function(args, logger):
+def create_loss_function(logger):
     """Create loss function"""
     try:
         from src.modules.losses.blip3o_fm_loss import create_clip_reproduction_loss
-        logger.info("✅ Imported clean loss function")
         
         loss_fn = create_clip_reproduction_loss(
             prediction_type="velocity",
             flow_type="rectified",
-            loss_weight=1.0,
-            debug_mode=args.debug_mode
+            loss_weight=1.0
         )
         
-        logger.info(f"Loss function created:")
-        logger.info(f"  Prediction type: velocity")
-        logger.info(f"  Flow type: rectified")
-        logger.info(f"  Debug mode: {args.debug_mode}")
+        logger.info("Loss function created:")
+        logger.info("  Prediction type: velocity")
+        logger.info("  Flow type: rectified")
+        
+        return loss_fn
         
     except ImportError as e:
         logger.error(f"❌ Could not import loss function: {e}")
@@ -308,18 +199,15 @@ def create_loss_function(args, logger):
     except Exception as e:
         logger.error(f"❌ Error creating loss function: {e}")
         raise
-    
-    return loss_fn
 
 def create_dataloaders(args, logger):
     """Create data loaders"""
     try:
         from src.modules.datasets.blip3o_dataset import create_clip_reproduction_dataloaders
-        logger.info("✅ Imported clean dataset")
         
         # Validate embeddings directory
         embeddings_dir = Path(args.chunked_embeddings_dir)
-        logger.info(f"Checking embeddings directory: {embeddings_dir}")
+        logger.info(f"Loading embeddings from: {embeddings_dir}")
         
         # Look for embedding files
         pkl_files = list(embeddings_dir.glob("*.pkl"))
@@ -327,15 +215,6 @@ def create_dataloaders(args, logger):
             raise FileNotFoundError(f"No .pkl files found in {embeddings_dir}")
         
         logger.info(f"Found {len(pkl_files)} .pkl files in embeddings directory")
-        
-        # Check for manifest
-        manifest_path = embeddings_dir / "embeddings_manifest.json"
-        if manifest_path.exists():
-            with open(manifest_path, 'r') as f:
-                manifest = json.load(f)
-            logger.info(f"Found manifest: {manifest.get('total_samples', 'unknown')} samples")
-        else:
-            logger.warning("No manifest found - using fallback detection")
         
         train_dataloader, eval_dataloader = create_clip_reproduction_dataloaders(
             chunked_embeddings_dir=args.chunked_embeddings_dir,
@@ -348,24 +227,19 @@ def create_dataloaders(args, logger):
             validate_tensor_shapes=True,
         )
         
-        logger.info(f"Clean dataloaders created successfully:")
-        logger.info(f"  No normalization applied")
-        logger.info(f"  Standard Gaussian noise")
-        logger.info(f"  Max shards: {args.max_shards}")
+        logger.info("Dataloaders created successfully:")
         logger.info(f"  Training mode: {args.training_mode}")
         logger.info(f"  Batch size: {args.batch_size}")
+        logger.info(f"  Max shards: {args.max_shards}")
         
         # Test dataloader
-        try:
-            test_batch = next(iter(train_dataloader))
-            logger.info(f"✅ Dataloader test successful:")
-            logger.info(f"  Batch size: {test_batch.get('batch_size', 'unknown')}")
-            logger.info(f"  CLIP embeddings shape: {test_batch['clip_embeddings'].shape}")
-            logger.info(f"  EVA embeddings shape: {test_batch['encoder_hidden_states'].shape}")
-            logger.info(f"  Raw embedding space: {test_batch.get('raw_embedding_space', 'unknown')}")
-        except Exception as e:
-            logger.error(f"❌ Dataloader test failed: {e}")
-            raise
+        test_batch = next(iter(train_dataloader))
+        logger.info(f"✅ Dataloader test successful:")
+        logger.info(f"  Batch size: {test_batch.get('batch_size', 'unknown')}")
+        logger.info(f"  CLIP embeddings shape: {test_batch['clip_embeddings'].shape}")
+        logger.info(f"  EVA embeddings shape: {test_batch['encoder_hidden_states'].shape}")
+        
+        return train_dataloader, eval_dataloader
         
     except ImportError as e:
         logger.error(f"❌ Could not import dataset: {e}")
@@ -373,38 +247,25 @@ def create_dataloaders(args, logger):
     except Exception as e:
         logger.error(f"❌ Error creating dataloaders: {e}")
         raise
-    
-    return train_dataloader, eval_dataloader
 
 def create_trainer(model, loss_fn, train_dataloader, eval_dataloader, args, device, logger):
     """Create trainer"""
     try:
         from src.modules.trainers.blip3o_trainer import create_clip_trainer
-        logger.info("✅ Imported clean trainer")
         
         # Create run name if not provided
         wandb_run_name = args.wandb_run_name
         if wandb_run_name is None and args.use_wandb:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            arch_features = []
-            if getattr(model.config, 'use_3d_rope', False):
-                arch_features.append("3drope")
-            if getattr(model.config, 'use_sandwich_norm', False):
-                arch_features.append("sandwich")
-            arch_str = "_".join(arch_features) if arch_features else "standard"
-            wandb_run_name = f"blip3o_{args.model_size}_{args.training_mode}_{arch_str}_{timestamp}"
+            wandb_run_name = f"blip3o_{args.model_size}_{args.training_mode}_clean_{timestamp}"
         
         # WandB config
         wandb_config = {
             "model_size": args.model_size,
             "training_mode": args.training_mode,
-            "use_3d_rope": getattr(model.config, 'use_3d_rope', False),
-            "use_sandwich_norm": getattr(model.config, 'use_sandwich_norm', False),
             "batch_size": args.batch_size,
             "max_shards": args.max_shards,
             "experiment_version": "clean_v1",
-            
-            # Training parameters
             "learning_rate": args.learning_rate,
             "weight_decay": args.weight_decay,
             "num_epochs": args.num_epochs,
@@ -412,8 +273,6 @@ def create_trainer(model, loss_fn, train_dataloader, eval_dataloader, args, devi
             "max_grad_norm": args.max_grad_norm,
             "fp16": args.fp16,
         }
-        
-        logger.info(f"Creating clean trainer")
         
         trainer = create_clip_trainer(
             model=model,
@@ -429,22 +288,19 @@ def create_trainer(model, loss_fn, train_dataloader, eval_dataloader, args, devi
             eval_every_n_steps=args.eval_every_n_steps,
             eval_num_samples=args.eval_num_samples,
             eval_inference_steps=args.eval_inference_steps,
-            debug_mode=args.debug_mode,
-            overfit_test_size=args.overfit_test_size,
             output_dir=args.output_dir,
             device=device,
-            
-            # WandB parameters
             use_wandb=args.use_wandb,
             wandb_project=args.wandb_project,
             wandb_run_name=wandb_run_name,
             wandb_config=wandb_config,
         )
         
-        logger.info("Clean trainer created successfully:")
+        logger.info("Trainer created successfully:")
         logger.info(f"  Evaluation: Every {args.eval_every_n_steps} steps")
         logger.info(f"  WandB enabled: {args.use_wandb}")
-        logger.info(f"  Overfitting test: {args.overfit_test_size} samples")
+        
+        return trainer
         
     except ImportError as e:
         logger.error(f"❌ Could not import trainer: {e}")
@@ -452,8 +308,6 @@ def create_trainer(model, loss_fn, train_dataloader, eval_dataloader, args, devi
     except Exception as e:
         logger.error(f"❌ Error creating trainer: {e}")
         raise
-    
-    return trainer
 
 def save_experiment_config(args, model, output_dir, logger):
     """Save experiment configuration"""
@@ -463,56 +317,24 @@ def save_experiment_config(args, model, output_dir, logger):
                 'name': 'Clean BLIP3-o CLIP Reproduction',
                 'version': 'clean_v1',
                 'timestamp': datetime.now().isoformat(),
-                'experiment_type': 'blip3o_clip_clean',
                 'task': 'Reproduce CLIP embeddings from EVA embeddings',
-                'method': 'BLIP3-o DiT with Flow Matching',
+                'method': 'BLIP3-o DiT with Rectified Flow Matching',
             },
-            
             'args': vars(args),
-            
             'model_config': model.config.to_dict() if hasattr(model.config, 'to_dict') else {},
-            
             'model_info': {
                 'parameters': model.get_num_parameters() if hasattr(model, 'get_num_parameters') else 'unknown',
                 'model_class': model.__class__.__name__,
-                'config_class': model.config.__class__.__name__ if hasattr(model, 'config') else 'unknown',
             },
-            
             'architecture_features': {
-                '3d_rope': getattr(model.config, 'use_3d_rope', False),
-                'sandwich_normalization': getattr(model.config, 'use_sandwich_norm', False),
+                '3d_rope': True,
+                'sandwich_normalization': True,
                 'grouped_query_attention': True,
+                'rectified_flow_matching': True,
             },
-            
-            'data_config': {
-                'embeddings_dir': args.chunked_embeddings_dir,
-                'training_mode': args.training_mode,
-                'max_shards': args.max_shards,
-                'raw_embedding_space': True,
-                'standard_gaussian_noise': True,
-            },
-            
-            'training_config': {
-                'learning_rate': args.learning_rate,
-                'batch_size': args.batch_size,
-                'num_epochs': args.num_epochs,
-                'warmup_steps': args.warmup_steps,
-                'weight_decay': args.weight_decay,
-                'max_grad_norm': args.max_grad_norm,
-                'fp16': args.fp16,
-                'debug_mode': args.debug_mode,
-                'overfit_test_size': args.overfit_test_size,
-            },
-            
-            'wandb_config': {
-                'enabled': args.use_wandb,
-                'project': args.wandb_project,
-                'run_name': args.wandb_run_name,
-            }
         }
         
-        config_path = output_dir / 'clean_experiment_config.json'
-        
+        config_path = output_dir / 'experiment_config.json'
         with open(config_path, 'w') as f:
             json.dump(config, f, indent=2, default=str)
         
@@ -525,44 +347,38 @@ def save_experiment_config(args, model, output_dir, logger):
 
 def main():
     """Main training function"""
-    # Parse arguments first (before logging setup to handle debug mode)
-    args = parse_arguments()
-    
     # Setup logging
-    logger = setup_logging(args.debug_mode)
+    logger = setup_logging()
     
     logger.info("🚀 Clean BLIP3-o CLIP Reproduction Training")
     logger.info("=" * 60)
-    
-    logger.info("EXPERIMENT DETAILS:")
-    logger.info("  📋 Task: Reproduce clean CLIP embeddings from EVA embeddings")
-    logger.info("  🧠 Model: BLIP3-o DiT with 3D RoPE and Sandwich Normalization")
-    logger.info("  🎯 Target: CLIP embeddings [B, N, 1024]")
-    logger.info("  🎮 Conditioning: EVA embeddings [B, N, 4096]")
-    logger.info("  🌊 Method: Rectified Flow Matching")
-    logger.info("  🎲 Noise: Standard Gaussian")
-    logger.info("  📊 Generation: Simple linear scheduling")
-    
-    logger.info("=" * 60)
-    logger.info(f"Configuration:")
-    logger.info(f"  Model size: {args.model_size}")
-    logger.info(f"  Training mode: {args.training_mode}")
-    logger.info(f"  Embeddings dir: {args.chunked_embeddings_dir}")
-    logger.info(f"  Output dir: {args.output_dir}")
-    logger.info(f"  Learning rate: {args.learning_rate}")
-    logger.info(f"  Batch size: {args.batch_size}")
-    logger.info(f"  Epochs: {args.num_epochs}")
-    logger.info(f"  Max shards: {args.max_shards}")
-    logger.info(f"  Debug mode: {args.debug_mode}")
-    logger.info(f"  Overfitting test: {args.overfit_test_size} samples")
-    if args.use_wandb:
-        logger.info(f"  📊 WandB project: {args.wandb_project}")
+    logger.info("📋 Task: Reproduce CLIP embeddings from EVA embeddings")
+    logger.info("🧠 Model: BLIP3-o DiT with 3D RoPE and Sandwich Normalization")
+    logger.info("🌊 Method: Rectified Flow Matching")
+    logger.info("🎯 Target: CLIP embeddings [B, N, 1024]")
+    logger.info("🎮 Conditioning: EVA embeddings [B, N, 4096]")
     logger.info("=" * 60)
     
     try:
+        # Parse arguments
+        args = parse_arguments()
+        
+        # Validate arguments
+        if not validate_arguments(args, logger):
+            return 1
+        
+        logger.info(f"Configuration:")
+        logger.info(f"  Model size: {args.model_size}")
+        logger.info(f"  Training mode: {args.training_mode}")
+        logger.info(f"  Embeddings dir: {args.chunked_embeddings_dir}")
+        logger.info(f"  Output dir: {args.output_dir}")
+        logger.info(f"  Learning rate: {args.learning_rate}")
+        logger.info(f"  Batch size: {args.batch_size}")
+        logger.info(f"  Epochs: {args.num_epochs}")
+        logger.info(f"  Max shards: {args.max_shards}")
+        
         # Check environment
-        env_issues = check_environment()
-        if env_issues:
+        if not check_environment(logger):
             logger.warning("Environment issues detected - proceeding with caution")
         
         # Create output directory
@@ -570,13 +386,13 @@ def main():
         output_dir.mkdir(parents=True, exist_ok=True)
         logger.info(f"✅ Output directory ready: {output_dir}")
         
-        # Setup device and model
-        logger.info("🏗️ Setting up device and model...")
-        device, model = setup_device_and_model(args, logger)
+        # Create model
+        logger.info("🏗️ Creating model...")
+        model, device = create_model(args, logger)
         
         # Create loss function
         logger.info("🌊 Creating loss function...")
-        loss_fn = create_loss_function(args, logger)
+        loss_fn = create_loss_function(logger)
         
         # Create dataloaders
         logger.info("📊 Creating dataloaders...")
@@ -594,42 +410,20 @@ def main():
         logger.info(f"\n🚀 Starting clean BLIP3-o training...")
         logger.info("=" * 60)
         
-        logger.info("🧪 EXPECTED BEHAVIOR:")
-        logger.info("  ✅ Non-zero gradients from first step")
-        logger.info("  ✅ Decreasing loss within first few epochs")
-        logger.info("  ✅ Velocity similarity increasing from ~0.01 to >0.1")
-        logger.info("  ✅ CLIP similarity during evaluation >0.1 (good), >0.4 (excellent)")
-        logger.info("  ✅ Overfitting test should achieve >0.8 similarity")
-        logger.info("  ✅ No NaN/Inf issues or tensor shape mismatches")
-        
-        logger.info("\n🎯 SUCCESS CRITERIA:")
-        logger.info("  ✅ Training completes without errors")
-        logger.info("  ✅ Evaluation runs successfully at every checkpoint")
-        logger.info("  ✅ CLIP similarity steadily increases during training")
-        logger.info("  ✅ Overfitting test achieves >0.8 similarity")
-        logger.info("  ✅ Final evaluation shows strong CLIP reproduction (>0.4 similarity)")
-        logger.info("=" * 60)
-        
         start_time = datetime.now()
         
         # Run training
-        try:
-            summary = trainer.train()
-            logger.info("✅ Training completed successfully!")
-            
-        except Exception as e:
-            logger.error(f"❌ Error during training: {e}")
-            raise
+        summary = trainer.train()
         
         end_time = datetime.now()
         duration = (end_time - start_time).total_seconds()
         
         # FINAL SUMMARY
         logger.info("\n" + "=" * 60)
-        logger.info("🎉 CLEAN BLIP3-o TRAINING COMPLETED SUCCESSFULLY!")
+        logger.info("🎉 CLEAN BLIP3-o TRAINING COMPLETED!")
         logger.info("=" * 60)
         
-        logger.info(f"📊 RESULTS SUMMARY:")
+        logger.info(f"📊 RESULTS:")
         logger.info(f"  Duration: {duration:.1f} seconds ({duration/60:.1f} minutes)")
         logger.info(f"  Total steps: {summary.get('total_steps', 0)}")
         logger.info(f"  Best loss: {summary.get('best_loss', float('inf')):.6f}")
@@ -637,63 +431,42 @@ def main():
         
         # Enhanced results analysis
         best_sim = summary.get('best_eval_similarity', 0)
-        if best_sim > 0.9:
-            logger.info(f"  🎉 OUTSTANDING: Similarity >0.9 - Exceptional results!")
-        elif best_sim > 0.8:
+        if best_sim > 0.8:
             logger.info(f"  🎉 EXCELLENT: Similarity >0.8 - Great results!")
         elif best_sim > 0.6:
             logger.info(f"  ✅ VERY GOOD: Similarity >0.6 - Solid performance!")
         elif best_sim > 0.4:
             logger.info(f"  ✅ GOOD: Similarity >0.4 - Promising results!")
-        elif best_sim > 0.3:
-            logger.info(f"  📈 DECENT: Similarity >0.3 - Learning observed!")
-        elif best_sim > 0.1:
-            logger.info(f"  📈 FAIR: Similarity >0.1 - Some progress!")
+        elif best_sim > 0.2:
+            logger.info(f"  📈 FAIR: Similarity >0.2 - Learning observed!")
         else:
-            logger.info(f"  ⚠️ NEEDS WORK: Similarity <0.1 - Check configuration")
+            logger.info(f"  ⚠️ NEEDS WORK: Similarity <0.2 - Check configuration")
         
-        # Detailed evaluation results
+        # Final evaluation results
         final_eval = summary.get('final_eval', {})
         if final_eval:
-            logger.info(f"📊 DETAILED FINAL EVALUATION:")
+            logger.info(f"📊 Final Evaluation:")
             logger.info(f"  CLIP similarity: {final_eval.get('eval_clip_similarity', 0):.4f}")
-            logger.info(f"  Generated norm: {final_eval.get('eval_generated_norm_mean', 0):.3f}")
-            logger.info(f"  Target norm: {final_eval.get('eval_target_norm_mean', 0):.3f}")
-            logger.info(f"  Norm ratio: {final_eval.get('eval_norm_ratio', 0):.3f}")
-            logger.info(f"  High quality (>0.7): {final_eval.get('eval_high_quality_ratio', 0)*100:.1f}%")
-            logger.info(f"  Very high quality (>0.8): {final_eval.get('eval_very_high_quality_ratio', 0)*100:.1f}%")
-            logger.info(f"  Excellent quality (>0.9): {final_eval.get('eval_excellent_quality_ratio', 0)*100:.1f}%")
-        
-        # Overfitting test results
-        if summary.get('overfit_success', False):
-            logger.info(f"🧪 OVERFITTING TEST: ✅ PASSED")
-            logger.info(f"   Architecture can learn - implementation is correct!")
-        else:
-            logger.info(f"🧪 OVERFITTING TEST: ❌ FAILED")
-            logger.info(f"   Architecture struggles to overfit - check implementation")
-        
-        # WandB information
-        if summary.get('wandb_enabled', False):
-            logger.info(f"📊 WandB Dashboard: Check your {args.wandb_project} project")
+            logger.info(f"  High quality (>0.7): {final_eval.get('eval_high_quality', 0)*100:.1f}%")
+            logger.info(f"  Very high quality (>0.8): {final_eval.get('eval_very_high_quality', 0)*100:.1f}%")
+            logger.info(f"  Excellent quality (>0.9): {final_eval.get('eval_excellent_quality', 0)*100:.1f}%")
         
         # Save enhanced final summary
         summary['duration_seconds'] = duration
         summary['end_time'] = end_time.isoformat()
         summary['experiment_config'] = config
-        summary['experiment_type'] = 'blip3o_clip_clean'
         
-        summary_path = output_dir / 'clean_training_summary.json'
+        summary_path = output_dir / 'training_summary.json'
         with open(summary_path, 'w') as f:
             json.dump(summary, f, indent=2, default=str)
         
-        logger.info(f"📁 FINAL OUTPUTS:")
+        logger.info(f"📁 Outputs:")
         logger.info(f"  Training summary: {summary_path}")
         logger.info(f"  Model checkpoints: {output_dir}")
-        logger.info(f"  Configuration: {output_dir / 'clean_experiment_config.json'}")
         logger.info(f"  Training logs: clean_clip_training.log")
         
         logger.info("=" * 60)
-        logger.info("🎉 CLEAN TRAINING COMPLETED SUCCESSFULLY!")
+        logger.info("🎉 TRAINING COMPLETED SUCCESSFULLY!")
         
         return 0
         
@@ -704,25 +477,18 @@ def main():
         traceback.print_exc()
         logger.error("=" * 50)
         
-        # Provide specific debugging advice based on error type
+        # Provide debugging advice
         error_str = str(e)
         if "CUDA out of memory" in error_str:
             logger.error("🔍 GPU MEMORY ERROR:")
             logger.error("   Try reducing --batch_size or --model_size")
-            logger.error("   Or use --fp16 for mixed precision")
         elif "No module named" in error_str:
             logger.error("🔍 IMPORT ERROR:")
             logger.error("   Check that all required files are in place")
-            logger.error("   Verify the src/modules/ directory structure")
         elif "FileNotFoundError" in error_str:
             logger.error("🔍 FILE NOT FOUND:")
             logger.error("   Check --chunked_embeddings_dir path")
-            logger.error("   Verify embeddings are properly extracted")
         
-        return 1
-    
-    except KeyboardInterrupt:
-        logger.info("Training interrupted by user")
         return 1
 
 if __name__ == "__main__":
