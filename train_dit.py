@@ -21,6 +21,7 @@ import logging
 from pathlib import Path
 from datetime import datetime
 import traceback
+import numpy as np
 
 # Setup paths
 sys.path.insert(0, str(Path(__file__).parent))
