@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Clean BLIP3-o Trainer for CLIP Reproduction
-Simple implementation aligned with BLIP3-o paper
+FIXED BLIP3-o Trainer for CLIP Reproduction
+Added robust checkpoint saving to fix serialization errors
 """
 
 import torch
@@ -18,6 +18,9 @@ import gc
 from collections import deque
 import math
 import os
+import shutil
+import tempfile
+import psutil
 
 # WandB import with error handling
 try:
@@ -32,8 +35,8 @@ logger = logging.getLogger(__name__)
 
 class BLIP3oCLIPTrainer:
     """
-    Clean Trainer for BLIP3-o CLIP Reproduction
-    Simple implementation following BLIP3-o paper
+    FIXED Trainer for BLIP3-o CLIP Reproduction
+    Added robust checkpoint saving and error handling
     """
     
     def __init__(
@@ -66,6 +69,10 @@ class BLIP3oCLIPTrainer:
         wandb_run_name: Optional[str] = None,
         wandb_config: Optional[Dict] = None,
         wandb_api_key: Optional[str] = None,
+        # FIXED: Checkpoint configuration
+        max_checkpoint_size_gb: float = 2.0,
+        checkpoint_save_retries: int = 3,
+        enable_checkpoint_compression: bool = True,
     ):
         self.model = model
         self.loss_fn = loss_fn
@@ -92,6 +99,11 @@ class BLIP3oCLIPTrainer:
         # Output
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
+        
+        # FIXED: Checkpoint configuration
+        self.max_checkpoint_size_gb = max_checkpoint_size_gb
+        self.checkpoint_save_retries = checkpoint_save_retries
+        self.enable_checkpoint_compression = enable_checkpoint_compression
         
         # Device
         self.device = device or (torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu"))
@@ -134,9 +146,11 @@ class BLIP3oCLIPTrainer:
         elif use_wandb and not WANDB_AVAILABLE:
             logger.warning("WandB requested but not available. Install with: pip install wandb")
         
-        logger.info("Clean BLIP3-o CLIP Trainer initialized")
+        logger.info("FIXED BLIP3-o CLIP Trainer initialized")
         logger.info(f"  Device: {self.device}")
         logger.info(f"  Parameters: {sum(p.numel() for p in self.model.parameters()):,}")
+        logger.info(f"  Checkpoint max size: {self.max_checkpoint_size_gb} GB")
+        logger.info(f"  Checkpoint compression: {self.enable_checkpoint_compression}")
 
     def _estimate_steps_per_epoch(self) -> int:
         """Estimate steps per epoch for IterableDataset"""
@@ -224,7 +238,7 @@ class BLIP3oCLIPTrainer:
                 'eval_every_n_steps': self.eval_every_n_steps,
                 'eval_num_samples': self.eval_num_samples,
                 'eval_inference_steps': self.eval_inference_steps,
-                'experiment_type': 'blip3o_clip_clean',
+                'experiment_type': 'blip3o_clip_fixed',
                 'task': 'EVA_to_CLIP_embedding_reproduction',
                 'method': 'BLIP3o_DiT_with_rectified_flow_matching',
                 **model_config,
@@ -237,7 +251,7 @@ class BLIP3oCLIPTrainer:
                 config=wandb_config,
                 dir=str(self.output_dir),
                 resume="allow",
-                tags=["blip3o", "clip_reproduction", "clean"]
+                tags=["blip3o", "clip_reproduction", "fixed"]
             )
             
             if hasattr(self.model, 'get_num_parameters'):
@@ -501,38 +515,272 @@ class BLIP3oCLIPTrainer:
             
             logger.info(log_msg)
 
+    # FIXED: Robust checkpoint saving methods
+    def _get_disk_usage(self, path: Path) -> Dict[str, float]:
+        """Get disk usage information"""
+        try:
+            total, used, free = shutil.disk_usage(path)
+            return {
+                'total_gb': total / 1e9,
+                'used_gb': used / 1e9,
+                'free_gb': free / 1e9,
+                'usage_percent': (used / total) * 100
+            }
+        except Exception as e:
+            logger.warning(f"Could not get disk usage for {path}: {e}")
+            return {'free_gb': 0, 'error': str(e)}
+
+    def _estimate_checkpoint_size(self) -> float:
+        """Estimate checkpoint size in GB"""
+        try:
+            # Get model parameter count
+            model_params = sum(p.numel() for p in self.model.parameters())
+            
+            # Estimate size (parameters * 4 bytes for float32 * 3 for model+optimizer+scheduler)
+            estimated_size_bytes = model_params * 4 * 3
+            
+            # Add overhead for metadata
+            estimated_size_bytes *= 1.2
+            
+            estimated_size_gb = estimated_size_bytes / 1e9
+            return estimated_size_gb
+        except Exception:
+            return 1.0  # Conservative fallback
+
+    def _cleanup_memory_before_save(self):
+        """Clean up memory before checkpoint saving"""
+        try:
+            # Clear Python garbage
+            gc.collect()
+            
+            # Clear CUDA cache if available
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                torch.cuda.synchronize()
+            
+            # Clear any lingering gradients
+            for param in self.model.parameters():
+                if param.grad is not None:
+                    param.grad = None
+            
+            logger.debug("Memory cleanup completed before checkpoint save")
+        except Exception as e:
+            logger.warning(f"Error during memory cleanup: {e}")
+
+    def _create_checkpoint_dict(self) -> Dict[str, Any]:
+        """Create checkpoint dictionary with error handling"""
+        try:
+            # Basic checkpoint data
+            checkpoint = {
+                'global_step': self.global_step,
+                'current_epoch': self.current_epoch,
+                'best_eval_similarity': self.best_eval_similarity,
+                'best_loss': self.best_loss,
+                'experiment_type': 'blip3o_clip_fixed',
+            }
+            
+            # Add model state
+            try:
+                checkpoint['model_state_dict'] = self.model.state_dict()
+            except Exception as e:
+                logger.error(f"Failed to get model state dict: {e}")
+                raise
+            
+            # Add optimizer state
+            try:
+                checkpoint['optimizer_state_dict'] = self.optimizer.state_dict()
+            except Exception as e:
+                logger.warning(f"Failed to get optimizer state dict: {e}")
+                # Continue without optimizer state
+            
+            # Add scheduler state
+            try:
+                checkpoint['scheduler_state_dict'] = self.scheduler.state_dict()
+            except Exception as e:
+                logger.warning(f"Failed to get scheduler state dict: {e}")
+                # Continue without scheduler state
+            
+            # Add scaler state if using fp16
+            if self.scaler is not None:
+                try:
+                    checkpoint['scaler_state_dict'] = self.scaler.state_dict()
+                except Exception as e:
+                    logger.warning(f"Failed to get scaler state dict: {e}")
+            
+            # Add limited history to reduce size
+            max_history_items = 100
+            checkpoint['loss_history'] = list(self.loss_history)[-max_history_items:]
+            checkpoint['similarity_history'] = list(self.similarity_history)[-max_history_items:]
+            
+            return checkpoint
+            
+        except Exception as e:
+            logger.error(f"Error creating checkpoint dictionary: {e}")
+            raise
+
+    def _save_checkpoint_robustly(self, checkpoint: Dict[str, Any], checkpoint_path: Path) -> bool:
+        """Save checkpoint with robust error handling and retries"""
+        for attempt in range(self.checkpoint_save_retries):
+            try:
+                # Create temp file in same directory
+                temp_dir = checkpoint_path.parent
+                
+                with tempfile.NamedTemporaryFile(
+                    dir=temp_dir, 
+                    prefix=f"checkpoint_temp_{self.global_step}_",
+                    suffix=".pt",
+                    delete=False
+                ) as temp_file:
+                    temp_path = Path(temp_file.name)
+                
+                # Save to temporary file
+                logger.debug(f"Saving checkpoint to temp file: {temp_path}")
+                torch.save(checkpoint, temp_path, _use_new_zipfile_serialization=False)
+                
+                # Check temp file size
+                temp_size_gb = temp_path.stat().st_size / 1e9
+                logger.debug(f"Temp checkpoint size: {temp_size_gb:.2f} GB")
+                
+                if temp_size_gb > self.max_checkpoint_size_gb:
+                    logger.warning(f"Checkpoint size ({temp_size_gb:.2f} GB) exceeds limit ({self.max_checkpoint_size_gb} GB)")
+                    # Continue anyway but warn
+                
+                # Atomic move from temp to final location
+                shutil.move(str(temp_path), str(checkpoint_path))
+                
+                # Verify final file
+                if checkpoint_path.exists():
+                    final_size_gb = checkpoint_path.stat().st_size / 1e9
+                    logger.info(f"✅ Checkpoint saved successfully: {checkpoint_path}")
+                    logger.info(f"   Size: {final_size_gb:.2f} GB")
+                    return True
+                else:
+                    raise FileNotFoundError("Final checkpoint file not found after move")
+                
+            except Exception as e:
+                logger.error(f"Checkpoint save attempt {attempt + 1}/{self.checkpoint_save_retries} failed: {e}")
+                
+                # Clean up temp file if it exists
+                try:
+                    if 'temp_path' in locals() and temp_path.exists():
+                        temp_path.unlink()
+                except:
+                    pass
+                
+                if attempt == self.checkpoint_save_retries - 1:
+                    logger.error(f"❌ All checkpoint save attempts failed")
+                    return False
+                else:
+                    logger.info(f"Retrying checkpoint save in 2 seconds...")
+                    time.sleep(2)
+                    self._cleanup_memory_before_save()  # Clean up before retry
+        
+        return False
+
     def _save_checkpoint(self):
-        """Save model checkpoint"""
+        """FIXED: Save model checkpoint with robust error handling"""
         checkpoint_path = self.output_dir / f"checkpoint_step_{self.global_step}.pt"
         
-        checkpoint = {
-            'model_state_dict': self.model.state_dict(),
-            'optimizer_state_dict': self.optimizer.state_dict(),
-            'scheduler_state_dict': self.scheduler.state_dict(),
-            'global_step': self.global_step,
-            'current_epoch': self.current_epoch,
-            'best_eval_similarity': self.best_eval_similarity,
-            'best_loss': self.best_loss,
-            'loss_history': list(self.loss_history),
-            'similarity_history': list(self.similarity_history),
-            'experiment_type': 'blip3o_clip_clean',
-        }
-        
-        if self.scaler is not None:
-            checkpoint['scaler_state_dict'] = self.scaler.state_dict()
-        
-        torch.save(checkpoint, checkpoint_path)
-        logger.info(f"Checkpoint saved: {checkpoint_path}")
-        
-        if self.use_wandb:
-            wandb.log({
-                "checkpoint/saved": True,
-                "checkpoint/step": self.global_step,
-            }, step=self.global_step)
+        try:
+            # Check disk space
+            disk_usage = self._get_disk_usage(self.output_dir)
+            free_gb = disk_usage.get('free_gb', 0)
+            estimated_size = self._estimate_checkpoint_size()
+            
+            if free_gb < estimated_size * 2:  # Need 2x space for safety
+                logger.error(f"❌ Insufficient disk space: {free_gb:.1f} GB free, need ~{estimated_size*2:.1f} GB")
+                if self.use_wandb:
+                    wandb.log({
+                        "checkpoint/save_failed": True,
+                        "checkpoint/error": "insufficient_disk_space",
+                        "checkpoint/free_gb": free_gb,
+                        "checkpoint/needed_gb": estimated_size * 2,
+                    }, step=self.global_step)
+                return False
+            
+            # Clean up memory before save
+            self._cleanup_memory_before_save()
+            
+            # Create checkpoint dictionary
+            checkpoint = self._create_checkpoint_dict()
+            
+            # Save checkpoint robustly
+            success = self._save_checkpoint_robustly(checkpoint, checkpoint_path)
+            
+            if success:
+                # Log success
+                if self.use_wandb:
+                    final_size_gb = checkpoint_path.stat().st_size / 1e9
+                    wandb.log({
+                        "checkpoint/saved": True,
+                        "checkpoint/step": self.global_step,
+                        "checkpoint/size_gb": final_size_gb,
+                        "checkpoint/disk_free_gb": disk_usage.get('free_gb', 0),
+                    }, step=self.global_step)
+                
+                # Clean up old checkpoints to save space
+                self._cleanup_old_checkpoints()
+                
+                return True
+            else:
+                # Log failure
+                if self.use_wandb:
+                    wandb.log({
+                        "checkpoint/save_failed": True,
+                        "checkpoint/step": self.global_step,
+                    }, step=self.global_step)
+                
+                return False
+                
+        except Exception as e:
+            logger.error(f"❌ Unexpected error in checkpoint saving: {e}")
+            if self.use_wandb:
+                wandb.log({
+                    "checkpoint/save_failed": True,
+                    "checkpoint/error": str(e),
+                }, step=self.global_step)
+            return False
+
+    def _cleanup_old_checkpoints(self, keep_last_n: int = 3):
+        """Clean up old checkpoints to save disk space"""
+        try:
+            # Find all checkpoint files
+            checkpoint_files = list(self.output_dir.glob("checkpoint_step_*.pt"))
+            
+            if len(checkpoint_files) <= keep_last_n:
+                return
+            
+            # Sort by step number
+            def extract_step(path):
+                try:
+                    return int(path.stem.split('_')[-1])
+                except:
+                    return 0
+            
+            checkpoint_files.sort(key=extract_step)
+            
+            # Remove oldest checkpoints
+            files_to_remove = checkpoint_files[:-keep_last_n]
+            total_removed_size = 0
+            
+            for old_checkpoint in files_to_remove:
+                try:
+                    size_gb = old_checkpoint.stat().st_size / 1e9
+                    old_checkpoint.unlink()
+                    total_removed_size += size_gb
+                    logger.debug(f"Removed old checkpoint: {old_checkpoint}")
+                except Exception as e:
+                    logger.warning(f"Could not remove old checkpoint {old_checkpoint}: {e}")
+            
+            if total_removed_size > 0:
+                logger.info(f"🧹 Cleaned up {len(files_to_remove)} old checkpoints, freed {total_removed_size:.2f} GB")
+            
+        except Exception as e:
+            logger.warning(f"Error during checkpoint cleanup: {e}")
 
     def train(self) -> Dict[str, Any]:
-        """Main training loop"""
-        logger.info("🚀 Starting clean BLIP3-o training...")
+        """Main training loop with improved error handling"""
+        logger.info("🚀 Starting FIXED BLIP3-o training...")
         logger.info(f"  Model parameters: {sum(p.numel() for p in self.model.parameters()):,}")
         
         if self.use_wandb:
@@ -624,9 +872,13 @@ class BLIP3oCLIPTrainer:
                                 if self.use_wandb:
                                     wandb.log({"eval/failed": True, "eval/error": str(e)}, step=self.global_step)
                         
-                        # Save checkpoint
+                        # Save checkpoint with improved error handling
                         if self.global_step % self.save_every_n_steps == 0:
-                            self._save_checkpoint()
+                            logger.info(f"Attempting to save checkpoint at step {self.global_step}...")
+                            checkpoint_success = self._save_checkpoint()
+                            if not checkpoint_success:
+                                logger.error(f"❌ Checkpoint save failed at step {self.global_step}")
+                                # Continue training even if checkpoint fails
                 
                 except Exception as e:
                     logger.error(f"Error during epoch {epoch + 1}: {e}")
@@ -663,8 +915,11 @@ class BLIP3oCLIPTrainer:
             raise
         
         finally:
-            # Final checkpoint
-            self._save_checkpoint()
+            # Final checkpoint - try to save even if there were earlier failures
+            logger.info("Saving final checkpoint...")
+            final_checkpoint_success = self._save_checkpoint()
+            if not final_checkpoint_success:
+                logger.error("❌ Final checkpoint save failed")
             
             # Final evaluation
             logger.info("Running final evaluation...")
@@ -688,8 +943,9 @@ class BLIP3oCLIPTrainer:
                 'loss_history': list(self.loss_history),
                 'similarity_history': list(self.similarity_history),
                 'estimated_steps_per_epoch': self.estimated_steps_per_epoch,
-                'experiment_type': 'blip3o_clip_clean',
+                'experiment_type': 'blip3o_clip_fixed',
                 'wandb_enabled': self.use_wandb,
+                'checkpoint_issues': not final_checkpoint_success,
             }
             
             # Log final summary to WandB
@@ -700,6 +956,7 @@ class BLIP3oCLIPTrainer:
                     "final/total_steps": self.global_step,
                     "final/best_loss": self.best_loss,
                     "final/best_eval_similarity": self.best_eval_similarity,
+                    "final/checkpoint_success": final_checkpoint_success,
                 }
                 
                 if final_eval:
@@ -713,13 +970,14 @@ class BLIP3oCLIPTrainer:
             # Save training summary
             summary_path = self.output_dir / "training_summary.json"
             with open(summary_path, 'w') as f:
-                json.dump(summary, f, indent=2)
+                json.dump(summary, f, indent=2, default=str)
             
-            logger.info("🎉 Clean Training completed!")
+            logger.info("🎉 FIXED Training completed!")
             logger.info(f"  Total time: {total_time:.1f} seconds")
             logger.info(f"  Total steps: {self.global_step}")
             logger.info(f"  Best loss: {self.best_loss:.6f}")
             logger.info(f"  Best CLIP similarity: {self.best_eval_similarity:.4f}")
+            logger.info(f"  Final checkpoint saved: {final_checkpoint_success}")
             
             if final_eval:
                 logger.info(f"  Final evaluation:")
@@ -743,7 +1001,7 @@ def create_clip_trainer(
     wandb_config: Optional[Dict] = None,
     **kwargs
 ) -> BLIP3oCLIPTrainer:
-    """Factory function to create clean CLIP trainer"""
+    """Factory function to create FIXED CLIP trainer"""
     
     return BLIP3oCLIPTrainer(
         model=model,

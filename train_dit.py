@@ -86,11 +86,11 @@ def parse_arguments():
                        help="Number of dataloader workers")
     
     # WandB configuration
-    parser.add_argument("--use_wandb", action="store_true", default=False,
+    parser.add_argument("--use_wandb", action="store_true", default=True,
                        help="Enable WandB logging")
     parser.add_argument("--wandb_project", type=str, default="blip3o-clip-clean",
                        help="WandB project name")
-    parser.add_argument("--wandb_run_name", type=str, default=None,
+    parser.add_argument("--wandb_run_name", type=str, default="minimal",
                        help="WandB run name")
     
     return parser.parse_args()
@@ -190,7 +190,6 @@ def create_loss_function(logger):
         logger.info("Loss function created:")
         logger.info("  Prediction type: velocity")
         logger.info("  Flow type: rectified")
-        
         return loss_fn
         
     except ImportError as e:
